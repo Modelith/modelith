@@ -411,6 +411,16 @@ package ModelithRequirements {
                 verify StaticHostingReq;
             }
         }
+        verification def VisualUITest {
+            doc /* web/e2e/visual.spec.ts：7 つのビュー・明るい／暗い配色・幅 390px・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログの見た目を基準画像と比べる */
+            objective {
+                verify SevenViewsReq;
+                verify NarrowScreenReq;
+                verify CanvasReq;
+                verify OpenFolderReq;
+                verify ConflictReq;
+            }
+        }
         verification def LayoutTest {
             doc /* web/src/app/layout.test.ts：配置情報の読み書き */
             objective {

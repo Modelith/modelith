@@ -31,3 +31,4 @@ web/playwright-report/
 
 # 非公開のモック（ADR-0002）。各自のローカルにだけ置き、コミットしない
 reference/mock/
+web/reports/

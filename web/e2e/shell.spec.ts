@@ -1,10 +1,14 @@
 // アプリ全体の約束（C-2・C-3・Q-2・F-EXP-*）
 import { expect, openApp, test } from "./fixtures";
 
-test("C-2: 起動から操作まで、外部のサーバに通信しない", async ({ page, baseURL }) => {
+test("C-2・C-4: 起動から操作まで、配信元の静的ファイルを読むだけで、外部やサーバの API に通信しない", async ({ page, baseURL }) => {
   // Arrange
   const hosts = new Set<string>();
-  page.on("request", (r) => hosts.add(new URL(r.url()).host));
+  const methods = new Set<string>();
+  page.on("request", (r) => {
+    hosts.add(new URL(r.url()).host);
+    methods.add(r.method());
+  });
   // Act
   await openApp(page);
   await page.locator(".tabadd summary").click();
@@ -12,6 +16,7 @@ test("C-2: 起動から操作まで、外部のサーバに通信しない", asy
   await page.evaluate(() => document.fonts.ready);
   // Assert
   expect([...hosts]).toEqual([new URL(baseURL ?? "").host]);
+  expect([...methods]).toEqual(["GET"]);
 });
 
 test("C-3: 「?」メニューのソースへのリンクは、動いている版のコミットを指す", async ({ page }) => {
