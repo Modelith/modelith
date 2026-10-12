@@ -22,10 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Branch name
-        run: scripts/check-branch-name.sh "$HEAD_REF"
-        env:
-          HEAD_REF: ${{ github.head_ref }}
       - name: PR base (feature branches target dev)
         run: scripts/check-pr-base.sh "$BASE_REF" "$HEAD_REF"
         env:
@@ -56,12 +52,3 @@ jobs:
       - run: npm ci --prefix tests/harness --no-audit --no-fund
       - name: Harness check（静的検査 → 単体 → 結合 → 統合）
         run: scripts/check.sh
-
-  # 共有ファイルが相手リポジトリ（scripts/harness.conf の HARNESS_SHARED_WITH）と同一か。
-  # 両リポジトリへの反映に時間差があるため、ルールセットの必須チェックには含めない
-  shared-sync:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: scripts/check-shared-sync.sh dev

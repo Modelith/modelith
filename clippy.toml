@@ -1,4 +1,2 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
-# 関数の長さの上限（.claude/skills/programming-principles: 単一責任の目安）
-too-many-lines-threshold = 40

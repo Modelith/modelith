@@ -14,17 +14,20 @@ setup() {
   # Assert
   [ "$HARNESS_ROOT" = "$SANDBOX" ]
   [ "$HARNESS_STRATEGY_DOC" = docs/strategy.md ]
-  declare -F policy_branch_name >/dev/null
+  declare -F policy_pr_title >/dev/null
 }
 
-@test "harness_load: 指定したアダプタだけを追加で読み込む（インタフェース分離）" {
+@test "harness_load: アダプタは指定したときだけ読み込む（インタフェース分離）" {
   # Arrange
   source "$SANDBOX/scripts/lib/load.sh"
   # Act
+  harness_load
+  local without; without=$(declare -F hook_field || true)
   harness_load hook-io
+  local with; with=$(declare -F hook_field || true)
   # Assert
-  declare -F hook_field >/dev/null
-  ! declare -F principles_missing_tests >/dev/null
+  [ -z "$without" ]
+  [ "$with" = hook_field ]
 }
 
 @test "harness_load: CLAUDE_PROJECT_DIR が無ければ Git のルートを使う（境界値）" {
