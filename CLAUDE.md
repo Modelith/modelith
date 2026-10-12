@@ -1,7 +1,7 @@
 # modelith — エージェント向け作業ガイド
 
 SysML v2 / KerML のテキストとダイアグラムを同期編集する、プラグインで拡張可能なモデリングエディタ。
-Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全体像は [docs/architecture.md](docs/architecture.md)、設計判断は [docs/adr/](docs/adr/)。
+Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全体像は [docs/explanation/architecture.md](docs/explanation/architecture.md)、設計判断は [docs/adr/](docs/adr/)。
 このファイルは Claude Code などの AI エージェントが最初に読む「ハーネス」の入口である。
 
 ## 完了の定義（Definition of Done）
