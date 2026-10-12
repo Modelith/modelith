@@ -330,6 +330,37 @@ package ModelithRequirements {
                 verify DiagramToTextReq;
             }
         }
+        verification def LocalFolderProviderTest {
+            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ（偽のファイルシステムで） */
+            objective {
+                verify OpenFolderReq;
+                verify RecentFolderReq;
+            }
+        }
+        verification def BrowserFileProviderTest {
+            doc /* web/src/files/browser-file.test.ts：読み込みとダウンロードでの保存 */
+            objective {
+                verify FallbackReq;
+            }
+        }
+        verification def WorkspaceTest {
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き */
+            objective {
+                verify OpenSaveReq;
+                verify NewSaveAsReq;
+                verify MultiDocReq;
+                verify DirtyReq;
+                verify ConflictReq;
+                verify ExternalChangeReq;
+                verify UntitledDraftReq;
+            }
+        }
+        verification def AutoSaveTest {
+            doc /* web/src/workspace/workspace.test.ts（AutoSaver）：編集が止まってから 1 秒後に保存、無効・無題・競合のときは保存しない */
+            objective {
+                verify AutoSaveReq;
+            }
+        }
         verification def LayoutTest {
             doc /* web/src/app/layout.test.ts：配置情報の読み書き */
             objective {

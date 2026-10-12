@@ -1,7 +1,7 @@
 // テキストを更新し、解析し直して画面全体を同期する。図の操作も最後は setText を通る（ADR-0001）。
 
 import { build, lineOf, parse, writeLayout } from "../core";
-import { $, esc, store } from "./dom";
+import { $, esc } from "./dom";
 import { autoPlace, nodeH } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
@@ -11,8 +11,6 @@ import { prunePins } from "./pins";
 import { highlight, render } from "./render";
 import { S } from "./state";
 import { curLayout, curView, VK, viewContent } from "./views";
-
-const DRAFT_KEY = "modelith-draft-v1";
 
 export interface SetTextOpts {
   /** 変更が始まる位置（カーソル位置の補正に使う）。 */
@@ -41,7 +39,7 @@ export function setText(t: string, opts: SetTextOpts = {}): void {
   }
   S.flash = opts.flash ?? null;
   reparse(!!opts.fromText);
-  saveDraft();
+  notifyTextChange();
   if (!opts.noHistory) scheduleRecord();
   if (S.flash) {
     setTimeout(() => {
@@ -119,11 +117,14 @@ export function toast(msg: string): void {
   toastTimer = setTimeout(() => t.classList.remove("on"), 2400);
 }
 
-export function saveDraft(): void {
-  store.set(DRAFT_KEY, S.text);
+let textListener: (text: string) => void = () => {};
+/** テキストが変わったときの処理（ワークスペースへの反映）を登録する。 */
+export function onTextChange(fn: (text: string) => void): void {
+  textListener = fn;
 }
-export function loadDraft(): string | null {
-  return store.get(DRAFT_KEY);
+/** テキストが変わったことを知らせる。 */
+export function notifyTextChange(): void {
+  textListener(S.text);
 }
 
 export function setSync(cls: "" | "busy" | "bad", txt: string): void {
