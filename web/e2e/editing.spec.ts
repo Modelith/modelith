@@ -1,7 +1,7 @@
 // 図からの編集（F-EDIT-2・3・4・F-VIEW-3）。図の操作はすべてテキストの編集として反映される。
 import { editorText, expect, nodeKeys, openApp, test } from "./fixtures";
 
-test("F-EDIT-2: パレットで要求を置くとテキストに追加され、削除するとテキストから消える", async ({ page }) => {
+test("F-EDIT-2・C-1: パレットで要求を置くとテキストに追加され、削除するとテキストから消える", async ({ page }) => {
   // Arrange
   await openApp(page);
   await page.locator('#palette [data-tool="requirement def"]').click();

@@ -55,3 +55,11 @@ jobs:
         working-directory: web
       - name: Harness check（静的検査 → 単体 → 結合 → 統合）
         run: scripts/check.sh
+      # 人が読むテストレポート（要求別の表・Playwright の HTML・UI の差分）。失敗したときほど要るので必ず残す
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: web/reports/
+          if-no-files-found: ignore

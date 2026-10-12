@@ -33,6 +33,6 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT__: JSON.stringify(commitSha()) },
   plugins: [bundledLicenses()],
   server: { fs: { allow: [".."] } },
-  // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src の単体・結合テストだけを拾う
-  test: { include: ["src/**/*.test.ts"] },
+  // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src と tools の単体・結合テストだけを拾う
+  test: { include: ["src/**/*.test.ts", "tools/**/*.test.ts"] },
 });
