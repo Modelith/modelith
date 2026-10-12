@@ -26,6 +26,8 @@ rustc-ice-*.txt
 # Node / web
 node_modules/
 web/dist/
+web/test-results/
+web/playwright-report/
 
 # 非公開のモック（ADR-0002）。各自のローカルにだけ置き、コミットしない
 reference/mock/
