@@ -38,3 +38,5 @@
 | P4 | プラグイン v0（YAML ルール）→ v1（TS） |
 | P5 | LSP |
 | P6 | サーバ（Git 保管・認証・SysML v2 標準 API）、プラグイン v2（WASM Component） |
+
+0.1.0 では、早く使ってもらうために P2 の UI 移植を P1 より先に行う（ADR-0009、[リリース計画](../development/release-plan.md)）。
