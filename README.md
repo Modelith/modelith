@@ -3,7 +3,7 @@ SysML v2 / KerML modeling editor with synchronized text and diagram editing
 
 Rust のコアをブラウザ（WebAssembly）・CLI・サーバで共有し、プラグインで拡張できる SysML v2 エディタです。
 
-- アーキテクチャ: [docs/architecture.md](docs/architecture.md)
+- アーキテクチャ: [docs/explanation/architecture.md](docs/explanation/architecture.md)
 - 設計判断（ADR）: [docs/adr/](docs/adr/)
 
 ## Development
