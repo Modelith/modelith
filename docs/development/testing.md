@@ -43,8 +43,14 @@ npm run e2e --prefix web -- -g F-FILE # 要求 ID でしぼる
 意図して見た目を変えたときだけ更新する。
 
 1. `npm run e2e --prefix web -- e2e/visual.spec.ts` で、どの画面が変わったかを確かめる（レポートに差分が出る）。
-2. 変化が意図どおりなら `npm run e2e --prefix web -- e2e/visual.spec.ts --update-snapshots` で基準を作り直す。
+2. 変化が意図どおりなら、下の手順で CI の環境の基準画像を作り直す（手元の確認だけなら `--update-snapshots` でもよい）。
 3. 更新した画像を PR に含め、PR の説明に「何が・なぜ変わったか」を書く。レビューでは画像の差分を確かめる。
 
-基準画像は Linux の Chromium（CI と同じ）で作る。フォントは同梱したものを使うが、記号の一部は OS のフォントで描かれるため、
-macOS・Windows で作った画像は CI と合わない。Linux 以外では CI の成果物の差分を見て判断する。
+基準画像は **CI の環境で作る**。同じ Linux・Chromium でも、OS に入っているフォントや描画の設定で画素が少し変わるため、
+手元で作った画像は CI と合わないことがある。
+
+1. トピックブランチのコミットメッセージに `[ui-baselines]` を含めて push する。
+2. ワークフロー `UI baselines` が CI の環境で基準画像を作り、成果物 `ui-baselines` に置く。
+   成果物を取れない環境（エージェントなど）のために、ログの `=====BEGIN UI BASELINES=====` から `=====END UI BASELINES=====` の間にも
+   tar.gz を base64 で出す（`base64 -d | tar xz -C web/e2e` で展開できる）。
+3. 展開した画像を `web/e2e/visual.spec.ts-snapshots/` に置いてコミットし、差分を確かめてから push する。

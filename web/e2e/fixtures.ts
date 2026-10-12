@@ -62,14 +62,23 @@ export async function putFiles(page: Page, files: Record<string, string>): Promi
   }, files);
 }
 
-/** project フォルダ（OPFS）のファイルを読む。 */
-export async function readFile(page: Page, path: string): Promise<string> {
+/**
+ * project フォルダ（OPFS）のファイルを読む。無ければ null。
+ * 保存は一時ファイルに書いてから差し替えるので、保存の途中ではファイルが一瞬見つからないことがある。
+ * expect.poll で待つときは null を「まだ」として扱えるよう、例外にしない。
+ */
+export async function readFile(page: Page, path: string): Promise<string | null> {
   return page.evaluate(async (path) => {
-    let d = await (await navigator.storage.getDirectory()).getDirectoryHandle("project");
-    const segs = path.split("/");
-    const name = segs.pop() as string;
-    for (const s of segs) d = await d.getDirectoryHandle(s);
-    return (await (await d.getFileHandle(name)).getFile()).text();
+    try {
+      let d = await (await navigator.storage.getDirectory()).getDirectoryHandle("project");
+      const segs = path.split("/");
+      const name = segs.pop() as string;
+      for (const s of segs) d = await d.getDirectoryHandle(s);
+      return await (await (await d.getFileHandle(name)).getFile()).text();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "NotFoundError") return null;
+      throw e;
+    }
   }, path);
 }
 
