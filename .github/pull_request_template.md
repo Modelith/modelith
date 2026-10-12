@@ -10,6 +10,7 @@
 
 - [ ] `scripts/check.sh` がローカルでグリーン
 - [ ] 振る舞いの変更にテストを追加・更新した
+- [ ] 要求仕様（docs/reference/requirements.sysml）を更新し、テストを verify で結んだ（振る舞いを変えた場合）
 - [ ] PR タイトルが Conventional Commits 形式（`feat(scope): ...`）
 - [ ] 1 PR 1 目的になっている（無関係な変更を含まない）
 
