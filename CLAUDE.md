@@ -29,6 +29,8 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 
 ## 守るべき設計原則
 
+- **要求仕様の SSoT は [docs/reference/requirements.sysml](docs/reference/requirements.sysml)**（ADR-0011）。振る舞いを変えるときは実装より先に要求を更新し、
+  テストを足したら `verification def` で要求に `verify` を結ぶ。要求を他の文書に書き写さない。
 - **テキストが唯一の正本**（ADR-0001）。図やプラグインからの変更も `TextEdit` として表現する。
 - **仕様の基準はモック**（ADR-0002）。`reference/mock/` と `reference/golden/*.json` は手で編集しない。
   モックの HTML ファイルと内蔵のサンプルモデルは非公開。`reference/mock/` をコミットしたり、サンプルモデルをコード・ケース・ドキュメントに転記したりしない。

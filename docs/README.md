@@ -19,6 +19,7 @@
 ## 現在の文書
 
 - リファレンス
+  - [要求仕様（SysML v2、唯一の定義元）](reference/requirements.sysml)
   - [バージョン規則](reference/versioning.md)
 - 解説
   - [アーキテクチャ概要](explanation/architecture.md)

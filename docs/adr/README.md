@@ -14,3 +14,5 @@
 | [0007](0007-dev-integration-branch.md) | dev 統合ブランチとマイルストーン単位のリリース | 採用 |
 | [0008](0008-principles-as-harness.md) | プログラミング原則・テスト原則のスキル化とハーネスでの強制 | 採用 |
 | [0009](0009-port-mock-for-public-alpha.md) | モックのコードを移植して最初の alpha を公開する | 採用 |
+| [0010](0010-file-providers.md) | ファイル操作をストレージごとのプロバイダに分け、ワークスペースが束ねる | 採用 |
+| [0011](0011-requirements-ssot.md) | 要求仕様を 1 つの SysML v2 ファイルで管理する | 採用 |
