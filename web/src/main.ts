@@ -1,4 +1,9 @@
 // Modelith の起動。各モジュールのイベントを登録し、下書き（無ければ公開サンプル）を読み込む。
+import "@fontsource/ibm-plex-sans-jp/400.css";
+import "@fontsource/ibm-plex-sans-jp/500.css";
+import "@fontsource/ibm-plex-sans-jp/700.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./style.css";
 import SAMPLE from "./samples/electric-kettle.sysml?raw";
 import { initCanvas, fit } from "./app/canvas";
@@ -73,7 +78,9 @@ function initMenus(): void {
     load(SAMPLE);
     toast("サンプルに戻しました");
   };
-  $("#appVersion").textContent = __APP_VERSION__;
+  $("#appVersion").textContent = __APP_VERSION__ + (__APP_COMMIT__ ? ` (${__APP_COMMIT__.slice(0, 7)})` : "");
+  // AGPL §13：動いている版のソースを指す
+  if (__APP_COMMIT__) $<HTMLAnchorElement>("#sourceLink").href = `https://github.com/modelith/modelith/tree/${__APP_COMMIT__}`;
 }
 
 function initToolbar(): void {
