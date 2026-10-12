@@ -1,12 +1,108 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Modelith</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>Modelith — SysML v2 双方向エディタ</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='30' fill='%2316293F'/%3E%3Cpath d='M34 92 L34 42 L64 72' fill='none' stroke='%23FFFFFF' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M64 72 L94 42 L94 92' fill='none' stroke='%232ED3B7' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1><svg class="logo" viewBox="0 0 128 128" width="26" height="26" aria-hidden="true"><rect width="128" height="128" rx="30" fill="#16293F"></rect><path d="M34 92 L34 42 L64 72" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path><path d="M64 72 L94 42 L94 92" fill="none" stroke="#2ED3B7" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="name">Modelith</span><span class="long"> — SysML v2 双方向エディタ</span></h1>
+    <span class="badge" title="開発中の alpha 版です。保存形式や操作は予告なく変わります">alpha</span>
+    <div class="sync" id="sync" title="テキストと図の同期状態"><i></i><span id="syncText">同期済み</span></div>
+    <div class="spacer"></div>
+    <div class="tabs" role="group" aria-label="表示の切り替え">
+      <button id="tabTree" aria-pressed="false">ツリー</button>
+      <button id="tabDiagram" aria-pressed="true">図</button>
+      <button id="tabText" aria-pressed="false">テキスト</button>
+    </div>
+    <div class="panes" role="group" aria-label="パネルの表示">
+      <button id="togTree" aria-pressed="true" title="モデルツリーの表示を切り替える">ツリー</button>
+      <button id="togText" aria-pressed="true" title="テキストの表示を切り替える">テキスト</button>
+    </div>
+    <div class="undo" role="group" aria-label="履歴">
+      <button id="btnUndo" title="元に戻す（Ctrl+Z）" aria-label="元に戻す" disabled>↶</button>
+      <button id="btnRedo" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す" disabled>↷</button>
+    </div>
+    <details class="menu" id="fileMenu">
+      <summary><span class="long">ファイル</span><span class="short" aria-label="ファイル">⋯</span></summary>
+      <div class="pop">
+        <button id="btnOpen">.sysml ファイルを開く</button>
+        <button id="btnSaveText">テキストを保存（.sysml）</button>
+        <button id="btnSaveSvg">図を SVG で保存</button>
+        <button id="btnDrawio">draw.io 形式で書き出す</button>
+        <button id="btnReset">サンプルに戻す</button>
+        <div class="note">編集内容はこのブラウザに自動保存されます</div>
+      </div>
+    </details>
+    <details class="menu" id="helpMenu">
+      <summary aria-label="このアプリについて" title="このアプリについて">?</summary>
+      <div class="pop">
+        <a href="https://github.com/modelith/modelith/issues/new/choose" target="_blank" rel="noopener">不具合・要望を送る（GitHub）</a>
+        <a href="https://github.com/modelith/modelith" target="_blank" rel="noopener">ソースコード（AGPL-3.0）</a>
+        <div class="about">Modelith <span id="appVersion"></span><br>開発中の alpha 版です。保存形式や操作は予告なく変わります。編集内容はこのブラウザにだけ保存されるので、大事なモデルは「ファイル → テキストを保存」で手元に残してください。</div>
+      </div>
+    </details>
+    <input type="file" id="fileInput" accept=".sysml,.txt,text/plain" hidden>
+  </header>
+  <main id="main" data-tab="diagram">
+    <aside class="pane treepane" aria-label="モデルツリー">
+      <div class="panehead"><input id="treeSearch" type="search" placeholder="要素を名前で絞り込み" aria-label="モデル要素を名前で絞り込む"></div>
+      <div class="tree" id="tree" role="tree" aria-label="モデルツリー"></div>
+    </aside>
+    <div class="split" id="splitTree" role="separator" aria-orientation="vertical" aria-label="ツリーの幅を変更"></div>
+    <section class="pane diagrampane" aria-label="図">
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="図のタブ"></div>
+      <div class="toolbar">
+        <div class="palette" id="palette" role="toolbar" aria-label="要素パレット"></div>
+        <div class="spacer"></div>
+        <div class="subbar" id="subbar"></div>
+        <button id="btnEdge" title="線の描き方を切り替える">線：直角</button>
+        <button id="btnLayout" title="このビューを自動で並べ直す">整列</button>
+      </div>
+      <div class="canvaswrap" id="wrap">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+          <defs id="defs"></defs>
+          <g id="vp"><g id="gEdges"></g><g id="gNodes"></g><g id="gOver"></g></g>
+        </svg>
+        <div class="zoom">
+          <button id="zIn" aria-label="拡大">+</button>
+          <button id="zOut" aria-label="縮小">−</button>
+          <button id="zFit" aria-label="全体を表示" style="font-size:12px">全体</button>
+          <button id="zMini" aria-label="全体図の表示" title="全体図（アウトライン）の表示" aria-pressed="true" style="font-size:11px">全体図</button>
+        </div>
+        <div class="toast" id="toast"></div>
+        <div class="band" id="band" hidden></div>
+        <div class="empty" id="empty" hidden></div>
+        <div class="minimap" id="mini" hidden><div class="mhead"><span>全体図</span><button id="miniHide" aria-label="全体図を閉じる" title="閉じる">×</button></div><div class="mbody"><svg id="miniSvg" xmlns="http://www.w3.org/2000/svg"></svg><div class="mvp" id="miniVp" hidden></div></div></div>
+        <div class="inspector" id="insp" hidden></div>
+      </div>
+    </section>
+    <div class="split" id="splitText" role="separator" aria-orientation="vertical" aria-label="テキストの幅を変更"></div>
+    <section class="pane textpane" aria-label="SysML v2 テキスト">
+      <div class="panehead"><span id="textInfo">SysML v2 テキスト</span></div>
+      <div class="editor">
+        <pre id="hl" aria-hidden="true"></pre>
+        <textarea id="ed" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="SysML v2 テキスト"></textarea>
+      </div>
+      <div class="problems" id="problems"></div>
+    </section>
+  </main>
+</div>
+<div class="ctx" id="ctx" role="menu" hidden></div>
+<div class="modal" id="modal" hidden>
+  <div class="box">
+    <b>draw.io 形式で書き出す</b>
+    <p>現在のビューを draw.io の XML にしました。draw.io で「その他 → 図を編集」を開き、この内容を貼り付けると読み込めます。</p>
+    <textarea id="modalText" readonly></textarea>
+    <div class="row"><button id="modalCopy" class="primary">コピー</button><button id="modalClose">閉じる</button></div>
+  </div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
 </html>

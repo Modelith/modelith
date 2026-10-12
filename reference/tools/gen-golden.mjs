@@ -40,7 +40,7 @@ function project(text) {
   const rels = P.rels.map(({ pe, usage, ...r }) => ({ ...simplify(r), parent: ref(pe), usage: ref(usage) }));
   const nodes = M.nodes.map((n) => Object.fromEntries(
     Object.entries(n).map(([k, v]) => [k, k === "entry" ? ref(v) : simplify(v)])));
-  const edges = M.edges.map(({ src, ...e }) => ({ ...e, src: simplify(src) }));
+  const edges = M.edges.map((e) => simplify(e));
   return { entries, rels, errors: P.errors, layout: P.layout, model: { nodes, edges, problems: simplify(M.problems), phases: simplify(M.phases) } };
 }
 function simplify(v, seen = new Set()) {
@@ -55,16 +55,18 @@ function simplify(v, seen = new Set()) {
 }
 
 // モック内蔵の SAMPLE は非公開のため使わない。公開してよい入力だけを cases/ に置く
+// アプリに同梱する公開サンプル（web/src/samples/）もケースとして使う
 const cases = [];
-const caseDir = join(root, "golden/cases");
-for (const f of readdirSync(caseDir).filter((f) => f.endsWith(".sysml")).sort())
-  cases.push([basename(f, ".sysml"), readFileSync(join(caseDir, f), "utf8")]);
+for (const dir of [join(root, "golden/cases"), join(root, "../web/src/samples")])
+  for (const f of readdirSync(dir).filter((f) => f.endsWith(".sysml")).sort())
+    cases.push([basename(f, ".sysml"), readFileSync(join(dir, f), "utf8")]);
 
 const check = process.argv.includes("--check");
 let stale = 0;
 for (const [name, text] of cases) {
   const out = join(root, "golden", `${name}.json`);
-  const json = JSON.stringify({ case: name, ...simplify(project(text)) }, null, 2) + "\n";
+  // entries は project() で投影済み。ここで simplify すると {$entry} に潰れるので掛けない
+  const json = JSON.stringify({ case: name, ...project(text) }, null, 2) + "\n";
   if (check) {
     if (!existsSync(out) || readFileSync(out, "utf8") !== json) { console.error(`stale: ${out}`); stale++; }
   } else writeFileSync(out, json);

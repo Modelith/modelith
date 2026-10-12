@@ -1,0 +1,73 @@
+// テキストエディタ（入力の反映・カーソル位置と図の選択の同期・問題一覧）。
+
+import { $, closest } from "./dom";
+import { scheduleRecord } from "./history";
+import { renderInspector } from "./inspector";
+import { centerOn, highlight, render, scrollEditorTo, syncScroll } from "./render";
+import { cancelConnect, S } from "./state";
+import { reparse, saveDraft, setSync, toast } from "./sync";
+import { CC, curView, viewContent } from "./views";
+
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+/** 入力の反映待ちがあれば、すぐに解析して反映する。 */
+export function flushEdit(): void {
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  timer = undefined;
+  reparse(true);
+  saveDraft();
+}
+
+/** カーソル位置を含む要素を図で選択する。 */
+function caretToNode(): void {
+  const p = $<HTMLTextAreaElement>("#ed").selectionStart;
+  let best = null;
+  for (const n of [...CC().nodes, ...S.M.nodes]) {
+    const e = n.entry;
+    if (e.start <= p && p <= e.end && (!best || e.start > best.entry.start)) best = n;
+  }
+  const key = best ? best.key : null;
+  if (key === S.sel) return;
+  S.sel = key;
+  S.selSet = new Set(key ? [key] : []);
+  S.selEdge = null;
+  S.selPin = null;
+  cancelConnect();
+  render();
+  highlight();
+  renderInspector();
+  if (!key || !best) return;
+  const v = curView();
+  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${v.label}」ビューには表示されていません`);
+  else centerOn(key, true);
+}
+
+export function initEditor(): void {
+  const ed = $<HTMLTextAreaElement>("#ed");
+  ed.addEventListener("input", () => {
+    S.text = ed.value;
+    highlight();
+    setSync("busy", "編集中…");
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      reparse(true);
+      saveDraft();
+      scheduleRecord();
+    }, 280);
+  });
+  ed.addEventListener("scroll", syncScroll);
+  ed.addEventListener("click", caretToNode);
+  ed.addEventListener("keyup", (ev) => {
+    if (/Arrow|Page|Home|End/.test(ev.key)) caretToNode();
+  });
+  $("#problems").addEventListener("click", (ev) => {
+    const b = closest(ev, "button");
+    if (!b) return;
+    const p = Number(b.dataset["pos"]);
+    ed.focus();
+    ed.setSelectionRange(p, p);
+    scrollEditorTo(p);
+  });
+}

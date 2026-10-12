@@ -1,0 +1,20 @@
+name: 要望・感想
+description: こうしたい・ここが使いにくい・こんな図がほしい
+labels: ["feedback"]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: やりたいこと
+      description: どんな場面で、何をしたいか
+    validations:
+      required: true
+  - type: textarea
+    id: now
+    attributes:
+      label: 今はどうしているか・何が困るか
+  - type: input
+    id: version
+    attributes:
+      label: バージョン（任意）
+      placeholder: 0.1.0-alpha.1

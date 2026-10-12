@@ -19,6 +19,7 @@
 3. リリースノートを生成し、内容を確認する。
 4. PR（`chore(release): vX.Y.Z-<段階>.<番号>`）を `dev` に向けて出し、CI グリーンで Squash merge する。
 5. `dev` のマージコミットにタグ `vX.Y.Z-<段階>.<番号>` を打ち、GitHub Release を「プレリリース」として作る。
+6. タグを push すると `.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。公開後、画面右上の「?」でバージョンを確かめる。
 
 ## rc を出す
 
@@ -26,6 +27,11 @@
 2. `dev` → `main` の PR（`chore(release): vX.Y.Z-rc.N`）を作る。**マージにはメンテナの明示的な許可が必要。** 方式はマージコミット。
 3. `main` のマージコミットにタグ `vX.Y.Z-rc.N` を打ち、プレリリースとして公開する。
 4. 不具合が見つかったら `dev` で修正し、rc の番号を上げて 1 からやり直す。
+
+## GitHub Pages の初期設定（一度だけ）
+
+- Settings → Pages → Build and deployment の Source を **GitHub Actions** にする。
+- Settings → Environments → `github-pages` → Deployment branches and tags に、タグのルール `v*` を追加する（既定では既定ブランチからしか公開できないため）。
 
 ## 正式版を出す
 

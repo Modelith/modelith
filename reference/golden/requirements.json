@@ -2,19 +2,102 @@
   "case": "requirements",
   "entries": [
     {
-      "$entry": 0
+      "idx": 0,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Reqs",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        0,
+        286
+      ],
+      "close": 285,
+      "parent": null,
+      "children": [
+        1,
+        3,
+        4
+      ],
+      "exprs": []
     },
     {
-      "$entry": 1
+      "idx": 1,
+      "kind": "requirement def",
+      "isDef": true,
+      "short": "R1",
+      "name": "SpeedReq",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "速度誤差は ±1 km/h 以内",
+      "span": [
+        19,
+        135
+      ],
+      "close": 134,
+      "parent": 0,
+      "children": [
+        2
+      ],
+      "exprs": []
     },
     {
-      "$entry": 2
+      "idx": 2,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "tolerance",
+      "type": "Real",
+      "conj": false,
+      "mods": "",
+      "value": "1.0",
+      "span": [
+        96,
+        129
+      ],
+      "close": null,
+      "parent": 1,
+      "children": [],
+      "exprs": []
     },
     {
-      "$entry": 3
+      "idx": 3,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "Controller",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        140,
+        160
+      ],
+      "close": null,
+      "parent": 0,
+      "children": [],
+      "exprs": []
     },
     {
-      "$entry": 4
+      "idx": 4,
+      "kind": "verification def",
+      "isDef": true,
+      "short": "",
+      "name": "SpeedTest",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        213,
+        284
+      ],
+      "close": 283,
+      "parent": 0,
+      "children": [],
+      "exprs": []
     }
   ],
   "rels": [
