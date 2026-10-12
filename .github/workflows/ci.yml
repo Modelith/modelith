@@ -50,5 +50,8 @@ jobs:
             tests/harness/package-lock.json
       - run: npm ci --prefix web --no-audit --no-fund
       - run: npm ci --prefix tests/harness --no-audit --no-fund
+      - name: Chromium for e2e
+        run: npx playwright install --with-deps chromium
+        working-directory: web
       - name: Harness check（静的検査 → 単体 → 結合 → 統合）
         run: scripts/check.sh

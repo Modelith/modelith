@@ -55,6 +55,8 @@ stage_system() {
   cargo build -p modelith-wasm --target wasm32-unknown-unknown --quiet
   step "[system] golden（モックとの一致。モックが手元に無ければスキップ）"
   node reference/tools/gen-golden.mjs --check
+  step "[system] e2e（ビルドしたアプリを Chromium で操作する）"
+  npm run e2e --prefix web --silent
 }
 
 ensure_dependencies

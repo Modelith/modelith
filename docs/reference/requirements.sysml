@@ -361,6 +361,56 @@ package ModelithRequirements {
                 verify AutoSaveReq;
             }
         }
+        verification def ViewsE2E {
+            doc /* web/e2e/views.spec.ts：7 つのビュー・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
+            objective {
+                verify SevenViewsReq;
+                verify ViewTabsReq;
+                verify CanvasReq;
+                verify TextToDiagramReq;
+                verify ProblemsReq;
+                verify TreeReq;
+                verify PhaseReq;
+                verify TraceGapReq;
+            }
+        }
+        verification def EditingE2E {
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置の保存・ファイルごとの元に戻す（図の操作がすべてテキストに残ること） */
+            objective {
+                verify DiagramToTextReq;
+                verify RenameReq;
+                verify LayoutReq;
+                verify UndoReq;
+                verify TextIsSourceReq;
+            }
+        }
+        verification def FilesE2E {
+            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き、代替のブラウザ */
+            objective {
+                verify OpenFolderReq;
+                verify OpenSaveReq;
+                verify NewSaveAsReq;
+                verify MultiDocReq;
+                verify DirtyReq;
+                verify AutoSaveReq;
+                verify ConflictReq;
+                verify ExternalChangeReq;
+                verify RecentFolderReq;
+                verify FallbackReq;
+                verify UntitledDraftReq;
+            }
+        }
+        verification def ShellE2E {
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・ソースへのリンク・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            objective {
+                verify PrivacyReq;
+                verify SourceOfferReq;
+                verify NarrowScreenReq;
+                verify SvgExportReq;
+                verify DrawioExportReq;
+                verify StaticHostingReq;
+            }
+        }
         verification def LayoutTest {
             doc /* web/src/app/layout.test.ts：配置情報の読み書き */
             objective {

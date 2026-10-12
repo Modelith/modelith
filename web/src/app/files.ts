@@ -26,6 +26,11 @@ let browser: BrowserFileProvider;
 let auto: AutoSaver;
 let autoSave = false;
 let recentName: string | null = null;
+/**
+ * テキスト欄に表示している文書。編集はこの文書に書き込む。
+ * ワークスペースの「表示中」は開く操作の途中で先に切り替わるため、それに頼ると入力の反映待ちが別の文書に入る。
+ */
+let shownKey: string | null = null;
 /** 開いているフォルダのツリーで、閉じているフォルダのパス。 */
 const collapsed = new Set<string>();
 
@@ -44,9 +49,10 @@ const saveTarget = (): SaveAsTarget => local ?? browser;
 
 /** 文書を表示中にし、テキストと図をその内容にする。 */
 function showDoc(key: string): void {
-  flushEdit();
+  flushEdit(); // 反映待ちの入力は、切り替える前の文書（shownKey）に書き込む
   const doc = ws.get(key);
   if (!doc) return;
+  shownKey = key;
   ws.activate(key);
   useHistory(key);
   clearSel();
@@ -137,7 +143,7 @@ async function resolveConflict(key: string): Promise<void> {
     toast(`「${doc.name}」を上書きしました`);
   } else if (r?.id === "reload") {
     await ws.reload(key);
-    if (ws.active()?.key === key) showDoc(key);
+    if (shownKey === key) showDoc(key);
   }
 }
 
@@ -157,7 +163,7 @@ async function closeDoc(key: string): Promise<void> {
       if (ws.isDirty(doc) || !doc.ref) return; // 保存をやめた・競合した
     }
   }
-  const wasActive = ws.active()?.key === key;
+  const wasActive = shownKey === key;
   ws.close(key);
   dropHistory(key);
   if (wasActive) ensureDoc();
@@ -256,8 +262,8 @@ function initMenu(): void {
   cmd("#btnNew", newUntitled);
   cmd("#btnOpen", () => void openFile());
   cmd("#btnOpenFolder", () => void openFolder());
-  cmd("#btnSave", () => void save(ws.active()?.key ?? ""));
-  cmd("#btnSaveAs", () => void save(ws.active()?.key ?? "", true));
+  cmd("#btnSave", () => void save(shownKey ?? ""));
+  cmd("#btnSaveAs", () => void save(shownKey ?? "", true));
   $<HTMLButtonElement>("#btnOpenFolder").disabled = !local;
   $("#fileNote").textContent = local ? "保存先の無いファイルは、このブラウザに下書き保存されます" : "このブラウザでは、保存はダウンロードになります";
   const auto = $<HTMLInputElement>("#autoSave");
@@ -265,13 +271,12 @@ function initMenu(): void {
   auto.onchange = () => {
     autoSave = auto.checked;
     store.set(AUTOSAVE_KEY, autoSave ? "1" : "0");
-    const d = ws.active();
-    if (autoSave && d) onEdited(d.key);
+    if (autoSave && shownKey) onEdited(shownKey);
   };
   document.addEventListener("keydown", (ev) => {
     if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
     const k = ev.key.toLowerCase();
-    const key = ws.active()?.key ?? "";
+    const key = shownKey ?? "";
     if (k === "s") {
       ev.preventDefault();
       void save(key, ev.shiftKey);
@@ -327,7 +332,7 @@ function onEdited(key: string): void {
 /** 画面に戻ったとき、他のアプリでの変更を確かめる（F-FILE-8）。 */
 async function checkExternal(): Promise<void> {
   const reloaded = await ws.checkExternal();
-  const active = ws.active();
+  const active = shownKey ? ws.get(shownKey) : undefined;
   if (!active) return;
   if (reloaded.includes(active.key)) {
     flushEdit();
@@ -348,10 +353,9 @@ export function initFiles(sample: { name: string; text: string }): void {
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
   });
   onTextChange((text) => {
-    const d = ws.active();
-    if (!d) return;
-    ws.setText(d.key, text);
-    onEdited(d.key);
+    if (!shownKey) return;
+    ws.setText(shownKey, text);
+    onEdited(shownKey);
   });
   ws.subscribe(renderFiles);
   initMenu();

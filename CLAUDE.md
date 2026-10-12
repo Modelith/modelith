@@ -61,7 +61,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | 高速チェック | `scripts/check.sh --fast` |
 | 単体テスト絞り込み | `cargo test -p <crate> <name>` |
 | ハーネスのテスト | `tests/harness/node_modules/.bin/bats tests/harness/{unit,integration}` |
-| web のテスト | `npm test --prefix web` |
+| web のテスト | `npm test --prefix web`（単体・結合）、`npm run e2e --prefix web`（統合。テスト名に要求 ID を書く） |
 | ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
 | PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |
 | PR 向け先検証 | `scripts/check-pr-base.sh <base> <head>` |

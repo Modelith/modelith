@@ -28,7 +28,7 @@ description: テストの設計と実施の指針（ISTQB の 7 原則、単体�
 | --- | --- | --- |
 | 単体テスト | 1 つの関数・モジュールを I/O なしで | Rust: `#[cfg(test)] mod tests`、TS: `*.test.ts`、ハーネス: `tests/harness/unit/` |
 | 結合テスト | モジュール・プロセスをつないだ動作（フックに JSON を入れる、一時的な Git リポジトリ、スタブ化した外部コマンド） | Rust: `crates/*/tests/`、ハーネス: `tests/harness/integration/` |
-| 統合テスト | システム全体の通しの動作（`check.sh` の段階実行、wasm ビルド、仕様との一致、将来の CLI / Web の E2E） | `tests/harness/system/`、CI |
+| 統合テスト | システム全体の通しの動作（`check.sh` の段階実行、wasm ビルド、仕様との一致、Web の E2E。将来は CLI も） | Web: `web/e2e/`（Playwright）、`tests/harness/system/`、CI |
 
 ## 3. テストケースの設計（厳守）
 
