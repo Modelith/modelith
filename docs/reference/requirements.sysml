@@ -171,6 +171,9 @@ package ModelithRequirements {
         requirement def <'Q-2'> NarrowScreenReq {
             doc /* 幅 390px の画面でも、ツリー・図・テキストを切り替えて使える */
         }
+        requirement def <'Q-3'> LookReq {
+            doc /* OS の明るい・暗い配色に合わせて表示する。どちらの配色でも、マウスを乗せた部品とキーボードで選んだ部品が見分けられる */
+        }
 
         // ---- 制約 --------------------------------------------------
         requirement def <'C-1'> TextIsSourceReq {
@@ -216,6 +219,7 @@ package ModelithRequirements {
         #derivation dependency from DrawioExportReq to ExportNeed;
         #derivation dependency from ResponsiveReq to EditBothWaysNeed;
         #derivation dependency from NarrowScreenReq to AnywhereNeed;
+        #derivation dependency from LookReq to AnywhereNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from SourceOfferReq to OpenSourceNeed;
@@ -302,6 +306,7 @@ package ModelithRequirements {
         satisfy DrawioExportReq by Exporter;
         satisfy ResponsiveReq by Core;
         satisfy NarrowScreenReq by AppShell;
+        satisfy LookReq by AppShell;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
@@ -412,13 +417,19 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：7 つのビュー・明るい／暗い配色・幅 390px・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログの見た目を基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify SevenViewsReq;
                 verify NarrowScreenReq;
+                verify LookReq;
                 verify CanvasReq;
                 verify OpenFolderReq;
+                verify OpenSaveReq;
                 verify ConflictReq;
+                verify ProblemsReq;
+                verify PhaseReq;
+                verify TraceGapReq;
+                verify SourceOfferReq;
             }
         }
         verification def LayoutTest {
