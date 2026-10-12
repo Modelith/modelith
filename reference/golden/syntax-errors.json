@@ -2,13 +2,62 @@
   "case": "syntax-errors",
   "entries": [
     {
-      "$entry": 0
+      "idx": 0,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Broken",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        0,
+        60
+      ],
+      "close": 59,
+      "parent": null,
+      "children": [
+        1
+      ],
+      "exprs": []
     },
     {
-      "$entry": 1
+      "idx": 1,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "A",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        21,
+        58
+      ],
+      "close": 57,
+      "parent": 0,
+      "children": [
+        2
+      ],
+      "exprs": []
     },
     {
-      "$entry": 2
+      "idx": 2,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "b",
+      "type": "B",
+      "conj": false,
+      "mods": "",
+      "span": [
+        42,
+        58
+      ],
+      "close": null,
+      "parent": 1,
+      "children": [],
+      "exprs": []
     }
   ],
   "rels": [],

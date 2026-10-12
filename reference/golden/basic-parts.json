@@ -2,22 +2,121 @@
   "case": "basic-parts",
   "entries": [
     {
-      "$entry": 0
+      "idx": 0,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Vehicle",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        0,
+        179
+      ],
+      "close": 178,
+      "parent": null,
+      "children": [
+        1,
+        3,
+        4
+      ],
+      "exprs": []
     },
     {
-      "$entry": 1
+      "idx": 1,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "Engine",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        22,
+        77
+      ],
+      "close": 76,
+      "parent": 0,
+      "children": [
+        2
+      ],
+      "exprs": []
     },
     {
-      "$entry": 2
+      "idx": 2,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "fuelIn",
+      "type": "FuelPort",
+      "conj": false,
+      "mods": "",
+      "span": [
+        48,
+        71
+      ],
+      "close": null,
+      "parent": 1,
+      "children": [],
+      "exprs": []
     },
     {
-      "$entry": 3
+      "idx": 3,
+      "kind": "port def",
+      "isDef": true,
+      "short": "",
+      "name": "FuelPort",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        82,
+        100
+      ],
+      "close": null,
+      "parent": 0,
+      "children": [],
+      "exprs": []
     },
     {
-      "$entry": 4
+      "idx": 4,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "Car",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "乗用車",
+      "span": [
+        105,
+        177
+      ],
+      "close": 176,
+      "parent": 0,
+      "children": [
+        5
+      ],
+      "exprs": []
     },
     {
-      "$entry": 5
+      "idx": 5,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "engine",
+      "type": "Engine",
+      "conj": false,
+      "mods": "",
+      "span": [
+        150,
+        171
+      ],
+      "close": null,
+      "parent": 4,
+      "children": [],
+      "exprs": []
     }
   ],
   "rels": [],
