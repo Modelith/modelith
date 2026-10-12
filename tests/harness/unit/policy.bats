@@ -6,56 +6,6 @@ setup() {
   load_policy
 }
 
-# --- policy_branch_name ---
-
-@test "policy_branch_name: 規約どおりの <type>/<topic> は許可する（正常系）" {
-  # Arrange
-  local name=feat/kerml-parser
-  # Act
-  run policy_branch_name "$name"
-  # Assert
-  [ "$status" -eq 0 ]
-}
-
-@test "policy_branch_name: topic が 1 文字でも許可する（境界値）" {
-  # Arrange
-  local name=fix/a
-  # Act
-  run policy_branch_name "$name"
-  # Assert
-  [ "$status" -eq 0 ]
-}
-
-@test "policy_branch_name: 保護ブランチと detached HEAD は対象外（正常系）" {
-  # Arrange
-  local names=(main dev HEAD)
-  # Act
-  local results=() n
-  for n in "${names[@]}"; do results+=("$(status_of policy_branch_name "$n")"); done
-  # Assert
-  [ "${results[*]}" = "0 0 0" ]
-}
-
-@test "policy_branch_name: 未知の type は理由付きで拒否する（異常系）" {
-  # Arrange
-  local name=feature/x
-  # Act
-  run policy_branch_name "$name"
-  # Assert
-  [ "$status" -eq 1 ]
-  [[ $output == *"feature/x"* ]]
-}
-
-@test "policy_branch_name: 大文字・空の topic・区切りなしは拒否する（異常系・境界値）" {
-  # Arrange
-  local names=(fix/Bad feat/ feat develop)
-  # Act
-  local results=() n
-  for n in "${names[@]}"; do results+=("$(status_of policy_branch_name "$n")"); done
-  # Assert
-  [ "${results[*]}" = "1 1 1 1" ]
-}
-
 # --- policy_pr_title ---
 
 @test "policy_pr_title: scope あり・なし・破壊的変更の ! を許可する（正常系）" {
@@ -164,7 +114,7 @@ setup() {
   [ "${results[*]}" = "1 1 1 1 0 0" ]
 }
 
-# --- policy_forbidden_paths / policy_frozen_path / policy_needs_verify ---
+# --- policy_forbidden_paths / policy_needs_verify ---
 
 @test "policy_forbidden_paths: 禁止パスだけを出力して 1 を返す（異常系）" {
   # Arrange
@@ -185,20 +135,6 @@ setup() {
   empty=$(status_of_stdin "" policy_forbidden_paths)
   # Assert
   [ "$normal $empty" = "0 0" ]
-}
-
-@test "policy_frozen_path: 凍結パスは理由を返し、それ以外は許可する（正常系・異常系）" {
-  # Arrange
-  local frozen=frozen/a/b.txt lock=web/package-lock.json free=src/frozen.rs
-  # Act
-  run policy_frozen_path "$frozen"
-  local frozen_status=$status frozen_reason=$output
-  local lock_status free_status
-  lock_status=$(status_of policy_frozen_path "$lock")
-  free_status=$(status_of policy_frozen_path "$free")
-  # Assert
-  [ "$frozen_status $lock_status $free_status" = "1 1 0" ]
-  [ "$frozen_reason" = "frozen/ は凍結されています。" ]
 }
 
 @test "policy_needs_verify: 対象の変更があるときだけ 0 を返す（正常系・異常系）" {

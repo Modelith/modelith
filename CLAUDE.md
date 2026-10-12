@@ -24,13 +24,13 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | [programming-principles](.claude/skills/programming-principles/SKILL.md) | SOLID、テスト可能なコード（判断と I/O の分離・依存の注入）、YAGNI、可読性 |
 | [testing-principles](.claude/skills/testing-principles/SKILL.md) | ISTQB の 7 原則、単体 → 結合 → 統合、同値分割・境界値・正常系／異常系、AAA パターン |
 
-機械で検査できる項目（テストの有無・AAA・関数とファイルの長さ・ShellCheck・clippy）は `scripts/check-principles.sh` と clippy が強制する。
-機械で検査できない項目（O/L/I/D・YAGNI・テスト設計）は、各スキルのチェックリストで自己レビューし PR テンプレートで答える。
+スキルは「書くときの指針」であり、ハーネスで強制するのは fmt・clippy・ShellCheck・テストの成否だけ（ADR-0008）。
+同じ種類の違反が繰り返されたら、その時点で機械的な検査を足す。
 
 ## 守るべき設計原則
 
 - **テキストが唯一の正本**（ADR-0001）。図やプラグインからの変更も `TextEdit` として表現する。
-- **仕様の基準はモック**（ADR-0002）。`reference/mock/` と `reference/golden/*.json` は編集しない（フックでブロックされる）。
+- **仕様の基準はモック**（ADR-0002）。`reference/mock/` と `reference/golden/*.json` は手で編集しない。
   モックは非公開。`reference/mock/` の中身をコミットしたり、内容（モック内蔵のサンプルモデルを含む）をケースやドキュメントに転記したりしない。
   挙動を変えるときはケースを `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
 - **プラグインとの契約は plugin-sdk に置く**（ADR-0004）。本リポジトリでプラグイン向けの型を独自に定義しない。
@@ -57,12 +57,9 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | フルチェック（完了前に必須） | `scripts/check.sh` |
 | 高速チェック | `scripts/check.sh --fast` |
 | 単体テスト絞り込み | `cargo test -p <crate> <name>` |
-| ハーネスのテスト | `tests/harness/node_modules/.bin/bats tests/harness/{unit,integration,system}` |
-| 原則の検査 | `scripts/check-principles.sh` |
-| 共有ファイルの照合 | `scripts/check-shared-sync.sh [ref]`（plugin-sdk と同一か） |
+| ハーネスのテスト | `tests/harness/node_modules/.bin/bats tests/harness/{unit,integration}` |
 | web のテスト | `npm test --prefix web` |
 | ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
-| ブランチ名検証 | `scripts/check-branch-name.sh` |
 | PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |
 | PR 向け先検証 | `scripts/check-pr-base.sh <base> <head>` |
 
@@ -70,17 +67,15 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 
 構成: 判断は `scripts/lib/policy.sh`（純粋関数）、入出力は `scripts/lib/hook-io.sh`、リポジトリ固有の値は `scripts/harness.conf`。
 フックと `scripts/check-*.sh` は「入力を集める → policy で判断 → 結果を返す」だけの薄いアダプタ。
-`scripts/lib/shared-files.txt` に挙げたファイルは plugin-sdk と同一に保つ（固有の値を書かない）。
+`scripts/lib/`・フック・`check-pr-*.sh`・`check-forbidden-files.sh` は plugin-sdk と同じ内容を保つ（固有の値は書かない）。
 
 `.claude/settings.json` に定義。
 
 | タイミング | フック | 役割 |
 | --- | --- | --- |
-| セッション開始 | `session-start.sh` | rustfmt/clippy・wasm ターゲット・npm 依存・shellcheck を用意し、現在ブランチと作業ルールを通知 |
+| セッション開始 | `session-start.sh` | ツールチェーン・npm 依存・shellcheck を用意し、現在ブランチと作業ルールを通知 |
 | Bash 実行前 | `guard-git.sh` | main / dev への push・その上での commit・force-push・一括ステージ・禁止ファイルのコミットをブロック |
 | マージ操作前 | `guard-merge.sh` | dev 向けの Squash は許可、main 向けは毎回ユーザーの承認を求め、方式の誤りは拒否 |
-| ファイル編集前 | `protect-files.sh` | 凍結・生成ファイル（モック、ゴールデン JSON、lock ファイル）の直接編集をブロック |
-| ファイル編集後 | `format-rust.sh` | 編集した `.rs` を rustfmt で整形 |
 | 停止前 | `verify-on-stop.sh` | コード変更があれば `check.sh --fast` を実行し、失敗なら差し戻し |
 
 フックにブロックされたら、回避策を探さず、メッセージに従って手順を正すこと。

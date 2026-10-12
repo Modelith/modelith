@@ -33,7 +33,6 @@ dev                      ──(マージコミット, マイルストーンご�
 | `claude/<topic>` | AI エージェント（Claude Code 等）が自動作成する作業ブランチ | 短命 | `dev` → `dev` |
 
 - `<topic>` は英小文字・数字・`-` のみ（例: `feat/kerml-parser`, `fix/diagram-sync-crash`）。
-- 命名規則は `scripts/check-branch-name.sh` と CI で機械的に検証する。
 - `release/*` ブランチは作らない。リリースは `main` 上のタグで表す（後述）。
 - 大きな機能は **フィーチャーフラグ** や未公開モジュールとして小さく `dev` に入れ続け、長命のトピックブランチを作らない。
 

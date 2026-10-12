@@ -6,17 +6,7 @@
 #   - 検査関数は「問題なし」で 0、「違反」で 1 を返し、違反時は理由を標準出力に 1 行で出す。
 #   - リポジトリ固有の値は scripts/harness.conf の HARNESS_* 変数から受け取る（このファイルは共有）。
 
-POLICY_BRANCH_TYPES='feat|fix|refactor|docs|test|perf|ci|chore|claude'
 POLICY_COMMIT_TYPES='feat|fix|refactor|perf|test|docs|build|ci|chore|revert'
-
-# ブランチ名が <type>/<topic> 形式か。保護ブランチと detached HEAD は対象外。
-policy_branch_name() {
-  local name=$1
-  [[ $name =~ ^(${HARNESS_PROTECTED_BRANCHES})$ || $name == HEAD ]] && return 0
-  [[ $name =~ ^(${POLICY_BRANCH_TYPES})/[a-z0-9][a-z0-9._-]*$ ]] && return 0
-  echo "ブランチ名 '$name' は <type>/<topic> 形式ではありません（type: ${POLICY_BRANCH_TYPES//|/, }）。"
-  return 1
-}
 
 # PR タイトル（= Squash 後のコミットメッセージ）が Conventional Commits 形式か。
 policy_pr_title() {
@@ -97,18 +87,6 @@ policy_forbidden_paths() {
   [[ -z $found ]] && return 0
   echo "$found"
   return 1
-}
-
-# パスが凍結対象なら理由を出力する。
-policy_frozen_path() {
-  local path=$1 entry
-  for entry in "${HARNESS_FROZEN_PATHS[@]}"; do
-    # shellcheck disable=SC2053  # 右辺は glob として照合する
-    if [[ $path == ${entry%%::*} ]]; then
-      echo "${entry#*::}"
-      return 1
-    fi
-  done
 }
 
 # 標準入力の変更パス一覧に、停止前の検証が必要な変更が含まれるか（含まれれば 0）。
