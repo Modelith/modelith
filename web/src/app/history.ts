@@ -1,14 +1,41 @@
 // 元に戻す・やり直す。テキストが唯一の正本なので、履歴はテキストの版の列として持つ（配置の @layout も含む）。
+// 履歴は文書（ファイル）ごとに持つ（F-EDIT-4）。
 
 import { diffRange } from "../core";
 import { $ } from "./dom";
 import { flushEdit } from "./editor";
+import { scrollEditorTo } from "./render";
 import { S } from "./state";
 import { setText, toast } from "./sync";
-import { scrollEditorTo } from "./render";
 
 const MAX = 200;
-const H: { list: string[]; i: number; timer: ReturnType<typeof setTimeout> | undefined } = { list: [], i: -1, timer: undefined };
+
+interface History {
+  list: string[];
+  i: number;
+  timer: ReturnType<typeof setTimeout> | undefined;
+}
+
+const histories = new Map<string, History>();
+let H: History = { list: [], i: -1, timer: undefined };
+
+/** 文書 key の履歴に切り替える（無ければ作る）。 */
+export function useHistory(key: string): void {
+  clearTimeout(H.timer);
+  H.timer = undefined;
+  let h = histories.get(key);
+  if (!h) {
+    h = { list: [], i: -1, timer: undefined };
+    histories.set(key, h);
+  }
+  H = h;
+  updateUndoUI();
+}
+
+/** 閉じた文書の履歴を捨てる。 */
+export function dropHistory(key: string): void {
+  histories.delete(key);
+}
 
 export function recordHistory(): void {
   H.timer = undefined;

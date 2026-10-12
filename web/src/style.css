@@ -213,3 +213,33 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
   header h1 .name{display:none}
   #helpMenu>summary{padding:6px 9px}
 }
+/* ---- ファイル（エクスプローラー・メニュー・ダイアログ） ---- */
+.sidetabs{display:flex;border-bottom:1px solid var(--rule);flex:none}
+.sidetabs button{flex:1;border:0;border-radius:0;padding:8px 6px;font-size:12px;color:var(--ink2);background:var(--panel)}
+.sidetabs button[aria-selected="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--sel)}
+.side{display:flex;flex-direction:column;flex:1;min-height:0}
+.side[hidden]{display:none}
+.explorer{flex:1;overflow:auto;padding:6px 0 24px;font-size:12.5px}
+.explorer .sec{display:flex;align-items:center;gap:4px;padding:6px 10px 4px;font-size:11px;font-weight:700;color:var(--ink2);letter-spacing:.04em}
+.explorer .sec .grow{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.explorer .sec button{padding:1px 7px;font-size:11px;font-weight:400}
+.explorer .msg{padding:4px 12px 8px;color:var(--ink2);font-size:12px;line-height:1.6}
+.explorer .msg button{margin-top:6px}
+.fi{display:flex;align-items:center;gap:5px;padding:3px 8px 3px calc(10px + var(--d) * 14px);cursor:pointer;white-space:nowrap;min-height:26px;user-select:none}
+.fi:hover{background:var(--panel2)}
+.fi.sel{background:var(--selrange);box-shadow:inset 3px 0 0 var(--sel)}
+.fi .nm{overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.fi .st{color:var(--k-req);font-size:11px}
+.fi .dot{color:var(--ink);font-size:14px;line-height:1}
+.fi .x{border:0;background:transparent;padding:0 5px;color:var(--ink2);visibility:hidden}
+.fi:hover .x,.fi.sel .x{visibility:visible}
+.fi .ic{width:14px;flex:none;text-align:center;color:var(--ink2);font-size:11px}
+.docname{color:var(--ink);font-weight:500;margin-right:6px}
+.menu .pop .sep{height:1px;background:var(--rule);margin:4px 2px}
+.menu .pop .kbd{margin-left:auto;padding-left:18px;font-size:11px;color:var(--ink2)}
+.menu .pop .check{display:flex;align-items:center;gap:8px;padding:6px 11px;font-size:14px;cursor:pointer}
+.menu .pop button:disabled{opacity:.4;cursor:default}
+#dialog .box{width:min(460px,100%)}
+@media (max-width:760px){ .fi .x{visibility:visible} .fi{min-height:34px} }
+#dialog .row{flex-wrap:wrap}
+#dialog .row button{white-space:normal;text-align:left}

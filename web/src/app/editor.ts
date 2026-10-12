@@ -5,7 +5,7 @@ import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { centerOn, highlight, render, scrollEditorTo, syncScroll } from "./render";
 import { cancelConnect, S } from "./state";
-import { reparse, saveDraft, setSync, toast } from "./sync";
+import { reparse, notifyTextChange, setSync, toast } from "./sync";
 import { CC, curView, viewContent } from "./views";
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -16,7 +16,7 @@ export function flushEdit(): void {
   clearTimeout(timer);
   timer = undefined;
   reparse(true);
-  saveDraft();
+  notifyTextChange();
 }
 
 /** カーソル位置を含む要素を図で選択する。 */
@@ -53,7 +53,7 @@ export function initEditor(): void {
     timer = setTimeout(() => {
       timer = undefined;
       reparse(true);
-      saveDraft();
+      notifyTextChange();
       scheduleRecord();
     }, 280);
   });

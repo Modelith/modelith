@@ -11,14 +11,15 @@ import { initCtxMenu } from "./app/ctxmenu";
 import { $, isFormField, store } from "./app/dom";
 import { initEditor } from "./app/editor";
 import { download, initExport, showDrawio, svgExport } from "./app/export";
-import { initHistory, recordHistory, redo, undo } from "./app/history";
+import { initFiles } from "./app/files";
+import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
 import { applyPanes, initPanels, initTabs, loadUi, saveUi } from "./app/panels";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
-import { loadDraft, relayout, setText, toast } from "./app/sync";
+import { relayout, toast } from "./app/sync";
 import { CC } from "./app/views";
 
 const EDGE_KEY = "modelith-edgestyle";
@@ -33,38 +34,12 @@ function closeMenus(): void {
   document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => (d.open = false));
 }
 
-/** 新しいテキストを読み込む（選択と変化の比較をリセットする）。 */
-function load(text: string): void {
-  S.sel = null;
-  S.selEdge = null;
-  S.prevSig = new Map();
-  setText(text);
-  fit();
-}
-
 function initMenus(): void {
   document.addEventListener("click", (ev) => {
     document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => {
       if (!(ev.target instanceof Node) || !d.contains(ev.target)) d.open = false;
     });
   });
-  const input = $<HTMLInputElement>("#fileInput");
-  $("#btnOpen").onclick = () => {
-    closeMenus();
-    input.click();
-  };
-  input.onchange = async () => {
-    const f = input.files?.[0];
-    if (!f) return;
-    const t = await f.text();
-    input.value = "";
-    load(t);
-    toast(`「${f.name}」を読み込みました`);
-  };
-  $("#btnSaveText").onclick = () => {
-    closeMenus();
-    download("model.sysml", S.text, "text/plain;charset=utf-8");
-  };
   $("#btnSaveSvg").onclick = () => {
     closeMenus();
     download(`modelith-${S.view}.svg`, svgExport(), "image/svg+xml");
@@ -72,11 +47,6 @@ function initMenus(): void {
   $("#btnDrawio").onclick = () => {
     closeMenus();
     showDrawio();
-  };
-  $("#btnReset").onclick = () => {
-    closeMenus();
-    load(SAMPLE);
-    toast("サンプルに戻しました");
   };
   $("#appVersion").textContent = __APP_VERSION__ + (__APP_COMMIT__ ? ` (${__APP_COMMIT__.slice(0, 7)})` : "");
   // AGPL §13：動いている版のソースを指す
@@ -137,8 +107,6 @@ initHistory();
 initExport();
 initMenus();
 initToolbar();
-const draft = loadDraft();
-setText(draft?.trim() ? draft : SAMPLE, { noHistory: true });
-recordHistory();
+initFiles({ name: "electric-kettle.sysml", text: SAMPLE });
 applyPanes();
 initTabs();

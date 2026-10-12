@@ -29,12 +29,18 @@
     <details class="menu" id="fileMenu">
       <summary><span class="long">ファイル</span><span class="short" aria-label="ファイル">⋯</span></summary>
       <div class="pop">
-        <button id="btnOpen">.sysml ファイルを開く</button>
-        <button id="btnSaveText">テキストを保存（.sysml）</button>
+        <button id="btnNew">新しいファイル</button>
+        <button id="btnOpen">ファイルを開く…<span class="kbd">Ctrl+O</span></button>
+        <button id="btnOpenFolder">フォルダを開く…</button>
+        <div class="sep"></div>
+        <button id="btnSave">保存<span class="kbd">Ctrl+S</span></button>
+        <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
+        <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
+        <div class="sep"></div>
         <button id="btnSaveSvg">図を SVG で保存</button>
         <button id="btnDrawio">draw.io 形式で書き出す</button>
-        <button id="btnReset">サンプルに戻す</button>
-        <div class="note">編集内容はこのブラウザに自動保存されます</div>
+        <button id="btnSample">サンプルを開く</button>
+        <div class="note" id="fileNote"></div>
       </div>
     </details>
     <details class="menu" id="helpMenu">
@@ -49,9 +55,18 @@
     <input type="file" id="fileInput" accept=".sysml,.txt,text/plain" hidden>
   </header>
   <main id="main" data-tab="diagram">
-    <aside class="pane treepane" aria-label="モデルツリー">
-      <div class="panehead"><input id="treeSearch" type="search" placeholder="要素を名前で絞り込み" aria-label="モデル要素を名前で絞り込む"></div>
-      <div class="tree" id="tree" role="tree" aria-label="モデルツリー"></div>
+    <aside class="pane treepane" aria-label="サイドバー">
+      <div class="sidetabs" role="tablist" aria-label="サイドバーの切り替え">
+        <button id="sideFiles" role="tab" aria-selected="true">エクスプローラー</button>
+        <button id="sideModel" role="tab" aria-selected="false">モデル</button>
+      </div>
+      <div class="side" id="filesSide">
+        <div class="explorer" id="explorer" role="tree" aria-label="ファイル"></div>
+      </div>
+      <div class="side" id="modelSide" hidden>
+        <div class="panehead"><input id="treeSearch" type="search" placeholder="要素を名前で絞り込み" aria-label="モデル要素を名前で絞り込む"></div>
+        <div class="tree" id="tree" role="tree" aria-label="モデルツリー"></div>
+      </div>
     </aside>
     <div class="split" id="splitTree" role="separator" aria-orientation="vertical" aria-label="ツリーの幅を変更"></div>
     <section class="pane diagrampane" aria-label="図">
@@ -83,7 +98,7 @@
     </section>
     <div class="split" id="splitText" role="separator" aria-orientation="vertical" aria-label="テキストの幅を変更"></div>
     <section class="pane textpane" aria-label="SysML v2 テキスト">
-      <div class="panehead"><span id="textInfo">SysML v2 テキスト</span></div>
+      <div class="panehead"><span id="docName" class="docname"></span><span id="textInfo">SysML v2 テキスト</span></div>
       <div class="editor">
         <pre id="hl" aria-hidden="true"></pre>
         <textarea id="ed" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="SysML v2 テキスト"></textarea>
@@ -93,6 +108,13 @@
   </main>
 </div>
 <div class="ctx" id="ctx" role="menu" hidden></div>
+<div class="modal" id="dialog" hidden role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle">
+  <div class="box">
+    <b id="dialogTitle"></b>
+    <p id="dialogText"></p>
+    <div class="row" id="dialogButtons"></div>
+  </div>
+</div>
 <div class="modal" id="modal" hidden>
   <div class="box">
     <b>draw.io 形式で書き出す</b>
