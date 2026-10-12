@@ -29,6 +29,26 @@ test("C-3: 「?」メニューのソースへのリンクは、動いている�
   await expect(page.locator("#appVersion")).toHaveText(/^\d+\.\d+\.\d+\S* \([0-9a-f]{7}\)$/);
 });
 
+test("C-5: 「?」メニューに著作権・無保証・ライセンスを示し、本体と同梱物のライセンス文を配信する", async ({ page, request }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  await page.locator("#helpMenu summary").click();
+  const license = await (await request.get("LICENSE.txt")).text();
+  const notices = await (await request.get("licenses.txt")).text();
+  // Assert
+  await expect(page.locator("#appCopyright")).toHaveText("Copyright (C) 2026 The Modelith Authors");
+  await expect(page.locator("#legal")).toContainText("無保証");
+  await expect(page.locator("#licenseLink")).toHaveAttribute("href", "LICENSE.txt");
+  await expect(page.locator("#noticesLink")).toHaveAttribute("href", "licenses.txt");
+  expect(license).toMatch(/^Copyright \(C\) 2026 The Modelith Authors\n/);
+  expect(license).toContain("GNU AFFERO GENERAL PUBLIC LICENSE");
+  expect(license).toContain("Modelith Plugin Exception");
+  for (const part of ["@fontsource/ibm-plex-sans-jp（OFL-1.1）", "@fontsource/ibm-plex-mono（OFL-1.1）", "vite（MIT）"]) expect(notices).toContain(`==== ${part} ====`);
+  expect(notices).toContain("SIL OPEN FONT LICENSE");
+  expect(notices).not.toContain("Licenses of bundled dependencies");
+});
+
 test.describe("狭い画面", () => {
   test.use({ viewport: { width: 390, height: 800 } });
 

@@ -41,6 +41,9 @@ jobs:
           MODELITH_BASE: /${{ github.event.repository.name }}/
       - name: Add test reports
         run: cp -r web/reports web/dist/reports
+      # reports/e2e/ の画面は Playwright（Apache-2.0）の配布物なので、LICENSE と NOTICE を添える（C-5）
+      - name: Add licenses of the test report viewer
+        run: cp web/node_modules/playwright-core/{LICENSE,NOTICE,ThirdPartyNotices.txt} web/dist/reports/e2e/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

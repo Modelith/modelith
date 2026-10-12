@@ -15,5 +15,10 @@ Rust のコアをブラウザ（WebAssembly）・CLI・サーバで共有し、�
 
 ## License
 
+Copyright (C) 2026 The Modelith Authors
+
 [AGPL-3.0](LICENSE) with the [Modelith Plugin Exception](PLUGIN-EXCEPTION.md).
+This program is distributed WITHOUT ANY WARRANTY; see the license for details.
+"The Modelith Authors" are the contributors recorded in this repository's Git history.
+Third-party components bundled with the web app (fonts and Vite's runtime code) are listed with their licenses in `licenses.txt` of each build.
 Plugin interfaces ([plugin-sdk](https://github.com/modelith/plugin-sdk)) are MIT licensed.

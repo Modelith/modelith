@@ -188,6 +188,9 @@ package ModelithRequirements {
         requirement def <'C-4'> StaticHostingReq {
             doc /* サーバを持たない静的なファイルとして配信でき、誰でも自分の環境に置ける */
         }
+        requirement def <'C-5'> LegalNoticeReq {
+            doc /* 画面から著作権表示・無保証であること・ライセンス本文（AGPL-3.0 とプラグイン例外）を確かめられ、同梱する第三者の部品のライセンス文を配布物に添える（AGPL 第 5 条 (d)・OFL・MIT・Apache-2.0） */
+        }
 
         // ---- 導出 --------------------------------------------------
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
@@ -224,6 +227,7 @@ package ModelithRequirements {
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from SourceOfferReq to OpenSourceNeed;
         #derivation dependency from StaticHostingReq to AnywhereNeed;
+        #derivation dependency from LegalNoticeReq to OpenSourceNeed;
         #derivation dependency from StaticHostingReq to OpenSourceNeed;
     }
 
@@ -311,6 +315,7 @@ package ModelithRequirements {
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
         satisfy StaticHostingReq by AppShell;
+        satisfy LegalNoticeReq by AppShell;
     }
 
     // =================================================================
@@ -406,7 +411,7 @@ package ModelithRequirements {
             }
         }
         verification def ShellE2E {
-            doc /* web/e2e/shell.spec.ts：外部に通信しない・ソースへのリンク・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・ソースへのリンク・著作権とライセンスの表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
             objective {
                 verify PrivacyReq;
                 verify SourceOfferReq;
@@ -414,6 +419,7 @@ package ModelithRequirements {
                 verify SvgExportReq;
                 verify DrawioExportReq;
                 verify StaticHostingReq;
+                verify LegalNoticeReq;
             }
         }
         verification def VisualUITest {

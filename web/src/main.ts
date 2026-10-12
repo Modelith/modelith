@@ -49,6 +49,7 @@ function initMenus(): void {
     showDrawio();
   };
   $("#appVersion").textContent = __APP_VERSION__ + (__APP_COMMIT__ ? ` (${__APP_COMMIT__.slice(0, 7)})` : "");
+  $("#appCopyright").textContent = __APP_COPYRIGHT__;
   // AGPL §13：動いている版のソースを指す
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#sourceLink").href = `https://github.com/modelith/modelith/tree/${__APP_COMMIT__}`;
 }
