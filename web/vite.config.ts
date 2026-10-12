@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
+import { appLicense, thirdPartyNotices, viteCoreLicense, type BundledPart } from "./tools/licenses";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
 
@@ -15,14 +16,26 @@ function commitSha(): string {
   }
 }
 
-/** 同梱するフォント（OFL）のライセンス文を licenses.txt として出力する。OFL は再配布時に添付が必要。 */
+/** 著作権表示。画面（index.html）と LICENSE.txt に出す。 */
+const COPYRIGHT = "Copyright (C) 2026 The Modelith Authors";
+
+/**
+ * 配布物にライセンス文を添える（AGPL §5(d)・OFL・MIT）。
+ * - LICENSE.txt：Modelith 本体のライセンス（AGPL-3.0 全文とプラグイン例外）
+ * - licenses.txt：同梱する第三者の部品（フォントと Vite の実行時コード）のライセンス
+ */
 function bundledLicenses(): Plugin {
-  const fonts = ["@fontsource/ibm-plex-sans-jp", "@fontsource/ibm-plex-mono"];
+  const read = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
   return {
     name: "modelith-licenses",
     generateBundle() {
-      const parts = fonts.map((f) => `==== ${f} ====\n\n${readFileSync(new URL(`./node_modules/${f}/LICENSE`, import.meta.url), "utf8")}`);
-      this.emitFile({ type: "asset", fileName: "licenses.txt", source: parts.join("\n\n") });
+      this.emitFile({ type: "asset", fileName: "LICENSE.txt", source: appLicense(COPYRIGHT, read("../LICENSE"), read("../PLUGIN-EXCEPTION.md")) });
+      const parts: BundledPart[] = [
+        { name: "@fontsource/ibm-plex-sans-jp", license: "OFL-1.1", usage: "画面の文字（IBM Plex Sans JP）", text: read("./node_modules/@fontsource/ibm-plex-sans-jp/LICENSE") },
+        { name: "@fontsource/ibm-plex-mono", license: "OFL-1.1", usage: "テキスト欄の文字（IBM Plex Mono）", text: read("./node_modules/@fontsource/ibm-plex-mono/LICENSE") },
+        { name: "vite", license: "MIT", usage: "スクリプトを読み込む小さな実行時コード", text: viteCoreLicense(read("./node_modules/vite/LICENSE.md")) },
+      ];
+      this.emitFile({ type: "asset", fileName: "licenses.txt", source: thirdPartyNotices(parts) });
     },
   };
 }
@@ -30,7 +43,7 @@ function bundledLicenses(): Plugin {
 export default defineConfig({
   // GitHub Pages ではリポジトリ名のパス（/modelith/）の下に置く。CI が MODELITH_BASE で渡す
   base: process.env.MODELITH_BASE ?? "/",
-  define: { __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT__: JSON.stringify(commitSha()) },
+  define: { __APP_COPYRIGHT__: JSON.stringify(COPYRIGHT), __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT__: JSON.stringify(commitSha()) },
   plugins: [bundledLicenses()],
   server: { fs: { allow: [".."] } },
   // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src と tools の単体・結合テストだけを拾う
