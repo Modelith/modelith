@@ -260,7 +260,7 @@ package ModelithRequirements {
             doc /* ファイルの読み込みとダウンロードだけを使う代替 */
         }
         part def CloudProvider :> FileProvider {
-            doc /* Google ドライブ（web/src/files/google-drive.ts・drive-client.ts。画面にはまだつないでいない。ADR-0012） */
+            doc /* Google ドライブなどのクラウド（未実装。方式は ADR-0012、保留中） */
         }
         part def Exporter {
             doc /* SVG・draw.io への書き出し（web/src/app/export.ts） */
