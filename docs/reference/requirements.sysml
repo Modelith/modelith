@@ -104,7 +104,16 @@ package ModelithRequirements {
             doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する */
         }
         requirement def <'F-VIEW-3'> LayoutReq {
-            doc /* 未配置の要素は自動で並べ、手で動かした配置はモデルと一緒に保存する */
+            doc /* 未配置の要素は自動で並べ、手で動かした配置は、モデルごとの配置ファイル（model.sysml の隣の model.layout.json）に保存する（ADR-0005） */
+        }
+        requirement def <'F-VIEW-6'> UnsavedLayoutReq {
+            doc /* 配置の保存先が無いとき（ファイルを 1 つだけ開いた・新規）は「配置は未保存」と画面に示し、保存の際に保存先を選ばせる。配置が黙って失われることはない（ADR-0005） */
+        }
+        requirement def <'F-VIEW-7'> StandardViewReq {
+            doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・StateTransitionView・SequenceView）から決める（ADR-0005） */
+        }
+        requirement def <'F-VIEW-8'> CreateViewReq {
+            doc /* 画面から図を作り要素を選ぶと、標準の view としてテキストに書く（ADR-0005） */
         }
         requirement def <'F-VIEW-4'> CanvasReq {
             doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える */
@@ -180,7 +189,7 @@ package ModelithRequirements {
 
         // ---- 制約 --------------------------------------------------
         requirement def <'C-1'> TextIsSourceReq {
-            doc /* モデルの正本はテキストだけとし、図の情報もテキストか、その隣のファイルに保存する（ADR-0001・ADR-0005） */
+            doc /* モデルの正本はテキストだけとする。図の中身は標準の view としてテキストに、配置はテキストの隣の配置ファイルに保存する（ADR-0001・ADR-0005） */
         }
         requirement def <'C-2'> PrivacyReq {
             doc /* 利用者のモデルや操作の情報を、利用者が選んだ保存先（手元のファイル、利用者自身のクラウドストレージ）以外に送らない。フォントなども同梱し、外部の CDN やアクセス解析を使わない。クラウドを使わない利用者は、配信元以外と通信しない（ADR-0012） */
@@ -194,6 +203,9 @@ package ModelithRequirements {
         requirement def <'C-5'> LegalNoticeReq {
             doc /* 画面から著作権表示・無保証であること・ライセンス本文（AGPL-3.0 とプラグイン例外）を確かめられ、同梱する第三者の部品のライセンス文を配布物に添える（AGPL 第 5 条 (d)・OFL・MIT・Apache-2.0） */
         }
+        requirement def <'C-6'> NoSilentWriteReq {
+            doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005） */
+        }
 
         // ---- 導出 --------------------------------------------------
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
@@ -206,6 +218,9 @@ package ModelithRequirements {
         #derivation dependency from SevenViewsReq to ViewsNeed;
         #derivation dependency from ViewTabsReq to ViewsNeed;
         #derivation dependency from LayoutReq to ViewsNeed;
+        #derivation dependency from UnsavedLayoutReq to SafetyNeed;
+        #derivation dependency from StandardViewReq to ViewsNeed;
+        #derivation dependency from CreateViewReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
         #derivation dependency from TreeReq to ViewsNeed;
         #derivation dependency from PhaseReq to TraceNeed;
@@ -229,6 +244,7 @@ package ModelithRequirements {
         #derivation dependency from LookReq to AnywhereNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
+        #derivation dependency from NoSilentWriteReq to SafetyNeed;
         #derivation dependency from SourceOfferReq to OpenSourceNeed;
         #derivation dependency from StaticHostingReq to AnywhereNeed;
         #derivation dependency from LegalNoticeReq to OpenSourceNeed;
@@ -295,6 +311,10 @@ package ModelithRequirements {
         satisfy SevenViewsReq by DiagramUI;
         satisfy ViewTabsReq by DiagramUI;
         satisfy LayoutReq by DiagramUI;
+        satisfy UnsavedLayoutReq by Workspace;
+        satisfy StandardViewReq by DiagramUI;
+        satisfy CreateViewReq by DiagramUI;
+        satisfy NoSilentWriteReq by Workspace;
         satisfy CanvasReq by DiagramUI;
         satisfy TreeReq by DiagramUI;
         satisfy PhaseReq by Core;
