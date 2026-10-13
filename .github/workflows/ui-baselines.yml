@@ -15,8 +15,8 @@ jobs:
     if: contains(github.event.head_commit.message, '[ui-baselines]')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -28,7 +28,7 @@ jobs:
       - name: Generate baselines
         run: npx playwright test e2e/visual.spec.ts --update-snapshots=all
         working-directory: web
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ui-baselines
           path: web/e2e/visual.spec.ts-snapshots/
