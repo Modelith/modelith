@@ -108,11 +108,11 @@ test("F-FILE-7: 他のアプリで変わったファイルは黙って上書き�
   await putFiles(page, { "a.sysml": "package Theirs;\n" });
   // Act
   await page.keyboard.press("Control+s");
-  const title = await page.locator("#dialogTitle").innerText();
+  // 保存は非同期なので、ダイアログが出るのを待ってから確かめる
+  await expect(page.locator("#dialogTitle")).toHaveText("ファイルが他で変更されています");
   const untouched = await readFile(page, "a.sysml");
   await page.locator('#dialogButtons [data-id="overwrite"]').click();
   // Assert
-  expect(title).toBe("ファイルが他で変更されています");
   expect(untouched).toBe("package Theirs;\n");
   await expect.poll(() => readFile(page, "a.sysml")).toBe(A + "// mine\n");
 });
