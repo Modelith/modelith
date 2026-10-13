@@ -77,8 +77,6 @@ interface Scene {
   title: string;
   shot: string;
   act: (page: Page) => Promise<Locator[]>;
-  /** 版やコミットなど、ビルドごとに変わる所。塗りつぶして比べる。 */
-  mask?: string[];
 }
 
 async function openSampleFolder(page: Page, text: string): Promise<void> {
@@ -138,9 +136,10 @@ const scenes: Scene[] = [
     shot: "help-menu",
     act: async (page) => {
       await page.locator("#helpMenu summary").click();
+      // 版とコミットはビルドごとに変わり、文字の幅で折り返しも変わる。塗りつぶすだけでは高さがずれるので、決まった文字列に置き換えて比べる
+      await page.locator("#appVersion").evaluate((e) => (e.textContent = "0.0.0 (0000000)"));
       return [page.locator("#helpMenu .pop")];
     },
-    mask: ["#appVersion"],
   },
   {
     title: "F-EDIT-5: 構文エラーを示す問題一覧",
@@ -196,10 +195,9 @@ for (const scheme of ["light", "dark"] as const) {
         const targets = await scene.act(page);
         await settle(page);
         // Assert
-        const mask = (scene.mask ?? []).map((m) => page.locator(m));
         for (const [i, target] of targets.entries()) {
           const name = `${scene.shot}${i ? `-${i + 1}` : ""}${scheme === "dark" ? "-dark" : ""}.png`;
-          await expect(target).toHaveScreenshot(name, { mask });
+          await expect(target).toHaveScreenshot(name);
         }
       });
     }
