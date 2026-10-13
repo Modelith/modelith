@@ -68,3 +68,52 @@ test("F-EDIT-4: 元に戻す・やり直すができ、履歴はファイルご�
   expect(undone).toBe(original);
   expect(await editorText(page)).toBe("package Edited;\n");
 });
+
+test.describe("package の無いファイル", () => {
+  /** 新しいファイルを作り、パレットの「関心事」で図をクリックする。 */
+  async function placeConcernInNewFile(page: import("@playwright/test").Page): Promise<void> {
+    await openApp(page);
+    await page.locator('[data-cmd="new"]').click();
+    await expect(page.locator("#docName")).toHaveText("untitled-1.sysml");
+    await page.locator('#palette [data-tool="concern def"]').click();
+    const box = (await page.locator("#wrap").boundingBox())!;
+    await page.mouse.click(box.x + 200, box.y + 200);
+  }
+
+  test("F-EDIT-7: 要素を置こうとすると、新しい package を作るよう案内し、作ってから置く", async ({ page }) => {
+    // Arrange
+    await placeConcernInNewFile(page);
+    await expect(page.locator("#dialog")).toBeVisible();
+    await expect(page.locator("#dialogInput")).toHaveValue("Untitled1");
+    // Act
+    await page.locator("#dialogInput").fill("Kettle");
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    await page.locator('[data-act="renameCancel"]').click();
+    // Assert
+    const text = await editorText(page);
+    expect(text).toMatch(/^package Kettle \{\n {4}concern def NewConcern \{\n {4}\}\n\}\n/);
+    expect(await nodeKeys(page)).toContain("NewConcern");
+  });
+
+  test("F-EDIT-7: 案内で「やめる」を選ぶと、テキストは変わらない（異常系）", async ({ page }) => {
+    // Arrange
+    await placeConcernInNewFile(page);
+    await expect(page.locator("#dialog")).toBeVisible();
+    // Act
+    await page.locator('#dialogButtons [data-id="cancel"]').click();
+    // Assert
+    await expect(page.locator("#dialog")).toBeHidden();
+    expect(await editorText(page)).toBe("");
+  });
+
+  test("F-EDIT-7: 名前に使えない文字なら作らず、理由を伝える（異常系）", async ({ page }) => {
+    // Arrange
+    await placeConcernInNewFile(page);
+    // Act
+    await page.locator("#dialogInput").fill("my model");
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    // Assert
+    await expect(page.locator("#toast")).toContainText("英字か _ で始まる英数字");
+    expect(await editorText(page)).toBe("");
+  });
+});
