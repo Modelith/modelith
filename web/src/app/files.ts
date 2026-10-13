@@ -45,6 +45,9 @@ function untitledName(): string {
 /** 保存先を選ばせるときの保存先（フォルダを扱えればローカル、無理ならダウンロード）。 */
 const saveTarget = (): SaveAsTarget => local ?? browser;
 
+/** テキスト欄に表示している文書の名前（新しい package の名前の候補に使う）。 */
+export const shownDocName = (): string => (shownKey ? ws.get(shownKey)?.name : undefined) ?? "untitled.sysml";
+
 /* ---- 文書の表示 ---- */
 
 /** 文書を表示中にし、テキストと図をその内容にする。 */

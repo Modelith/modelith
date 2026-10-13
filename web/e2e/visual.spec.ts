@@ -123,6 +123,17 @@ const scenes: Scene[] = [
     },
   },
   {
+    title: "F-EDIT-7: package を作る案内",
+    shot: "dialog-new-package",
+    act: async (page) => {
+      await page.locator('[data-cmd="new"]').click();
+      await page.locator('#palette [data-tool="concern def"]').click();
+      const box = (await page.locator("#wrap").boundingBox())!;
+      await page.mouse.click(box.x + 200, box.y + 200);
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
     title: "F-FILE-2: 開いた「ファイル」メニュー（項目にマウスを乗せた状態）",
     shot: "file-menu",
     act: async (page) => {

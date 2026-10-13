@@ -320,7 +320,7 @@ export function placeTool(lx: number, ly: number): void {
   const pos: [number, number] = [Math.round((cx - W / 2) / 10) * 10, Math.round((cy - 22) / 10) * 10];
   const u = toolUsage(tool), k = toolKind(tool);
   if (u) OPS.addUsage(u, pos);
-  else if (k) OPS.addNode(k, pos);
+  else if (k) void OPS.addNode(k, pos);
   renderPalette();
 }
 
@@ -339,7 +339,7 @@ function initPalette(): void {
       return;
     }
     if (k === "occurrence def" && S.view === "seq") {
-      OPS.addNode(k, [0, 0]);
+      void OPS.addNode(k, [0, 0]);
       return;
     }
     setTool(toolKind(S.tool) === k ? null : { kind: k });
@@ -695,7 +695,7 @@ function initSub(): void {
   sub.addEventListener("click", (ev) => {
     const b = closest(ev, "button");
     if (!b) return;
-    if (b.id === "btnPhaseInit") PHASEOPS.init();
+    if (b.id === "btnPhaseInit") void PHASEOPS.init();
     if (b.id === "btnGaps") {
       const g = S.M.problems.find((p) => p.kind === "gap");
       setTab("text");

@@ -92,6 +92,9 @@ package ModelithRequirements {
         requirement def <'F-EDIT-6'> ParseParityReq {
             doc /* 解析とモデル構築の結果は、仕様の基準（ゴールデン）と一致する（ADR-0002） */
         }
+        requirement def <'F-EDIT-7'> NewPackageGuideReq {
+            doc /* package の無いファイルで図から要素を置こうとしたら、断らずに新しい package を作るよう案内し、名前を決めて作ったうえで要素を置く */
+        }
 
         // ---- ビュー ------------------------------------------------
         requirement def <'F-VIEW-1'> SevenViewsReq {
@@ -195,6 +198,7 @@ package ModelithRequirements {
         // ---- 導出 --------------------------------------------------
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
+        #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
         #derivation dependency from RenameReq to EditBothWaysNeed;
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
@@ -283,6 +287,7 @@ package ModelithRequirements {
 
         satisfy TextToDiagramReq by TextEditor;
         satisfy DiagramToTextReq by DiagramUI;
+        satisfy NewPackageGuideReq by DiagramUI;
         satisfy RenameReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
@@ -340,6 +345,12 @@ package ModelithRequirements {
                 verify DiagramToTextReq;
             }
         }
+        verification def NewPackageTest {
+            doc /* web/src/app/new-package.test.ts：ファイル名からの package 名の候補・名前の検査・package を足す位置 */
+            objective {
+                verify NewPackageGuideReq;
+            }
+        }
         verification def LocalFolderProviderTest {
             doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ（偽のファイルシステムで） */
             objective {
@@ -385,9 +396,10 @@ package ModelithRequirements {
             }
         }
         verification def EditingE2E {
-            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置の保存・ファイルごとの元に戻す（図の操作がすべてテキストに残ること） */
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置の保存・ファイルごとの元に戻す・package の無いファイルでの案内（図の操作がすべてテキストに残ること） */
             objective {
                 verify DiagramToTextReq;
+                verify NewPackageGuideReq;
                 verify RenameReq;
                 verify LayoutReq;
                 verify UndoReq;

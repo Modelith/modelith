@@ -1,6 +1,8 @@
 // 図からの編集操作。すべてテキストの書き換えとして行い、setText で反映する（ADR-0001）。
 
 import { applyEdits, indentAt, insertEdit, insertInto, mask, removeRange, type Edit, type Entry, type ModelEdge, type ModelNode } from "../core";
+import { ask } from "./dialog";
+import { shownDocName } from "./files";
 import { nodeH, W } from "./geometry";
 import { renderInspector, startRename } from "./inspector";
 import { attachEnds } from "./pins";
@@ -10,6 +12,7 @@ import { cancelConnect, clearSel, S } from "./state";
 import { commitLayout, setText, toast, withLayout } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
 import type { Pos } from "./layout";
+import { appendPackage, isPackageName, packageNameFor } from "./new-package";
 
 const NAME_RE = /^[A-Za-z_]\w*$/;
 const lowerFirst = (s: string): string => s.charAt(0).toLowerCase() + s.slice(1);
@@ -31,6 +34,29 @@ function pkgFor(kind: string): Entry | undefined {
   return hit?.pe ?? firstPackage();
 }
 
+/**
+ * package の無いファイルで要素を置こうとしたとき、断らずに新しい package を作るよう案内する（F-EDIT-7）。
+ * 作れば、package を足したテキストとその package を返す（やめたら null）。
+ */
+async function offerNewPackage(): Promise<{ text: string; pkg: Entry } | null> {
+  const r = await ask(
+    "package を作りましょう",
+    "SysML v2 では、要素を package（入れ物）の中に置きます。このファイルにはまだ package が無いので、新しく作ってそこに置きます。",
+    [
+      { id: "cancel", label: "やめる" },
+      { id: "ok", label: "作って置く", kind: "primary" },
+    ],
+    { value: packageNameFor(shownDocName()), label: "package の名前" },
+  );
+  if (r?.id !== "ok") return null;
+  const name = r.value.trim();
+  if (!isPackageName(name)) {
+    toast("package の名前は、英字か _ で始まる英数字にしてください");
+    return null;
+  }
+  return appendPackage(S.text, name);
+}
+
 const NEW_NAME: Record<string, string> = {
   "part def": "NewPart", "requirement def": "NewRequirement", "constraint def": "NewConstraint", "concern def": "NewConcern",
   "verification def": "NewVerification", "analysis def": "NewAnalysis", "state def": "NewStates", "action def": "NewAction",
@@ -38,12 +64,14 @@ const NEW_NAME: Record<string, string> = {
 };
 
 export const OPS = {
-  /** 定義を追加し、図の pos に置く。 */
-  addNode(kind: string, pos: Pos): void {
-    const pkg = pkgFor(kind);
+  /** 定義を追加し、図の pos に置く。package が無ければ、作るよう案内する。 */
+  async addNode(kind: string, pos: Pos): Promise<void> {
+    let text = S.text;
+    let pkg = pkgFor(kind);
     if (!pkg) {
-      toast("package がないため追加できません");
-      return;
+      const np = await offerNewPackage();
+      if (!np) return;
+      ({ text, pkg } = np);
     }
     const name = uniqueName(NEW_NAME[kind] ?? "NewElement");
     const lines: string[] = [];
@@ -52,8 +80,8 @@ export const OPS = {
     if (kind === "requirement def") lines.push("doc /* ここに要求文を書く */");
     if (kind === "constraint def") lines.push("in x : Real; in y : Real;", "y == x");
     if (kind === "occurrence def") lines.push("doc /* シナリオの説明 */");
-    const i1 = indentAt(S.text, pkg.start) + "    ", i2 = i1 + "    ";
-    const r = insertInto(S.text, pkg, `${kind} ${name} {` + lines.map((l) => "\n" + i2 + l).join("") + "\n" + i1 + "}");
+    const i1 = indentAt(text, pkg.start) + "    ", i2 = i1 + "    ";
+    const r = insertInto(text, pkg, `${kind} ${name} {` + lines.map((l) => "\n" + i2 + l).join("") + "\n" + i1 + "}");
     if (kind === "occurrence def" && S.view === "seq") {
       S.seqCtx = name;
       setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
@@ -312,20 +340,26 @@ export const PHASEOPS = {
     toast(`${n.name} を「${phaseLabel(value)}」にしました`);
   },
 
-  /** フェーズの定義（metadata def と enum def）を最初の package に足す。 */
-  init(): void {
-    const pkg = firstPackage();
-    if (!pkg || pkg.open == null) {
-      toast("package がありません");
+  /** フェーズの定義（metadata def と enum def）を最初の package に足す。package が無ければ、作るよう案内する。 */
+  async init(): Promise<void> {
+    let text = S.text;
+    let pkg = firstPackage();
+    if (!pkg) {
+      const np = await offerNewPackage();
+      if (!np) return;
+      ({ text, pkg } = np);
+    }
+    if (pkg.open == null) {
+      toast("最初の package が { } で書かれていないため、フェーズの定義を足せません");
       return;
     }
-    const i1 = indentAt(S.text, pkg.start) + "    ";
+    const i1 = indentAt(text, pkg.start) + "    ";
     const ins =
       `\n${i1}// フェーズ管理：要素やパッケージに @Phase を付けて分類する（パッケージに付けると中の要素が継承）\n` +
       `${i1}metadata def Phase { attribute stage : PhaseKind; }\n` +
       `${i1}enum def PhaseKind { enum StakeholderNeeds; enum SystemRequirements; enum Architecture; enum Verification; }\n`;
     const at = pkg.open + 1;
-    setText(S.text.slice(0, at) + ins + S.text.slice(at), { changeAt: at, flash: [at, at + ins.length] });
+    setText(text.slice(0, at) + ins + text.slice(at), { changeAt: at, flash: [at, at + ins.length] });
     toast("フェーズの定義を追加しました。要素を選んでフェーズを設定できます");
   },
 };
