@@ -153,7 +153,7 @@ package ModelithRequirements {
             doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す */
         }
         requirement def <'F-FILE-12'> CloudReq {
-            doc /* クラウドのストレージ（Google ドライブなど）のファイルも、ローカルと同じ操作で開いて保存できる（ADR-0010） */
+            doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
         }
 
         // ---- 書き出し ----------------------------------------------
@@ -180,7 +180,7 @@ package ModelithRequirements {
             doc /* モデルの正本はテキストだけとし、図の情報もテキストか、その隣のファイルに保存する（ADR-0001・ADR-0005） */
         }
         requirement def <'C-2'> PrivacyReq {
-            doc /* 利用者のモデルや操作の情報を外部に送らない。フォントなども同梱し、外部の CDN やアクセス解析を使わない */
+            doc /* 利用者のモデルや操作の情報を、利用者が選んだ保存先（手元のファイル、利用者自身のクラウドストレージ）以外に送らない。フォントなども同梱し、外部の CDN やアクセス解析を使わない。クラウドを使わない利用者は、配信元以外と通信しない（ADR-0012） */
         }
         requirement def <'C-3'> SourceOfferReq {
             doc /* 動いている版（ビルドしたコミット）のソースコードへのリンクを画面に示す（AGPL 第 13 条） */
@@ -260,7 +260,7 @@ package ModelithRequirements {
             doc /* ファイルの読み込みとダウンロードだけを使う代替 */
         }
         part def CloudProvider :> FileProvider {
-            doc /* Google ドライブなどのクラウド（未実装） */
+            doc /* Google ドライブ（未実装。ADR-0012） */
         }
         part def Exporter {
             doc /* SVG・draw.io への書き出し（web/src/app/export.ts） */

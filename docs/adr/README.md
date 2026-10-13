@@ -16,3 +16,4 @@
 | [0009](0009-port-mock-for-public-alpha.md) | モックのコードを移植して最初の alpha を公開する | 採用 |
 | [0010](0010-file-providers.md) | ファイル操作をストレージごとのプロバイダに分け、ワークスペースが束ねる | 採用 |
 | [0011](0011-requirements-ssot.md) | 要求仕様を 1 つの SysML v2 ファイルで管理する | 採用 |
+| [0012](0012-google-drive-without-server.md) | クラウド保存は Google ドライブから始め、サーバを持たずにブラウザから直接つなぐ | 採用 |
