@@ -29,3 +29,32 @@ test("F-FILE-10: 保存はダウンロードになる", async ({ page }) => {
   const body = await (await d.createReadStream()).toArray();
   expect(Buffer.concat(body).toString()).toContain("// saved\n");
 });
+
+test("F-FILE-10・F-VIEW-6: 保存では、モデルと配置ファイルを両方ダウンロードする", async ({ page }) => {
+  // Arrange（サンプルは配置を持つ）
+  await openApp(page);
+  const names: string[] = [];
+  page.on("download", (d) => names.push(d.suggestedFilename()));
+  // Act
+  await page.keyboard.press("Control+s");
+  // Assert
+  await expect.poll(() => names).toEqual(["electric-kettle.sysml", "electric-kettle.layout.json"]);
+});
+
+test("F-FILE-10・F-VIEW-6: モデルと配置ファイルを一緒に選んで開くと、配置も戻る", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  const chooser = page.waitForEvent("filechooser");
+  const file = (name: string, text: string) => ({ name, mimeType: "text/plain", buffer: Buffer.from(text) });
+  // Act
+  await page.keyboard.press("Control+o");
+  await (await chooser).setFiles([
+    file("m.sysml", "package M {\n    requirement def Mine;\n}\n"),
+    file("m.layout.json", '{"modelith":"layout","format":1,"views":{"trace":{"Mine":[600,400]}}}'),
+  ]);
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="trace"]').click();
+  // Assert
+  await expect(page.locator("#docName")).toHaveText("m.sysml");
+  await expect(page.locator('#gNodes .node[data-key="Mine"]')).toHaveAttribute("transform", /translate\(600,\s*400\)/);
+});

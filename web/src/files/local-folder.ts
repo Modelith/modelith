@@ -6,13 +6,13 @@ import {
   isModelFile,
   type DirEntry,
   type FileContent,
+  type FileLocator,
   type FilePicker,
   type FileRef,
   type FolderRef,
   type FolderSource,
   type Readable,
   type RecentFolders,
-  type SaveAsTarget,
   type SiblingFiles,
   type Writable,
 } from "./types";
@@ -43,12 +43,13 @@ export interface DirHandleLike extends HandleBase {
   values(): AsyncIterable<FileHandleLike | DirHandleLike>;
   getFileHandle(name: string, opts?: { create?: boolean }): Promise<FileHandleLike>;
   getDirectoryHandle(name: string, opts?: { create?: boolean }): Promise<DirHandleLike>;
+  /** h がこのフォルダの中にあれば、フォルダからのパスの各部分（無ければ null）。 */
+  resolve(h: FileHandleLike): Promise<string[] | null>;
 }
 const PICKER_TYPES = [{ description: "SysML v2 / KerML", accept: { "text/plain": [".sysml", ".kerml"] } }];
 export interface FsApi {
-  showDirectoryPicker(opts: { mode: "readwrite"; id?: string }): Promise<DirHandleLike>;
+  showDirectoryPicker(opts: { mode: "readwrite"; id?: string; startIn?: FileHandleLike }): Promise<DirHandleLike>;
   showOpenFilePicker(opts: { types: typeof PICKER_TYPES; multiple: false }): Promise<FileHandleLike[]>;
-  showSaveFilePicker(opts: { suggestedName: string; types: typeof PICKER_TYPES }): Promise<FileHandleLike>;
 }
 
 /** ハンドルを保存する場所（前回のフォルダを覚えるため。ブラウザでは IndexedDB）。 */
@@ -58,7 +59,7 @@ export interface HandleStore {
 }
 
 /** このブラウザで File System Access API が使えるか。 */
-export const hasFsAccess = (w: object): boolean => "showDirectoryPicker" in w && "showOpenFilePicker" in w && "showSaveFilePicker" in w;
+export const hasFsAccess = (w: object): boolean => "showDirectoryPicker" in w && "showOpenFilePicker" in w;
 
 /** 利用者が選択ダイアログを閉じた（エラーではない）。 */
 const isAbort = (e: unknown): boolean => e instanceof Error && e.name === "AbortError";
@@ -67,7 +68,7 @@ const versionOf = (f: FileLike): string => `${f.lastModified}:${f.size}`;
 const SKIP_DIR = /^(\.|node_modules$)/;
 const RECENT_KEY = "recent-folder";
 
-export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, SaveAsTarget, RecentFolders, SiblingFiles {
+export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator {
   readonly id = "local";
   readonly label = "このコンピュータ";
   private readonly files = new Map<string, FileHandleLike>();
@@ -79,10 +80,11 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
     private readonly store: HandleStore,
   ) {}
 
-  async pickFolder(): Promise<FolderRef | null> {
+  async pickFolder(near?: FileRef): Promise<FolderRef | null> {
+    const startIn = near && this.files.get(near.id);
     let dir: DirHandleLike;
     try {
-      dir = await this.api.showDirectoryPicker({ mode: "readwrite", id: "modelith" });
+      dir = await this.api.showDirectoryPicker({ mode: "readwrite", id: "modelith", ...(startIn ? { startIn } : {}) });
     } catch (e) {
       if (isAbort(e)) return null;
       throw e;
@@ -130,18 +132,6 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
     return fh ? this.addFile(fh, `file:${++this.seq}`, fh.name) : null;
   }
 
-  async saveAs(suggestedName: string, text: string): Promise<{ ref: FileRef; version: string } | null> {
-    let fh: FileHandleLike;
-    try {
-      fh = await this.api.showSaveFilePicker({ suggestedName, types: PICKER_TYPES });
-    } catch (e) {
-      if (isAbort(e)) return null;
-      throw e;
-    }
-    await writeText(fh, text);
-    return { ref: this.addFile(fh, `file:${++this.seq}`, fh.name), version: versionOf(await fh.getFile()) };
-  }
-
   async read(ref: FileRef): Promise<FileContent> {
     const f = await this.fileHandle(ref).getFile();
     return { text: await f.text(), version: versionOf(f) };
@@ -152,6 +142,14 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
     if (expectedVersion !== null && versionOf(await fh.getFile()) !== expectedVersion) throw new ConflictError(ref);
     await writeText(fh, text);
     return versionOf(await fh.getFile());
+  }
+
+  async locate(folder: FolderRef, ref: FileRef): Promise<FileRef | null> {
+    const fh = this.fileHandle(ref);
+    const segs = await this.folderHandle(folder).resolve(fh);
+    if (!segs) return null;
+    const path = segs.join("/");
+    return this.addFile(fh, `${folder.id}/${path}`, path);
   }
 
   hasSiblings(ref: FileRef): boolean {

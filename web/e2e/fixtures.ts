@@ -5,7 +5,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 /** ピッカーの置き換え（ブラウザ側で動く）。 */
 function installPickers(): void {
-  const w = window as unknown as Record<string, unknown> & { __e2e: { openFile?: string; saveAs?: string } };
+  const w = window as unknown as Record<string, unknown> & { __e2e: { openFile?: string } };
   w.__e2e = {};
   const project = async (): Promise<FileSystemDirectoryHandle> =>
     (await navigator.storage.getDirectory()).getDirectoryHandle("project", { create: true });
@@ -15,8 +15,6 @@ function installPickers(): void {
     if (!name) throw new DOMException("cancelled", "AbortError");
     return [await (await project()).getFileHandle(name)];
   };
-  w["showSaveFilePicker"] = async ({ suggestedName }: { suggestedName: string }) =>
-    (await project()).getFileHandle(w.__e2e.saveAs ?? suggestedName, { create: true });
 }
 
 /** File System Access API が無いブラウザ（Safari・Firefox）のふりをする。 */
@@ -24,7 +22,6 @@ function removeFsAccess(): void {
   const w = window as unknown as Record<string, unknown>;
   delete w["showDirectoryPicker"];
   delete w["showOpenFilePicker"];
-  delete w["showSaveFilePicker"];
 }
 
 export const test = base.extend<{ fsAccess: boolean }>({

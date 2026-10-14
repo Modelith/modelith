@@ -7,6 +7,7 @@ import {
   isReadable,
   isWritable,
   type DirEntry,
+  type FileLocator,
   type FilePicker,
   type FileRef,
   type FolderRef,
@@ -51,6 +52,9 @@ export interface DraftStore {
 }
 
 export type SaveOutcome = "saved" | "conflict" | "cancelled";
+
+/** 1 つだけ開いたファイルのフォルダを開いた結果。notInFolder は、選んだフォルダにそのファイルが無かった。 */
+export type AttachOutcome = "attached" | "notInFolder" | "cancelled";
 
 export interface OpenFolder {
   source: FolderSource;
@@ -177,6 +181,17 @@ export class Workspace {
   }
 
   /**
+   * 古い形式の配置を配置ファイルに移す（ADR-0005 の移行）。テキストからコメントを消し、
+   * 配置はまだ配置ファイルに無いものとして扱う（次の保存で、テキストと配置ファイルを一緒に書く）。
+   */
+  moveLegacyLayout(key: string, textWithoutComment: string): void {
+    this.update(key, (doc) => {
+      doc.text = textWithoutComment;
+      doc.savedLayout = "";
+    });
+  }
+
+  /**
    * 保存する。上書きできる保存先があれば版を比べて上書きし（force なら比べない）、
    * 無ければ saveAs で保存先を選ばせる。
    */
@@ -209,14 +224,40 @@ export class Workspace {
     if (!doc) return "cancelled";
     const r = await target.saveAs(doc.ref?.name ?? suggestName(doc.name), doc.text);
     if (!r) return "cancelled";
-    const wasUntitled = !doc.ref;
-    Object.assign(doc, { ref: r.ref, name: r.ref.name, savedText: doc.text, version: r.version, stale: false });
-    doc.layoutHome = this.siblingsOf(r.ref) ? "sibling" : "none";
-    // 新しい保存先には、配置がまだ無い。変更の有無によらず書く
-    if (doc.layout) await this.writeLayout(doc, true);
-    if (wasUntitled) this.persistDrafts();
-    this.changed();
+    await this.moveTo(doc, r.ref, r.version);
     return "saved";
+  }
+
+  /**
+   * 開いているフォルダの中に、path（フォルダからの相対パス）という名前で保存し、以後はそのファイルの文書にする。
+   * 配置も隣の配置ファイルに一緒に書く（ADR-0005）。同じ名前のファイルがあれば失敗する。
+   */
+  async saveToFolder(key: string, path: string): Promise<void> {
+    const doc = this.get(key);
+    const f = this.folderState;
+    if (!doc) return;
+    if (!f) throw new Error("フォルダが開かれていません");
+    const ref = await f.source.createFile(f.ref, path, doc.text);
+    const { version } = await this.readable(ref).read(ref);
+    f.entries = await f.source.list(f.ref);
+    await this.moveTo(doc, ref, version);
+  }
+
+  /**
+   * 1 つだけ開いたファイルについて、そのファイルのあるフォルダを選んでもらって開き、
+   * 以後はフォルダの中のファイルとして扱う（隣の配置ファイルに保存できるようになる、F-VIEW-6）。書き込みは save で行う。
+   */
+  async attachToFolder(key: string, source: FolderSource & FileLocator): Promise<AttachOutcome> {
+    const doc = this.get(key);
+    if (!doc?.ref) return "cancelled";
+    const folder = await source.pickFolder(doc.ref);
+    if (!(await this.setFolder(source, folder)) || !folder) return "cancelled";
+    const ref = await source.locate(folder, doc.ref);
+    if (!ref) return "notInFolder";
+    doc.ref = ref;
+    doc.layoutHome = "sibling";
+    this.changed();
+    return "attached";
   }
 
   /** 未保存の変更を捨てて、保存先の内容を読み直す。 */
@@ -316,6 +357,16 @@ export class Workspace {
     if (doc.text === before.text && doc.layout === before.layout) return;
     if (!doc.ref) this.persistDrafts();
     if (before.dirty !== this.isDirty(doc) || before.unsaved !== this.layoutUnsaved(doc)) this.changed();
+  }
+
+  /** 文書を新しい保存先（保存したばかりのファイル）に移す。新しい保存先には配置がまだ無いので、配置があれば書く。 */
+  private async moveTo(doc: Doc, ref: FileRef, version: string): Promise<void> {
+    const wasUntitled = !doc.ref;
+    Object.assign(doc, { ref, name: ref.name, savedText: doc.text, version, stale: false });
+    doc.layoutHome = this.siblingsOf(ref) ? "sibling" : "none";
+    if (doc.layout) await this.writeLayout(doc, true);
+    if (wasUntitled) this.persistDrafts();
+    this.changed();
   }
 
   /** 隣の配置ファイルを扱えるプロバイダ（扱えなければ null）。 */

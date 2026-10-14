@@ -55,7 +55,8 @@ export interface Writable extends ProviderInfo {
 
 /** フォルダを選び、中身を一覧し、ファイルを作れる。 */
 export interface FolderSource extends ProviderInfo {
-  pickFolder(): Promise<FolderRef | null>;
+  /** near を渡すと、そのファイルのある場所から選び始める。 */
+  pickFolder(near?: FileRef): Promise<FolderRef | null>;
   list(folder: FolderRef): Promise<DirEntry[]>;
   /** path はフォルダからの相対パス。既にあれば失敗する。 */
   createFile(folder: FolderRef, path: string, text: string): Promise<FileRef>;
@@ -69,6 +70,12 @@ export interface FilePicker extends ProviderInfo {
 /** 保存先を選んで保存できる（選ばなければ null）。 */
 export interface SaveAsTarget extends ProviderInfo {
   saveAs(suggestedName: string, text: string): Promise<{ ref: FileRef; version: string } | null>;
+}
+
+/** 1 つだけ開いたファイルを、開いたフォルダの中から探せる（隣の配置ファイルを扱えるようにするため、ADR-0005）。 */
+export interface FileLocator extends ProviderInfo {
+  /** ref が folder の中にあれば、フォルダから開いたファイルとしての参照を返す（無ければ null）。 */
+  locate(folder: FolderRef, ref: FileRef): Promise<FileRef | null>;
 }
 
 /** 前回のフォルダを覚えて開き直せる。 */
@@ -90,7 +97,7 @@ export interface SiblingFiles extends ProviderInfo {
 }
 
 export type FileProvider = ProviderInfo &
-  Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles, keyof ProviderInfo>>;
+  Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator, keyof ProviderInfo>>;
 
 export const isReadable = (p: FileProvider): p is Readable => typeof p.read === "function";
 export const isWritable = (p: FileProvider): p is Writable => typeof p.write === "function";
@@ -100,6 +107,7 @@ export const isFilePicker = (p: FileProvider): p is FilePicker => typeof p.pickF
 export const isSaveAsTarget = (p: FileProvider): p is SaveAsTarget => typeof p.saveAs === "function";
 export const hasSiblingFiles = (p: FileProvider): p is SiblingFiles =>
   typeof p.hasSiblings === "function" && typeof p.readSibling === "function" && typeof p.writeSibling === "function";
+export const canLocate = (p: FileProvider): p is FileLocator => typeof p.locate === "function";
 export const hasRecentFolders = (p: FileProvider): p is RecentFolders =>
   typeof p.recentFolder === "function" && typeof p.reopenRecent === "function";
 
