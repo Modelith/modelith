@@ -30,11 +30,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web --no-audit --no-fund
       # 公開する版で e2e・UI テストを流し、そのレポートも一緒に公開する（失敗したら公開しない）
-      - name: Chromium for e2e
-        run: npx playwright install --with-deps chromium
-        working-directory: web
+      # ブラウザは Playwright の公式イメージ（Docker）の中で動かす（scripts/e2e.sh）
       - name: e2e and UI tests
-        run: npm run e2e --prefix web
+        run: scripts/e2e.sh
       - name: Build
         run: npm run build --prefix web
         env:

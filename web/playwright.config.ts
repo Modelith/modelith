@@ -3,9 +3,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 4180;
+// 基準のブラウザ（Playwright の公式イメージの中。scripts/e2e.sh が起動する）。あればそこへつなぐ
+const REFERENCE_WS = process.env.PW_REFERENCE_WS;
 
 export default defineConfig({
   testDir: "e2e",
+  // 画面は基準のブラウザ（Linux）で描くので、テストを動かす OS によらず同じ基準画像を使う
+  snapshotPathTemplate: "{testDir}/{testFilePath}-snapshots/{arg}{-projectName}-linux{ext}",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0, // 不安定なテストは直す。再実行で隠さない
@@ -21,6 +25,8 @@ export default defineConfig({
     // レポートで人が確かめられるよう、すべてのテストの最後の画面を残す。失敗したときは操作の記録（trace）も残す
     screenshot: "on",
     trace: "retain-on-failure",
+    // 基準のブラウザから、手元で配信しているアプリ（localhost）を開けるようにする
+    ...(REFERENCE_WS ? { connectOptions: { wsEndpoint: REFERENCE_WS, exposeNetwork: "<loopback>" } } : {}),
   },
   expect: {
     // UI テストの比較。アニメーションとカーソルを止める。画素ごとの色の差は 0.05 まで（アンチエイリアスの揺れ）許し、それを超える画素は 1 つも許さない
