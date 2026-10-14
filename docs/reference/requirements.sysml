@@ -214,7 +214,8 @@ package ModelithRequirements {
             doc /* サーバを持たない静的なファイルとして配信でき、誰でも自分の環境に置ける */
         }
         requirement def <'C-5'> LegalNoticeReq {
-            doc /* 画面から著作権表示・無保証であること・ライセンス本文（AGPL-3.0 とプラグイン例外）を確かめられ、同梱する第三者の部品のライセンス文を配布物に添える（AGPL 第 5 条 (d)・OFL・MIT・Apache-2.0） */
+            doc /* 画面に著作権表示・無保証であること・ライセンスの条件で再配布できることを示し（AGPL 第 0 条の適切な法的表示）、ライセンスの中身は動いている版の GitHub のライセンスの節で読めるようにする。
+                   本体のライセンス文（AGPL-3.0 とプラグイン例外）と、同梱する第三者の部品のライセンス文は、配布物に添える（AGPL 第 4・6 条、OFL・MIT・Apache-2.0） */
         }
         requirement def <'C-7'> TrademarkReq {
             doc /* SysML®・OMG® が Object Management Group, Inc. の登録商標、KerML™ が同社の商標であることと、Modelith が OMG と関係のない独立したプロジェクトで、OMG の認定や推奨を受けていないことを、画面と README に示す。仕様への適合（conformance）はうたわない（仕様書の TRADEMARKS・COMPLIANCE） */

@@ -53,6 +53,8 @@ function initMenus(): void {
   $("#appCopyright").textContent = __APP_COPYRIGHT__;
   // AGPL §13：動いている版のソースを指す
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#sourceLink").href = `https://github.com/modelith/modelith/tree/${__APP_COMMIT__}`;
+  // ライセンスの中身（AGPL-3.0・プラグイン例外・無保証）は、動いている版の GitHub のライセンスの節で読んでもらう
+  if (__APP_COMMIT__) $<HTMLAnchorElement>("#licenseLink").href = `https://github.com/modelith/modelith/blob/${__APP_COMMIT__}/README.md#license`;
 }
 
 function initToolbar(): void {

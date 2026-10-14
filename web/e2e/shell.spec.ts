@@ -29,7 +29,7 @@ test("C-3: ヘルプのソースへのリンクは、動いている版のコミ
   await expect(page.locator("#appVersion")).toHaveText(/^\d+\.\d+\.\d+\S* \([0-9a-f]{7}\)$/);
 });
 
-test("C-5: ヘルプに著作権・無保証・ライセンスを示し、本体と同梱物のライセンス文を配信する", async ({ page, request }) => {
+test("C-5: ヘルプに著作権・無保証・再配布の条件を示してライセンスへつなぎ、本体と同梱物のライセンス文を配信する", async ({ page, request }) => {
   // Arrange
   await openApp(page);
   // Act
@@ -39,7 +39,8 @@ test("C-5: ヘルプに著作権・無保証・ライセンスを示し、本体
   // Assert
   await expect(page.locator("#appCopyright")).toHaveText("Copyright (C) 2026 The Modelith Authors");
   await expect(page.locator("#legal")).toContainText("無保証");
-  await expect(page.locator("#licenseLink")).toHaveAttribute("href", "LICENSE.txt");
+  await expect(page.locator("#licenseLink")).toHaveAttribute("href", /^https:\/\/github\.com\/modelith\/modelith(\/blob\/[0-9a-f]{40}\/README\.md)?#license$/);
+  await expect(page.locator("#legal")).toContainText("上のライセンスの条件で再配布・改変できます");
   await expect(page.locator("#noticesLink")).toHaveAttribute("href", "licenses.txt");
   expect(license).toMatch(/^Copyright \(C\) 2026 The Modelith Authors\n/);
   expect(license).toContain("GNU AFFERO GENERAL PUBLIC LICENSE");
