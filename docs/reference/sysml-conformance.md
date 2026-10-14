@@ -238,7 +238,7 @@ v1（UML4SysML・XMI）の抽象構文を v2 へ写す規則であり、Modelith
 
 | 優先 | 項目 | 理由 |
 | --- | --- | --- |
-| 高 | 画面から `view` を作る（ADR-0005、F-VIEW-8） | 表示（F-VIEW-7）は済。次は、画面で作った図を `view` としてテキストに書く |
+| 済 | 画面から `view` を作る（ADR-0005、F-VIEW-8） | 図を保存すると `view` を書き、図に入れる・外すと `expose` を足す・消す。利用者には view・expose という言葉を見せない |
 | 済 | `view`・`expose`・`filter`・`render`・標準ビュー定義の表示（F-VIEW-7） | 2026-10-14 に対応した（`web/src/core/views.ts`、`spec.test.ts`）。`filter` の式と、専用の描き方の無い標準ビュー定義は △・× のまま |
 | 済 | 前置メタデータ・`:>`/`:>>`/`redefines` の取り違え・引用名と短い名前・知らない文の通知 | 2026-10-14 に直した（ADR-0013、`web/src/core/spec.test.ts`） |
 | 中 | `import`・`alias` と修飾名の解決 | 複数のパッケージをまたぐモデルで誤る |
