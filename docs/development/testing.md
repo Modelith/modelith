@@ -31,6 +31,7 @@ scripts/e2e.sh -g F-FILE       # 要求 ID でしぼる（引数は Playwright �
 - イメージの版は `web/package.json` の `@playwright/test` と同じにする（版を固定する）。Playwright を上げたら、基準画像も作り直す。
 - 手元・CI・公開のワークフローは、すべて同じイメージを使う。手元で通れば CI でも通る。
 - Docker が無い手元では、手元の Chromium で e2e だけを動かし、UI テストは飛ばす（見た目は CI で比べる）。CI では Docker が無ければ失敗にする。
+- クラウドの作業環境（Claude Code on the web）では、セッションの開始時に Docker のデーモンが止まっているので、`scripts/e2e.sh` が起動する。
 
 ## レポート（人が読むもの）
 
