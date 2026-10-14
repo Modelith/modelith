@@ -3,6 +3,9 @@
 import { expect, nodeKeys, openApp, putFiles, test, typeAtEnd } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 
+// 画素はフォントや描画の設定で変わるので、基準のブラウザ（scripts/e2e.sh が Docker で起動する）でだけ比べる
+test.skip(!process.env.PW_REFERENCE_WS, "UI テストは基準のブラウザでだけ比べる（scripts/e2e.sh）");
+
 /** 画面が落ち着くまで待つ（トーストが消え、フォントが読み込まれる）。 */
 async function settle(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready);

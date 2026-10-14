@@ -17,10 +17,20 @@
 ## 実行
 
 ```bash
-npm test --prefix web                 # 単体・結合
-npm run e2e --prefix web              # e2e・UI（ビルドしてから Chromium で操作する）
-npm run e2e --prefix web -- -g F-FILE # 要求 ID でしぼる
+npm test --prefix web          # 単体・結合
+scripts/e2e.sh                 # e2e・UI（ビルドしてから、基準のブラウザで操作する）
+scripts/e2e.sh -g F-FILE       # 要求 ID でしぼる（引数は Playwright にそのまま渡す）
 ```
+
+### 基準のブラウザ
+
+画面の画素は、同じ Chromium でも OS のフォントや描画の設定で変わる（改行の位置がずれることもある）。
+どこで動かしても同じ画像になるよう、`scripts/e2e.sh` はブラウザを **Playwright の公式イメージ（Docker）** の中で動かし、
+テストは手元の Node から、そのブラウザにつなぐ（Playwright の `run-server`）。
+
+- イメージの版は `web/package.json` の `@playwright/test` と同じにする（版を固定する）。Playwright を上げたら、基準画像も作り直す。
+- 手元・CI・公開のワークフローは、すべて同じイメージを使う。手元で通れば CI でも通る。
+- Docker が無い手元では、手元の Chromium で e2e だけを動かし、UI テストは飛ばす（見た目は CI で比べる）。CI では Docker が無ければ失敗にする。
 
 ## レポート（人が読むもの）
 
@@ -42,15 +52,15 @@ npm run e2e --prefix web -- -g F-FILE # 要求 ID でしぼる
 
 意図して見た目を変えたときだけ更新する。
 
-1. `npm run e2e --prefix web -- e2e/visual.spec.ts` で、どの画面が変わったかを確かめる（レポートに差分が出る）。
-2. 変化が意図どおりなら、下の手順で CI の環境の基準画像を作り直す（手元の確認だけなら `--update-snapshots` でもよい）。
+1. `scripts/e2e.sh e2e/visual.spec.ts` で、どの画面が変わったかを確かめる（レポートに差分が出る）。
+2. 変化が意図どおりなら、`scripts/e2e.sh e2e/visual.spec.ts --update-snapshots=all` で基準画像を作り直す。
+   変わっていない画像は、同じ内容のまま書き直されるので差分に出ない。
 3. 更新した画像を PR に含め、PR の説明に「何が・なぜ変わったか」を書く。レビューでは画像の差分を確かめる。
 
-基準画像は **CI の環境で作る**。同じ Linux・Chromium でも、OS に入っているフォントや描画の設定で画素が少し変わるため、
-手元で作った画像は CI と合わないことがある。
+手元に Docker が無いときは、CI で作り直す。
 
 1. トピックブランチのコミットメッセージに `[ui-baselines]` を含めて push する。
-2. ワークフロー `UI baselines` が CI の環境で基準画像を作り、成果物 `ui-baselines` に置く。
+2. ワークフロー `UI baselines` が同じ基準のブラウザで基準画像を作り、成果物 `ui-baselines` に置く。
    成果物を取れない環境（エージェントなど）のために、ログの `=====BEGIN UI BASELINES=====` から `=====END UI BASELINES=====` の間にも
    tar.gz を base64 で出す（`base64 -d | tar xz -C web/e2e` で展開できる）。
 3. 展開した画像を `web/e2e/visual.spec.ts-snapshots/` に置いてコミットし、差分を確かめてから push する。
