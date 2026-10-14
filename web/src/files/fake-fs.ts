@@ -87,6 +87,17 @@ export class FakeDir implements DirHandleLike {
     return d;
   }
 
+  async resolve(h: FileHandleLike): Promise<string[] | null> {
+    for (const [name, e] of this.entries) {
+      if (e === h) return [name];
+      if (e instanceof FakeDir) {
+        const sub = await e.resolve(h);
+        if (sub) return [name, ...sub];
+      }
+    }
+    return null;
+  }
+
   async queryPermission(): Promise<PermissionState> {
     return this.permission;
   }
@@ -103,9 +114,11 @@ const abort = (): DOMException => new DOMException("cancelled", "AbortError");
 export class FakeFsApi implements FsApi {
   folder: FakeDir | null = null;
   openFile: FakeFile | null = null;
-  saveTo: FakeFile | null = null;
+  /** 最後にフォルダを選び始めた場所。 */
+  startIn: FileHandleLike | undefined;
 
-  async showDirectoryPicker(): Promise<FakeDir> {
+  async showDirectoryPicker(opts: { startIn?: FileHandleLike }): Promise<FakeDir> {
+    this.startIn = opts.startIn;
     if (!this.folder) throw abort();
     return this.folder;
   }
@@ -113,11 +126,6 @@ export class FakeFsApi implements FsApi {
   async showOpenFilePicker(): Promise<FakeFile[]> {
     if (!this.openFile) throw abort();
     return [this.openFile];
-  }
-
-  async showSaveFilePicker(): Promise<FakeFile> {
-    if (!this.saveTo) throw abort();
-    return this.saveTo;
   }
 }
 

@@ -68,19 +68,17 @@ export function removeRange(text: string, start: number, end: number): { text: s
   return { text: text.slice(0, a) + text.slice(b), at: a };
 }
 
-/** 配置情報を `@layout` コメントとして書き込む（無ければ末尾に足す）。空のビューは書かない。 */
-export function writeLayout(text: string, layout: Record<string, Record<string, unknown>>): string {
-  const json =
-    "{\n" +
-    Object.entries(layout)
-      .filter(([, v]) => Object.keys(v).length)
-      .map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
-      .join(",\n") +
-    "\n}";
-  const block = `/* @layout ${json} */`;
+/**
+ * 古い形式の配置（`@layout` コメント）をテキストから消す（ADR-0005 の移行）。無ければそのまま返す。
+ * コメントだけの行は行ごと消し、末尾にあったときは後ろに残る空行もまとめる。
+ */
+export function removeLayoutComment(text: string): string {
   const m = LAYOUT_RE.exec(text);
-  if (m) return text.slice(0, m.index) + block + text.slice(m.index + m[0].length);
-  return text.replace(/\s*$/, "") + "\n\n" + block + "\n";
+  if (!m) return text;
+  const end = m.index + m[0].length;
+  const { text: t } = removeRange(text, m.index, end);
+  if (!t.trim()) return "";
+  return end >= text.trimEnd().length ? t.replace(/\s*$/, "\n") : t;
 }
 
 /** 2 つのテキストの差分がある範囲（新しいテキスト上の [開始, 終了)）。 */

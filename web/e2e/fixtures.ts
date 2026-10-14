@@ -5,7 +5,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 /** ピッカーの置き換え（ブラウザ側で動く）。 */
 function installPickers(): void {
-  const w = window as unknown as Record<string, unknown> & { __e2e: { openFile?: string; saveAs?: string } };
+  const w = window as unknown as Record<string, unknown> & { __e2e: { openFile?: string } };
   w.__e2e = {};
   const project = async (): Promise<FileSystemDirectoryHandle> =>
     (await navigator.storage.getDirectory()).getDirectoryHandle("project", { create: true });
@@ -15,8 +15,6 @@ function installPickers(): void {
     if (!name) throw new DOMException("cancelled", "AbortError");
     return [await (await project()).getFileHandle(name)];
   };
-  w["showSaveFilePicker"] = async ({ suggestedName }: { suggestedName: string }) =>
-    (await project()).getFileHandle(w.__e2e.saveAs ?? suggestedName, { create: true });
 }
 
 /** File System Access API が無いブラウザ（Safari・Firefox）のふりをする。 */
@@ -24,7 +22,6 @@ function removeFsAccess(): void {
   const w = window as unknown as Record<string, unknown>;
   delete w["showDirectoryPicker"];
   delete w["showOpenFilePicker"];
-  delete w["showSaveFilePicker"];
 }
 
 export const test = base.extend<{ fsAccess: boolean }>({
@@ -64,7 +61,7 @@ export async function putFiles(page: Page, files: Record<string, string>): Promi
 
 /**
  * project フォルダ（OPFS）のファイルを読む。無ければ null。
- * 保存は一時ファイルに書いてから差し替えるので、保存の途中ではファイルが一瞬見つからないことがある。
+ * 保存は一時ファイルに書いてから差し替えるので、保存の途中ではファイルが一瞬見つからない・読めないことがある。
  * expect.poll で待つときは null を「まだ」として扱えるよう、例外にしない。
  */
 export async function readFile(page: Page, path: string): Promise<string | null> {
@@ -76,7 +73,8 @@ export async function readFile(page: Page, path: string): Promise<string | null>
       for (const s of segs) d = await d.getDirectoryHandle(s);
       return await (await (await d.getFileHandle(name)).getFile()).text();
     } catch (e) {
-      if (e instanceof DOMException && e.name === "NotFoundError") return null;
+      // NotReadableError は、読もうとしたファイルが書き込みで差し替えられた（保存の途中）
+      if (e instanceof DOMException && (e.name === "NotFoundError" || e.name === "NotReadableError")) return null;
       throw e;
     }
   }, path);

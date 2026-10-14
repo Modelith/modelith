@@ -50,6 +50,7 @@ test("F-FILE-3: フォルダに新しいファイルを作れ、無題の文書�
   await page.locator('[data-cmd="new"]').click();
   await typeAtEnd(page, "package U;\n");
   await page.keyboard.press("Control+s");
+  await page.locator('#dialogButtons [data-id="ok"]').click(); // 開いているフォルダに、名前を確かめて保存する
   // Assert
   await expect(page.locator('#explorer [data-file][title="models/c.sysml"]')).toBeVisible();
   await expect.poll(() => readFile(page, "untitled-1.sysml")).toBe("package U;\n");

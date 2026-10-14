@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEdits, diffRange, indentAt, insertInto, lineStart, removeRange, writeLayout } from "./text-ops";
+import { applyEdits, diffRange, indentAt, insertInto, lineStart, removeLayoutComment, removeRange } from "./text-ops";
 
 describe("lineStart / indentAt", () => {
   it("先頭行の位置は 0（境界値: pos = 0）", () => {
@@ -108,23 +108,41 @@ describe("removeRange", () => {
   });
 });
 
-describe("writeLayout", () => {
-  it("@layout が無ければ末尾に足す", () => {
+describe("removeLayoutComment（ADR-0005 の移行）", () => {
+  it("末尾の @layout を、前の空行ごと消す", () => {
     // Arrange
-    const layout = { trace: { A: [0, 0] } };
+    const text = 'package P {}\n\n/* @layout {\n  "trace": {"A":[0,0]}\n} */\n';
     // Act
-    const t = writeLayout("package P {}\n\n", layout);
+    const t = removeLayoutComment(text);
     // Assert
-    expect(t).toBe('package P {}\n\n/* @layout {\n  "trace": {"A":[0,0]}\n} */\n');
+    expect(t).toBe("package P {}\n");
   });
 
-  it("既存の @layout を置き換え、空のビューは書かない", () => {
+  it("途中の行にある @layout は、その行だけを消す", () => {
     // Arrange
-    const text = 'x\n/* @layout {"old":{}} */\ny';
+    const text = 'x\n/* @layout {"a":{}} */\ny\n';
     // Act
-    const t = writeLayout(text, { a: {}, b: { K: [1, 2] } });
+    const t = removeLayoutComment(text);
     // Assert
-    expect(t).toBe('x\n/* @layout {\n  "b": {"K":[1,2]}\n} */\ny');
+    expect(t).toBe("x\ny\n");
+  });
+
+  it("@layout が無ければ変えない（境界値）", () => {
+    // Arrange
+    const text = "package P;\n/* note */\n";
+    // Act
+    const t = removeLayoutComment(text);
+    // Assert
+    expect(t).toBe(text);
+  });
+
+  it("@layout だけのテキストは空になる（境界値）", () => {
+    // Arrange
+    const text = '/* @layout {} */\n';
+    // Act
+    const t = removeLayoutComment(text);
+    // Assert
+    expect(t).toBe("");
   });
 });
 

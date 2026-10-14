@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BrowserFileProvider } from "../files/browser-file";
+import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { FakeDir, FakeFsApi, MemoryHandleStore } from "../files/fake-fs";
 import { LocalFolderProvider } from "../files/local-folder";
 import { ProviderRegistry, type DirEntry, type FileRef } from "../files/types";
@@ -11,13 +11,18 @@ function setup() {
   const api = new FakeFsApi();
   const local = new LocalFolderProvider(api, new MemoryHandleStore());
   const downloads: string[] = [];
-  const browser = new BrowserFileProvider({ choose: async () => null, download: (name) => downloads.push(name) });
+  let picked: PickedFile[] = [];
+  const browser = new BrowserFileProvider({ choose: async () => picked, download: (name) => downloads.push(name) });
   const kv = new Map<string, string>();
   const drafts = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
   const ws = new Workspace(new ProviderRegistry([local, browser]), drafts);
   const root = new FakeDir("project");
   api.folder = root;
-  return { api, local, browser, downloads, kv, drafts, ws, root };
+  /** 次に「ファイルを開く」で選ぶファイル（フォルダを開けないブラウザ）。 */
+  const pick = (files: PickedFile[]): void => {
+    picked = files;
+  };
+  return { api, local, browser, downloads, kv, drafts, ws, root, pick };
 }
 
 function fileIn(entries: DirEntry[], path: string): FileRef {
@@ -132,19 +137,32 @@ describe("Workspace: 無題の文書と名前を付けて保存（F-FILE-3・10�
     expect(next.list()[0]?.text).toBe("package U2;");
   });
 
-  it("無題の文書を保存すると保存先を選ばせ、以後はそのファイルの文書になり下書きから消える", async () => {
+  it("無題の文書を開いているフォルダに名前を付けて保存すると、以後はそのファイルの文書になり下書きから消える", async () => {
     // Arrange
     const s = setup();
-    const target = new FakeDir("x").put("saved.sysml", "");
-    s.api.saveTo = target;
+    await s.ws.openFolder(s.local);
     const doc = s.ws.newUntitled("無題", "package U;");
     // Act
-    const outcome = await s.ws.save(doc.key, s.local);
+    await s.ws.saveToFolder(doc.key, "models/u.sysml");
     // Assert
-    expect(outcome).toBe("saved");
-    expect(target.content).toBe("package U;");
-    expect(doc.ref?.name).toBe("saved.sysml");
+    expect((s.root.entries.get("models") as FakeDir).entries.get("u.sysml")).toMatchObject({ content: "package U;" });
+    expect(doc.ref?.path).toBe("models/u.sysml");
+    expect(s.ws.isDirty(doc)).toBe(false);
     expect(s.drafts.load()).toEqual([]);
+    expect(fileIn(s.ws.folder()!.entries, "models/u.sysml")).toBeTruthy();
+  });
+
+  it("同じ名前のファイルがあれば保存せず、無題のまま（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("u.sysml", "keep");
+    await s.ws.openFolder(s.local);
+    const doc = s.ws.newUntitled("無題", "package U;");
+    // Act
+    const act = s.ws.saveToFolder(doc.key, "u.sysml");
+    // Assert
+    await expect(act).rejects.toThrow("既にあります");
+    expect(doc.ref).toBeNull();
   });
 
   it("保存先の選択をやめたら無題のまま（異常系）", async () => {
@@ -152,7 +170,7 @@ describe("Workspace: 無題の文書と名前を付けて保存（F-FILE-3・10�
     const s = setup();
     const doc = s.ws.newUntitled("無題", "x");
     // Act
-    const outcome = await s.ws.save(doc.key, s.local);
+    const outcome = await s.ws.save(doc.key, { id: "t", label: "t", saveAs: async () => null });
     // Assert
     expect(outcome).toBe("cancelled");
     expect(doc.ref).toBeNull();
@@ -434,7 +452,7 @@ describe("Workspace: 配置ファイル（ADR-0005、F-VIEW-3・6、C-6）", () 
     s.ws.setLayout(doc.key, "L2");
     // Act
     const dirty = s.ws.isDirty(doc);
-    const outcome = await s.ws.save(doc.key, s.local);
+    const outcome = await s.ws.save(doc.key, s.browser);
     // Assert
     expect(dirty).toBe(true);
     expect(outcome).toBe("saved");
@@ -450,7 +468,7 @@ describe("Workspace: 配置ファイル（ADR-0005、F-VIEW-3・6、C-6）", () 
     s.ws.setText(doc.key, "package B;");
     s.ws.setLayout(doc.key, "L3");
     // Act
-    await s.ws.save(doc.key, s.local);
+    await s.ws.save(doc.key, s.browser);
     // Assert
     expect(file.content).toBe("package B;");
     expect((s.root.entries.get("a.layout.json") as { content: string }).content).toBe("L3");
@@ -462,7 +480,7 @@ describe("Workspace: 配置ファイル（ADR-0005、F-VIEW-3・6、C-6）", () 
     const { doc } = await openA(s);
     s.ws.setText(doc.key, "package B;");
     // Act
-    await s.ws.save(doc.key, s.local);
+    await s.ws.save(doc.key, s.browser);
     // Assert
     expect(s.root.entries.has("a.layout.json")).toBe(false);
   });
@@ -508,12 +526,104 @@ describe("Workspace: 配置ファイル（ADR-0005、F-VIEW-3・6、C-6）", () 
     const s = setup();
     await s.ws.openFolder(s.local);
     const doc = s.ws.newUntitled("u.sysml", "package U;", "L7");
-    const ref = await s.local.createFile(s.ws.folder()!.ref, "u.sysml", "");
-    // Act（名前を付けて保存の保存先として、フォルダの中のファイルを返す）
-    const outcome = await s.ws.saveAs(doc.key, { id: "t", label: "t", saveAs: async () => ({ ref, version: "1" }) });
+    // Act
+    await s.ws.saveToFolder(doc.key, "u.sysml");
     // Assert
-    expect(outcome).toBe("saved");
     expect(doc.layoutHome).toBe("sibling");
     expect((s.root.entries.get("u.layout.json") as { content: string }).content).toBe("L7");
+  });
+});
+
+describe("Workspace: 1 つだけ開いたファイルのフォルダを開く（ADR-0005、F-VIEW-6）", () => {
+  async function openOne(s: ReturnType<typeof setup>, dir = s.root) {
+    s.api.openFile = dir.put("one.sysml", "package One;");
+    const doc = (await s.ws.openWith(s.local))!;
+    s.ws.setLayout(doc.key, "L8");
+    return doc;
+  }
+
+  it("そのファイルのあるフォルダを開くと、配置の保存先ができ、保存で隣の配置ファイルに書く", async () => {
+    // Arrange
+    const s = setup();
+    const doc = await openOne(s);
+    // Act
+    const outcome = await s.ws.attachToFolder(doc.key, s.local);
+    await s.ws.save(doc.key, s.browser);
+    // Assert
+    expect(outcome).toBe("attached");
+    expect(s.ws.folder()?.ref.name).toBe("project");
+    expect(s.ws.layoutUnsaved(doc)).toBe(false);
+    expect((s.root.entries.get("one.layout.json") as { content: string }).content).toBe("L8");
+    expect(s.ws.isDirty(doc)).toBe(false);
+  });
+
+  it("選んだフォルダにそのファイルが無ければ、配置は未保存のまま（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    const doc = await openOne(s, new FakeDir("elsewhere"));
+    // Act
+    const outcome = await s.ws.attachToFolder(doc.key, s.local);
+    // Assert
+    expect(outcome).toBe("notInFolder");
+    expect(s.ws.layoutUnsaved(doc)).toBe(true);
+  });
+
+  it("フォルダの選択をやめたら何も変わらない（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    const doc = await openOne(s);
+    s.api.folder = null;
+    // Act
+    const outcome = await s.ws.attachToFolder(doc.key, s.local);
+    // Assert
+    expect(outcome).toBe("cancelled");
+    expect(s.ws.folder()).toBeNull();
+    expect(doc.layoutHome).toBe("none");
+  });
+});
+
+describe("Workspace: 古い形式の配置の移行（ADR-0005、C-6）", () => {
+  it("移すと、テキストからコメントを消し、次の保存でテキストと配置ファイルを一緒に書く", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s, "package A;\n/* @layout {} */\n");
+    s.ws.initLayout(doc.key, "L-legacy");
+    // Act
+    s.ws.moveLegacyLayout(doc.key, "package A;\n");
+    await s.ws.save(doc.key, s.browser);
+    // Assert
+    expect(file.content).toBe("package A;\n");
+    expect((s.root.entries.get("a.layout.json") as { content: string }).content).toBe("L-legacy");
+  });
+});
+
+describe("Workspace: フォルダを開けないブラウザの配置ファイル（ADR-0005、F-FILE-10・F-VIEW-6）", () => {
+  it("モデルと配置ファイルを一緒に選ぶと、配置も読む", async () => {
+    // Arrange
+    const s = setup();
+    s.pick([
+      { name: "m.sysml", text: async () => "package M;" },
+      { name: "m.layout.json", text: async () => "L9" },
+    ]);
+    // Act
+    const doc = (await s.ws.openWith(s.browser))!;
+    // Assert
+    expect(doc.layout).toBe("L9");
+    expect(s.ws.isDirty(doc)).toBe(false);
+  });
+
+  it("配置を変えると変更ありになり、保存でモデルと配置ファイルを両方ダウンロードする", async () => {
+    // Arrange
+    const s = setup();
+    s.pick([{ name: "m.sysml", text: async () => "package M;" }]);
+    const doc = (await s.ws.openWith(s.browser))!;
+    s.ws.setLayout(doc.key, "L10");
+    // Act
+    const dirty = s.ws.isDirty(doc);
+    await s.ws.save(doc.key, s.browser);
+    // Assert
+    expect(dirty).toBe(true);
+    expect(s.downloads).toEqual(["m.sysml", "m.layout.json"]);
+    expect(s.ws.isDirty(doc)).toBe(false);
   });
 });

@@ -47,15 +47,38 @@ async function dragNode(page: Page, key: string, dx: number, dy: number): Promis
 
 const MODEL = "package A {\n    part def Alpha;\n    part def Beta;\n}\n";
 
-/** project フォルダに a.sysml（と配置ファイル）を置き、フォルダを開いて a.sysml を開く。 */
-async function openInFolder(page: Page, files: Record<string, string>): Promise<void> {
+/** project フォルダに a.sysml（と配置ファイル）を置き、フォルダを開いて a.sysml を開く（ビューはまだ開かない）。 */
+async function openA(page: Page, files: Record<string, string>): Promise<void> {
   await openApp(page);
   await putFiles(page, files);
   await page.locator('[data-cmd="openFolder"]').click();
   await page.locator('#explorer [data-file][title="a.sysml"]').click();
   await expect(page.locator("#docName")).toHaveText("a.sysml");
+}
+
+/** a.sysml を開き、すべての要素のビューを表示する。 */
+async function openInFolder(page: Page, files: Record<string, string>): Promise<void> {
+  await openA(page, files);
   await openAllView(page);
 }
+
+/** project フォルダの one.sysml だけを、ファイルを 1 つ選んで開く（フォルダは開かない）。 */
+async function openOneFile(page: Page): Promise<void> {
+  await openApp(page);
+  await putFiles(page, { "one.sysml": MODEL });
+  await page.evaluate(() => ((window as unknown as { __e2e: { openFile: string } }).__e2e.openFile = "one.sysml"));
+  await page.keyboard.press("Control+o");
+  await expect(page.locator("#docName")).toHaveText("one.sysml");
+  await openAllView(page);
+}
+
+/** ダイアログの題名を確かめて、ボタンを押す。 */
+async function answer(page: Page, title: string, id: string): Promise<void> {
+  await expect(page.locator("#dialogTitle")).toHaveText(title);
+  await page.locator(`#dialogButtons [data-id="${id}"]`).click();
+}
+
+const LEGACY = MODEL + '\n/* @layout {\n  "trace": {"Alpha":[600,400]}\n} */\n';
 
 /** 部品の定義は既定のタブに出ないので、すべての要素のビューを開く。 */
 async function openAllView(page: Page): Promise<void> {
@@ -103,30 +126,69 @@ test.describe("配置ファイル（ADR-0005）", () => {
     await expect(page.locator("#docName")).toHaveText("a.sysml");
   });
 
-  test("F-VIEW-3: 古い形式（テキスト内の @layout）の配置も読み、開いただけでは変更の印を付けない", async ({ page }) => {
+  test("F-VIEW-3・C-6: 古い形式（テキスト内の @layout）の配置も読み、移すかを尋ね、そのままにすれば何も変えない", async ({ page }) => {
     // Arrange
-    const legacy = MODEL + '\n/* @layout {\n  "trace": {"Alpha":[600,400]}\n} */\n';
+    await openA(page, { "a.sysml": LEGACY });
     // Act
-    await openInFolder(page, { "a.sysml": legacy });
+    await answer(page, "古い形式の配置", "keep");
     await page.locator(".tabadd summary").click();
     await page.locator('[data-open="trace"]').click();
     // Assert
     await expect(page.locator('#gNodes .node[data-key="Alpha"]')).toHaveAttribute("transform", /translate\(600,\s*400\)/);
-    await expect(page.locator("#docName")).toHaveText("a.sysml");
+    await expect(page.locator("#docName")).toHaveText("a.sysml"); // 変更の印が無い
+    expect(await editorText(page)).toBe(LEGACY);
   });
 
-  test("F-VIEW-6: 1 つだけ開いたファイルで配置を変えると「配置は未保存」と示す", async ({ page }) => {
+  test("C-6: 古い形式の配置を移すと、保存でテキストからコメントを消し、配置ファイルに書く", async ({ page }) => {
     // Arrange
-    await openApp(page);
-    await putFiles(page, { "one.sysml": MODEL });
-    await page.evaluate(() => ((window as unknown as { __e2e: { openFile: string } }).__e2e.openFile = "one.sysml"));
-    await page.keyboard.press("Control+o");
-    await expect(page.locator("#docName")).toHaveText("one.sysml");
-    await openAllView(page);
+    await openA(page, { "a.sysml": LEGACY });
     // Act
+    await answer(page, "古い形式の配置", "move");
+    await page.keyboard.press("Control+s");
+    // Assert
+    await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"trace": \{\s*"Alpha": \[600,400\]/);
+    expect(await readFile(page, "a.sysml")).toBe(MODEL);
+    expect(await editorText(page)).toBe(MODEL);
+  });
+
+  test("F-VIEW-6: 1 つだけ開いたファイルで配置を変えると「配置は未保存」と示し、保存でフォルダを開けば隣に保存する", async ({ page }) => {
+    // Arrange
+    await openOneFile(page);
     await dragNode(page, "Alpha", 200, 160);
+    const unsaved = await page.locator("#docName .lu").textContent();
+    // Act
+    await page.keyboard.press("Control+s");
+    await answer(page, "配置の保存先", "open");
+    // Assert
+    expect(unsaved).toBe("配置は未保存");
+    await expect.poll(() => readFile(page, "one.layout.json")).toMatch(/"Alpha": \[/);
+    await expect(page.locator("#docName .lu")).toHaveCount(0);
+    await expect(page.locator('#explorer [data-file][title="one.sysml"]')).toBeVisible();
+  });
+
+  test("F-VIEW-6: 保存先を尋ねられて「あとで」を選ぶと、配置は未保存のまま（異常系）", async ({ page }) => {
+    // Arrange
+    await openOneFile(page);
+    await dragNode(page, "Alpha", 200, 160);
+    // Act
+    await page.keyboard.press("Control+s");
+    await answer(page, "配置の保存先", "later");
     // Assert
     await expect(page.locator("#docName .lu")).toHaveText("配置は未保存");
+    expect(await readFile(page, "one.layout.json")).toBeNull();
+  });
+
+  test("F-VIEW-6・F-FILE-3: 新しいファイルは保存先のフォルダと名前を選び、配置ファイルも一緒に作る", async ({ page }) => {
+    // Arrange（サンプルは配置を持つ無題の文書）
+    await openApp(page);
+    // Act
+    await page.keyboard.press("Control+s");
+    await expect(page.locator("#dialogInput")).toHaveValue("electric-kettle.sysml");
+    await answer(page, "名前を付けて保存", "ok");
+    // Assert
+    await expect.poll(() => readFile(page, "electric-kettle.layout.json")).toMatch(/"modelith": "layout"/);
+    expect(await readFile(page, "electric-kettle.sysml")).toBe(await editorText(page));
+    await expect(page.locator('#explorer [data-file][title="electric-kettle.sysml"]')).toBeVisible();
   });
 
   test("F-EDIT-4: 配置の変更も、元に戻す・やり直すができる", async ({ page }) => {

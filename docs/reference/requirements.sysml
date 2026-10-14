@@ -110,7 +110,9 @@ package ModelithRequirements {
             doc /* 未配置の要素は自動で並べ、手で動かした配置は、モデルごとの配置ファイル（model.sysml の隣の model.layout.json）に保存する（ADR-0005） */
         }
         requirement def <'F-VIEW-6'> UnsavedLayoutReq {
-            doc /* 配置の保存先が無いとき（ファイルを 1 つだけ開いた・新規）は「配置は未保存」と画面に示し、保存の際に保存先を選ばせる。配置が黙って失われることはない（ADR-0005） */
+            doc /* 配置の保存先が無いとき（ファイルを 1 つだけ開いた・新規）は「配置は未保存」と画面に示し、保存の際に保存先を選ばせる。配置が黙って失われることはない（ADR-0005）。
+                   新しいファイルは保存先のフォルダと名前を選ばせて、モデルと配置ファイルを一緒に作る。1 つだけ開いたファイルは、そのファイルのあるフォルダを開くよう尋ねる。
+                   フォルダを開けないブラウザでは、保存でモデルと配置ファイルを両方ダウンロードし、開くときに 2 つを一緒に選べば配置も戻る */
         }
         requirement def <'F-VIEW-7'> StandardViewReq {
             doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・StateTransitionView・SequenceView）から決める（ADR-0005） */
@@ -207,7 +209,8 @@ package ModelithRequirements {
             doc /* 画面から著作権表示・無保証であること・ライセンス本文（AGPL-3.0 とプラグイン例外）を確かめられ、同梱する第三者の部品のライセンス文を配布物に添える（AGPL 第 5 条 (d)・OFL・MIT・Apache-2.0） */
         }
         requirement def <'C-6'> NoSilentWriteReq {
-            doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005） */
+            doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
+                   古い形式の配置（テキスト内の @layout コメント）は黙って消さず、配置ファイルに移してコメントを消すかを、ファイルを開いたときに一度だけ尋ねる */
         }
 
         // ---- 導出 --------------------------------------------------
@@ -365,9 +368,10 @@ package ModelithRequirements {
             }
         }
         verification def TextOpsTest {
-            doc /* web/src/core/text-ops.test.ts：図の操作に使うテキスト編集（挿入・削除・配置の書き込み） */
+            doc /* web/src/core/text-ops.test.ts：図の操作に使うテキスト編集（挿入・削除・古い形式の配置コメントの削除） */
             objective {
                 verify DiagramToTextReq;
+                verify NoSilentWriteReq;
             }
         }
         verification def SpecCasesTest {
@@ -383,21 +387,23 @@ package ModelithRequirements {
             }
         }
         verification def LocalFolderProviderTest {
-            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き（偽のファイルシステムで） */
+            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す（偽のファイルシステムで） */
             objective {
                 verify OpenFolderReq;
                 verify RecentFolderReq;
                 verify LayoutReq;
+                verify UnsavedLayoutReq;
             }
         }
         verification def BrowserFileProviderTest {
-            doc /* web/src/files/browser-file.test.ts：読み込みとダウンロードでの保存 */
+            doc /* web/src/files/browser-file.test.ts：読み込みとダウンロードでの保存、モデルと一緒に選んだ・ダウンロードした配置ファイル */
             objective {
                 verify FallbackReq;
+                verify UnsavedLayoutReq;
             }
         }
         verification def WorkspaceTest {
-            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」 */
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行 */
             objective {
                 verify OpenSaveReq;
                 verify NewSaveAsReq;
@@ -432,7 +438,7 @@ package ModelithRequirements {
             }
         }
         verification def EditingE2E {
-            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込み・「配置は未保存」・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
             objective {
                 verify DiagramToTextReq;
                 verify NewPackageGuideReq;
@@ -445,8 +451,9 @@ package ModelithRequirements {
             }
         }
         verification def FilesE2E {
-            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き、代替のブラウザ */
+            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く） */
             objective {
+                verify UnsavedLayoutReq;
                 verify OpenFolderReq;
                 verify OpenSaveReq;
                 verify NewSaveAsReq;

@@ -135,18 +135,15 @@ describe("LocalFolderProvider: 読み書き（F-FILE-2・3）", () => {
     await expect(act).rejects.toThrow("既にあります");
   });
 
-  it("ファイルを選んで開ける・名前を付けて保存できる", async () => {
+  it("ファイルを 1 つ選んで開ける", async () => {
     // Arrange
     const { api, p } = setup();
     api.openFile = new FakeFile("picked.sysml", "picked");
-    api.saveTo = new FakeFile("saved.sysml");
     // Act
     const opened = await p.pickFile();
-    const saved = await p.saveAs("x.sysml", "text");
     // Assert
     expect((await p.read(opened!)).text).toBe("picked");
-    expect(saved?.ref.name).toBe("saved.sysml");
-    expect(api.saveTo.content).toBe("text");
+    expect(p.hasSiblings(opened!)).toBe(false);
   });
 
   it("開いていないファイルは読めない（異常系）", async () => {
@@ -234,5 +231,35 @@ describe("LocalFolderProvider: 隣のファイル（配置ファイル、ADR-000
     // Assert
     expect(can).toBe(false);
     await expect(p.readSibling(ref, "one.layout.json")).rejects.toThrow(/フォルダを開いてください/);
+  });
+});
+
+describe("LocalFolderProvider: 1 つだけ開いたファイルをフォルダの中から探す（ADR-0005、F-VIEW-6）", () => {
+  it("フォルダの中にあれば、フォルダから開いたファイルとして扱え、隣のファイルを読み書きできる", async () => {
+    // Arrange
+    const { api, p, root } = setup();
+    api.openFile = root.put("sub/one.sysml", "package One;");
+    const one = await p.pickFile();
+    const folder = await p.pickFolder(one!);
+    // Act
+    const found = await p.locate(folder!, one!);
+    await p.writeSibling(found!, "one.layout.json", "L");
+    // Assert
+    expect(api.startIn).toBe(api.openFile); // そのファイルのある場所から選び始める
+    expect(found?.path).toBe("sub/one.sysml");
+    expect(p.hasSiblings(found!)).toBe(true);
+    expect(await p.readSibling(found!, "one.layout.json")).toBe("L");
+  });
+
+  it("フォルダの中に無ければ null（異常系: 別のフォルダを選んだ）", async () => {
+    // Arrange
+    const { api, p } = setup();
+    api.openFile = new FakeDir("elsewhere").put("one.sysml", "");
+    const one = await p.pickFile();
+    const folder = await p.pickFolder(one!);
+    // Act
+    const found = await p.locate(folder!, one!);
+    // Assert
+    expect(found).toBeNull();
   });
 });

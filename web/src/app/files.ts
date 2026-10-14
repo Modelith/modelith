@@ -1,14 +1,14 @@
 // ファイル操作の UI（ADR-0010）：エクスプローラー・ファイルメニュー・ショートカット・未保存の警告・外部での変更の読み直し。
 // 判断はワークスペース（web/src/workspace）に任せ、ここは操作を受けて結果を画面に出すだけ。
 
-import { parse } from "../core";
+import { parse, removeLayoutComment } from "../core";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, type FsApi } from "../files/local-folder";
-import { ProviderRegistry, type DirEntry, type FileProvider, type SaveAsTarget } from "../files/types";
+import { ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
-import { Workspace, type Doc } from "../workspace/workspace";
+import { layoutNameFor, suggestName, Workspace, type Doc } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
 import { $, closest, esc, store } from "./dom";
@@ -36,6 +36,8 @@ let recentName: string | null = null;
 let shownKey: string | null = null;
 /** 開いているフォルダのツリーで、閉じているフォルダのパス。 */
 const collapsed = new Set<string>();
+/** 古い形式の配置を移すか、もう尋ねた文書（ファイルを開いたときに一度だけ尋ねる、C-6）。 */
+const legacyAsked = new Set<string>();
 
 /** まだ使われていない無題の名前。 */
 function untitledName(): string {
@@ -44,9 +46,6 @@ function untitledName(): string {
   while (used.has(`untitled-${n}.sysml`)) n++;
   return `untitled-${n}.sysml`;
 }
-
-/** 保存先を選ばせるときの保存先（フォルダを扱えればローカル、無理ならダウンロード）。 */
-const saveTarget = (): SaveAsTarget => local ?? browser;
 
 /** テキスト欄に表示している文書の名前（新しい package の名前の候補に使う）。 */
 export const shownDocName = (): string => (shownKey ? ws.get(shownKey)?.name : undefined) ?? "untitled.sysml";
@@ -57,15 +56,16 @@ export const shownDocName = (): string => (shownKey ? ws.get(shownKey)?.name : u
  * 文書の配置を読む。配置ファイルが無ければ、古い形式（テキスト内の @layout コメント）から読む（ADR-0005 の移行）。
  * 古い形式から読んだ配置は、開いたときの状態として扱い、変更の印は付けない。
  */
-function layoutOf(doc: Doc): Layout {
+function layoutOf(doc: Doc): { layout: Layout; legacy: boolean } {
   if (doc.layout) {
     const { layout, error } = parseLayoutFile(doc.layout);
     if (error) toast(`${doc.name}：${error}`);
-    return layout;
+    return { layout, legacy: false };
   }
-  const legacy = layoutFromJson(parse(doc.text).layout);
-  if (!isEmptyLayout(legacy)) ws.initLayout(doc.key, serializeLayout(legacy));
-  return legacy;
+  const layout = layoutFromJson(parse(doc.text).layout);
+  const legacy = !isEmptyLayout(layout);
+  if (legacy) ws.initLayout(doc.key, serializeLayout(layout));
+  return { layout, legacy };
 }
 
 /** 文書を表示中にし、テキストと図をその内容にする。 */
@@ -78,10 +78,29 @@ function showDoc(key: string): void {
   useHistory(key);
   clearSel();
   S.prevSig = new Map();
-  loadLayout(layoutOf(doc));
+  const { layout, legacy } = layoutOf(doc);
+  loadLayout(layout);
   setText(doc.text, { noHistory: true });
   recordHistory();
   fit();
+  // 配置ファイルに移せるときだけ尋ねる（保存先の無い文書では移せない）
+  if (legacy && doc.layoutHome === "sibling" && !legacyAsked.has(key)) void offerLegacyMove(key);
+}
+
+/** 古い形式の配置（@layout コメント）を配置ファイルに移すかを尋ねる。黙って消さない（ADR-0005、C-6）。 */
+async function offerLegacyMove(key: string): Promise<void> {
+  legacyAsked.add(key);
+  const doc = ws.get(key);
+  if (!doc) return;
+  const r = await ask("古い形式の配置", `「${doc.name}」のテキストには、図の配置（@layout コメント）が書かれています。配置ファイル ${layoutNameFor(doc.name)} に移して、テキストからコメントを消しますか？ 保存するまで、ファイルは変わりません。`, [
+    { id: "keep", label: "そのままにする" },
+    { id: "move", label: "配置ファイルに移す", kind: "primary" },
+  ]);
+  if (r?.id !== "move" || shownKey !== key) return;
+  const text = removeLayoutComment(doc.text);
+  ws.moveLegacyLayout(key, text);
+  setText(text, { fromText: true });
+  toast(`保存すると、配置は ${layoutNameFor(doc.name)} に移ります`);
 }
 
 /** 表示中の文書が無くなったら、空の無題の文書を作る（テキストは常に 1 つ表示する）。 */
@@ -117,6 +136,13 @@ function newUntitled(): void {
   showDoc(ws.newUntitled(untitledName(), "").key);
 }
 
+/** モデルのファイル名として使えるか（使えなければ理由を伝える）。 */
+function isModelPath(path: string): boolean {
+  if (/\.(sysml|kerml)$/i.test(path)) return true;
+  toast("ファイル名は .sysml か .kerml で終えてください");
+  return false;
+}
+
 async function newFileInFolder(): Promise<void> {
   const r = await ask("新しいファイル", "フォルダからの相対パスで入力してください。", [
     { id: "cancel", label: "やめる" },
@@ -124,10 +150,7 @@ async function newFileInFolder(): Promise<void> {
   ], { value: "untitled.sysml", label: "ファイル名" });
   if (r?.id !== "ok") return;
   const path = r.value.trim();
-  if (!/\.(sysml|kerml)$/i.test(path)) {
-    toast("ファイル名は .sysml か .kerml で終えてください");
-    return;
-  }
+  if (!isModelPath(path)) return;
   try {
     showDoc((await ws.createFile(path, "")).key);
   } catch (e) {
@@ -135,21 +158,63 @@ async function newFileInFolder(): Promise<void> {
   }
 }
 
-/** 保存する（as なら名前を付けて保存）。競合したら利用者に選ばせる。 */
+/**
+ * 保存する（as なら名前を付けて保存）。競合したら利用者に選ばせる。
+ * 配置の保存先が無いときは、保存先を選んでもらう（ADR-0005、F-VIEW-6）。
+ */
 async function save(key: string, as = false): Promise<void> {
   flushEdit();
   const doc = ws.get(key);
   if (!doc) return;
   try {
-    const wasUntitled = !doc.ref;
-    const outcome = as ? await ws.saveAs(key, saveTarget()) : await ws.save(key, saveTarget());
-    // 新しく作ったファイルが開いているフォルダの中かもしれないので、一覧を更新する
-    if (outcome === "saved" && (as || wasUntitled)) await ws.refreshFolder();
-    if (outcome === "conflict") await resolveConflict(key);
-    else if (outcome === "saved") toast(ws.canWriteInPlace(doc) ? `「${doc.name}」を保存しました` : `「${doc.name}」をダウンロードしました`);
+    // フォルダを扱えるブラウザでは、新しいファイルはフォルダと名前を選んでもらい、配置ファイルも隣に作る
+    if (local && (as || !doc.ref)) return await saveIntoFolder(key);
+    const outcome = as ? await ws.saveAs(key, browser) : await ws.save(key, browser);
+    if (outcome === "conflict") return await resolveConflict(key);
+    if (outcome !== "saved") return;
+    toast(ws.canWriteInPlace(doc) ? `「${doc.name}」を保存しました` : `「${doc.name}」をダウンロードしました`);
+    if (ws.layoutUnsaved(doc)) await offerFolderForLayout(key);
   } catch (e) {
     toast(`保存できませんでした：${(e as Error).message}`);
   }
+}
+
+/** 保存先のフォルダ（開いていなければ選んでもらう）と名前を選んでもらい、モデルと配置ファイルを一緒に作る。 */
+async function saveIntoFolder(key: string): Promise<void> {
+  if (!local) return;
+  if (!ws.folder()) {
+    if (!(await ws.openFolder(local))) return;
+    showSide("files");
+  }
+  const doc = ws.get(key);
+  const f = ws.folder();
+  if (!doc || !f) return;
+  const r = await ask("名前を付けて保存", `フォルダ「${f.ref.name}」に保存します。フォルダからの相対パスで入力してください。図の配置は、隣の配置ファイル（.layout.json）に一緒に保存します。`, [
+    { id: "cancel", label: "やめる" },
+    { id: "ok", label: "保存", kind: "primary" },
+  ], { value: doc.ref?.path ?? suggestName(doc.name), label: "ファイル名" });
+  if (r?.id !== "ok") return;
+  const path = r.value.trim();
+  if (!isModelPath(path)) return;
+  await ws.saveToFolder(key, path);
+  toast(`「${doc.name}」を保存しました`);
+}
+
+/** 1 つだけ開いたファイルの配置に保存先が無いとき、そのファイルのあるフォルダを開くよう尋ねる（F-VIEW-6）。 */
+async function offerFolderForLayout(key: string): Promise<void> {
+  const doc = ws.get(key);
+  if (!doc || !local) return;
+  const layoutName = layoutNameFor(doc.name);
+  const r = await ask("配置の保存先", `「${doc.name}」だけを開いているため、図の配置を保存する場所がありません。このファイルのあるフォルダを開くと、隣の ${layoutName} に配置を保存できます。`, [
+    { id: "later", label: "あとで" },
+    { id: "open", label: "フォルダを開く", kind: "primary" },
+  ]);
+  if (r?.id !== "open") return;
+  const outcome = await ws.attachToFolder(key, local);
+  if (outcome === "notInFolder") return toast(`選んだフォルダに「${doc.name}」がありません。配置は未保存のままです`);
+  if (outcome !== "attached") return;
+  showSide("files");
+  if ((await ws.save(key, browser)) === "saved") toast(`配置を ${layoutName} に保存しました`);
 }
 
 async function resolveConflict(key: string): Promise<void> {
@@ -161,7 +226,7 @@ async function resolveConflict(key: string): Promise<void> {
     { id: "overwrite", label: "自分の内容で上書きする", kind: "danger" },
   ]);
   if (r?.id === "overwrite") {
-    await ws.save(key, saveTarget(), { force: true });
+    await ws.save(key, browser, { force: true });
     toast(`「${doc.name}」を上書きしました`);
   } else if (r?.id === "reload") {
     await ws.reload(key);
@@ -217,7 +282,7 @@ function renderFiles(): void {
     if (recentName) h += `<br><button data-cmd="reopen">前回のフォルダ「${esc(recentName)}」を開く</button>`;
     h += `</div>`;
   } else {
-    h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">このブラウザではフォルダを開けません（Chrome・Edge で使えます）。「ファイルを開く」で読み込み、保存はダウンロードになります。</div>`;
+    h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">このブラウザではフォルダを開けません（Chrome・Edge で使えます）。「ファイルを開く」で読み込み、保存はダウンロードになります。図の配置ファイル（.layout.json）は、モデルと一緒に選ぶと読み込みます。</div>`;
   }
   $("#explorer").innerHTML = h;
   // テキスト欄の見出しとタブの題名
@@ -263,12 +328,13 @@ function showSide(which: "files" | "model"): void {
 
 /* ---- 登録 ---- */
 
-function chooseFile(): Promise<PickedFile | null> {
+/** ファイルを選ばせる。モデルと配置ファイルを一緒に選べる（ADR-0005）。 */
+function chooseFiles(): Promise<PickedFile[]> {
   const input = $<HTMLInputElement>("#fileInput");
   return new Promise((resolve) => {
     input.value = "";
-    input.onchange = () => resolve(input.files?.[0] ?? null);
-    input.oncancel = () => resolve(null);
+    input.onchange = () => resolve([...(input.files ?? [])]);
+    input.oncancel = () => resolve([]);
     input.click();
   });
 }
@@ -290,7 +356,7 @@ function initMenu(): void {
   cmd("#btnSave", () => void save(shownKey ?? ""));
   cmd("#btnSaveAs", () => void save(shownKey ?? "", true));
   $<HTMLButtonElement>("#btnOpenFolder").disabled = !local;
-  $("#fileNote").textContent = local ? "保存先の無いファイルは、このブラウザに下書き保存されます" : "このブラウザでは、保存はダウンロードになります";
+  $("#fileNote").textContent = local ? "保存先の無いファイルは、このブラウザに下書き保存されます" : "このブラウザでは、保存はダウンロードになります。図の配置は .layout.json として一緒にダウンロードされ、開くときに 2 つを一緒に選ぶと戻ります";
   const auto = $<HTMLInputElement>("#autoSave");
   auto.checked = autoSave;
   auto.onchange = () => {
@@ -370,7 +436,7 @@ async function checkExternal(): Promise<void> {
 export function initFiles(sample: { name: string; text: string; layout: string }): void {
   const w = window as unknown as FsApi;
   local = hasFsAccess(window) ? new LocalFolderProvider(w, idbHandleStore) : null;
-  browser = new BrowserFileProvider({ choose: chooseFile, download: (name, text) => download(name, text, "text/plain;charset=utf-8") });
+  browser = new BrowserFileProvider({ choose: chooseFiles, download: (name, text) => download(name, text, "text/plain;charset=utf-8") });
   const providers: FileProvider[] = local ? [local, browser] : [browser];
   ws = new Workspace(new ProviderRegistry(providers), kvDraftStore(store));
   autoSave = store.get(AUTOSAVE_KEY) === "1";
