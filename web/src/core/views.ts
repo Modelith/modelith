@@ -18,6 +18,14 @@ for (const [name, short, kind] of [
   STANDARD_VIEWS[name] = STANDARD_VIEWS[short] = { std: name, kind };
 }
 
+/** 標準ビュー定義の、画面での名前（ADR-0014）。 */
+const STD_LABEL: Record<string, string> = {
+  GeneralView: "一般の図", InterconnectionView: "内部ブロック図", ActionFlowView: "アクションの流れ図", StateTransitionView: "状態遷移の図",
+  SequenceView: "シーケンス図", GeometryView: "形状の図", GridView: "表の図", BrowserView: "一覧の図",
+};
+/** 図の種類の、画面での名前（型の無い図は一般の図）。 */
+export const stdViewLabel = (std: string | null): string => (std ? (STD_LABEL[std] ?? std) : "一般の図");
+
 /** 標準ビュー定義の名前か（型が見つからないことを問題にしない）。 */
 export const isStandardView = (t: string): boolean => t in STANDARD_VIEWS;
 
@@ -111,15 +119,15 @@ export function buildViews(
     if (v.kind !== "view" || !v.name) continue;
     const t = viewType(v, byName);
     let kind = t.kind;
-    if (!kind) unsupported(v.start, `${t.std} の専用の描き方はまだ無いため、view「${v.name}」はノードと線の図で描きます`);
+    if (!kind) unsupported(v.start, `図「${v.name}」の種類（${stdViewLabel(t.std)}）の描き方はまだ無いため、一般の図として描きます（${t.std}）`);
     if (t.render !== undefined) {
       const r = RENDERINGS[t.render];
       if (r) kind = r;
-      else unsupported(v.start, `render ${t.render} はまだ扱えないため、view「${v.name}」は図で描きます`);
+      else unsupported(v.start, `図「${v.name}」の表し方（${t.render}）はまだ扱えないため、図として描きます（render）`);
     }
     const tests = t.filters.flatMap((f) => {
       const test = filterTest(f, isMetadata);
-      if (!test) unsupported(v.start, `filter ${f} はまだ扱えないため、view「${v.name}」の絞り込みに使っていません`);
+      if (!test) unsupported(v.start, `図「${v.name}」の絞り込み「${f}」はまだ扱えないため、絞り込まずに描きます（filter）`);
       return test ? [test] : [];
     });
     const targets: Entry[] = [];
@@ -127,14 +135,14 @@ export function buildViews(
     for (const x of v.exposes ?? []) {
       const target = resolveQualified(x.target, byName);
       if (!target) {
-        problems.push({ pos: x.start, msg: `expose の対象「${x.target}」が見つかりません` });
+        problems.push({ pos: x.start, msg: `図「${v.name}」に出す要素「${x.target}」が見つかりません（expose）` });
         continue;
       }
       targets.push(target);
       let own: ((e: Entry) => boolean) | null = null;
       if (x.filter) {
         own = filterTest(x.filter, isMetadata);
-        if (!own) unsupported(x.start, `[${x.filter}] はまだ扱えないため、絞り込みに使っていません`);
+        if (!own) unsupported(x.start, `図「${v.name}」の絞り込み「${x.filter}」はまだ扱えないため、絞り込まずに描きます（expose の [ ]）`);
       }
       for (const e of exposed(x, target)) if (!own || own(e)) shown.add(e);
     }

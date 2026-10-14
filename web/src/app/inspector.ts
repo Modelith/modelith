@@ -155,7 +155,7 @@ function nodeHtml(n: ModelNode): string {
 }
 
 const EDGE_NAME: Record<string, string> = {
-  comp: "所有（部品・特性）", satisfy: "«satisfy»", verify: "«verify»", frame: "«frame»", flow: "flow / 接続", defined: "型付け", derive: "«derive» 導出",
+  comp: "部品・特性として持つ", satisfy: "要求を満たす «satisfy»", verify: "要求を検証する «verify»", frame: "関心事を扱う «frame»", flow: "流れ・接続", defined: "型（定義）", derive: "要求の導出 «derive»",
 };
 
 function edgeHtml(ed: ModelEdge): string {

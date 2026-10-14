@@ -18,3 +18,4 @@
 | [0011](0011-requirements-ssot.md) | 要求仕様を 1 つの SysML v2 ファイルで管理する | 採用 |
 | [0012](0012-google-drive-without-server.md) | クラウド保存は Google ドライブから始め、サーバを持たずにブラウザから直接つなぐ | 保留 |
 | [0013](0013-spec-over-mock.md) | モックと SysML v2 仕様が食い違うときは仕様に従う | 採用 |
+| [0014](0014-plain-words-for-users.md) | 画面の言葉は、SysML v2 の構文を知らない人に合わせる | 採用 |

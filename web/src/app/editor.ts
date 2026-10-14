@@ -39,7 +39,7 @@ function caretToNode(): void {
   renderInspector();
   if (!key || !best) return;
   const v = curView();
-  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${v.label}」ビューには表示されていません`);
+  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${v.label}」の図には出ていません`);
   else centerOn(key, true);
 }
 

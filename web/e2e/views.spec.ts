@@ -131,7 +131,7 @@ test.describe("トレーサビリティ", () => {
   });
 });
 
-test.describe("テキストに書かれた view（F-VIEW-7、ADR-0005）", () => {
+test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005）", () => {
   const MODEL = `package P {
     part def Engine;
     part def Wheel;
@@ -157,7 +157,7 @@ test.describe("テキストに書かれた view（F-VIEW-7、ADR-0005）", () =>
     // Assert
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Car", "Engine", "Wheel"]);
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/structure/);
-    await expect(page.locator("#subbar")).toContainText("view structure：GeneralView");
+    await expect(page.locator("#subbar")).toContainText("保存された図「structure」：一般の図");
   });
 
   test("F-VIEW-7: InterconnectionView は、expose した part def の内部ブロック図として描く", async ({ page }) => {
@@ -184,15 +184,15 @@ test.describe("テキストに書かれた view（F-VIEW-7、ADR-0005）", () =>
     // Act
     await page.locator("#ed").fill(MODEL.replace("view reqs { expose P::Speed; }", ""));
     // Assert
-    await expect(page.locator("#empty")).toContainText("view「reqs」がテキストにありません");
+    await expect(page.locator("#empty")).toContainText("保存された図「reqs」は、モデルから消えています");
   });
 
-  test("F-VIEW-7: view が無いときは、＋メニューで書き方を案内する（境界値）", async ({ page }) => {
+  test("F-VIEW-7: 保存された図が無いときは、＋メニューでそう示す（境界値）", async ({ page }) => {
     // Arrange
     await openApp(page);
     // Act
     await page.locator(".tabadd summary").click();
     // Assert
-    await expect(page.locator(".tabadd .pnote")).toHaveText("テキストに view を書くと、ここから図として開けます");
+    await expect(page.locator(".tabadd .pnote")).toHaveText("保存された図はまだありません");
   });
 });

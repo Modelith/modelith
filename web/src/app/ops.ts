@@ -2,6 +2,7 @@
 
 import { applyEdits, indentAt, insertEdit, insertInto, mask, removeRange, type Edit, type Entry, type ModelEdge, type ModelNode } from "../core";
 import { ask } from "./dialog";
+import { kindLabel } from "./labels";
 import { shownDocName } from "./files";
 import { nodeH, W } from "./geometry";
 import { renderInspector, startRename } from "./inspector";
@@ -40,18 +41,18 @@ function pkgFor(kind: string): Entry | undefined {
  */
 async function offerNewPackage(): Promise<{ text: string; pkg: Entry } | null> {
   const r = await ask(
-    "package を作りましょう",
-    "SysML v2 では、要素を package（入れ物）の中に置きます。このファイルにはまだ package が無いので、新しく作ってそこに置きます。",
+    "モデルの入れ物を作ります",
+    "要素は、モデルの入れ物（package）の中に置きます。このファイルにはまだ入れ物が無いので、名前を付けて作り、その中に置きます。",
     [
       { id: "cancel", label: "やめる" },
       { id: "ok", label: "作って置く", kind: "primary" },
     ],
-    { value: packageNameFor(shownDocName()), label: "package の名前" },
+    { value: packageNameFor(shownDocName()), label: "入れ物の名前" },
   );
   if (r?.id !== "ok") return null;
   const name = r.value.trim();
   if (!isPackageName(name)) {
-    toast("package の名前は、英字か _ で始まる英数字にしてください");
+    toast("入れ物の名前は、英字か _ で始め、英字・数字・_ だけで付けてください");
     return null;
   }
   return appendPackage(S.text, name);
@@ -85,14 +86,14 @@ export const OPS = {
     if (kind === "occurrence def" && S.view === "seq") {
       S.seqCtx = name;
       setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
-      toast(`シナリオ「${name}」を追加しました。ライフラインを追加してください`);
+      toast(`シナリオ「${name}」を追加しました。上のパレットの「ライフラインを追加」から登場する部品を置いてください`);
       return;
     }
     curLayout().pos[name] = pos;
     S.sel = name;
     setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
     commitLayout();
-    toast(`「${kind} ${name}」をテキストに追加しました`);
+    toast(`${kindLabel(kind)}「${name}」を追加しました`);
     startRename();
   },
 
@@ -110,13 +111,13 @@ export const OPS = {
     S.sel = (S.view === "ibd" ? "u:" : "l:") + nm;
     setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
     if (S.view === "ibd") commitLayout();
-    toast(`${c.ctx.name} に「part ${nm} : ${type}」を追加しました`);
+    toast(`${c.ctx.name} に部品「${nm}」（${type}）を追加しました`);
   },
 
   /** 名前を変え、参照と配置情報もまとめて書き換える。 */
   rename(n: ModelNode, nn: string): boolean {
     if (!NAME_RE.test(nn)) {
-      toast("名前は英字・数字・_ で入力してください");
+      toast("名前は英字か _ で始め、英字・数字・_ だけで付けてください");
       return false;
     }
     if (nn === n.name) return true;
@@ -172,14 +173,14 @@ export const OPS = {
     S.sel = null;
     setText(r.text, { changeAt: r.at, flash: [r.at, r.at + 1] });
     commitLayout();
-    toast(`「${n.name}」の定義をテキストから削除しました`);
+    toast(`「${n.name}」を削除しました`);
   },
 
   deleteEdge(ed: ModelEdge): void {
     const r = removeRange(S.text, ed.src.start, ed.src.end);
     S.selEdge = null;
     setText(r.text, { changeAt: r.at, flash: [r.at, r.at + 1] });
-    toast("関係をテキストから削除しました");
+    toast("関係を削除しました");
   },
 
   /** a から b への関係を追加する。線を描いて追加した場合は、その端の位置も記録する。 */
@@ -193,14 +194,14 @@ export const OPS = {
       const kw = KW_FOR[b.kind] ?? "part";
       const nm = uniqueChild(a.entry, lowerFirst(b.name));
       r = insertInto(S.text, a.entry, `${kw} ${nm} : ${b.name};`);
-      what = `${a.name} に「${kw} ${nm} : ${b.name}」`;
+      what = `「${a.name} が ${b.name} を${kindLabel(kw)}として持つ」`;
     } else if (rel === "satisfy") {
       const host = [...S.P.rels].reverse().find((x) => x.rel === "satisfy")?.pe ?? pkg0;
       if (host) r = insertInto(S.text, host, `satisfy ${b.name} by ${a.name};`);
-      what = `「satisfy ${b.name} by ${a.name}」`;
+      what = `「${a.name} が ${b.name} を満たす」`;
     } else if (rel === "verify") {
       const obj = S.P.rels.find((x) => x.rel === "verify" && x.pe === a.entry);
-      what = `${a.name} に「verify ${b.name}」`;
+      what = `「${a.name} で ${b.name} を検証する」`;
       if (obj && a.entry.open != null) {
         // 既存の objective があればそこへ
         const { m } = mask(S.text);
@@ -218,11 +219,11 @@ export const OPS = {
       } else r = insertInto(S.text, a.entry, `objective { verify ${b.name}; }`);
     } else if (rel === "frame") {
       r = insertInto(S.text, a.entry, `frame concern ${uniqueChild(a.entry, lowerFirst(b.name))} : ${b.name};`);
-      what = `${a.name} に「frame concern」`;
+      what = `「${a.name} が関心事 ${b.name} を扱う」`;
     } else if (rel === "derive") {
       const host = [...S.P.rels].reverse().find((x) => x.rel === "derive")?.pe ?? a.entry.pe ?? pkg0;
       if (host) r = insertInto(S.text, host, `#derivation dependency from ${a.name} to ${b.name};`);
-      what = `「${a.name} は ${b.name} から導出」`;
+      what = `「${a.name} を ${b.name} から導出する」`;
     } else {
       const ctx = CC().ctx;
       const P = a.usage && ctx ? { parent: ctx.entry, ua: a.entry, ub: b.entry } : commonParent(a, b);
@@ -230,7 +231,7 @@ export const OPS = {
       const fp = wire ? portOf(wire.from) : null, tp = wire ? portOf(wire.to) : null;
       const A = P.ua.name + (fp ? "." + fp : ""), B = P.ub.name + (tp ? "." + tp : "");
       r = insertInto(S.text, P.parent, `flow from ${A} to ${B};`);
-      what = `${P.parent.name} に「flow from ${A} to ${B}」`;
+      what = `「${A} から ${B} への流れ」`;
     }
     if (!r) return;
     const before = new Set([...S.M.edges, ...CC().edges].map((e) => e.id));
@@ -277,7 +278,7 @@ export const MSGOPS = {
 
   update(e: ModelEdge, name: string, type: string): boolean {
     if (name && !NAME_RE.test(name)) {
-      toast("名前は英字・数字・_ で入力してください");
+      toast("名前は英字か _ で始め、英字・数字・_ だけで付けてください");
       return false;
     }
     const r = e.rel;
@@ -355,7 +356,7 @@ export const PHASEOPS = {
       ({ text, pkg } = np);
     }
     if (pkg.open == null) {
-      toast("最初の package が { } で書かれていないため、フェーズの定義を足せません");
+      toast("このファイルの書き方では、フェーズを足せません（最初の package が { } で囲まれていません）");
       return;
     }
     const i1 = indentAt(text, pkg.start) + "    ";

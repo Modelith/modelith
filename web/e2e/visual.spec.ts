@@ -126,7 +126,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-EDIT-7: package を作る案内",
+    title: "F-EDIT-7・Q-4: モデルの入れ物（package）を作る案内",
     shot: "dialog-new-package",
     act: async (page) => {
       await page.locator('[data-cmd="new"]').click();
@@ -146,7 +146,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-VIEW-7: 開いた「＋」メニュー（テキストの view つき）",
+    title: "F-VIEW-7・Q-4: 開いた「＋」メニュー（保存された図つき）",
     shot: "tab-menu-views",
     act: async (page) => {
       await page.locator("#ed").fill("package P {\n    part def A;\n    view overview : GeneralView { expose P::*; }\n    view inside : InterconnectionView { expose P::A; }\n}\n");
