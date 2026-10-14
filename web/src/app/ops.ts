@@ -9,7 +9,7 @@ import { attachEnds } from "./pins";
 import { commonParent, KW_FOR, type RelKind } from "./relations";
 import { highlight, render } from "./render";
 import { cancelConnect, clearSel, S } from "./state";
-import { commitLayout, setText, toast, withLayout } from "./sync";
+import { commitLayout, setText, toast } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
 import type { Pos } from "./layout";
 import { appendPackage, isPackageName, packageNameFor } from "./new-package";
@@ -90,7 +90,8 @@ export const OPS = {
     }
     curLayout().pos[name] = pos;
     S.sel = name;
-    setText(withLayout(r.text), { changeAt: r.at, flash: [r.at, r.at + r.len] });
+    setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
+    commitLayout();
     toast(`「${kind} ${name}」をテキストに追加しました`);
     startRename();
   },
@@ -107,7 +108,8 @@ export const OPS = {
     if (S.view === "ibd") curLayout().pos["u:" + nm] = pos;
     clearSel();
     S.sel = (S.view === "ibd" ? "u:" : "l:") + nm;
-    setText(S.view === "ibd" ? withLayout(r.text) : r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
+    setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
+    if (S.view === "ibd") commitLayout();
     toast(`${c.ctx.name} に「part ${nm} : ${type}」を追加しました`);
   },
 
@@ -158,7 +160,8 @@ export const OPS = {
     }
     S.sel = nn;
     const first = Math.min(...hits);
-    setText(withLayout(out), { changeAt: first, flash: [n.entry.start, n.entry.headEnd + (nn.length - n.name.length)] });
+    setText(out, { changeAt: first, flash: [n.entry.start, n.entry.headEnd + (nn.length - n.name.length)] });
+    commitLayout();
     toast(`${hits.length} か所の「${n.name}」を「${nn}」に変更しました`);
     return true;
   },
@@ -167,7 +170,8 @@ export const OPS = {
     const r = removeRange(S.text, n.entry.start, n.entry.end);
     for (const v of Object.values(S.layout)) delete v.pos[n.key];
     S.sel = null;
-    setText(withLayout(r.text), { changeAt: r.at, flash: [r.at, r.at + 1] });
+    setText(r.text, { changeAt: r.at, flash: [r.at, r.at + 1] });
+    commitLayout();
     toast(`「${n.name}」の定義をテキストから削除しました`);
   },
 
@@ -237,7 +241,8 @@ export const OPS = {
       if (ne) {
         const fl = S.flash;
         attachEnds(ne.id, wire);
-        setText(withLayout(S.text), { changeAt: S.text.length, flash: fl });
+        setText(S.text, { changeAt: S.text.length, flash: fl });
+        commitLayout();
       }
     }
     toast(`${what}を追加しました`);
@@ -436,7 +441,8 @@ export function deleteSel(): void {
   const at = Math.min(...edits.map((e) => e.at));
   const text = applyEdits(S.text, edits).replace(/\n[ \t]*\n[ \t]*\n+/g, "\n\n");
   clearSel();
-  setText(withLayout(text), { changeAt: at, flash: [at, at + 1] });
+  setText(text, { changeAt: at, flash: [at, at + 1] });
+  commitLayout();
   toast(`${ns.length} 個の定義をテキストから削除しました`);
 }
 

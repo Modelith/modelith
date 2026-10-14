@@ -413,3 +413,107 @@ describe("kvDraftStore", () => {
     expect(drafts).toEqual([{ name: "a", text: "x" }]);
   });
 });
+
+describe("Workspace: 配置ファイル（ADR-0005、F-VIEW-3・6、C-6）", () => {
+  it("フォルダから開いた文書は、隣の配置ファイルを読む", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.layout.json", "L1");
+    // Act
+    const { doc } = await openA(s);
+    // Assert
+    expect(doc).toMatchObject({ layout: "L1", savedLayout: "L1", layoutHome: "sibling" });
+    expect(s.ws.isDirty(doc)).toBe(false);
+  });
+
+  it("配置だけを変えて保存すると、配置ファイルだけを書き、テキストのファイルには触らない（C-6）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    const before = file.lastModified;
+    s.ws.setLayout(doc.key, "L2");
+    // Act
+    const dirty = s.ws.isDirty(doc);
+    const outcome = await s.ws.save(doc.key, s.local);
+    // Assert
+    expect(dirty).toBe(true);
+    expect(outcome).toBe("saved");
+    expect((s.root.entries.get("a.layout.json") as { content: string }).content).toBe("L2");
+    expect(file.lastModified).toBe(before);
+    expect(s.ws.isDirty(doc)).toBe(false);
+  });
+
+  it("テキストと配置の両方を変えて保存すると、両方を書く", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    s.ws.setText(doc.key, "package B;");
+    s.ws.setLayout(doc.key, "L3");
+    // Act
+    await s.ws.save(doc.key, s.local);
+    // Assert
+    expect(file.content).toBe("package B;");
+    expect((s.root.entries.get("a.layout.json") as { content: string }).content).toBe("L3");
+  });
+
+  it("配置を変えていなければ、配置ファイルを作らない（境界値）", async () => {
+    // Arrange
+    const s = setup();
+    const { doc } = await openA(s);
+    s.ws.setText(doc.key, "package B;");
+    // Act
+    await s.ws.save(doc.key, s.local);
+    // Assert
+    expect(s.root.entries.has("a.layout.json")).toBe(false);
+  });
+
+  it("1 つだけ選んで開いた文書は、配置の保存先が無いので「配置は未保存」になる（F-VIEW-6）", async () => {
+    // Arrange
+    const s = setup();
+    s.api.openFile = s.root.put("one.sysml", "package One;");
+    const doc = (await s.ws.openWith(s.local))!;
+    // Act
+    s.ws.setLayout(doc.key, "L4");
+    // Assert
+    expect(doc.layoutHome).toBe("none");
+    expect(s.ws.layoutUnsaved(doc)).toBe(true);
+    expect(s.ws.isDirty(doc)).toBe(false);
+  });
+
+  it("開いたときの配置（古いコメントから読んだものなど）は、変更として数えない", async () => {
+    // Arrange
+    const s = setup();
+    const { doc } = await openA(s);
+    // Act
+    s.ws.initLayout(doc.key, "L-legacy");
+    // Assert
+    expect(s.ws.isDirty(doc)).toBe(false);
+    expect(doc.layout).toBe("L-legacy");
+  });
+
+  it("無題の文書の配置は、テキストと一緒に下書きに残る（F-FILE-11）", async () => {
+    // Arrange
+    const s = setup();
+    const doc = s.ws.newUntitled("u.sysml", "package U;");
+    s.ws.setLayout(doc.key, "L5");
+    // Act
+    const restored = new Workspace(new ProviderRegistry([s.local]), s.drafts);
+    restored.restoreDrafts();
+    // Assert
+    expect(restored.list()[0]).toMatchObject({ text: "package U;", layout: "L5", layoutHome: "none" });
+  });
+
+  it("無題の文書をフォルダの中に名前を付けて保存すると、配置ファイルも一緒に作る", async () => {
+    // Arrange
+    const s = setup();
+    await s.ws.openFolder(s.local);
+    const doc = s.ws.newUntitled("u.sysml", "package U;", "L7");
+    const ref = await s.local.createFile(s.ws.folder()!.ref, "u.sysml", "");
+    // Act（名前を付けて保存の保存先として、フォルダの中のファイルを返す）
+    const outcome = await s.ws.saveAs(doc.key, { id: "t", label: "t", saveAs: async () => ({ ref, version: "1" }) });
+    // Assert
+    expect(outcome).toBe("saved");
+    expect(doc.layoutHome).toBe("sibling");
+    expect((s.root.entries.get("u.layout.json") as { content: string }).content).toBe("L7");
+  });
+});

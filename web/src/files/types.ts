@@ -79,7 +79,18 @@ export interface RecentFolders extends ProviderInfo {
   reopenRecent(): Promise<FolderRef | null>;
 }
 
-export type FileProvider = ProviderInfo & Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders, keyof ProviderInfo>>;
+/** モデルのファイルの隣のファイル（配置ファイル）を読み書きできる（ADR-0005）。 */
+export interface SiblingFiles extends ProviderInfo {
+  /** このファイルの隣を扱えるか（フォルダから開いたファイルだけ。1 つだけ選んだファイルは隣を扱えない）。 */
+  hasSiblings(ref: FileRef): boolean;
+  /** 隣のファイル name を読む（無ければ null）。 */
+  readSibling(ref: FileRef, name: string): Promise<string | null>;
+  /** 隣のファイル name に書く（無ければ作る）。 */
+  writeSibling(ref: FileRef, name: string, text: string): Promise<void>;
+}
+
+export type FileProvider = ProviderInfo &
+  Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles, keyof ProviderInfo>>;
 
 export const isReadable = (p: FileProvider): p is Readable => typeof p.read === "function";
 export const isWritable = (p: FileProvider): p is Writable => typeof p.write === "function";
@@ -87,6 +98,8 @@ export const isFolderSource = (p: FileProvider): p is FolderSource =>
   typeof p.pickFolder === "function" && typeof p.list === "function" && typeof p.createFile === "function";
 export const isFilePicker = (p: FileProvider): p is FilePicker => typeof p.pickFile === "function";
 export const isSaveAsTarget = (p: FileProvider): p is SaveAsTarget => typeof p.saveAs === "function";
+export const hasSiblingFiles = (p: FileProvider): p is SiblingFiles =>
+  typeof p.hasSiblings === "function" && typeof p.readSibling === "function" && typeof p.writeSibling === "function";
 export const hasRecentFolders = (p: FileProvider): p is RecentFolders =>
   typeof p.recentFolder === "function" && typeof p.reopenRecent === "function";
 

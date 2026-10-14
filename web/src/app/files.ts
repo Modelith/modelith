@@ -1,6 +1,7 @@
 // ファイル操作の UI（ADR-0010）：エクスプローラー・ファイルメニュー・ショートカット・未保存の警告・外部での変更の読み直し。
 // 判断はワークスペース（web/src/workspace）に任せ、ここは操作を受けて結果を画面に出すだけ。
 
+import { parse } from "../core";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, type FsApi } from "../files/local-folder";
@@ -14,8 +15,10 @@ import { $, closest, esc, store } from "./dom";
 import { flushEdit } from "./editor";
 import { download } from "./export";
 import { dropHistory, recordHistory, useHistory } from "./history";
+import { layoutFromJson, type Layout } from "./layout";
+import { isEmptyLayout, parseLayoutFile, serializeLayout } from "./layout-file";
 import { clearSel, S } from "./state";
-import { onTextChange, setText, toast } from "./sync";
+import { loadLayout, onLayoutChange, onTextChange, setText, toast } from "./sync";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
@@ -50,6 +53,21 @@ export const shownDocName = (): string => (shownKey ? ws.get(shownKey)?.name : u
 
 /* ---- 文書の表示 ---- */
 
+/**
+ * 文書の配置を読む。配置ファイルが無ければ、古い形式（テキスト内の @layout コメント）から読む（ADR-0005 の移行）。
+ * 古い形式から読んだ配置は、開いたときの状態として扱い、変更の印は付けない。
+ */
+function layoutOf(doc: Doc): Layout {
+  if (doc.layout) {
+    const { layout, error } = parseLayoutFile(doc.layout);
+    if (error) toast(`${doc.name}：${error}`);
+    return layout;
+  }
+  const legacy = layoutFromJson(parse(doc.text).layout);
+  if (!isEmptyLayout(legacy)) ws.initLayout(doc.key, serializeLayout(legacy));
+  return legacy;
+}
+
 /** 文書を表示中にし、テキストと図をその内容にする。 */
 function showDoc(key: string): void {
   flushEdit(); // 反映待ちの入力は、切り替える前の文書（shownKey）に書き込む
@@ -60,6 +78,7 @@ function showDoc(key: string): void {
   useHistory(key);
   clearSel();
   S.prevSig = new Map();
+  loadLayout(layoutOf(doc));
   setText(doc.text, { noHistory: true });
   recordHistory();
   fit();
@@ -175,6 +194,9 @@ async function closeDoc(key: string): Promise<void> {
 /* ---- 描画 ---- */
 
 const dirtyMark = (d: Doc): string => (ws.isDirty(d) ? `<span class="dot" title="未保存の変更があります">●</span>` : "");
+/** 配置を変えたが保存先が無い（F-VIEW-6）。 */
+const layoutMark = (d: Doc): string =>
+  d.ref && ws.layoutUnsaved(d) ? `<span class="lu" title="このファイルの配置の保存先がありません。フォルダを開くと、隣の配置ファイルに保存できます">配置は未保存</span>` : "";
 const staleMark = (d: Doc): string => (d.stale ? `<span class="st" title="他のアプリで変更されています">⚠</span>` : "");
 
 function renderFiles(): void {
@@ -182,7 +204,7 @@ function renderFiles(): void {
   const docs = ws.list()
     .map((d) => {
       const where = d.ref ? (ws.canWriteInPlace(d) ? d.ref.path : `${d.ref.name}（ダウンロードで保存）`) : "保存先なし（ブラウザに下書き保存）";
-      return `<div class="fi${d.key === active?.key ? " sel" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0"><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
+      return `<div class="fi${d.key === active?.key ? " sel" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0"><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
     })
     .join("");
   let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs}`;
@@ -200,7 +222,7 @@ function renderFiles(): void {
   $("#explorer").innerHTML = h;
   // テキスト欄の見出しとタブの題名
   if (active) {
-    $("#docName").innerHTML = esc(active.name) + staleMark(active) + (ws.isDirty(active) ? " ●" : "");
+    $("#docName").innerHTML = esc(active.name) + staleMark(active) + (ws.isDirty(active) ? " ●" : "") + layoutMark(active);
     document.title = `${ws.isDirty(active) ? "● " : ""}${active.name} — Modelith`;
   }
 }
@@ -345,7 +367,7 @@ async function checkExternal(): Promise<void> {
 }
 
 /** ファイル操作を初期化し、前回の下書き（無ければサンプル）を表示する。 */
-export function initFiles(sample: { name: string; text: string }): void {
+export function initFiles(sample: { name: string; text: string; layout: string }): void {
   const w = window as unknown as FsApi;
   local = hasFsAccess(window) ? new LocalFolderProvider(w, idbHandleStore) : null;
   browser = new BrowserFileProvider({ choose: chooseFile, download: (name, text) => download(name, text, "text/plain;charset=utf-8") });
@@ -360,19 +382,24 @@ export function initFiles(sample: { name: string; text: string }): void {
     ws.setText(shownKey, text);
     onEdited(shownKey);
   });
+  onLayoutChange((layout) => {
+    if (!shownKey) return;
+    ws.setLayout(shownKey, layout);
+    onEdited(shownKey);
+  });
   ws.subscribe(renderFiles);
   initMenu();
   initExplorer();
   $("#btnSample").onclick = () => {
     closeMenus();
-    showDoc(ws.newUntitled(sample.name, sample.text).key);
+    showDoc(ws.newUntitled(sample.name, sample.text, sample.layout).key);
   };
   window.addEventListener("beforeunload", (ev) => {
     flushEdit();
     if (ws.hasUnsavedFiles()) ev.preventDefault();
   });
   window.addEventListener("focus", () => void checkExternal());
-  if (!ws.restoreDrafts()) ws.newUntitled(sample.name, sample.text);
+  if (!ws.restoreDrafts()) ws.newUntitled(sample.name, sample.text, sample.layout);
   ensureDoc();
   renderFiles();
   void local?.recentFolder().then((name) => {

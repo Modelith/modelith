@@ -1,11 +1,12 @@
 // テキストを更新し、解析し直して画面全体を同期する。図の操作も最後は setText を通る（ADR-0001）。
 
-import { build, lineOf, parse, writeLayout, type Problem } from "../core";
+import { build, lineOf, parse, type Problem } from "../core";
 import { $, esc } from "./dom";
 import { autoPlace, nodeH } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
-import { emptyView, layoutFromJson, layoutToJson } from "./layout";
+import { emptyView, type Layout } from "./layout";
+import { serializeLayout } from "./layout-file";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { prunePins } from "./pins";
 import { highlight, render } from "./render";
@@ -53,7 +54,6 @@ export function setText(t: string, opts: SetTextOpts = {}): void {
 export function reparse(fromText: boolean): void {
   S.P = parse(S.text);
   S.M = build(S.P);
-  S.layout = layoutFromJson(S.P.layout);
   prunePins();
   const sig = new Map<string, string>();
   for (const n of S.M.nodes) sig.set(n.key, S.text.slice(n.entry.start, n.entry.end));
@@ -90,15 +90,41 @@ export function ensureLayout(): void {
   autoPlace(missing, edges, L, v, S.M.phases?.[0] ?? null, oy);
 }
 
-/** 現在の配置をテキストの `@layout` に書き込む。 */
-export function commitLayout(): void {
-  const t = writeLayout(S.text, layoutToJson(S.layout));
-  const at = t.indexOf("/* @layout");
-  setText(t, { changeAt: at >= 0 ? at : t.length });
+// 確定した配置（配置ファイルの文字列）。自動で置いただけの座標は含めない。
+let committed = "";
+
+/** 確定した配置を配置ファイルの文字列で返す（元に戻す履歴が比べるのはこれ）。 */
+export function committedLayout(): string {
+  return committed;
 }
 
-/** 配置を書き込んだテキスト（setText に渡す前に配置も更新したいとき）。 */
-export const withLayout = (t: string): string => writeLayout(t, layoutToJson(S.layout));
+/** 表示する文書の配置にする（文書を切り替えたとき・元に戻したとき）。描き直しは呼び出し側の setText に任せる。 */
+export function loadLayout(layout: Layout): void {
+  S.layout = layout;
+  committed = serializeLayout(layout);
+}
+
+let layoutListener: (layout: string) => void = () => {};
+/** 配置が変わったときの処理（ワークスペースへの反映）を登録する。 */
+export function onLayoutChange(fn: (layout: string) => void): void {
+  layoutListener = fn;
+}
+
+/** 配置が変わったことを知らせる（元に戻したときなど、履歴には積まない）。 */
+export function notifyLayoutChange(): void {
+  committed = serializeLayout(S.layout);
+  layoutListener(committed);
+}
+
+/**
+ * 現在の配置を確定する。配置はテキストには書かず、文書の配置ファイルとして持つ（ADR-0005・C-6）。
+ * 元に戻す履歴にも積み、描き直す。
+ */
+export function commitLayout(): void {
+  notifyLayoutChange();
+  scheduleRecord();
+  render();
+}
 
 /** 現在のビューの配置を消して並べ直す。 */
 export function relayout(): void {

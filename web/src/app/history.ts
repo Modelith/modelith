@@ -1,17 +1,28 @@
-// 元に戻す・やり直す。テキストが唯一の正本なので、履歴はテキストの版の列として持つ（配置の @layout も含む）。
+// 元に戻す・やり直す。履歴は「テキストと配置」の版の列として持つ（配置はテキストとは別のファイル、ADR-0005）。
 // 履歴は文書（ファイル）ごとに持つ（F-EDIT-4）。
 
 import { diffRange } from "../core";
 import { $ } from "./dom";
 import { flushEdit } from "./editor";
+import { parseLayoutFile } from "./layout-file";
 import { scrollEditorTo } from "./render";
 import { S } from "./state";
-import { setText, toast } from "./sync";
+import { committedLayout, loadLayout, notifyLayoutChange, setText, toast } from "./sync";
 
 const MAX = 200;
 
+/** 履歴の 1 版。配置は配置ファイルの文字列で持つ。 */
+interface Snapshot {
+  text: string;
+  layout: string;
+}
+
+const same = (a: Snapshot | undefined, b: Snapshot): boolean => !!a && a.text === b.text && a.layout === b.layout;
+// 自動で置いただけの座標は版に含めない（文書を開き直しても版が増えないように）。
+const current = (): Snapshot => ({ text: S.text, layout: committedLayout() });
+
 interface History {
-  list: string[];
+  list: Snapshot[];
   i: number;
   timer: ReturnType<typeof setTimeout> | undefined;
 }
@@ -39,9 +50,10 @@ export function dropHistory(key: string): void {
 
 export function recordHistory(): void {
   H.timer = undefined;
-  if (H.list[H.i] === S.text) return;
+  const now = current();
+  if (same(H.list[H.i], now)) return;
   H.list = H.list.slice(0, H.i + 1);
-  H.list.push(S.text);
+  H.list.push(now);
   if (H.list.length > MAX) H.list.shift();
   H.i = H.list.length - 1;
   updateUndoUI();
@@ -55,18 +67,20 @@ export function scheduleRecord(): void {
 
 function goHistory(step: -1 | 1): void {
   flushEdit();
-  if (H.timer !== undefined || H.list[H.i] !== S.text) recordHistory();
+  if (H.timer !== undefined || !same(H.list[H.i], current())) recordHistory();
   const j = H.i + step;
   const after = H.list[j];
   if (after === undefined) return;
-  const [a, b] = diffRange(S.text, after);
+  const [a, b] = diffRange(S.text, after.text);
   H.i = j;
   S.mode = null;
   S.wire = null;
   S.renaming = false;
   S.portForm = false;
   S.confirmDel = false;
-  setText(after, { noHistory: true, fromText: true, changeAt: a, flash: [a, Math.max(a + 1, b)] });
+  loadLayout(parseLayoutFile(after.layout).layout);
+  notifyLayoutChange();
+  setText(after.text, { noHistory: true, fromText: true, changeAt: a, flash: a < b ? [a, b] : null });
   $<HTMLTextAreaElement>("#ed").setSelectionRange(a, a);
   scrollEditorTo(a);
   updateUndoUI();
