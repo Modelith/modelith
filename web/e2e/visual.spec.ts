@@ -156,7 +156,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "C-3: 開いた「?」メニュー",
+    title: "C-3: 開いたヘルプ",
     shot: "help-menu",
     act: async (page) => {
       await page.locator("#helpMenu summary").click();

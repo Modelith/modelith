@@ -19,7 +19,7 @@
 3. リリースノートを生成し、内容を確認する。
 4. PR（`chore(release): vX.Y.Z-<段階>.<番号>`）を `dev` に向けて出し、CI グリーンで Squash merge する。
 5. `dev` のマージコミットにタグ `vX.Y.Z-<段階>.<番号>` を打ち、GitHub Release を「プレリリース」として作る。
-6. タグを push すると `.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。公開後、画面右上の「?」でバージョンを確かめる。
+6. タグを push すると `.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。公開後、画面右上の「ヘルプ」でバージョンを確かめる。
 
 ## rc を出す
 

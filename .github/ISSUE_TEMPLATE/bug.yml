@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: バージョン
-      description: 画面右上の「?」に表示されるバージョン
+      description: 画面右上の「ヘルプ」に表示されるバージョン
       placeholder: 0.1.0-alpha.1
     validations:
       required: true
