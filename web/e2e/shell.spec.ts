@@ -19,7 +19,7 @@ test("C-2・C-4: 起動から操作まで、配信元の静的ファイルを読
   expect([...methods]).toEqual(["GET"]);
 });
 
-test("C-3: 「?」メニューのソースへのリンクは、動いている版のコミットを指す", async ({ page }) => {
+test("C-3: ヘルプのソースへのリンクは、動いている版のコミットを指す", async ({ page }) => {
   // Arrange
   await openApp(page);
   // Act
@@ -29,7 +29,7 @@ test("C-3: 「?」メニューのソースへのリンクは、動いている�
   await expect(page.locator("#appVersion")).toHaveText(/^\d+\.\d+\.\d+\S* \([0-9a-f]{7}\)$/);
 });
 
-test("C-5: 「?」メニューに著作権・無保証・ライセンスを示し、本体と同梱物のライセンス文を配信する", async ({ page, request }) => {
+test("C-5: ヘルプに著作権・無保証・ライセンスを示し、本体と同梱物のライセンス文を配信する", async ({ page, request }) => {
   // Arrange
   await openApp(page);
   // Act
@@ -49,7 +49,7 @@ test("C-5: 「?」メニューに著作権・無保証・ライセンスを示�
   expect(notices).not.toContain("Licenses of bundled dependencies");
 });
 
-test("C-7: 「?」メニューに、SysML・KerML・OMG の商標の帰属と、OMG と関係がないことを示す", async ({ page }) => {
+test("C-7: ヘルプに、SysML・KerML・OMG の商標の帰属と、OMG と関係がないことを示す", async ({ page }) => {
   // Arrange
   await openApp(page);
   // Act
@@ -57,8 +57,8 @@ test("C-7: 「?」メニューに、SysML・KerML・OMG の商標の帰属と、
   // Assert
   const tm = page.locator("#trademarks");
   await expect(tm).toBeVisible();
-  await expect(tm).toContainText("SysML® と OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です");
-  await expect(tm).toContainText("OMG とは関係のない独立したプロジェクト");
+  await expect(tm).toContainText("SysML®・OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です");
+  await expect(tm).toContainText("Modelith は OMG と関係がなく、その認定・推奨も受けていません");
 });
 
 test.describe("狭い画面", () => {
