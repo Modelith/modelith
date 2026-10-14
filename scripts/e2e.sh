@@ -9,6 +9,17 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# クラウドの作業環境（Claude Code on the web）には Docker が入っているが、セッションの開始時にはデーモンが止まっている。
+# そこで動いているときだけ、止まっていれば起動する（開発者のコンピュータでは何もしない）
+if [[ ${CLAUDE_CODE_REMOTE:-} == true ]] && command -v dockerd >/dev/null && ! docker info >/dev/null 2>&1; then
+  echo "Docker のデーモンを起動します（クラウドの作業環境）" >&2
+  nohup dockerd >/tmp/dockerd.log 2>&1 &
+  for _ in $(seq 30); do
+    docker info >/dev/null 2>&1 && break
+    sleep 1
+  done
+fi
+
 if ! docker info >/dev/null 2>&1; then
   if [[ -n ${CI:-} ]]; then
     echo "ERROR: CI では、UI テストの基準のブラウザを動かすために Docker が必要です" >&2
