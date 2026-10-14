@@ -61,7 +61,7 @@ export async function putFiles(page: Page, files: Record<string, string>): Promi
 
 /**
  * project フォルダ（OPFS）のファイルを読む。無ければ null。
- * 保存は一時ファイルに書いてから差し替えるので、保存の途中ではファイルが一瞬見つからないことがある。
+ * 保存は一時ファイルに書いてから差し替えるので、保存の途中ではファイルが一瞬見つからない・読めないことがある。
  * expect.poll で待つときは null を「まだ」として扱えるよう、例外にしない。
  */
 export async function readFile(page: Page, path: string): Promise<string | null> {
@@ -73,7 +73,8 @@ export async function readFile(page: Page, path: string): Promise<string | null>
       for (const s of segs) d = await d.getDirectoryHandle(s);
       return await (await (await d.getFileHandle(name)).getFile()).text();
     } catch (e) {
-      if (e instanceof DOMException && e.name === "NotFoundError") return null;
+      // NotReadableError は、読もうとしたファイルが書き込みで差し替えられた（保存の途中）
+      if (e instanceof DOMException && (e.name === "NotFoundError" || e.name === "NotReadableError")) return null;
       throw e;
     }
   }, path);
