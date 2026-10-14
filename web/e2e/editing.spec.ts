@@ -130,7 +130,7 @@ test.describe("配置ファイル（ADR-0005）", () => {
     // Arrange
     await openA(page, { "a.sysml": LEGACY });
     // Act
-    await answer(page, "古い形式の配置", "keep");
+    await answer(page, "図の配置を整理します", "keep");
     await page.locator(".tabadd summary").click();
     await page.locator('[data-open="trace"]').click();
     // Assert
@@ -143,7 +143,7 @@ test.describe("配置ファイル（ADR-0005）", () => {
     // Arrange
     await openA(page, { "a.sysml": LEGACY });
     // Act
-    await answer(page, "古い形式の配置", "move");
+    await answer(page, "図の配置を整理します", "move");
     await page.keyboard.press("Control+s");
     // Assert
     await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"trace": \{\s*"Alpha": \[600,400\]/);
@@ -158,7 +158,7 @@ test.describe("配置ファイル（ADR-0005）", () => {
     const unsaved = await page.locator("#docName .lu").textContent();
     // Act
     await page.keyboard.press("Control+s");
-    await answer(page, "配置の保存先", "open");
+    await answer(page, "図の配置を保存する場所", "open");
     // Assert
     expect(unsaved).toBe("配置は未保存");
     await expect.poll(() => readFile(page, "one.layout.json")).toMatch(/"Alpha": \[/);
@@ -172,7 +172,7 @@ test.describe("配置ファイル（ADR-0005）", () => {
     await dragNode(page, "Alpha", 200, 160);
     // Act
     await page.keyboard.press("Control+s");
-    await answer(page, "配置の保存先", "later");
+    await answer(page, "図の配置を保存する場所", "later");
     // Assert
     await expect(page.locator("#docName .lu")).toHaveText("配置は未保存");
     expect(await readFile(page, "one.layout.json")).toBeNull();
@@ -282,7 +282,7 @@ test.describe("package の無いファイル", () => {
     await page.locator("#dialogInput").fill("my model");
     await page.locator('#dialogButtons [data-id="ok"]').click();
     // Assert
-    await expect(page.locator("#toast")).toContainText("英字か _ で始まる英数字");
+    await expect(page.locator("#toast")).toContainText("英字か _ で始め、英字・数字・_ だけで付けてください");
     expect(await editorText(page)).toBe("");
   });
 });

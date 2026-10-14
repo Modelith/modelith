@@ -1,10 +1,11 @@
 // パネル（ツリー｜図｜テキスト）の配置、図のタブ、パレット、モデルツリー、ビューのサブバー。
 
-import type { Entry } from "../core";
+import { stdViewLabel, type Entry } from "../core";
 import { fit, local, placeUsageAt, toCanvas } from "./canvas";
 import { $, closest, esc, isFormField, store } from "./dom";
 import { W } from "./geometry";
 import { act, renderInspector } from "./inspector";
+import { kindLabel } from "./labels";
 import { deleteSel, OPS, PHASEOPS } from "./ops";
 import { PINOPS, selPinInfo } from "./pins";
 import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
@@ -143,7 +144,7 @@ export function renderTabs(): void {
     S.tabs
       .map((t) => {
         const sel = t.id === S.tabId;
-        const title = t.mv ? `view ${t.mv}（テキストに書かれた図）` : tabLabel(t);
+        const title = t.mv ? `保存された図「${t.mv}」` : tabLabel(t);
         return (
           `<div class="tab${t.mv ? " mv" : ""}" role="tab" aria-selected="${sel}" data-tab="${t.id}" tabindex="${sel ? 0 : -1}" title="${esc(title)}">${viewIcon(t.view)}<span>${esc(tabLabel(t))}</span>` +
           (S.tabs.length > 1 ? `<button class="x" data-close="${t.id}" aria-label="タブを閉じる" title="タブを閉じる">×</button>` : "") +
@@ -153,10 +154,10 @@ export function renderTabs(): void {
       .join("") +
     `<details class="menu tabadd"><summary aria-label="図を開く" title="図を開く">＋</summary><div class="pop pop-left">` +
     VIEWS.map((v) => `<button data-open="${v.id}">${viewIcon(v.id)}${esc(v.label)}</button>`).join("") +
-    `<div class="phead">テキストの view</div>` +
+    `<div class="phead">保存された図</div>` +
     (S.M.views.length
-      ? S.M.views.map((v) => `<button data-open-mv="${esc(v.name)}" title="${esc(v.std ?? "型なし（GeneralView として描く）")}">${viewIcon(baseViewOf(v))}${esc(v.name)}</button>`).join("")
-      : `<div class="pnote">テキストに view を書くと、ここから図として開けます</div>`) +
+      ? S.M.views.map((v) => `<button data-open-mv="${esc(v.name)}" title="${esc(stdViewLabel(v.std))}">${viewIcon(baseViewOf(v))}${esc(v.name)}</button>`).join("")
+      : `<div class="pnote">保存された図はまだありません</div>`) +
     `</div></details>`;
 }
 
@@ -337,7 +338,7 @@ export function renderPalette(): void {
   } else if (!S.modelView) {
     // テキストの view の中身は expose で決まるので、ここで要素を足しても図に出ない。パレットは出さない
     for (const [k, l] of PALETTE[S.view] ?? [])
-      h += `<button class="tool" data-tool="${k}" aria-pressed="${toolKind(S.tool) === k}" title="${k}：押してから図の上をクリックで配置">${kindIcon(k)}<span>${l}</span></button>`;
+      h += `<button class="tool" data-tool="${k}" aria-pressed="${toolKind(S.tool) === k}" title="${l}（${k}）：押してから図の上をクリックで置く">${kindIcon(k)}<span>${l}</span></button>`;
   }
   $("#palette").innerHTML = h;
   $("#wrap").classList.toggle("placing", !!S.tool && !isHand(S.tool));
@@ -352,7 +353,7 @@ export function setTool(tool: Tool | null): void {
   $("#wrap").classList.toggle("panning", isHand(tool));
   if (!tool || isHand(tool)) return;
   const u = toolUsage(tool);
-  toast(u ? `図の上をクリックすると「${u}」を部品として置きます（Esc で取消）` : `図の上をクリックすると ${toolKind(tool) ?? ""} を置きます（Esc で取消）`);
+  toast(u ? `図の上をクリックすると「${u}」を部品として置きます（Esc で取消）` : `図の上をクリックすると${kindLabel(toolKind(tool) ?? "")}を置きます（Esc で取消）`);
 }
 
 /** 選んでいる道具で、画面上の位置（図の枠内の座標）に要素を置く。 */
@@ -453,7 +454,7 @@ const pathOf = (e: Entry): string => {
 /** 要素をどのビューで開くか。 */
 export function openTarget(e: Entry | null | undefined): { view: string; ctx?: string; mv?: string; label: string } | null {
   if (!e) return null;
-  if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: "図として開く" };
+  if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: "保存された図を開く" };
   if (e.kind === "part def" && e.children.some((c) => c.kind === "part" && c.name)) return { view: "ibd", ctx: e.name, label: "内部ブロック図で開く" };
   if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: "シーケンス図で開く" };
   if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
@@ -528,7 +529,7 @@ export function renderTree(): void {
     });
   };
   for (const e of S.P.entries) if (!e.pe) walk(e, 0);
-  el.innerHTML = rows.join("") || `<div class="tree-empty">${q ? "一致する要素がありません" : "package を書くとここに構造が表示されます"}</div>`;
+  el.innerHTML = rows.join("") || `<div class="tree-empty">${q ? "一致する要素がありません" : "要素を追加すると、ここにモデルの構造が表示されます"}</div>`;
   const s = el.querySelector(".ti.sel");
   if (s && (selE !== lastTreeSel || S.treeScrollForce)) s.scrollIntoView({ block: "nearest" });
   lastTreeSel = selE;
@@ -691,7 +692,7 @@ function initTree(): void {
     const e = S.P.entries[d.idx];
     const [lx, ly] = local(ev.clientX, ev.clientY);
     if (e && droppable(e)) placeUsageAt(e.name, lx, ly);
-    else toast("ドラッグでの配置は、内部ブロック図・シーケンス図に part def を置くときに使えます");
+    else toast("ツリーからのドラッグは、内部ブロック図とシーケンス図に部品定義を置くときに使えます");
   });
 }
 
@@ -703,11 +704,11 @@ export function renderSub(): void {
   const phases = S.M.phases;
   const mv = modelView();
   if (S.modelView) {
-    // テキストの view：中身と対象は expose で決まるので、選ばせない
+    // 保存された図（view）：中身と対象は expose で決まるので、選ばせない
     const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : null;
     const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
     parts.push(
-      `<span class="mvnote" title="この図の中身は、テキストの view の expose・filter で決まります">view ${esc(S.modelView)}${mv?.std ? `：${esc(mv.std)}` : ""}${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
+      `<span class="mvnote" title="この図に出す要素は、保存された図の設定で決まります（view の expose・filter）">保存された図「${esc(S.modelView)}」：${esc(stdViewLabel(mv?.std ?? null))}${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
     );
   } else if (S.view === "ibd") {
     CC();

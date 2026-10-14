@@ -101,7 +101,7 @@ export function defaultIbdContext(M: Model): ModelNode | null {
 
 function ibdContent(M: Model): ViewContent {
   const ctx = ibdContexts(M).find((n) => n.key === S.ibdCtx);
-  if (!ctx) return { nodes: [], edges: [], empty: "部品（part）を持つ part def がまだありません。構造ビューで part def に部品を追加してください。" };
+  if (!ctx) return { nodes: [], edges: [], empty: "中に部品を持つ部品定義がまだありません。「構造」の図で、部品定義から別の部品定義へ線を引き、「部品として持つ」を選ぶと作れます。" };
   const typeNode = (tn: string): ModelNode | undefined => M.nodes.find((n) => n.isDef && n.name === tn);
   const nodes: ModelNode[] = ctx.entry.children
     .filter((c) => c.kind === "part" && c.name)
@@ -139,7 +139,7 @@ function ibdContent(M: Model): ViewContent {
 
 function seqContent(M: Model): ViewContent {
   const ctx = seqContexts(M).find((n) => n.key === S.seqCtx);
-  if (!ctx) return { nodes: [], edges: [], seq: true, empty: "occurrence def がまだありません。「シナリオ」から作成できます。" };
+  if (!ctx) return { nodes: [], edges: [], seq: true, empty: "シナリオがまだありません。上のパレットの「シナリオ」から作れます。" };
   const nodes: ModelNode[] = ctx.entry.children
     .filter((c) => (c.kind === "part" || c.kind === "occurrence") && c.name)
     .map((u) => ({
@@ -170,19 +170,19 @@ export function syncModelViewKind(): void {
 
 /** テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）。 */
 function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
-  if (!mv) return { nodes: [], edges: [], empty: `view「${S.modelView ?? ""}」がテキストにありません。` };
+  if (!mv) return { nodes: [], edges: [], empty: `保存された図「${S.modelView ?? ""}」は、モデルから消えています。` };
   if (mv.kind === "interconnection") {
     S.ibdCtx = exposedContext(mv, ibdContexts(M))?.key ?? null;
-    return S.ibdCtx ? ibdContent(M) : { nodes: [], edges: [], empty: `view「${mv.name}」の expose に、部品を持つ part def（またはその型の部品）がありません。` };
+    return S.ibdCtx ? ibdContent(M) : { nodes: [], edges: [], empty: `図「${mv.name}」に、中に部品を持つ部品定義が含まれていません。` };
   }
   if (mv.kind === "sequence") {
     S.seqCtx = exposedContext(mv, seqContexts(M))?.key ?? null;
-    return S.seqCtx ? seqContent(M) : { nodes: [], edges: [], seq: true, empty: `view「${mv.name}」の expose に、occurrence def がありません。` };
+    return S.seqCtx ? seqContent(M) : { nodes: [], edges: [], seq: true, empty: `図「${mv.name}」に、シナリオが含まれていません。` };
   }
   const keys = new Set(mv.nodeKeys);
   const nodes = M.nodes.filter((n) => keys.has(n.key));
   if (!nodes.length) {
-    return { nodes, edges: [], empty: `view「${mv.name}」の expose・filter に当たる、図に描ける要素がありません。package の中身を出すときは expose P::*; のように書きます。` };
+    return { nodes, edges: [], empty: `図「${mv.name}」に出せる要素がありません。モデルの入れ物（package）そのものを出す描き方は、まだありません（テキストで中身を出すときは expose P::*; と書きます）。` };
   }
   return phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
 }

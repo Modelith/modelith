@@ -1,6 +1,7 @@
 // 2 つの要素の間に追加できる関係を決める。
 
 import type { Entry, ModelNode } from "../core";
+import { kindLabel } from "./labels";
 import { S } from "./state";
 
 export type RelKind = "comp" | "satisfy" | "verify" | "frame" | "derive" | "flow";
@@ -27,16 +28,16 @@ export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: E
 export function relOptions(a: ModelNode | null, b: ModelNode | null): { rel: RelKind; label: string }[] {
   const o: { rel: RelKind; label: string }[] = [];
   if (!a || !b) return o;
-  if (a.usage || b.usage) return a.usage && b.usage && a.key !== b.key ? [{ rel: "flow", label: "flow 信号・物理量を流す" }] : o;
+  if (a.usage || b.usage) return a.usage && b.usage && a.key !== b.key ? [{ rel: "flow", label: "信号・物理量を流す（flow）" }] : o;
   if (a.lifeline || b.lifeline) return o;
   const isReq = (n: ModelNode): boolean => /^requirement/.test(n.kind);
   if (a.isDef && b.isDef && a.key !== b.key && !["concern def", "item def", "port def"].includes(a.kind)) {
-    o.push({ rel: "comp", label: `${KW_FOR[b.kind] ?? "part"} として持つ` });
+    o.push({ rel: "comp", label: `${kindLabel(KW_FOR[b.kind] ?? "part")}として持つ` });
   }
-  if (isReq(b) && /^part/.test(a.kind)) o.push({ rel: "satisfy", label: "«satisfy» 要求を満たす" });
-  if (isReq(b) && a.kind === "verification def") o.push({ rel: "verify", label: "«verify» 要求を検証する" });
-  if (isReq(a) && b.kind === "concern def") o.push({ rel: "frame", label: "«frame» 関心事を扱う" });
-  if (a.kind === "requirement def" && b.kind === "requirement def" && a.key !== b.key) o.push({ rel: "derive", label: "«derive» この要求から導出" });
-  if (/^part/.test(a.kind) && /^part/.test(b.kind) && commonParent(a, b)) o.push({ rel: "flow", label: "flow 信号・物理量を流す" });
+  if (isReq(b) && /^part/.test(a.kind)) o.push({ rel: "satisfy", label: "要求を満たす «satisfy»" });
+  if (isReq(b) && a.kind === "verification def") o.push({ rel: "verify", label: "要求を検証する «verify»" });
+  if (isReq(a) && b.kind === "concern def") o.push({ rel: "frame", label: "関心事を扱う «frame»" });
+  if (a.kind === "requirement def" && b.kind === "requirement def" && a.key !== b.key) o.push({ rel: "derive", label: "この要求から導出する «derive»" });
+  if (/^part/.test(a.kind) && /^part/.test(b.kind) && commonParent(a, b)) o.push({ rel: "flow", label: "信号・物理量を流す（flow）" });
   return o;
 }

@@ -37,6 +37,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
   モックの HTML ファイルと内蔵のサンプルモデルは非公開。`reference/mock/` をコミットしたり、サンプルモデルをコード・ケース・ドキュメントに転記したりしない。
   モックのコードは `web/` へ TypeScript として移植してよい（ADR-0009）。移植した暫定コアは `web/src/core/` に閉じ込める。
   モックと同じ振る舞いを確かめるケースは `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
+- **画面の言葉は、SysML v2 の構文を知らない人に合わせる**（ADR-0014）。トースト・ダイアログ・案内などの文言は [画面の言葉の手引き](docs/development/ui-writing.md) に従う。
 - **プラグインとの契約は plugin-sdk に置く**（ADR-0004）。本リポジトリでプラグイン向けの型を独自に定義しない。
 - ADR に反する変更が必要なら、実装より先に ADR を追加・更新する PR を出す。
 

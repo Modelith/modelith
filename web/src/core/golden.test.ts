@@ -25,6 +25,16 @@ function simplify(v: unknown, seen = new Set<unknown>()): unknown {
   return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, simplify(x, seen)]));
 }
 
+/**
+ * 問題一覧の文言は比べない。文言は画面の言葉の決まり（ADR-0014）で Modelith が決めるもので、モックに合わせない。
+ * どこに・どの種類の問題を出すかは、モックと一致させる。
+ */
+function withoutWording(v: unknown): unknown {
+  const o = v as { model?: { problems?: { pos: number; kind?: string }[] } };
+  if (!o.model?.problems) return v;
+  return { ...o, model: { ...o.model, problems: o.model.problems.map(({ pos, kind }) => ({ pos, ...(kind ? { kind } : {}) })) } };
+}
+
 function project(text: string): Record<string, unknown> {
   const P = parse(text);
   const M = build(P);
@@ -65,7 +75,7 @@ describe("暫定コアとゴールデンの一致", () => {
       // Act
       const actual = JSON.parse(JSON.stringify({ case: name, ...project(text) })) as unknown;
       // Assert
-      expect(actual).toEqual(golden);
+      expect(withoutWording(actual)).toEqual(withoutWording(golden));
     });
   }
 });

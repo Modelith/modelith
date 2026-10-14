@@ -260,11 +260,11 @@ describe("view・expose・filter・render（8.2.2.26、9.2.20 標準ビュー定
     // Act
     const ps = build(parse(MODEL + body + "\n}")).problems;
     // Assert
-    expect(ps.filter((p) => !p.kind).map((p) => p.msg)).toEqual(["expose の対象「P::Nope」が見つかりません"]);
+    expect(ps.filter((p) => !p.kind).map((p) => p.msg)).toEqual(["図「v」に出す要素「P::Nope」が見つかりません（expose）"]);
     expect(ps.filter((p) => p.kind === "unsupported").map((p) => p.msg)).toEqual([
-      "GeometryView の専用の描き方はまだ無いため、view「v」はノードと線の図で描きます",
-      "render asElementTable はまだ扱えないため、view「v」は図で描きます",
-      "filter @A and @B はまだ扱えないため、view「v」の絞り込みに使っていません",
+      "図「v」の種類（形状の図）の描き方はまだ無いため、一般の図として描きます（GeometryView）",
+      "図「v」の表し方（asElementTable）はまだ扱えないため、図として描きます（render）",
+      "図「v」の絞り込み「@A and @B」はまだ扱えないため、絞り込まずに描きます（filter）",
     ]);
   });
 

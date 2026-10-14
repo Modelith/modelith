@@ -153,7 +153,7 @@ function itemsForCanvas(lx: number, ly: number): CtxItem[] {
   items.push(
     { sep: true },
     { label: "すべて選択", act: () => { setSelection(CC().nodes.map((n) => n.key)); render(); highlight(); renderInspector(); } },
-    { label: "このビューを並べ直す", act: () => { relayout(); fit(); toast("このビューを並べ直しました"); } },
+    { label: "この図を並べ直す", act: () => { relayout(); fit(); toast("この図を並べ直しました"); } },
     { label: "全体を表示", act: fit },
   );
   return items;

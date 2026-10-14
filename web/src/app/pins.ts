@@ -72,7 +72,7 @@ export const PINOPS = {
   /** 接続点をポートにする。その接続点につながる flow は「部品.ポート」に書き換える。 */
   makePort(n: ModelNode, pin: Pin, name: string, dir: PortDir, type: string): void {
     if (!/^[A-Za-z_]\w*$/.test(name)) {
-      toast("ポート名は英字・数字・_ で入力してください");
+      toast("ポート名は英字か _ で始め、英字・数字・_ だけで付けてください");
       return;
     }
     const host = n.portHost ?? n.entry;
@@ -122,7 +122,7 @@ export const PINOPS = {
     S.portForm = false;
     setText(t, { changeAt: first, flash: at >= 0 ? [at, at + portEdit.ins.length] : null });
     commitLayout();
-    toast(`${n.name} にポート「${name}」を追加しました` + (upgraded ? `（flow ${upgraded} 件をポート接続に更新）` : ""));
+    toast(`${n.name} にポート「${name}」を追加しました` + (upgraded ? `（つながっていた線 ${upgraded} 本を、このポートにつなぎ直しました）` : ""));
   },
 
   /** ポートの向き（in / out / inout）を書き換える。 */
@@ -142,7 +142,7 @@ export const PINOPS = {
     S.selPin = null;
     setText(r.text, { changeAt: r.at, flash: [r.at, r.at + 1] });
     commitLayout();
-    toast(`ポート「${port.name}」をテキストから削除しました`);
+    toast(`ポート「${port.name}」を削除しました`);
   },
 
   /** 接続点を外す（線は自動の位置に戻る）。 */

@@ -193,6 +193,9 @@ package ModelithRequirements {
         requirement def <'Q-3'> LookReq {
             doc /* OS の明るい・暗い配色に合わせて表示する。どちらの配色でも、マウスを乗せた部品とキーボードで選んだ部品が見分けられる */
         }
+        requirement def <'Q-4'> PlainWordsReq {
+            doc /* 画面の文言（トースト・ダイアログ・空の図の案内・メニュー・問題一覧）は、SysML v2 の構文を知らない人にも分かる図の言葉で書き、次の操作を画面の操作で示す。SysML v2 の用語は補足にとどめる（ADR-0014） */
+        }
 
         // ---- 制約 --------------------------------------------------
         requirement def <'C-1'> TextIsSourceReq {
@@ -251,6 +254,7 @@ package ModelithRequirements {
         #derivation dependency from ResponsiveReq to EditBothWaysNeed;
         #derivation dependency from NarrowScreenReq to AnywhereNeed;
         #derivation dependency from LookReq to AnywhereNeed;
+        #derivation dependency from PlainWordsReq to EditBothWaysNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
@@ -346,6 +350,7 @@ package ModelithRequirements {
         satisfy ResponsiveReq by Core;
         satisfy NarrowScreenReq by AppShell;
         satisfy LookReq by AppShell;
+        satisfy PlainWordsReq by AppShell;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
@@ -484,8 +489,9 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
             objective {
+                verify PlainWordsReq;
                 verify StandardViewReq;
                 verify SevenViewsReq;
                 verify NarrowScreenReq;

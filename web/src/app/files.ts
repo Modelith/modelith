@@ -92,15 +92,15 @@ async function offerLegacyMove(key: string): Promise<void> {
   legacyAsked.add(key);
   const doc = ws.get(key);
   if (!doc) return;
-  const r = await ask("古い形式の配置", `「${doc.name}」のテキストには、図の配置（@layout コメント）が書かれています。配置ファイル ${layoutNameFor(doc.name)} に移して、テキストからコメントを消しますか？ 保存するまで、ファイルは変わりません。`, [
+  const r = await ask("図の配置を整理します", `「${doc.name}」には、以前の Modelith がモデルのテキストの中に書き込んだ図の配置（要素の位置）があります。配置を別のファイル（${layoutNameFor(doc.name)}）に移して、モデルのテキストからは消しますか？ 図の見た目は変わりません。保存するまでファイルは変わりません。`, [
     { id: "keep", label: "そのままにする" },
-    { id: "move", label: "配置ファイルに移す", kind: "primary" },
+    { id: "move", label: "移して整理する", kind: "primary" },
   ]);
   if (r?.id !== "move" || shownKey !== key) return;
   const text = removeLayoutComment(doc.text);
   ws.moveLegacyLayout(key, text);
   setText(text, { fromText: true });
-  toast(`保存すると、配置は ${layoutNameFor(doc.name)} に移ります`);
+  toast("保存すると、図の配置が別のファイルに移ります");
 }
 
 /** 表示中の文書が無くなったら、空の無題の文書を作る（テキストは常に 1 つ表示する）。 */
@@ -139,12 +139,12 @@ function newUntitled(): void {
 /** モデルのファイル名として使えるか（使えなければ理由を伝える）。 */
 function isModelPath(path: string): boolean {
   if (/\.(sysml|kerml)$/i.test(path)) return true;
-  toast("ファイル名は .sysml か .kerml で終えてください");
+  toast("ファイル名の最後は .sysml にしてください（例：model.sysml）");
   return false;
 }
 
 async function newFileInFolder(): Promise<void> {
-  const r = await ask("新しいファイル", "フォルダからの相対パスで入力してください。", [
+  const r = await ask("新しいファイル", "ファイル名を入力してください。フォルダの中のフォルダに作るときは「models/a.sysml」のように書けます。", [
     { id: "cancel", label: "やめる" },
     { id: "ok", label: "作成", kind: "primary" },
   ], { value: "untitled.sysml", label: "ファイル名" });
@@ -189,7 +189,7 @@ async function saveIntoFolder(key: string): Promise<void> {
   const doc = ws.get(key);
   const f = ws.folder();
   if (!doc || !f) return;
-  const r = await ask("名前を付けて保存", `フォルダ「${f.ref.name}」に保存します。フォルダからの相対パスで入力してください。図の配置は、隣の配置ファイル（.layout.json）に一緒に保存します。`, [
+  const r = await ask("名前を付けて保存", `フォルダ「${f.ref.name}」に保存します。ファイル名を入力してください。図の配置（要素の位置）も、同じ名前のファイルに一緒に保存します。`, [
     { id: "cancel", label: "やめる" },
     { id: "ok", label: "保存", kind: "primary" },
   ], { value: doc.ref?.path ?? suggestName(doc.name), label: "ファイル名" });
@@ -204,17 +204,16 @@ async function saveIntoFolder(key: string): Promise<void> {
 async function offerFolderForLayout(key: string): Promise<void> {
   const doc = ws.get(key);
   if (!doc || !local) return;
-  const layoutName = layoutNameFor(doc.name);
-  const r = await ask("配置の保存先", `「${doc.name}」だけを開いているため、図の配置を保存する場所がありません。このファイルのあるフォルダを開くと、隣の ${layoutName} に配置を保存できます。`, [
+  const r = await ask("図の配置を保存する場所", `「${doc.name}」だけを開いているため、図の配置（要素の位置）を保存できません。このファイルが入っているフォルダを開くと、配置も一緒に保存できるようになります。`, [
     { id: "later", label: "あとで" },
     { id: "open", label: "フォルダを開く", kind: "primary" },
   ]);
   if (r?.id !== "open") return;
   const outcome = await ws.attachToFolder(key, local);
-  if (outcome === "notInFolder") return toast(`選んだフォルダに「${doc.name}」がありません。配置は未保存のままです`);
+  if (outcome === "notInFolder") return toast(`選んだフォルダに「${doc.name}」がありません。図の配置はまだ保存されていません`);
   if (outcome !== "attached") return;
   showSide("files");
-  if ((await ws.save(key, browser)) === "saved") toast(`配置を ${layoutName} に保存しました`);
+  if ((await ws.save(key, browser)) === "saved") toast("図の配置も保存しました");
 }
 
 async function resolveConflict(key: string): Promise<void> {
@@ -261,7 +260,7 @@ async function closeDoc(key: string): Promise<void> {
 const dirtyMark = (d: Doc): string => (ws.isDirty(d) ? `<span class="dot" title="未保存の変更があります">●</span>` : "");
 /** 配置を変えたが保存先が無い（F-VIEW-6）。 */
 const layoutMark = (d: Doc): string =>
-  d.ref && ws.layoutUnsaved(d) ? `<span class="lu" title="このファイルの配置の保存先がありません。フォルダを開くと、隣の配置ファイルに保存できます">配置は未保存</span>` : "";
+  d.ref && ws.layoutUnsaved(d) ? `<span class="lu" title="図の配置（要素の位置）を保存する場所がありません。このファイルが入っているフォルダを開くと保存できます">配置は未保存</span>` : "";
 const staleMark = (d: Doc): string => (d.stale ? `<span class="st" title="他のアプリで変更されています">⚠</span>` : "");
 
 function renderFiles(): void {
@@ -276,7 +275,7 @@ function renderFiles(): void {
   const f = ws.folder();
   if (f) {
     h += `<div class="sec"><span class="grow" title="${esc(f.ref.name)}">${esc(f.ref.name.toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>`;
-    h += f.entries.length ? folderRows(f.entries, 0) : `<div class="msg">.sysml / .kerml のファイルがありません。</div>`;
+    h += f.entries.length ? folderRows(f.entries, 0) : `<div class="msg">モデルのファイル（.sysml）がありません。</div>`;
   } else if (local) {
     h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">フォルダを開くと、中の .sysml ファイルを一覧して編集・上書き保存できます。<br><button data-cmd="openFolder" class="primary">フォルダを開く</button>`;
     if (recentName) h += `<br><button data-cmd="reopen">前回のフォルダ「${esc(recentName)}」を開く</button>`;

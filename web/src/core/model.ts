@@ -132,18 +132,18 @@ export function build(P: ParseResult): Model {
       const a = nodeFor(resolve(r.by, r.pe));
       const b = nodeFor(resolve(r.req, r.pe));
       if (a && b) addEdge("satisfy", a, b, "«satisfy»", src);
-      else problems.push({ pos: r.start, msg: `satisfy の参照先が見つかりません（${!b ? r.req : r.by}）` });
+      else problems.push({ pos: r.start, msg: `「満たす」関係の相手「${!b ? r.req : r.by}」が見つかりません（satisfy）` });
     } else if (r.rel === "verify") {
       const a = nodeAncestor(r.pe);
       const b = nodeFor(resolve(r.req, r.pe));
       if (a && b) addEdge("verify", a, b, "«verify»", src);
-      else problems.push({ pos: r.start, msg: `verify の参照先が見つかりません（${r.req}）` });
+      else problems.push({ pos: r.start, msg: `「検証する」関係の相手「${r.req}」が見つかりません（verify）` });
     } else if (r.rel === "frame") {
       const a = nodeAncestor(r.pe);
       const T = defNamed(r.type);
       const tn = T ? nodeOf.get(T) : undefined;
       if (a && tn) addEdge("frame", a, tn, "«frame»", src);
-      else problems.push({ pos: r.start, msg: `frame の関心事が見つかりません（${r.type}）` });
+      else problems.push({ pos: r.start, msg: `扱う関心事「${r.type}」が見つかりません（frame）` });
     } else if (r.rel === "flow" || r.rel === "connect") {
       const pa = r.a.split(".");
       const pb = r.b.split(".");
@@ -160,17 +160,17 @@ export function build(P: ParseResult): Model {
         };
         chk(a, pa[1], "fromPort");
         chk(b, pb[1], "toPort");
-      } else problems.push({ pos: r.start, msg: `${r.rel} の接続先が見つかりません（${!a ? r.a : r.b}）` });
+      } else problems.push({ pos: r.start, msg: `線の接続先「${!a ? r.a : r.b}」が見つかりません（${r.rel}）` });
     } else if (r.rel === "derive") {
       const a = nodeFor(resolve(r.a, r.pe));
       const b = nodeFor(resolve(r.b, r.pe));
       if (a && b) addEdge("derive", a, b, "«derive»", src);
-      else problems.push({ pos: r.start, msg: `derivation の参照先が見つかりません（${!a ? r.a : r.b}）` });
+      else problems.push({ pos: r.start, msg: `「導出」関係の相手「${!a ? r.a : r.b}」が見つかりません（derivation）` });
     } else if (r.rel === "message") {
       const seg = (x: string): string => x.split(".")[0] ?? "";
       for (const x of [r.a, r.b]) {
         if (!r.pe || !r.pe.children.some((c) => c.name === seg(x)))
-          problems.push({ pos: r.start, msg: `message の相手「${seg(x)}」が ${r.pe ? r.pe.name : ""} の中にありません` });
+          problems.push({ pos: r.start, msg: `メッセージの相手「${seg(x)}」が「${r.pe ? r.pe.name : ""}」の中にありません（message）` });
       }
     } else if (r.rel === "transition") {
       const a = nodeAncestor(r.pe);
@@ -234,11 +234,11 @@ function addTraceGaps(nodes: ModelNode[], edges: ModelEdge[], phases: string[], 
       problems.push({ pos, kind: "gap", msg: `${label(n)} ${n.name}：${msg}` });
     };
     if (i === 0) {
-      if (!has("derive", "to", n.key)) gap("どの下位要求にも展開（derivation）されていません");
+      if (!has("derive", "to", n.key)) gap("どの下位の要求にも展開されていません（derivation）");
     } else {
-      if (!has("derive", "from", n.key)) gap("導出元の上位要求（derivation）がありません");
-      if (!has("satisfy", "to", n.key)) gap("満たす要素（satisfy）がありません");
-      if (!has("verify", "to", n.key)) gap("検証ケース（verify）がありません");
+      if (!has("derive", "from", n.key)) gap("導出元の上位の要求がありません（derivation）");
+      if (!has("satisfy", "to", n.key)) gap("この要求を満たす要素がありません（satisfy）");
+      if (!has("verify", "to", n.key)) gap("この要求を確かめる検証がありません（verify）");
     }
   }
 }
