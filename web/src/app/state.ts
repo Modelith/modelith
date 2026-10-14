@@ -97,7 +97,7 @@ export interface AppState {
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
 export const S: AppState = {
   text: "",
-  P: { entries: [], rels: [], errors: [], layout: {} },
+  P: { entries: [], rels: [], errors: [], layout: {}, unsupported: [] },
   M: {
     nodes: [], edges: [], problems: [], nodeOf: new Map(), byName: new Map(), rels: [], phases: null, phaseEnum: null,
     phaseOf: () => null,

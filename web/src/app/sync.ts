@@ -1,6 +1,6 @@
 // テキストを更新し、解析し直して画面全体を同期する。図の操作も最後は setText を通る（ADR-0001）。
 
-import { build, lineOf, parse, writeLayout } from "../core";
+import { build, lineOf, parse, writeLayout, type Problem } from "../core";
 import { $, esc } from "./dom";
 import { autoPlace, nodeH } from "./geometry";
 import { scheduleRecord } from "./history";
@@ -133,15 +133,18 @@ export function setSync(cls: "" | "busy" | "bad", txt: string): void {
 }
 
 function updateSync(): void {
-  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => x.kind !== "gap").length;
+  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => !x.kind).length;
   setSync(p ? "bad" : "", p ? `同期済み（問題 ${p} 件）` : "同期済み");
   $("#textInfo").textContent = `SysML v2 テキスト：要素 ${n}、関係 ${e}`;
 }
 
 /** 問題（構文エラー・参照切れ・トレースの抜け）の一覧。 */
 export function renderProblems(): void {
-  const pr = [...S.M.problems.filter((p) => p.kind !== "gap"), ...S.M.problems.filter((p) => p.kind === "gap")].slice(0, 40);
+  // エラー → まだ扱えない構文 → トレースの抜け、の順に並べる
+  const order = (k: Problem["kind"]): number => (k === undefined ? 0 : k === "unsupported" ? 1 : 2);
+  const pr = [...S.M.problems].sort((a, b) => order(a.kind) - order(b.kind)).slice(0, 40);
+  const mark = { gap: "△", unsupported: "ℹ" } as const;
   $("#problems").innerHTML = pr
-    .map((p) => `<button data-pos="${p.pos}" class="${p.kind === "gap" ? "gap" : ""}">${p.kind === "gap" ? "△" : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`)
+    .map((p) => `<button data-pos="${p.pos}" class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`)
     .join("");
 }

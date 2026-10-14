@@ -132,6 +132,7 @@ header .short{display:none}
 .subbar .gapbtn{color:var(--k-req);border-color:var(--k-req)}
 .subbar .okgap{color:var(--k-ver)}
 .problems button.gap{color:var(--k-req)}
+.problems button.unsupported{color:var(--ink2)}
 .views{overflow-x:auto;scrollbar-width:none;min-width:0}
 .editor{position:relative;flex:1;min-height:0}
 .editor pre,.editor textarea{position:absolute;inset:0;margin:0;padding:12px 14px 40vh;font-family:var(--mono);font-size:12.5px;line-height:19px;tab-size:4;white-space:pre;overflow:auto;border:0;letter-spacing:0}

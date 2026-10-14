@@ -183,6 +183,11 @@ export function build(P: ParseResult): Model {
     e.id = b + "#" + k;
   }
   for (const e of P.errors) problems.push(e);
+  // 黙って捨てず、まだ扱えない構文があることを知らせる（ADR-0013）
+  for (const u of P.unsupported) {
+    const head = u.head.length > 40 ? u.head.slice(0, 40) + "…" : u.head;
+    problems.push({ pos: u.start, kind: "unsupported", msg: `「${head}」は Modelith ではまだ扱えないため、図とツリーに出ません` });
+  }
   // ---- フェーズ ----
   let phases: string[] | null = null;
   let phaseEnum: string | null = null;

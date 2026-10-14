@@ -90,7 +90,10 @@ package ModelithRequirements {
             doc /* 構文エラー・型や参照の見つからない箇所を、行番号付きで一覧にし、クリックでその行へ移る */
         }
         requirement def <'F-EDIT-6'> ParseParityReq {
-            doc /* 解析とモデル構築の結果は、仕様の基準（ゴールデン）と一致する（ADR-0002） */
+            doc /* モックと同じ振る舞いの範囲では、解析とモデル構築の結果はゴールデン（モックの出力）と一致する（ADR-0002・ADR-0013） */
+        }
+        requirement def <'F-EDIT-8'> NoSilentDropReq {
+            doc /* 正しい SysML v2 の宣言を黙って捨てたり、別の意味に取り違えたりしない。まだ扱えない構文は「まだ扱えない」と知らせる（ADR-0013） */
         }
         requirement def <'F-EDIT-7'> NewPackageGuideReq {
             doc /* package の無いファイルで図から要素を置こうとしたら、断らずに新しい package を作るよう案内し、名前を決めて作ったうえで要素を置く */
@@ -211,6 +214,7 @@ package ModelithRequirements {
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
         #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
+        #derivation dependency from NoSilentDropReq to EditBothWaysNeed;
         #derivation dependency from RenameReq to EditBothWaysNeed;
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
@@ -304,6 +308,7 @@ package ModelithRequirements {
         satisfy TextToDiagramReq by TextEditor;
         satisfy DiagramToTextReq by DiagramUI;
         satisfy NewPackageGuideReq by DiagramUI;
+        satisfy NoSilentDropReq by Core;
         satisfy RenameReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
@@ -365,6 +370,12 @@ package ModelithRequirements {
                 verify DiagramToTextReq;
             }
         }
+        verification def SpecCasesTest {
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知）。期待値は仕様から手で書く（ADR-0013） */
+            objective {
+                verify NoSilentDropReq;
+            }
+        }
         verification def NewPackageTest {
             doc /* web/src/app/new-package.test.ts：ファイル名からの package 名の候補・名前の検査・package を足す位置 */
             objective {
@@ -405,6 +416,7 @@ package ModelithRequirements {
         verification def ViewsE2E {
             doc /* web/e2e/views.spec.ts：7 つのビュー・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
             objective {
+                verify NoSilentDropReq;
                 verify SevenViewsReq;
                 verify ViewTabsReq;
                 verify CanvasReq;
