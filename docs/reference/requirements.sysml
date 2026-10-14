@@ -122,6 +122,9 @@ package ModelithRequirements {
         requirement def <'F-VIEW-8'> CreateViewReq {
             doc /* 画面から図を作り要素を選ぶと、標準の view としてテキストに書く（ADR-0005） */
         }
+        requirement def <'F-VIEW-9'> PackageFrameReq {
+            doc /* 図に package そのものを出したとき（expose P）、package を枠（フォルダ形）として描き、中の要素を枠の中に示す（8.2.3.5 の package の記法、ADR-0005） */
+        }
         requirement def <'F-VIEW-4'> CanvasReq {
             doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える */
         }
@@ -230,6 +233,7 @@ package ModelithRequirements {
         #derivation dependency from UnsavedLayoutReq to SafetyNeed;
         #derivation dependency from StandardViewReq to ViewsNeed;
         #derivation dependency from CreateViewReq to ViewsNeed;
+        #derivation dependency from PackageFrameReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
         #derivation dependency from TreeReq to ViewsNeed;
         #derivation dependency from PhaseReq to TraceNeed;
@@ -324,6 +328,7 @@ package ModelithRequirements {
         satisfy UnsavedLayoutReq by Workspace;
         satisfy StandardViewReq by DiagramUI;
         satisfy CreateViewReq by DiagramUI;
+        satisfy PackageFrameReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
         satisfy CanvasReq by DiagramUI;
         satisfy TreeReq by DiagramUI;
