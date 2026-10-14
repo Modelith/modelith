@@ -194,3 +194,45 @@ describe("LocalFolderProvider: 前回のフォルダ（F-FILE-9）", () => {
     expect(name).toBeNull();
   });
 });
+
+describe("LocalFolderProvider: 隣のファイル（配置ファイル、ADR-0005）", () => {
+  it("フォルダから開いたファイルは、隣のファイルを書いて読める（サブフォルダでも）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("models/a.sysml", "package A;");
+    const folder = (await p.pickFolder())!;
+    const es = await p.list(folder);
+    const dir = es[0];
+    const ref = dir?.kind === "dir" ? firstFile(dir.children) : firstFile(es);
+    // Act
+    await p.writeSibling(ref, "a.layout.json", "{}");
+    const text = await p.readSibling(ref, "a.layout.json");
+    // Assert
+    expect(p.hasSiblings(ref)).toBe(true);
+    expect(text).toBe("{}");
+    expect((root.entries.get("models") as FakeDir).entries.get("a.layout.json")).toBeInstanceOf(FakeFile);
+  });
+
+  it("隣のファイルが無ければ null（境界値: まだ作っていない）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "");
+    const ref = firstFile(await p.list((await p.pickFolder())!));
+    // Act
+    const text = await p.readSibling(ref, "a.layout.json");
+    // Assert
+    expect(text).toBeNull();
+  });
+
+  it("1 つだけ選んで開いたファイルは、隣を扱えない（異常系）", async () => {
+    // Arrange
+    const { p, api } = setup();
+    api.openFile = new FakeFile("one.sysml", "package One;");
+    const ref = (await p.pickFile())!;
+    // Act
+    const can = p.hasSiblings(ref);
+    // Assert
+    expect(can).toBe(false);
+    await expect(p.readSibling(ref, "one.layout.json")).rejects.toThrow(/フォルダを開いてください/);
+  });
+});

@@ -1,5 +1,6 @@
-// 図からの編集（F-EDIT-2・3・4・F-VIEW-3）。図の操作はすべてテキストの編集として反映される。
-import { editorText, expect, nodeKeys, openApp, test } from "./fixtures";
+// 図からの編集（F-EDIT-2・3・4・F-VIEW-3・6）。図の操作はテキストの編集として反映し、配置は配置ファイルに保存する（ADR-0005）。
+import { editorText, expect, nodeKeys, openApp, putFiles, readFile, test } from "./fixtures";
+import type { Page } from "@playwright/test";
 
 test("F-EDIT-2・C-1: パレットで要求を置くとテキストに追加され、削除するとテキストから消える", async ({ page }) => {
   // Arrange
@@ -20,8 +21,7 @@ test("F-EDIT-2・C-1: パレットで要求を置くとテキストに追加さ�
 test("F-EDIT-3: 名前を変えると、参照もまとめて変わる", async ({ page }) => {
   // Arrange
   await openApp(page);
-  // 配置情報（@layout）にも新しい名前で書かれるので、モデル本体だけで数える
-  const count = (t: string, w: string): number => t.replace(/\/\* @layout[\s\S]*?\*\//, "").split(w).length - 1;
+  const count = (t: string, w: string): number => t.split(w).length - 1;
   const before = count(await editorText(page), "BoilTimeReq");
   await page.locator('#gNodes .node[data-key="BoilTimeReq"]').click();
   // Act
@@ -34,22 +34,117 @@ test("F-EDIT-3: 名前を変えると、参照もまとめて変わる", async (
   expect(count(after, "BoilTimeReq")).toBe(0);
   expect(count(after, "BoilingTimeReq")).toBe(before);
   expect(await nodeKeys(page)).toContain("BoilingTimeReq");
-  expect(after).toMatch(/\/\* @layout[\s\S]*"BoilingTimeReq":\[/);
 });
 
-test("F-VIEW-3: 要素をドラッグすると、配置がテキストに保存される", async ({ page }) => {
-  // Arrange
-  await openApp(page);
-  const node = page.locator('#gNodes .node[data-key="BoilTimeReq"]');
-  const b = (await node.boundingBox())!;
-  // Act
+/** 要素をドラッグして動かす。 */
+async function dragNode(page: Page, key: string, dx: number, dy: number): Promise<void> {
+  const b = (await page.locator(`#gNodes .node[data-key="${key}"]`).boundingBox())!;
   await page.mouse.move(b.x + 40, b.y + 20);
   await page.mouse.down();
-  await page.mouse.move(b.x + 240, b.y + 220, { steps: 6 });
+  await page.mouse.move(b.x + 40 + dx, b.y + 20 + dy, { steps: 6 });
   await page.mouse.up();
-  // Assert
-  const text = await editorText(page);
-  expect(text).toMatch(/\/\* @layout \{[\s\S]*"trace": \{[^\n]*"BoilTimeReq":\[/);
+}
+
+const MODEL = "package A {\n    part def Alpha;\n    part def Beta;\n}\n";
+
+/** project フォルダに a.sysml（と配置ファイル）を置き、フォルダを開いて a.sysml を開く。 */
+async function openInFolder(page: Page, files: Record<string, string>): Promise<void> {
+  await openApp(page);
+  await putFiles(page, files);
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  await openAllView(page);
+}
+
+/** 部品の定義は既定のタブに出ないので、すべての要素のビューを開く。 */
+async function openAllView(page: Page): Promise<void> {
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+}
+
+test.describe("配置ファイル（ADR-0005）", () => {
+  test("F-VIEW-3・C-6: 要素をドラッグして保存すると、配置は隣の a.layout.json に書き、a.sysml には書かない", async ({ page }) => {
+    // Arrange
+    await openInFolder(page, { "a.sysml": MODEL });
+    // Act
+    await dragNode(page, "Alpha", 200, 160);
+    await page.keyboard.press("Control+s");
+    // Assert
+    await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"modelith": "layout"[\s\S]*"Alpha": \[/);
+    expect(await readFile(page, "a.sysml")).toBe(MODEL);
+    expect(await editorText(page)).not.toContain("@layout");
+  });
+
+  test("F-VIEW-3: 名前を変えると、配置も新しい名前で引き継ぐ", async ({ page }) => {
+    // Arrange
+    await openInFolder(page, { "a.sysml": MODEL });
+    await dragNode(page, "Alpha", 200, 160);
+    await page.locator('#gNodes .node[data-key="Alpha"]').click();
+    // Act
+    await page.locator('[data-act="rename"]').click();
+    await page.locator("#renameIn").fill("Gamma");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Control+s");
+    // Assert
+    await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"Gamma": \[/);
+    expect(await readFile(page, "a.layout.json")).not.toMatch(/"Alpha": \[/);
+  });
+
+  test("F-VIEW-3: 開くと配置ファイルの位置に描く", async ({ page }) => {
+    // Arrange
+    const layout = '{"modelith":"layout","format":1,"views":{"trace":{"Alpha":[600,400]}}}';
+    // Act
+    await openInFolder(page, { "a.sysml": MODEL, "a.layout.json": layout });
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="trace"]').click();
+    // Assert
+    await expect(page.locator('#gNodes .node[data-key="Alpha"]')).toHaveAttribute("transform", /translate\(600,\s*400\)/);
+    await expect(page.locator("#docName")).toHaveText("a.sysml");
+  });
+
+  test("F-VIEW-3: 古い形式（テキスト内の @layout）の配置も読み、開いただけでは変更の印を付けない", async ({ page }) => {
+    // Arrange
+    const legacy = MODEL + '\n/* @layout {\n  "trace": {"Alpha":[600,400]}\n} */\n';
+    // Act
+    await openInFolder(page, { "a.sysml": legacy });
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="trace"]').click();
+    // Assert
+    await expect(page.locator('#gNodes .node[data-key="Alpha"]')).toHaveAttribute("transform", /translate\(600,\s*400\)/);
+    await expect(page.locator("#docName")).toHaveText("a.sysml");
+  });
+
+  test("F-VIEW-6: 1 つだけ開いたファイルで配置を変えると「配置は未保存」と示す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await putFiles(page, { "one.sysml": MODEL });
+    await page.evaluate(() => ((window as unknown as { __e2e: { openFile: string } }).__e2e.openFile = "one.sysml"));
+    await page.keyboard.press("Control+o");
+    await expect(page.locator("#docName")).toHaveText("one.sysml");
+    await openAllView(page);
+    // Act
+    await dragNode(page, "Alpha", 200, 160);
+    // Assert
+    await expect(page.locator("#docName .lu")).toHaveText("配置は未保存");
+  });
+
+  test("F-EDIT-4: 配置の変更も、元に戻す・やり直すができる", async ({ page }) => {
+    // Arrange
+    await openInFolder(page, { "a.sysml": MODEL });
+    const pos = () => page.locator('#gNodes .node[data-key="Alpha"]').getAttribute("transform");
+    const start = await pos();
+    await dragNode(page, "Alpha", 200, 160);
+    const moved = await pos();
+    // Act
+    await page.locator("#btnUndo").click();
+    const undone = await pos();
+    await page.locator("#btnRedo").click();
+    // Assert
+    expect(moved).not.toBe(start);
+    expect(undone).toBe(start);
+    expect(await pos()).toBe(moved);
+  });
 });
 
 test("F-EDIT-4: 元に戻す・やり直すができ、履歴はファイルごとに分かれる", async ({ page }) => {

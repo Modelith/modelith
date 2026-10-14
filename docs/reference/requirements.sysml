@@ -383,10 +383,11 @@ package ModelithRequirements {
             }
         }
         verification def LocalFolderProviderTest {
-            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ（偽のファイルシステムで） */
+            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き（偽のファイルシステムで） */
             objective {
                 verify OpenFolderReq;
                 verify RecentFolderReq;
+                verify LayoutReq;
             }
         }
         verification def BrowserFileProviderTest {
@@ -396,7 +397,7 @@ package ModelithRequirements {
             }
         }
         verification def WorkspaceTest {
-            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き */
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」 */
             objective {
                 verify OpenSaveReq;
                 verify NewSaveAsReq;
@@ -405,6 +406,9 @@ package ModelithRequirements {
                 verify ConflictReq;
                 verify ExternalChangeReq;
                 verify UntitledDraftReq;
+                verify LayoutReq;
+                verify UnsavedLayoutReq;
+                verify NoSilentWriteReq;
             }
         }
         verification def AutoSaveTest {
@@ -428,12 +432,14 @@ package ModelithRequirements {
             }
         }
         verification def EditingE2E {
-            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置の保存・ファイルごとの元に戻す・package の無いファイルでの案内（図の操作がすべてテキストに残ること） */
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込み・「配置は未保存」・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
             objective {
                 verify DiagramToTextReq;
                 verify NewPackageGuideReq;
                 verify RenameReq;
                 verify LayoutReq;
+                verify UnsavedLayoutReq;
+                verify NoSilentWriteReq;
                 verify UndoReq;
                 verify TextIsSourceReq;
             }
@@ -483,7 +489,7 @@ package ModelithRequirements {
             }
         }
         verification def LayoutTest {
-            doc /* web/src/app/layout.test.ts：配置情報の読み書き */
+            doc /* web/src/app/layout.test.ts・layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
             objective {
                 verify LayoutReq;
             }

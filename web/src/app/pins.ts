@@ -5,7 +5,7 @@ import type { Edit } from "../core";
 import { pinsOf, type Pin } from "./geometry";
 import type { Ends, ViewLayout } from "./layout";
 import { S, type EndSpec } from "./state";
-import { commitLayout, setText, toast, withLayout } from "./sync";
+import { commitLayout, setText, toast } from "./sync";
 import { curLayout, edgeById, nodeByKey } from "./views";
 
 export const DIR_LABEL: Record<PortDir, string> = { in: "入力", out: "出力", inout: "双方向" };
@@ -120,7 +120,8 @@ export const PINOPS = {
     const at = t.indexOf(`port ${name}`, Math.max(0, first - 5));
     S.selPin = { node: n.key, pin: newId };
     S.portForm = false;
-    setText(withLayout(t), { changeAt: first, flash: at >= 0 ? [at, at + portEdit.ins.length] : null });
+    setText(t, { changeAt: first, flash: at >= 0 ? [at, at + portEdit.ins.length] : null });
+    commitLayout();
     toast(`${n.name} にポート「${name}」を追加しました` + (upgraded ? `（flow ${upgraded} 件をポート接続に更新）` : ""));
   },
 
@@ -139,7 +140,8 @@ export const PINOPS = {
     const r = removeRange(S.text, port.entry.start, port.entry.end);
     for (const v of Object.values(S.layout)) delete v.pins[n.key]?.[pin.id];
     S.selPin = null;
-    setText(withLayout(r.text), { changeAt: r.at, flash: [r.at, r.at + 1] });
+    setText(r.text, { changeAt: r.at, flash: [r.at, r.at + 1] });
+    commitLayout();
     toast(`ポート「${port.name}」をテキストから削除しました`);
   },
 

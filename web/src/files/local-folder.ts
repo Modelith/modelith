@@ -13,6 +13,7 @@ import {
   type Readable,
   type RecentFolders,
   type SaveAsTarget,
+  type SiblingFiles,
   type Writable,
 } from "./types";
 
@@ -66,7 +67,7 @@ const versionOf = (f: FileLike): string => `${f.lastModified}:${f.size}`;
 const SKIP_DIR = /^(\.|node_modules$)/;
 const RECENT_KEY = "recent-folder";
 
-export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, SaveAsTarget, RecentFolders {
+export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, SaveAsTarget, RecentFolders, SiblingFiles {
   readonly id = "local";
   readonly label = "このコンピュータ";
   private readonly files = new Map<string, FileHandleLike>();
@@ -151,6 +152,38 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
     if (expectedVersion !== null && versionOf(await fh.getFile()) !== expectedVersion) throw new ConflictError(ref);
     await writeText(fh, text);
     return versionOf(await fh.getFile());
+  }
+
+  hasSiblings(ref: FileRef): boolean {
+    return this.parentOf(ref) !== null;
+  }
+
+  async readSibling(ref: FileRef, name: string): Promise<string | null> {
+    const dir = await this.parentDir(ref);
+    if (!(await exists(dir, name))) return null;
+    return (await (await dir.getFileHandle(name)).getFile()).text();
+  }
+
+  async writeSibling(ref: FileRef, name: string, text: string): Promise<void> {
+    const dir = await this.parentDir(ref);
+    await writeText(await dir.getFileHandle(name, { create: true }), text);
+  }
+
+  /** フォルダから開いたファイルなら、そのフォルダ（id）と、ファイルのある階層までのパス。 */
+  private parentOf(ref: FileRef): { folder: DirHandleLike; segs: string[] } | null {
+    if (ref.provider !== this.id) return null;
+    const slash = ref.id.indexOf("/");
+    const folder = slash > 0 ? this.folders.get(ref.id.slice(0, slash)) : undefined;
+    if (!folder) return null;
+    return { folder, segs: ref.path.split("/").slice(0, -1) };
+  }
+
+  private async parentDir(ref: FileRef): Promise<DirHandleLike> {
+    const p = this.parentOf(ref);
+    if (!p) throw new Error(`「${ref.name}」の隣のファイルは扱えません（フォルダを開いてください）`);
+    let dir = p.folder;
+    for (const s of p.segs) dir = await dir.getDirectoryHandle(s);
+    return dir;
   }
 
   private addFolder(dir: DirHandleLike): FolderRef {

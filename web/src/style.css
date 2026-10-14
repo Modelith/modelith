@@ -232,6 +232,7 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .fi .nm{overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
 .fi .st{color:var(--k-req);font-size:11px}
 .fi .dot{color:var(--ink);font-size:14px;line-height:1}
+.lu{flex:none;margin-left:6px;padding:0 5px;border:1px solid var(--err);border-radius:3px;color:var(--err);font-size:10px;line-height:15px;white-space:nowrap}
 .fi .x{border:0;background:transparent;padding:0 5px;color:var(--ink2);visibility:hidden}
 .fi:hover .x,.fi.sel .x{visibility:visible}
 .fi .ic{width:14px;flex:none;text-align:center;color:var(--ink2);font-size:11px}
