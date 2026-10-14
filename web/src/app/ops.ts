@@ -3,6 +3,7 @@
 import { applyEdits, indentAt, insertEdit, insertInto, mask, removeRange, type Edit, type Entry, type ModelEdge, type ModelNode } from "../core";
 import { ask } from "./dialog";
 import { kindLabel } from "./labels";
+import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
 import { nodeH, W } from "./geometry";
 import { renderInspector, startRename } from "./inspector";
@@ -93,6 +94,9 @@ export const OPS = {
     S.sel = name;
     setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
     commitLayout();
+    // 保存された図に置いたときは、その図にも入れる（F-VIEW-8）
+    const added = S.P.entries.find((e) => e.kind === kind && e.name === name);
+    if (added && editableView()) addToView(added, undefined, { quiet: true });
     toast(`${kindLabel(kind)}「${name}」を追加しました`);
     startRename();
   },

@@ -1,7 +1,7 @@
 // 右クリック（長押し）メニュー。
 
 import type { ModelEdge, ModelNode } from "../core";
-import { local, placeUsageAt, fit } from "./canvas";
+import { local, placeUsageAt, fit, toCanvas } from "./canvas";
 import { $, closest, esc } from "./dom";
 import type { Pin } from "./geometry";
 import { act, renderInspector, startRename } from "./inspector";
@@ -13,6 +13,7 @@ import { clearSel, S } from "./state";
 import { kindIcon } from "./svg";
 import { relayout, toast } from "./sync";
 import { CC, edgeById, nodeByKey, phaseLabel } from "./views";
+import { addToView, canAddToView, editableView, removeFromView } from "./view-ops";
 
 export type CtxItem = { sep: true } | { head: string } | { label: string; icon?: string; disabled?: boolean; act: () => void };
 
@@ -92,7 +93,9 @@ function itemsForNode(n: ModelNode): CtxItem[] {
     items.push({ sep: true }, { head: "フェーズ" });
     for (const p of phases) items.push({ label: phaseLabel(p) + (n.phase === p ? "（現在）" : ""), act: () => PHASEOPS.set(n, p) });
   }
-  items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  // 保存された図では、図から外す操作とモデルから削除する操作を分けて並べる（取り違えてモデルを消さないため）
+  if (editableView()) items.push({ sep: true }, { label: "この図から外す", act: () => removeFromView(n) }, { label: "モデルから削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  else items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   return items;
 }
 
@@ -210,6 +213,16 @@ export function initCtxMenu(): void {
         act: () => {
           const r = $("#wrap").getBoundingClientRect();
           placeUsageAt(e.name, r.width / 2, r.height / 3);
+        },
+      });
+    }
+    if (canAddToView(e)) {
+      items.push({
+        label: "この図に入れる",
+        act: () => {
+          const r = $("#wrap").getBoundingClientRect();
+          const [cx, cy] = toCanvas(r.width / 2, r.height / 3);
+          addToView(e, [Math.round(cx / 10) * 10, Math.round(cy / 10) * 10]);
         },
       });
     }

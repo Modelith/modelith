@@ -6,6 +6,7 @@ import { $, closest, esc, isFormField, store } from "./dom";
 import { W } from "./geometry";
 import { act, renderInspector } from "./inspector";
 import { kindLabel } from "./labels";
+import { addToView, canAddToView, editableView } from "./view-ops";
 import { deleteSel, OPS, PHASEOPS } from "./ops";
 import { PINOPS, selPinInfo } from "./pins";
 import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
@@ -335,12 +336,13 @@ export function renderPalette(): void {
     const label = S.view === "ibd" ? "部品を置く" : "ライフラインを追加";
     h += `<label class="tool toolsel" aria-pressed="${!!cur}">${kindIcon("part")}<select id="usageTool" aria-label="${label}"><option value="">${label}…</option>${pdefs.map((p) => `<option value="${esc(p.name)}" ${cur === p.name ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>`;
     if (S.view === "seq") h += `<button class="tool" data-tool="occurrence def" aria-pressed="false" title="新しいシナリオを作成">${kindIcon("occurrence def")}<span>シナリオ</span></button>`;
-  } else if (!S.modelView) {
-    // テキストの view の中身は expose で決まるので、ここで要素を足しても図に出ない。パレットは出さない
+  } else if (!S.modelView || editableView()) {
+    // 保存された図では、置いた要素をその図にも入れる（OPS.addNode）
     for (const [k, l] of PALETTE[S.view] ?? [])
       h += `<button class="tool" data-tool="${k}" aria-pressed="${toolKind(S.tool) === k}" title="${l}（${k}）：押してから図の上をクリックで置く">${kindIcon(k)}<span>${l}</span></button>`;
   }
   $("#palette").innerHTML = h;
+  $("#btnSaveView").hidden = !!S.modelView;
   $("#wrap").classList.toggle("placing", !!S.tool && !isHand(S.tool));
 }
 
@@ -356,12 +358,17 @@ export function setTool(tool: Tool | null): void {
   toast(u ? `図の上をクリックすると「${u}」を部品として置きます（Esc で取消）` : `図の上をクリックすると${kindLabel(toolKind(tool) ?? "")}を置きます（Esc で取消）`);
 }
 
+/** 画面上の位置（図の枠内の座標）に置くときの、要素の左上の座標。 */
+function dropPos(lx: number, ly: number): [number, number] {
+  const [cx, cy] = toCanvas(lx, ly);
+  return [Math.round((cx - W / 2) / 10) * 10, Math.round((cy - 22) / 10) * 10];
+}
+
 /** 選んでいる道具で、画面上の位置（図の枠内の座標）に要素を置く。 */
 export function placeTool(lx: number, ly: number): void {
-  const [cx, cy] = toCanvas(lx, ly);
   const tool = S.tool;
   S.tool = null;
-  const pos: [number, number] = [Math.round((cx - W / 2) / 10) * 10, Math.round((cy - 22) / 10) * 10];
+  const pos = dropPos(lx, ly);
   const u = toolUsage(tool), k = toolKind(tool);
   if (u) OPS.addUsage(u, pos);
   else if (k) void OPS.addNode(k, pos);
@@ -511,13 +518,13 @@ export function renderTree(): void {
     const open = !!q || anc.has(e) || (S.treeOpen.get(p) ?? (e.kind === "package" && d <= 1));
     const sel = selE === e;
     const ot = openTarget(e);
-    const addable = (S.view === "ibd" || S.view === "seq") && e.kind === "part def";
+    const addable = ((S.view === "ibd" || S.view === "seq") && e.kind === "part def") || canAddToView(e);
     const phase = S.M.nodeOf.get(e)?.phase;
     rows.push(
       `<div class="ti${sel ? " sel" : ""}" role="treeitem" tabindex="-1" aria-level="${d + 1}"${expandable ? ` aria-expanded="${open}"` : ""} aria-selected="${sel}" data-idx="${e.idx}" style="--d:${d}" title="${esc(e.kind + (phase ? "（" + phaseLabel(phase) + "）" : ""))}">` +
         `<span class="car" data-toggle="${esc(p)}">${expandable ? (open ? "▾" : "▸") : ""}</span>${kindIcon(e.kind)}` +
         `<span class="nm">${e.short ? `&lt;'${esc(e.short)}'&gt; ` : ""}${esc(e.name)}</span>${e.type ? `<span class="ty">: ${esc(e.type)}</span>` : ""}` +
-        `<span class="acts">${addable ? `<button data-add="${e.idx}" title="この図に${S.view === "ibd" ? "部品" : "ライフライン"}として追加">追加</button>` : ""}${ot ? `<button data-open="${e.idx}" title="${ot.label}">開く</button>` : ""}<button class="nar" data-totext="${e.idx}" title="テキストで見る">文</button></span></div>`,
+        `<span class="acts">${addable ? `<button data-add="${e.idx}" title="${canAddToView(e) ? "この図に入れる" : `この図に${S.view === "ibd" ? "部品" : "ライフライン"}として追加`}">追加</button>` : ""}${ot ? `<button data-open="${e.idx}" title="${ot.label}">開く</button>` : ""}<button class="nar" data-totext="${e.idx}" title="テキストで見る">文</button></span></div>`,
     );
     if (!open) return;
     for (const c of kids) walk(c, d + 1);
@@ -591,7 +598,8 @@ function initTree(): void {
     const ba = entryAt(closest(ev, "[data-add]")?.dataset["add"]);
     if (ba) {
       const r = wrapEl.getBoundingClientRect();
-      placeUsageAt(ba.name, r.width / 2, r.height / 3);
+      if (canAddToView(ba)) addToView(ba, dropPos(r.width / 2, r.height / 3));
+      else placeUsageAt(ba.name, r.width / 2, r.height / 3);
       if (isNarrow()) setTab("diagram");
       return;
     }
@@ -657,7 +665,7 @@ function initTree(): void {
     const r = wrapEl.getBoundingClientRect();
     return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
   };
-  const droppable = (e: Entry | undefined): boolean => (S.view === "ibd" || S.view === "seq") && e?.kind === "part def";
+  const droppable = (e: Entry | undefined): boolean => !!e && (((S.view === "ibd" || S.view === "seq") && e.kind === "part def") || canAddToView(e));
   window.addEventListener("pointermove", (ev) => {
     if (!tdrag) return;
     const e = S.P.entries[tdrag.idx];
@@ -691,8 +699,9 @@ function initTree(): void {
     if (!insideWrap(ev)) return;
     const e = S.P.entries[d.idx];
     const [lx, ly] = local(ev.clientX, ev.clientY);
-    if (e && droppable(e)) placeUsageAt(e.name, lx, ly);
-    else toast("ツリーからのドラッグは、内部ブロック図とシーケンス図に部品定義を置くときに使えます");
+    if (e && canAddToView(e)) addToView(e, dropPos(lx, ly));
+    else if (e && droppable(e)) placeUsageAt(e.name, lx, ly);
+    else toast("ツリーからのドラッグは、保存された図に要素を入れるときと、内部ブロック図・シーケンス図に部品定義を置くときに使えます");
   });
 }
 
@@ -708,7 +717,7 @@ export function renderSub(): void {
     const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : null;
     const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
     parts.push(
-      `<span class="mvnote" title="この図に出す要素は、保存された図の設定で決まります（view の expose・filter）">保存された図「${esc(S.modelView)}」：${esc(stdViewLabel(mv?.std ?? null))}${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
+      `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、保存された図の設定で決まります"}（view の expose・filter）">保存された図「${esc(S.modelView)}」：${esc(stdViewLabel(mv?.std ?? null))}${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
     );
   } else if (S.view === "ibd") {
     CC();

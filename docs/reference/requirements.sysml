@@ -120,7 +120,8 @@ package ModelithRequirements {
                    render の asTreeDiagram・asInterconnectionDiagram は図の種類より優先する。扱えない図の種類・描き方・絞り込みは、黙って捨てずに問題一覧で知らせる */
         }
         requirement def <'F-VIEW-8'> CreateViewReq {
-            doc /* 画面から図を作り要素を選ぶと、標準の view としてテキストに書く（ADR-0005） */
+            doc /* 画面で図を保存し（名前を付ける）、保存した図に要素を入れたり、図から外したりできる。テキストには標準の view と expose として書き、利用者には view・expose という言葉を見せない（ADR-0005・ADR-0014）。
+                   図から外しても、モデルの要素は消さない。モデルから削除するのは別の操作にする */
         }
         requirement def <'F-VIEW-9'> PackageFrameReq {
             doc /* 図に package そのものを出したとき（expose P）、package を枠（フォルダ形）として描き、中の要素を枠の中に示す（8.2.3.5 の package の記法、ADR-0005） */
@@ -392,6 +393,12 @@ package ModelithRequirements {
                 verify NoSilentWriteReq;
             }
         }
+        verification def ViewTextTest {
+            doc /* web/src/app/view-text.test.ts：画面で作る図のテキスト（引用名・修飾名・view の宣言と読み直し・図から外す expose の見つけ方） */
+            objective {
+                verify CreateViewReq;
+            }
+        }
         verification def SpecCasesTest {
             doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013） */
             objective {
@@ -443,8 +450,9 @@ package ModelithRequirements {
             }
         }
         verification def ViewsE2E {
-            doc /* web/e2e/views.spec.ts：7 つのビュー・テキストの view・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
+            doc /* web/e2e/views.spec.ts：7 つのビュー・テキストの view・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
             objective {
+                verify CreateViewReq;
                 verify StandardViewReq;
                 verify NoSilentDropReq;
                 verify SevenViewsReq;

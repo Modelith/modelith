@@ -37,6 +37,8 @@ const RESERVED = new Set(
     "requirement return satisfy send snapshot specializes stakeholder standard state subject subsets succession terminate then timeslice to " +
     "transition true until use variant variation verification verify via view viewpoint when while xor").split(" "),
 );
+/** SysML の予約語か（名前に使うときは引用名にする）。 */
+export const isReservedWord = (w: string): boolean => RESERVED.has(w);
 const unquote = (s: string): string => (s.startsWith("'") && s.endsWith("'") ? s.slice(1, -1) : s);
 const MOD_RE = /^(?:(?:private|public|protected|abstract|in|out|inout|derived|readonly|end|ref|variation|individual)\s+)+/;
 const SKIP_RE =

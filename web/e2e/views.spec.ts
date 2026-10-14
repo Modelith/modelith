@@ -196,3 +196,112 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     await expect(page.locator(".tabadd .pnote")).toHaveText("保存された図はまだありません");
   });
 });
+
+test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
+  const MODEL = "package P {\n    part def A;\n    part def B;\n}\n";
+
+  /** モデルを書き、「すべて」の図を開く。 */
+  async function openAll(page: import("@playwright/test").Page, text = MODEL): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="all"]').click();
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["A", "B"]);
+  }
+
+  /** 「図を保存」で、名前を付けて保存する。 */
+  async function saveView(page: import("@playwright/test").Page, name: string): Promise<void> {
+    await page.locator("#btnSaveView").click();
+    await page.locator("#dialogInput").fill(name);
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+  }
+
+  /** 要素を右クリックして、メニューの項目を選ぶ。 */
+  async function ctxItem(page: import("@playwright/test").Page, key: string, label: string): Promise<void> {
+    await page.locator(`#gNodes .node[data-key="${key}"]`).click({ button: "right" });
+    await page.locator(`#ctx button:has-text("${label}")`).click();
+  }
+
+  test("F-VIEW-8: 図を保存すると、見えている要素のまま保存された図になり、そのタブが開く", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    // Act
+    await saveView(page, "overview");
+    // Assert
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/overview/);
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["A", "B"]);
+    const text = await editorText(page);
+    expect(text).toContain("    view overview : GeneralView {\n        expose P::A;\n        expose P::B;\n    }\n");
+    await expect(page.locator("#btnSaveView")).toBeHidden();
+  });
+
+  test("F-VIEW-8: 日本語の名前でも保存できる（引用名で書く）", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    // Act
+    await saveView(page, "全体の図");
+    // Assert
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/全体の図/);
+    expect(await editorText(page)).toContain("view '全体の図' : GeneralView {");
+  });
+
+  test("F-VIEW-8: 保存された図にパレットから置いた要素は、モデルに作られ、その図にも入る", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    await saveView(page, "v");
+    await page.locator('#palette [data-tool="part def"]').click();
+    const box = (await page.locator("#wrap").boundingBox())!;
+    // Act
+    await page.mouse.click(box.x + 150, box.y + box.height - 150);
+    await page.locator('[data-act="renameCancel"]').click();
+    // Assert
+    const text = await editorText(page);
+    expect(text).toContain("part def NewPart {");
+    expect(text).toContain("expose P::NewPart;");
+    await expect.poll(() => nodeKeys(page)).toContain("NewPart");
+  });
+
+  test("F-VIEW-8: 図から外すと図には出なくなるが、モデルには残る。ツリーの「追加」で戻せる", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    await saveView(page, "v");
+    // Act
+    await ctxItem(page, "A", "この図から外す");
+    const removed = await editorText(page);
+    await page.locator("#sideModel").click();
+    const row = page.locator("#tree .ti", { has: page.locator(".nm", { hasText: /^A$/ }) });
+    await row.hover(); // 行の操作ボタンは、マウスを乗せると出る
+    await row.locator("[data-add]").click();
+    // Assert
+    expect(removed).not.toContain("expose P::A;");
+    expect(removed).toContain("part def A;");
+    await expect.poll(() => nodeKeys(page)).toContain("A");
+    expect(await editorText(page)).toContain("expose P::A;");
+  });
+
+  test("F-VIEW-8: まとめて入れた要素は 1 つだけ外せないと伝え、テキストを変えない（異常系）", async ({ page }) => {
+    // Arrange
+    const text = MODEL.replace("}\n", "    view v { expose P::*; }\n}\n");
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400);
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="v"]').click();
+    // Act
+    await ctxItem(page, "A", "この図から外す");
+    // Assert
+    await expect(page.locator("#toast")).toContainText("1 つだけ外すことはできません");
+    expect(await editorText(page)).toBe(text);
+  });
+
+  test("F-VIEW-8: 保存された図の右クリックでは「この図から外す」と「モデルから削除」を分けて示す", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    await saveView(page, "v");
+    // Act
+    await page.locator('#gNodes .node[data-key="B"]').click({ button: "right" });
+    // Assert
+    await expect(page.locator("#ctx button")).toContainText(["この図から外す", "モデルから削除"]);
+  });
+});

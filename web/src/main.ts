@@ -16,6 +16,7 @@ import { initFiles } from "./app/files";
 import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
+import { saveAsView } from "./app/view-ops";
 import { applyPanes, initPanels, initTabs, loadUi, saveUi } from "./app/panels";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
@@ -58,6 +59,7 @@ function initMenus(): void {
 }
 
 function initToolbar(): void {
+  $("#btnSaveView").onclick = () => void saveAsView();
   $("#btnEdge").onclick = () => {
     setEdgeStyle(S.edgeStyle === "curve" ? "ortho" : "curve");
     render();
