@@ -22,3 +22,10 @@ This program is distributed WITHOUT ANY WARRANTY; see the license for details.
 "The Modelith Authors" are the contributors recorded in this repository's Git history.
 Third-party components bundled with the web app (fonts and Vite's runtime code) are listed with their licenses in `licenses.txt` of each build.
 Plugin interfaces ([plugin-sdk](https://github.com/modelith/plugin-sdk)) are MIT licensed.
+
+## Trademarks
+
+SysML® and OMG® are registered trademarks, and KerML™ is a trademark, of Object Management Group, Inc.
+Modelith is an independent project. It is not affiliated with or endorsed by OMG.
+Modelith is based on the SysML v2 and KerML specifications, but does not claim conformance with them
+(see [docs/reference/sysml-conformance.md](docs/reference/sysml-conformance.md) for what is supported).

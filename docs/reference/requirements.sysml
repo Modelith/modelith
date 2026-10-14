@@ -216,6 +216,9 @@ package ModelithRequirements {
         requirement def <'C-5'> LegalNoticeReq {
             doc /* 画面から著作権表示・無保証であること・ライセンス本文（AGPL-3.0 とプラグイン例外）を確かめられ、同梱する第三者の部品のライセンス文を配布物に添える（AGPL 第 5 条 (d)・OFL・MIT・Apache-2.0） */
         }
+        requirement def <'C-7'> TrademarkReq {
+            doc /* SysML®・OMG® が Object Management Group, Inc. の登録商標、KerML™ が同社の商標であることと、Modelith が OMG と関係のない独立したプロジェクトで、OMG の認定や推奨を受けていないことを、画面と README に示す。仕様への適合（conformance）はうたわない（仕様書の TRADEMARKS・COMPLIANCE） */
+        }
         requirement def <'C-6'> NoSilentWriteReq {
             doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
                    古い形式の配置（テキスト内の @layout コメント）は黙って消さず、配置ファイルに移してコメントを消すかを、ファイルを開いたときに一度だけ尋ねる */
@@ -262,6 +265,7 @@ package ModelithRequirements {
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
+        #derivation dependency from TrademarkReq to OpenSourceNeed;
         #derivation dependency from SourceOfferReq to OpenSourceNeed;
         #derivation dependency from StaticHostingReq to AnywhereNeed;
         #derivation dependency from LegalNoticeReq to OpenSourceNeed;
@@ -334,6 +338,7 @@ package ModelithRequirements {
         satisfy CreateViewReq by DiagramUI;
         satisfy PackageFrameReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
+        satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
         satisfy TreeReq by DiagramUI;
         satisfy PhaseReq by Core;
@@ -482,7 +487,7 @@ package ModelithRequirements {
             }
         }
         verification def ShellE2E {
-            doc /* web/e2e/shell.spec.ts：外部に通信しない・ソースへのリンク・著作権とライセンスの表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・ソースへのリンク・著作権とライセンスと商標の表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
             objective {
                 verify PrivacyReq;
                 verify SourceOfferReq;
@@ -491,6 +496,7 @@ package ModelithRequirements {
                 verify DrawioExportReq;
                 verify StaticHostingReq;
                 verify LegalNoticeReq;
+                verify TrademarkReq;
             }
         }
         verification def VisualUITest {
