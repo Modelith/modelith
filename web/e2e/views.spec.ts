@@ -130,3 +130,69 @@ test.describe("トレーサビリティ", () => {
     await expect(page.locator("#problems .gap")).toContainText("DryBoilCutoffReq");
   });
 });
+
+test.describe("テキストに書かれた view（F-VIEW-7、ADR-0005）", () => {
+  const MODEL = `package P {
+    part def Engine;
+    part def Wheel;
+    part def Car { part e : Engine; part w : Wheel; connect e to w; }
+    requirement def Speed;
+    view structure : GeneralView { expose P::*; filter @SysML::PartDefinition; }
+    view reqs { expose P::Speed; }
+    view inside : InterconnectionView { expose P::Car; }
+}
+`;
+  /** モデルを書き、＋メニューの「テキストの view」から view を開く。 */
+  async function openView(page: import("@playwright/test").Page, name: string): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(MODEL);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator(`[data-open-mv="${name}"]`).click();
+  }
+
+  test("F-VIEW-7: ＋メニューから view を開くと、expose と filter に当たる要素だけを描く", async ({ page }) => {
+    // Arrange・Act
+    await openView(page, "structure");
+    // Assert
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Car", "Engine", "Wheel"]);
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/structure/);
+    await expect(page.locator("#subbar")).toContainText("view structure：GeneralView");
+  });
+
+  test("F-VIEW-7: InterconnectionView は、expose した part def の内部ブロック図として描く", async ({ page }) => {
+    // Arrange・Act
+    await openView(page, "inside");
+    // Assert
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["u:e", "u:w"]);
+    await expect(page.locator("#subbar")).toContainText("（Car）");
+  });
+
+  test("F-VIEW-7: テキストで expose を書き換えると、開いている図も変わる", async ({ page }) => {
+    // Arrange
+    await openView(page, "reqs");
+    await expect.poll(() => nodeKeys(page)).toEqual(["Speed"]);
+    // Act
+    await page.locator("#ed").fill(MODEL.replace("expose P::Speed;", "expose P::Speed; expose P::Engine;"));
+    // Assert
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Engine", "Speed"]);
+  });
+
+  test("F-VIEW-7: view をテキストから消すと、図は空になり理由を示す（異常系）", async ({ page }) => {
+    // Arrange
+    await openView(page, "reqs");
+    // Act
+    await page.locator("#ed").fill(MODEL.replace("view reqs { expose P::Speed; }", ""));
+    // Assert
+    await expect(page.locator("#empty")).toContainText("view「reqs」がテキストにありません");
+  });
+
+  test("F-VIEW-7: view が無いときは、＋メニューで書き方を案内する（境界値）", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator(".tabadd summary").click();
+    // Assert
+    await expect(page.locator(".tabadd .pnote")).toHaveText("テキストに view を書くと、ここから図として開けます");
+  });
+});

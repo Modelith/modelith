@@ -11,7 +11,7 @@ import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { prunePins } from "./pins";
 import { highlight, render } from "./render";
 import { S } from "./state";
-import { curLayout, curView, VK, viewContent } from "./views";
+import { curLayout, curView, syncModelViewKind, VK, viewContent } from "./views";
 
 export interface SetTextOpts {
   /** 変更が始まる位置（カーソル位置の補正に使う）。 */
@@ -54,6 +54,7 @@ export function setText(t: string, opts: SetTextOpts = {}): void {
 export function reparse(fromText: boolean): void {
   S.P = parse(S.text);
   S.M = build(S.P);
+  syncModelViewKind();
   prunePins();
   const sig = new Map<string, string>();
   for (const n of S.M.nodes) sig.set(n.key, S.text.slice(n.entry.start, n.entry.end));

@@ -52,6 +52,8 @@ header h1 .long{font-weight:400;color:var(--ink2);font-size:12px;letter-spacing:
 .menu .pop{position:absolute;right:0;top:calc(100% + 4px);z-index:30;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
 .menu .pop button{border:0;text-align:left;border-radius:4px}
 .menu .pop button:hover{background:var(--panel2)}
+.menu .pop .phead{margin:6px 6px 2px;padding-top:6px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink2)}
+.menu .pop .pnote{padding:2px 6px 4px;font-size:11px;color:var(--ink2);max-width:220px;white-space:normal}
 .menu .pop .note{font-size:11px;color:var(--ink2);padding:4px 11px}
 .tabs{display:none}
 .undo{display:flex;gap:4px}
@@ -89,6 +91,7 @@ header .short{display:none}
 .tab span{overflow:hidden;text-overflow:ellipsis}
 .tab:hover{color:var(--ink)}
 .tab[aria-selected="true"]{background:var(--panel);color:var(--ink);border-color:var(--rule);font-weight:500}
+.tab.mv span{font-style:italic}
 .tab .x{border:0;background:transparent;padding:0 4px;font-size:14px;line-height:1;color:var(--ink2);border-radius:4px}
 .tab .x:hover{background:var(--panel2);color:var(--ink)}
 .tabadd{margin:0 0 4px 4px}
@@ -131,6 +134,7 @@ header .short{display:none}
 .subbar button{padding:4px 10px;font-size:12px}
 .subbar .gapbtn{color:var(--k-req);border-color:var(--k-req)}
 .subbar .okgap{color:var(--k-ver)}
+.subbar .mvnote{color:var(--ink2)}
 .problems button.gap{color:var(--k-req)}
 .problems button.unsupported{color:var(--ink2)}
 .views{overflow-x:auto;scrollbar-width:none;min-width:0}

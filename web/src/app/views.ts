@@ -1,6 +1,6 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。
 
-import type { EdgeKind, MessageRel, Model, ModelEdge, ModelNode } from "../core";
+import type { EdgeKind, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
 import { emptyView, type ViewLayout } from "./layout";
 import { S } from "./state";
 
@@ -45,8 +45,18 @@ export const phaseLabel = (p: string): string => PHASE_LABEL[p] ?? p;
 
 export const viewDef = (id: string): ViewDef => VIEWS.find((x) => x.id === id) ?? (VIEWS[0] as ViewDef);
 export const curView = (): ViewDef => viewDef(S.view);
-/** 配置情報のキー。内部ブロック図は対象ブロックごとに分ける。 */
-export const VK = (): string => (S.view === "ibd" ? "ibd:" + S.ibdCtx : S.view);
+/** テキストの view の描き方を、それに当たる自動の図で描く（ADR-0005：標準の図の描き方は Modelith の既定で補う）。 */
+const BASE_VIEW: Record<ViewKind, string> = { general: "all", interconnection: "ibd", stateTransition: "behavior", sequence: "seq" };
+export const baseViewOf = (mv: ModelView): string => BASE_VIEW[mv.kind];
+
+/** 表示中のタブの、テキストに書かれた view（自動の図や、テキストから消えた view なら null）。 */
+export const modelView = (): ModelView | null => (S.modelView ? (S.M.views.find((v) => v.name === S.modelView) ?? null) : null);
+
+/**
+ * 配置情報のキー。内部ブロック図は対象ブロックごとに分ける。
+ * テキストの view は view ごとに分ける（内部ブロック図・シーケンス図は、対象ごとの配置を自動の図と共有する）。
+ */
+export const VK = (): string => (S.view === "ibd" ? "ibd:" + S.ibdCtx : S.modelView && S.view !== "seq" ? "view:" + S.modelView : S.view);
 /** 現在のビューの配置（無ければ作る）。 */
 export function curLayout(): ViewLayout {
   const k = VK();
@@ -144,21 +154,57 @@ function seqContent(M: Model): ViewContent {
   return { nodes, edges, seq: true, ctx };
 }
 
+/** view の expose の対象（またはその型）が ctxs のどれかなら、それ。 */
+function exposedContext(mv: ModelView, ctxs: ModelNode[]): ModelNode | undefined {
+  return ctxs.find((n) => mv.targets.some((t) => t === n.entry || (!t.isDef && t.type === n.name)));
+}
+
+/** テキストの view の描き方が変わったら（render や型を書き換えたとき）、表示中のタブの描き方を合わせる。 */
+export function syncModelViewKind(): void {
+  const mv = modelView();
+  if (!mv || S.view === baseViewOf(mv)) return;
+  S.view = baseViewOf(mv);
+  const t = S.tabs.find((x) => x.id === S.tabId);
+  if (t) t.view = S.view;
+}
+
+/** テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）。 */
+function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
+  if (!mv) return { nodes: [], edges: [], empty: `view「${S.modelView ?? ""}」がテキストにありません。` };
+  if (mv.kind === "interconnection") {
+    S.ibdCtx = exposedContext(mv, ibdContexts(M))?.key ?? null;
+    return S.ibdCtx ? ibdContent(M) : { nodes: [], edges: [], empty: `view「${mv.name}」の expose に、部品を持つ part def（またはその型の部品）がありません。` };
+  }
+  if (mv.kind === "sequence") {
+    S.seqCtx = exposedContext(mv, seqContexts(M))?.key ?? null;
+    return S.seqCtx ? seqContent(M) : { nodes: [], edges: [], seq: true, empty: `view「${mv.name}」の expose に、occurrence def がありません。` };
+  }
+  const keys = new Set(mv.nodeKeys);
+  const nodes = M.nodes.filter((n) => keys.has(n.key));
+  if (!nodes.length) {
+    return { nodes, edges: [], empty: `view「${mv.name}」の expose・filter に当たる、図に描ける要素がありません。package の中身を出すときは expose P::*; のように書きます。` };
+  }
+  return phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
+}
+
 let cache: { M: Model | null; k: string | null; v: ViewContent | null } = { M: null, k: null, v: null };
 
 /** ビューに表示する要素と関係（モデルと表示条件が同じ間はキャッシュする）。 */
 export function viewContent(M: Model, v: ViewDef): ViewContent {
-  if (v.id === "ibd") {
+  // テキストの view では、内部ブロック図・シーケンス図の対象は expose で決まる（modelViewContent）
+  if (v.id === "ibd" && !S.modelView) {
     const cs = ibdContexts(M);
     if (!cs.some((n) => n.key === S.ibdCtx)) S.ibdCtx = defaultIbdContext(M)?.key ?? null;
   }
-  if (v.id === "seq") {
+  if (v.id === "seq" && !S.modelView) {
     const cs = seqContexts(M);
     if (!cs.some((n) => n.key === S.seqCtx)) S.seqCtx = cs[0]?.key ?? null;
   }
-  const k = [v.id, S.ibdCtx, S.seqCtx, S.phase].join("|");
+  const k = [v.id, S.ibdCtx, S.seqCtx, S.phase, S.modelView].join("|");
   if (cache.M === M && cache.k === k && cache.v) return cache.v;
-  const r = v.id === "ibd" ? ibdContent(M) : v.id === "seq" ? seqContent(M) : phaseFilter(M, baseContent(M, v));
+  const r = S.modelView
+    ? modelViewContent(M, modelView())
+    : v.id === "ibd" ? ibdContent(M) : v.id === "seq" ? seqContent(M) : phaseFilter(M, baseContent(M, v));
   cache = { M, k, v: r };
   return r;
 }

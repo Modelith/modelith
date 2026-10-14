@@ -115,7 +115,9 @@ package ModelithRequirements {
                    フォルダを開けないブラウザでは、保存でモデルと配置ファイルを両方ダウンロードし、開くときに 2 つを一緒に選べば配置も戻る */
         }
         requirement def <'F-VIEW-7'> StandardViewReq {
-            doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・StateTransitionView・SequenceView）から決める（ADR-0005） */
+            doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・StateTransitionView・SequenceView）から決める（ADR-0005）。
+                   expose は要素（A）・中身（A::*）・入れ子すべて（A::**、A::*::**）と、[...] の絞り込みを扱い、filter は @メタクラス と @メタデータ で絞り込む。
+                   render の asTreeDiagram・asInterconnectionDiagram は図の種類より優先する。扱えない図の種類・描き方・絞り込みは、黙って捨てずに問題一覧で知らせる */
         }
         requirement def <'F-VIEW-8'> CreateViewReq {
             doc /* 画面から図を作り要素を選ぶと、標準の view としてテキストに書く（ADR-0005） */
@@ -375,8 +377,9 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知）。期待値は仕様から手で書く（ADR-0013） */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013） */
             objective {
+                verify StandardViewReq;
                 verify NoSilentDropReq;
             }
         }
@@ -424,8 +427,9 @@ package ModelithRequirements {
             }
         }
         verification def ViewsE2E {
-            doc /* web/e2e/views.spec.ts：7 つのビュー・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
+            doc /* web/e2e/views.spec.ts：7 つのビュー・テキストの view・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
             objective {
+                verify StandardViewReq;
                 verify NoSilentDropReq;
                 verify SevenViewsReq;
                 verify ViewTabsReq;
@@ -480,8 +484,9 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
             objective {
+                verify StandardViewReq;
                 verify SevenViewsReq;
                 verify NarrowScreenReq;
                 verify LookReq;

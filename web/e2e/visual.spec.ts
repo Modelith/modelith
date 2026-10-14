@@ -146,6 +146,16 @@ const scenes: Scene[] = [
     },
   },
   {
+    title: "F-VIEW-7: 開いた「＋」メニュー（テキストの view つき）",
+    shot: "tab-menu-views",
+    act: async (page) => {
+      await page.locator("#ed").fill("package P {\n    part def A;\n    view overview : GeneralView { expose P::*; }\n    view inside : InterconnectionView { expose P::A; }\n}\n");
+      await page.waitForTimeout(400); // 入力の反映でタブのメニューが描き直されるので、反映を待ってから開く
+      await page.locator(".tabadd summary").click();
+      return [page.locator(".tabadd .pop")];
+    },
+  },
+  {
     title: "C-3: 開いた「?」メニュー",
     shot: "help-menu",
     act: async (page) => {

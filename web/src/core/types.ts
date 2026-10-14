@@ -53,8 +53,26 @@ export interface Entry {
   phaseVal?: Span;
   phaseBlock?: Scope;
   enumValues?: string[];
+  /** view・view def の expose（8.2.2.26.2）。 */
+  exposes?: Expose[];
+  /** view・view def の filter の式（`filter` の後ろ。8.2.2.5.1 ElementFilterMember）。 */
+  filters?: string[];
+  /** view・view def の render の参照（`render asTreeDiagram;` の asTreeDiagram）。 */
+  render?: string;
   open?: number;
   close?: number;
+}
+
+/** `expose` 1 つ（Expose、8.2.2.26.2）。 */
+export interface Expose extends Span {
+  /** 対象の修飾名（`A::B`）。 */
+  target: string;
+  /** `::*`：対象そのものではなく、その中身を出す（NamespaceExpose）。 */
+  members: boolean;
+  /** `::**`：入れ子の中身もすべて出す。 */
+  recursive: boolean;
+  /** `[...]` の絞り込みの式（FilterPackageMember）。 */
+  filter?: string;
 }
 
 export type Scope = Entry | Block;
@@ -167,8 +185,27 @@ export interface PhaseInfo {
   holder: Entry;
 }
 
+/** Modelith の描き方（標準のビュー定義に対応させる、ADR-0005）。 */
+export type ViewKind = "general" | "interconnection" | "stateTransition" | "sequence";
+
+/** テキストに書かれた view（図として表示する）。 */
+export interface ModelView {
+  name: string;
+  entry: Entry;
+  /** 描き方。 */
+  kind: ViewKind;
+  /** 型をたどって見つけた標準のビュー定義（GeneralView など。無ければ null）。 */
+  std: string | null;
+  /** 描く要素（expose と filter の結果）のキー。 */
+  nodeKeys: string[];
+  /** expose の対象そのもの（内部ブロック図・シーケンス図の対象を決めるのに使う）。 */
+  targets: Entry[];
+}
+
 export interface Model {
   nodes: ModelNode[];
+  /** テキストに書かれた view（ADR-0005、F-VIEW-7）。 */
+  views: ModelView[];
   edges: ModelEdge[];
   problems: Problem[];
   nodeOf: Map<Entry, ModelNode>;

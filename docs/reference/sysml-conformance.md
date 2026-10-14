@@ -40,7 +40,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | --- | --- | --- |
 | 1 抽象構文 | メタクラスの作成・読み書き・削除と、メタモデルの制約による検査 | × 独自の簡易な構造で、制約の検査も無い |
 | 2a テキスト記法 | 8.2.2 の具象構文を読み書きできる（抽象構文の適合を含む） | × 正規表現による部分的な解析。知らない文を黙って捨てる |
-| 2b グラフィカル記法 | 8.2.3 の記法。9.2.20 の標準ビュー定義は必ず扱う | × `view` を読めない。7 つのビューは独自 |
+| 2b グラフィカル記法 | 8.2.3 の記法。9.2.20 の標準ビュー定義は必ず扱う | △ `view` を図として描く（4 種類の標準ビュー定義）。記号は 8.2.3 と細部が違う |
 | 3 意味 | 8.4・9.2 の意味での解釈（評価・実行） | × 式の評価も名前解決の意味論も無い |
 | 4 モデル交換 | `.kpar` の入出力 | × `.sysml`・`.kerml` の単一ファイルだけ |
 | 5 ドメインライブラリ | ISQ・SI など（任意） | × 同梱していない |
@@ -167,15 +167,16 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | `use case def` / `use case` | ○ | 専用のビューは無い |
 | `include use case` | × | |
 
-### 2.9 ビュー（8.2.2.26）— ADR-0005 で対応予定
+### 2.9 ビュー（8.2.2.26）— ADR-0005
 
 | 要素 | BNF | 対応 | 根拠・備考 |
 | --- | --- | --- | --- |
-| `view def` | ViewDefinition | × | 中身ごと消える |
-| `view` | ViewUsage | × | |
-| `expose`（`A`・`P::*`・`P::**`・フィルタ付き） | Expose | × | 捨てる |
-| ビュー内の `filter` | ElementFilterMember | × | |
-| `render`（参照形・合成形） | ViewRenderingMember | × | |
+| `view def` | ViewDefinition | ○ | 標準ビュー定義の特殊化（`:>`・`specializes`）をたどる。中の `filter`・`render` は、その型の `view` に引き継ぐ。図のノードにはしない |
+| `view` | ViewUsage | ○ | 名前のある `view` を、＋メニューから図として開ける（F-VIEW-7）。型の無い `view` は GeneralView として描く |
+| `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 修飾名は親の名前で照合する（`import`・`alias` を通した名前は解決しない） |
+| ビュー内の `filter` | ElementFilterMember | △ | `@メタクラス`（`@SysML::PartDefinition` など）と `@メタデータ` だけ。`and`・`or` などの式は、知らせたうえで使わない |
+| `render`（参照形） | ViewRenderingMember | △ | `asTreeDiagram`・`asInterconnectionDiagram` は型より優先する。`asTextualNotation`・`asElementTable` は知らせて図で描く |
+| `render`（合成形） | ViewRenderingMember | × | 「まだ扱えない構文」として知らせる |
 | `viewpoint def` / `viewpoint` | ViewpointDefinition / Usage | ×⚠ | 中の `frame` が誤表示になる |
 | `rendering def` / `rendering` | RenderingDefinition / Usage | ×⚠ | パッケージの「式」として取り込んでしまう |
 
@@ -202,18 +203,21 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 仕様では、図は `view` の使用で表し、`expose` → `filter` → `render` の順に組み立てる。
 グラフィカル記法に適合するツールは、標準ビュー定義（Table 34）を必ず扱う。
 
-| 標準ビュー定義 | 短い名前 | Modelith の近いビュー | 対応 |
-| --- | --- | --- | --- |
-| GeneralView | `gv` | トレーサビリティ・構造・振る舞い・すべて | △ 種類が固定。特殊化の線と多重度が無い |
-| InterconnectionView | `iv` | 内部ブロック図 | △ 入れ子は 1 段。`bind` と単独の `connect` は不可 |
-| ActionFlowView | `afv` | — | × |
-| StateTransitionView | `stv` | — | × 状態は描くが、遷移を線にしない |
-| SequenceView | `sv` | シーケンス | △ イベント・継起・入れ子は無い |
-| GeometryView | `gev` | — | × |
-| GridView | `grv` | — | × |
-| BrowserView | `bv` | ツリー | △ |
+テキストの `view` は、型の標準ビュー定義（と `render`）から描き方を決め、`expose`・`filter` で決まる要素だけを描く（`web/src/core/views.ts`）。
+配置は配置ファイルの `view:<名前>` に、view ごとに保存する（内部ブロック図・シーケンス図は、対象ごとの配置を自動の図と共有する）。
 
-標準のレンダリング（`Views`）との対応は次のとおり。`asTreeDiagram`・`asInterconnectionDiagram`・`asTextualNotation` は、構造・内部ブロック図・テキスト欄にそれぞれ近い（△）。`asElementTable` に当たるものは無い（×）。
+| 標準ビュー定義 | 短い名前 | `view` の描き方 | 対応 |
+| --- | --- | --- | --- |
+| GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化の線と多重度が無い |
+| InterconnectionView | `iv` | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 1 段。`bind` と単独の `connect` は不可 |
+| ActionFlowView | `afv` | ノードと線の図で代わりに描き、知らせる | × |
+| StateTransitionView | `stv` | 振る舞いの図（expose した要素） | △ 状態は描くが、遷移を線にしない |
+| SequenceView | `sv` | シーケンス図（expose した occurrence def が対象） | △ イベント・継起・入れ子は無い |
+| GeometryView | `gev` | ノードと線の図で代わりに描き、知らせる | × |
+| GridView | `grv` | ノードと線の図で代わりに描き、知らせる | × |
+| BrowserView | `bv` | ノードと線の図で代わりに描き、知らせる（ツリーは別にある） | × |
+
+標準のレンダリング（`Views`）：`asTreeDiagram` はノードと線の図、`asInterconnectionDiagram` は内部ブロック図で描く（△）。`asTextualNotation`・`asElementTable` に当たる描き方は無い（×）。
 「制御ループ」ビューに当たる標準のビューは無い。Modelith 独自の便利機能として扱う。
 
 ## 4. 標準ライブラリ
@@ -223,7 +227,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
   - そのため `Positive`・`Rational`・`Iso8601DateTime` などは、誤って警告になる。
   - 利用者が作った型の書き忘れが、名前が `…Value` で終わるために見逃されることがある。
 - 単位 `[kg]` は解決しない。
-- `GeneralView`・`asTreeDiagram` などの名前も知らない。`view` に対応するときに、組み込みで持つ必要がある。
+- 標準ビュー定義（`GeneralView`・`gv` など）と標準のレンダリング（`asTreeDiagram` など）の名前だけを、組み込みで持つ。
 
 ## 5. 変換仕様（SysML v1 → v2）
 
@@ -234,7 +238,8 @@ v1（UML4SysML・XMI）の抽象構文を v2 へ写す規則であり、Modelith
 
 | 優先 | 項目 | 理由 |
 | --- | --- | --- |
-| 高 | `view`・`expose`・`filter`・`render`・標準ビュー定義（ADR-0005、F-VIEW-7・8） | 予定どおり。修飾名・`::*`・`::**` の解決と、引用なしの短い名前（標準ビュー定義が `<gv>` の形で書かれている）の修正が前提になる |
+| 高 | 画面から `view` を作る（ADR-0005、F-VIEW-8） | 表示（F-VIEW-7）は済。次は、画面で作った図を `view` としてテキストに書く |
+| 済 | `view`・`expose`・`filter`・`render`・標準ビュー定義の表示（F-VIEW-7） | 2026-10-14 に対応した（`web/src/core/views.ts`、`spec.test.ts`）。`filter` の式と、専用の描き方の無い標準ビュー定義は △・× のまま |
 | 済 | 前置メタデータ・`:>`/`:>>`/`redefines` の取り違え・引用名と短い名前・知らない文の通知 | 2026-10-14 に直した（ADR-0013、`web/src/core/spec.test.ts`） |
 | 中 | `import`・`alias` と修飾名の解決 | 複数のパッケージをまたぐモデルで誤る |
 | 中 | 文字列の中の括弧を数える | 誤ったエラー |
@@ -248,7 +253,7 @@ v1（UML4SysML・XMI）の抽象構文を v2 へ写す規則であり、Modelith
 - SysML 2.1 Beta 2 と 2.0 正式版の差
 - グラフィカル記法の記号と、Modelith の描き方の細かな一致（BNF の図が画像のため）
 - 「制御ループ」に相当する v2 の標準の描き方
-- ビューの型と `render` が食い違うときの優先順位
+- ビューの型と `render` が食い違うときの優先順位（Modelith は `render` を優先している）
 - 書き出す `view` の参照の書き方（`import` か修飾名か）と、他ツールとの互換性
 - `crosses`、3 段以上の特徴量の連鎖、定義の外での列挙の使用
 - KerML の式の文法（8.2.5）
