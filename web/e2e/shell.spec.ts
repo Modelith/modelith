@@ -49,6 +49,18 @@ test("C-5: 「?」メニューに著作権・無保証・ライセンスを示�
   expect(notices).not.toContain("Licenses of bundled dependencies");
 });
 
+test("C-7: 「?」メニューに、SysML・KerML・OMG の商標の帰属と、OMG と関係がないことを示す", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  await page.locator("#helpMenu summary").click();
+  // Assert
+  const tm = page.locator("#trademarks");
+  await expect(tm).toBeVisible();
+  await expect(tm).toContainText("SysML® と OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です");
+  await expect(tm).toContainText("OMG とは関係のない独立したプロジェクト");
+});
+
 test.describe("狭い画面", () => {
   test.use({ viewport: { width: 390, height: 800 } });
 
