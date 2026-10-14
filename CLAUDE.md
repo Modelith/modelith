@@ -32,10 +32,11 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 - **要求仕様の SSoT は [docs/reference/requirements.sysml](docs/reference/requirements.sysml)**（ADR-0011）。振る舞いを変えるときは実装より先に要求を更新し、
   テストを足したら `verification def` で要求に `verify` を結ぶ。要求を他の文書に書き写さない。
 - **テキストが唯一の正本**（ADR-0001）。図やプラグインからの変更も `TextEdit` として表現する。
-- **仕様の基準はモック**（ADR-0002）。`reference/mock/` と `reference/golden/*.json` は手で編集しない。
+- **仕様の基準は SysML v2 仕様、次にモック**（ADR-0002・ADR-0013）。モックと仕様が食い違うときは仕様に従い、根拠（BNF の規則・章）付きのケースを `web/src/core/spec.test.ts` に書く。
+  `reference/mock/` と `reference/golden/*.json` は手で編集しない。
   モックの HTML ファイルと内蔵のサンプルモデルは非公開。`reference/mock/` をコミットしたり、サンプルモデルをコード・ケース・ドキュメントに転記したりしない。
   モックのコードは `web/` へ TypeScript として移植してよい（ADR-0009）。移植した暫定コアは `web/src/core/` に閉じ込める。
-  挙動を変えるときはケースを `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
+  モックと同じ振る舞いを確かめるケースは `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
 - **プラグインとの契約は plugin-sdk に置く**（ADR-0004）。本リポジトリでプラグイン向けの型を独自に定義しない。
 - ADR に反する変更が必要なら、実装より先に ADR を追加・更新する PR を出す。
 
