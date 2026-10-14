@@ -7,11 +7,11 @@ import type { Block, Entry, ParseError, ParseResult, Rel, Scope, Unsupported } f
 export const DEF_KINDS = [
   "metadata def", "occurrence def", "part def", "requirement def", "constraint def", "port def", "item def", "attribute def",
   "concern def", "verification def", "analysis def", "state def", "action def", "interface def", "calc def", "connection def",
-  "use case def", "enum def",
+  "use case def", "enum def", "view def",
 ];
 export const USAGE_KINDS = [
   "perform action", "occurrence", "exhibit state", "use case", "part", "requirement", "constraint", "port", "item", "attribute",
-  "concern", "analysis", "verification", "state", "action", "interface", "calc", "connection", "subject", "stakeholder",
+  "concern", "analysis", "verification", "state", "action", "interface", "calc", "connection", "subject", "stakeholder", "view",
 ];
 const KW_ALT = [...DEF_KINDS, "package", ...USAGE_KINDS].map((k) => k.replace(/ /g, "\\s+")).join("|");
 /** 基本名か引用名（NAME、8.2.2.1）。 */
@@ -41,6 +41,10 @@ const unquote = (s: string): string => (s.startsWith("'") && s.endsWith("'") ? s
 const MOD_RE = /^(?:(?:private|public|protected|abstract|in|out|inout|derived|readonly|end|ref|variation|individual)\s+)+/;
 const SKIP_RE =
   /^(import|alias|doc|comment|entry|transition|first|accept|objective|require|assume|assert|exit|do|if|else|succession|bind|message|dependency|allocate|expose|filter|language|rep|then|@\w+)\b/;
+/** 修飾名（A::B::C。各部分は基本名か引用名）。 */
+const QNAME = `(?:${NAME})(?:::(?:${NAME}))*`;
+/** `expose A`・`expose A::*`・`expose A::**`・`expose A::*::**`、後ろに `[式]` の絞り込み（Expose、8.2.2.26.2）。 */
+const EXPOSE_RE = new RegExp(`^expose\\s+(${QNAME})(::\\*(?!\\*))?(::\\*\\*)?\\s*(?:\\[(.*)\\])?$`);
 /** 配置情報を埋め込むコメント（ADR-0005 の移行期の形式）。 */
 export const LAYOUT_RE = /\/\*\s*@layout\s*([\s\S]*?)\*\//;
 
@@ -136,6 +140,22 @@ export function parse(text: string): ParseResult {
     if ((mm = h.match(/^transition\s+(?:[A-Za-z_]\w*\s+)?first\s+(\w+)(?:\s+accept\s+(\w+))?.*?\s+then\s+(\w+)/))) {
       rels.push({ rel: "transition", from: mm[1]!, ev: mm[2] || "", to: mm[3]!, pe, start: hs, end: endPos });
       return null;
+    }
+    // view・view def の中の expose・filter・render（8.2.2.26）
+    if (pe && (pe.kind === "view" || pe.kind === "view def")) {
+      if ((mm = h.match(EXPOSE_RE))) {
+        const target = mm[1]!.split("::").map(unquote).join("::");
+        (pe.exposes ||= []).push({ target, members: !!mm[2], recursive: !!mm[3], ...(mm[4] ? { filter: mm[4].trim() } : {}), start: hs, end: endPos });
+        return null;
+      }
+      if ((mm = h.match(/^filter\s+(.+)$/))) {
+        (pe.filters ||= []).push(mm[1]!.trim());
+        return null;
+      }
+      if ((mm = h.match(/^render\s+([A-Za-z_][\w:]*)$/))) {
+        pe.render = lastSeg(mm[1]!);
+        return null;
+      }
     }
     // 前置メタデータは、続く宣言のメタデータとして読む（ADR-0013）
     const pm = h.match(PREFIX_META_RE);

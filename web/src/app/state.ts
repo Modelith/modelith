@@ -31,9 +31,12 @@ export interface PortFormState {
 
 export interface Tab {
   id: number;
+  /** 描き方（自動の図の id）。テキストの view のタブでは、その描き方に当たる自動の図の id。 */
   view: string;
   ctx: string | null;
   phase: string;
+  /** テキストに書かれた view の名前（F-VIEW-7）。無ければ自動の図。 */
+  mv?: string;
   tf?: Transform;
 }
 
@@ -56,6 +59,8 @@ export interface AppState {
   P: ParseResult;
   M: Model;
   view: string;
+  /** 表示中のタブが、テキストに書かれた view ならその名前（F-VIEW-7）。 */
+  modelView: string | null;
   layout: Layout;
   sel: string | null;
   selEdge: string | null;
@@ -99,10 +104,11 @@ export const S: AppState = {
   text: "",
   P: { entries: [], rels: [], errors: [], layout: {}, unsupported: [] },
   M: {
-    nodes: [], edges: [], problems: [], nodeOf: new Map(), byName: new Map(), rels: [], phases: null, phaseEnum: null,
+    nodes: [], views: [], edges: [], problems: [], nodeOf: new Map(), byName: new Map(), rels: [], phases: null, phaseEnum: null,
     phaseOf: () => null,
   },
   view: "trace",
+  modelView: null,
   layout: {},
   sel: null,
   selEdge: null,

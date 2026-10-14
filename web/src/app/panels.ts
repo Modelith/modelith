@@ -11,7 +11,7 @@ import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type Tab, type Tool, type UiPrefs } from "./state";
 import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "./svg";
 import { ensureLayout, toast } from "./sync";
-import { CC, defaultIbdContext, edgeById, ibdContexts, nodeByKey, phaseLabel, seqContexts, VIEWS } from "./views";
+import { baseViewOf, CC, defaultIbdContext, edgeById, ibdContexts, modelView, nodeByKey, phaseLabel, seqContexts, VIEWS } from "./views";
 import { isCtxOpen } from "./ctxmenu";
 
 /* ---- パネル配置 ---- */
@@ -116,6 +116,7 @@ let tabSeq = 1;
 const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
 
 function tabLabel(t: Tab): string {
+  if (t.mv) return t.mv;
   const v = VIEWS.find((x) => x.id === t.view);
   if (!v) return t.view;
   const nm = t.ctx ? (S.M.nodes.find((n) => n.key === t.ctx)?.name ?? t.ctx) : "";
@@ -133,7 +134,7 @@ function syncCurTab(): void {
 
 export function saveTabs(): void {
   syncCurTab();
-  store.set(TABS_KEY, JSON.stringify({ tabs: S.tabs.map(({ id, view, ctx, phase }) => ({ id, view, ctx, phase })), active: S.tabId }));
+  store.set(TABS_KEY, JSON.stringify({ tabs: S.tabs.map(({ id, view, ctx, phase, mv }) => ({ id, view, ctx, phase, ...(mv ? { mv } : {}) })), active: S.tabId }));
 }
 
 export function renderTabs(): void {
@@ -142,8 +143,9 @@ export function renderTabs(): void {
     S.tabs
       .map((t) => {
         const sel = t.id === S.tabId;
+        const title = t.mv ? `view ${t.mv}（テキストに書かれた図）` : tabLabel(t);
         return (
-          `<div class="tab" role="tab" aria-selected="${sel}" data-tab="${t.id}" tabindex="${sel ? 0 : -1}" title="${esc(tabLabel(t))}">${viewIcon(t.view)}<span>${esc(tabLabel(t))}</span>` +
+          `<div class="tab${t.mv ? " mv" : ""}" role="tab" aria-selected="${sel}" data-tab="${t.id}" tabindex="${sel ? 0 : -1}" title="${esc(title)}">${viewIcon(t.view)}<span>${esc(tabLabel(t))}</span>` +
           (S.tabs.length > 1 ? `<button class="x" data-close="${t.id}" aria-label="タブを閉じる" title="タブを閉じる">×</button>` : "") +
           `</div>`
         );
@@ -151,6 +153,10 @@ export function renderTabs(): void {
       .join("") +
     `<details class="menu tabadd"><summary aria-label="図を開く" title="図を開く">＋</summary><div class="pop pop-left">` +
     VIEWS.map((v) => `<button data-open="${v.id}">${viewIcon(v.id)}${esc(v.label)}</button>`).join("") +
+    `<div class="phead">テキストの view</div>` +
+    (S.M.views.length
+      ? S.M.views.map((v) => `<button data-open-mv="${esc(v.name)}" title="${esc(v.std ?? "型なし（GeneralView として描く）")}">${viewIcon(baseViewOf(v))}${esc(v.name)}</button>`).join("")
+      : `<div class="pnote">テキストに view を書くと、ここから図として開けます</div>`) +
     `</div></details>`;
 }
 
@@ -163,6 +169,9 @@ export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean
   const t = S.tabs.find((x) => x.id === id);
   if (!t) return;
   S.tabId = id;
+  S.modelView = t.mv ?? null;
+  const mv = modelView();
+  if (mv) t.view = baseViewOf(mv);
   S.view = t.view;
   S.phase = t.phase || "";
   if (t.view === "ibd") S.ibdCtx = t.ctx;
@@ -184,9 +193,19 @@ export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean
   saveTabs();
 }
 
+/** テキストに書かれた view を図として開く（同じ view のタブがあればそれに切り替える、F-VIEW-7）。 */
+export function openModelView(name: string): void {
+  const ex = S.tabs.find((t) => t.mv === name);
+  if (ex) return activateTab(ex.id);
+  const mv = S.M.views.find((v) => v.name === name);
+  const t: Tab = { id: tabSeq++, view: mv ? baseViewOf(mv) : "all", ctx: null, phase: "", mv: name };
+  S.tabs.push(t);
+  activateTab(t.id, { fit: true });
+}
+
 /** ビューを開く（同じビュー・同じ対象のタブがあればそれに切り替える）。 */
 export function openTab(view: string, ctx?: string | null, opts: { keepSel?: boolean } = {}): void {
-  const ex = S.tabs.find((t) => t.view === view && ((view !== "ibd" && view !== "seq") || !ctx || t.ctx === ctx));
+  const ex = S.tabs.find((t) => !t.mv && t.view === view && ((view !== "ibd" && view !== "seq") || !ctx || t.ctx === ctx));
   if (ex && !(ctx && ex.ctx !== ctx)) {
     activateTab(ex.id, opts);
     return;
@@ -224,6 +243,7 @@ function readSavedTabs(): { tabs?: Tab[]; active?: number } | null {
 export function initTabs(): void {
   const saved = readSavedTabs();
   if (saved?.tabs?.length) S.tabs = saved.tabs.filter((t) => VIEWS.some((v) => v.id === t.view));
+  for (const tb of S.tabs) if (typeof tb.mv !== "string") delete tb.mv;
   if (!S.tabs.length) {
     S.tabs = [
       { id: 1, view: "trace", ctx: null, phase: "" },
@@ -233,17 +253,39 @@ export function initTabs(): void {
     ];
   }
   tabSeq = Math.max(...S.tabs.map((t) => t.id)) + 1;
-  for (const tb of S.tabs) if (!tb.ctx) tb.ctx = defaultCtx(tb.view);
+  for (const tb of S.tabs) if (!tb.ctx && !tb.mv) tb.ctx = defaultCtx(tb.view);
   const first = S.tabs[0];
   const active = saved?.active != null && S.tabs.some((t) => t.id === saved.active) ? saved.active : first?.id;
   if (active != null) activateTab(active, { fit: true });
 
   const bar = $("#tabbar");
+  // タブバーは横にスクロールするので、その中のメニューは枠で切れてしまう。開いたときに画面に対する位置で出す
+  bar.addEventListener(
+    "toggle",
+    (ev) => {
+      const d = ev.target;
+      if (!(d instanceof HTMLDetailsElement) || !d.open) return;
+      const pop = d.querySelector<HTMLElement>(".pop");
+      const r = d.querySelector("summary")?.getBoundingClientRect();
+      if (!pop || !r) return;
+      Object.assign(pop.style, { position: "fixed", left: `${r.left}px`, right: "auto", top: `${r.bottom + 4}px` });
+      // 画面の右端からはみ出すなら、内側に寄せる（狭い画面）
+      pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8))}px`;
+    },
+    true,
+  );
   bar.addEventListener("click", (ev) => {
     const x = closest(ev, "[data-close]");
     if (x) {
       ev.stopPropagation();
       closeTab(Number(x.dataset["close"]));
+      return;
+    }
+    const mvb = closest(ev, "[data-open-mv]");
+    if (mvb) {
+      const d = mvb.closest("details");
+      if (d) d.open = false;
+      openModelView(mvb.dataset["openMv"] ?? "");
       return;
     }
     const o = closest(ev, "[data-open]");
@@ -292,7 +334,8 @@ export function renderPalette(): void {
     const label = S.view === "ibd" ? "部品を置く" : "ライフラインを追加";
     h += `<label class="tool toolsel" aria-pressed="${!!cur}">${kindIcon("part")}<select id="usageTool" aria-label="${label}"><option value="">${label}…</option>${pdefs.map((p) => `<option value="${esc(p.name)}" ${cur === p.name ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>`;
     if (S.view === "seq") h += `<button class="tool" data-tool="occurrence def" aria-pressed="false" title="新しいシナリオを作成">${kindIcon("occurrence def")}<span>シナリオ</span></button>`;
-  } else {
+  } else if (!S.modelView) {
+    // テキストの view の中身は expose で決まるので、ここで要素を足しても図に出ない。パレットは出さない
     for (const [k, l] of PALETTE[S.view] ?? [])
       h += `<button class="tool" data-tool="${k}" aria-pressed="${toolKind(S.tool) === k}" title="${k}：押してから図の上をクリックで配置">${kindIcon(k)}<span>${l}</span></button>`;
   }
@@ -408,8 +451,9 @@ const pathOf = (e: Entry): string => {
 };
 
 /** 要素をどのビューで開くか。 */
-export function openTarget(e: Entry | null | undefined): { view: string; ctx?: string; label: string } | null {
+export function openTarget(e: Entry | null | undefined): { view: string; ctx?: string; mv?: string; label: string } | null {
   if (!e) return null;
+  if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: "図として開く" };
   if (e.kind === "part def" && e.children.some((c) => c.kind === "part" && c.name)) return { view: "ibd", ctx: e.name, label: "内部ブロック図で開く" };
   if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: "シーケンス図で開く" };
   if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
@@ -514,6 +558,7 @@ export function openEntry(e: Entry): void {
     return;
   }
   if (isNarrow()) setTab("diagram");
+  if (ot.mv) return openModelView(ot.mv);
   openTab(ot.view, ot.ctx ? (ibdContexts(S.M).concat(seqContexts(S.M)).find((n) => n.name === ot.ctx)?.key ?? ot.ctx) : null, { keepSel: true });
   S.treeSel = null;
   selectEntry(e);
@@ -656,7 +701,15 @@ export function renderSub(): void {
   const ctxSel = (cs: { key: string; name: string }[], cur: string | null, label: string): string =>
     cs.length ? `<label>${label}<select id="ctxSel">${cs.map((n) => `<option value="${esc(n.key)}" ${n.key === cur ? "selected" : ""}>${esc(n.name)}</option>`).join("")}</select></label>` : "";
   const phases = S.M.phases;
-  if (S.view === "ibd") {
+  const mv = modelView();
+  if (S.modelView) {
+    // テキストの view：中身と対象は expose で決まるので、選ばせない
+    const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : null;
+    const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
+    parts.push(
+      `<span class="mvnote" title="この図の中身は、テキストの view の expose・filter で決まります">view ${esc(S.modelView)}${mv?.std ? `：${esc(mv.std)}` : ""}${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
+    );
+  } else if (S.view === "ibd") {
     CC();
     parts.push(ctxSel(ibdContexts(S.M), S.ibdCtx, "対象ブロック"));
   } else if (S.view === "seq") {

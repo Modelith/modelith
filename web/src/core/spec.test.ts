@@ -167,3 +167,113 @@ describe("まだ扱えない文（F-EDIT-5・C-6 の趣旨：黙って捨てな�
     expect(info).toEqual([]);
   });
 });
+
+describe("view・expose・filter・render（8.2.2.26、9.2.20 標準ビュー定義）", () => {
+  const MODEL = `package P {
+    metadata def Safety;
+    part def A { part b : B; }
+    part def B;
+    #Safety part def C;
+    requirement def R;
+    package Q { part def D; package Deep { part def E; } }
+`;
+  const view = (body: string, name = "v") => build(parse(MODEL + body + "\n}")).views.find((v) => v.name === name);
+
+  it("expose A は要素そのもの（MembershipExpose）、図の種類は型の標準ビュー定義から決める", () => {
+    // Arrange
+    const body = "view v : GeneralView { expose P::A; expose P::R; }";
+    // Act
+    const v = view(body);
+    // Assert
+    expect(v?.nodeKeys).toEqual(["A", "R"]);
+    expect(v).toMatchObject({ kind: "general", std: "GeneralView" });
+  });
+
+  it("expose Q::* は中身だけ、Q::** は入れ子もすべて（NamespaceExpose・isRecursive）", () => {
+    // Arrange
+    const members = "view v { expose P::Q::*; }";
+    const recursive = "view v { expose P::Q::**; }";
+    // Act
+    const m = view(members);
+    const r = view(recursive);
+    // Assert
+    expect(m?.nodeKeys).toEqual(["D"]);
+    expect(r?.nodeKeys).toEqual(["D", "E"]);
+  });
+
+  it("filter @SysML::PartDefinition はメタクラスで、filter @Safety はメタデータで絞り込む（ElementFilterMember）", () => {
+    // Arrange
+    const byMetaclass = "view v { expose P::*; filter @SysML::PartDefinition; }";
+    const byMetadata = "view v { expose P::*; filter @Safety; }";
+    // Act
+    const a = view(byMetaclass);
+    const b = view(byMetadata);
+    // Assert
+    expect(a?.nodeKeys).toEqual(["A", "B", "C"]);
+    expect(b?.nodeKeys).toEqual(["C"]);
+  });
+
+  it("expose の [式] は、その expose で出す要素だけを絞り込む（FilterPackageMember）", () => {
+    // Arrange
+    const body = "view v { expose P::*[@SysML::RequirementDefinition]; expose P::A; }";
+    // Act
+    const v = view(body);
+    // Assert
+    expect(v?.nodeKeys).toEqual(["R", "A"]);
+  });
+
+  it("短い名前（iv）と、標準ビュー定義を特殊化した view def の型も、たどって描き方を決める", () => {
+    // Arrange
+    const short = "view v : iv { expose P::A; }";
+    const special = "view def MyStates :> StandardViewDefinitions::StateTransitionView; view v : MyStates;";
+    // Act
+    const a = view(short);
+    const b = view(special);
+    // Assert
+    expect(a).toMatchObject({ kind: "interconnection", std: "InterconnectionView" });
+    expect(a?.targets.map((e) => e.name)).toEqual(["A"]);
+    expect(b).toMatchObject({ kind: "stateTransition", std: "StateTransitionView" });
+  });
+
+  it("render asInterconnectionDiagram は、型より優先する（ViewRenderingMember）", () => {
+    // Arrange
+    const body = "view v : GeneralView { expose P::A; render asInterconnectionDiagram; }";
+    // Act
+    const v = view(body);
+    // Assert
+    expect(v?.kind).toBe("interconnection");
+  });
+
+  it("標準ビュー定義の型は「見つからない」と言わず、view と view def は図の要素にしない", () => {
+    // Arrange
+    const text = MODEL + "view def MyView :> GeneralView; view v : GeneralView; view w : MyView; }";
+    // Act
+    const m = build(parse(text));
+    // Assert
+    expect(m.problems).toEqual([]);
+    expect(m.nodes.map((n) => n.name)).not.toContain("MyView");
+  });
+
+  it("見つからない expose の対象はエラーにし、扱えない filter・render・図の種類は黙って捨てずに知らせる（異常系）", () => {
+    // Arrange
+    const body = "view v : GeometryView { expose P::Nope; filter @A and @B; render asElementTable; }";
+    // Act
+    const ps = build(parse(MODEL + body + "\n}")).problems;
+    // Assert
+    expect(ps.filter((p) => !p.kind).map((p) => p.msg)).toEqual(["expose の対象「P::Nope」が見つかりません"]);
+    expect(ps.filter((p) => p.kind === "unsupported").map((p) => p.msg)).toEqual([
+      "GeometryView の専用の描き方はまだ無いため、view「v」はノードと線の図で描きます",
+      "render asElementTable はまだ扱えないため、view「v」は図で描きます",
+      "filter @A and @B はまだ扱えないため、view「v」の絞り込みに使っていません",
+    ]);
+  });
+
+  it("expose の無い view は何も描かない（境界値）", () => {
+    // Arrange
+    const body = "view v;";
+    // Act
+    const v = view(body);
+    // Assert
+    expect(v?.nodeKeys).toEqual([]);
+  });
+});

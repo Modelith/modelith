@@ -2,6 +2,7 @@
 // 出力は reference/golden/*.json と一致させる。
 
 import type { Entry, Family, Model, ModelEdge, ModelNode, ParseResult, PhaseInfo, PortDir, Problem, Span } from "./types";
+import { buildViews, isStandardView } from "./views";
 
 const COMP_KINDS = new Set([
   "part", "requirement", "constraint", "perform action", "exhibit state", "analysis", "verification", "attribute", "calc",
@@ -38,7 +39,8 @@ export function build(P: ParseResult): Model {
   }
   for (const e of P.entries) {
     if (!e.name) continue;
-    if ((e.isDef && e.kind !== "metadata def") || (["part", "requirement"].includes(e.kind) && e.pe && e.pe.kind === "package")) {
+    // メタデータとビューの定義は、図に描く要素ではない
+    if ((e.isDef && e.kind !== "metadata def" && e.kind !== "view def") || (["part", "requirement"].includes(e.kind) && e.pe && e.pe.kind === "package")) {
       let key = e.name;
       if (nodes.some((n) => n.key === key)) key = e.name + "@" + (e.pe ? e.pe.name : "");
       const n: ModelNode = {
@@ -114,7 +116,7 @@ export function build(P: ParseResult): Model {
     if (u.isDef || !u.type || u.kind === "package") continue;
     const T = defNamed(u.type);
     if (!T) {
-      if (!isLib(u.type) && u.kind !== "subject") problems.push({ pos: u.start, msg: `型「${u.type}」が見つかりません（${u.name || u.kind}）` });
+      if (!isLib(u.type) && u.kind !== "subject" && !(u.kind === "view" && isStandardView(u.type))) problems.push({ pos: u.start, msg: `型「${u.type}」が見つかりません（${u.name || u.kind}）` });
       continue;
     }
     const tn = nodeOf.get(T);
@@ -213,7 +215,8 @@ export function build(P: ParseResult): Model {
     n.phaseOwn = !!(p && p.own);
   }
   if (phases) addTraceGaps(nodes, edges, phases, problems);
-  return { nodes, edges, problems, nodeOf, byName, rels: P.rels, phases, phaseEnum, phaseOf };
+  const views = buildViews(P.entries, nodeOf, byName, problems);
+  return { nodes, views, edges, problems, nodeOf, byName, rels: P.rels, phases, phaseEnum, phaseOf };
 }
 
 const lastSeg = (s: string): string => s.split("::").pop() ?? "";

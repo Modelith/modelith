@@ -191,6 +191,18 @@ test.describe("配置ファイル（ADR-0005）", () => {
     await expect(page.locator('#explorer [data-file][title="electric-kettle.sysml"]')).toBeVisible();
   });
 
+  test("F-VIEW-7・F-VIEW-3: テキストの view の配置は、view ごとに配置ファイルへ保存する", async ({ page }) => {
+    // Arrange
+    await openA(page, { "a.sysml": MODEL.replace("}\n", "    view v { expose A::Alpha; }\n}\n") });
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="v"]').click();
+    // Act
+    await dragNode(page, "Alpha", 200, 160);
+    await page.keyboard.press("Control+s");
+    // Assert
+    await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"view:v": \{\s*"Alpha": \[/);
+  });
+
   test("F-EDIT-4: 配置の変更も、元に戻す・やり直すができる", async ({ page }) => {
     // Arrange
     await openInFolder(page, { "a.sysml": MODEL });
