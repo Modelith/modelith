@@ -90,6 +90,16 @@ export interface ParseResult {
   errors: ParseError[];
   /** `/* @layout {…} *\/` コメントの中身（未検証の JSON）。 */
   layout: Record<string, unknown>;
+  /** 予約語で始まるのに、どの読み方にも当たらなかった文（まだ扱えない構文。ADR-0013）。 */
+  unsupported: Unsupported[];
+}
+
+/** まだ扱えない文。 */
+export interface Unsupported {
+  start: number;
+  end: number;
+  /** 文の頭（空白を詰めたもの）。 */
+  head: string;
 }
 
 export type Family = "req" | "concern" | "ver" | "con" | "beh" | "part" | "other";
@@ -147,7 +157,8 @@ export interface ModelEdge {
 export interface Problem {
   pos: number;
   msg: string;
-  kind?: "gap";
+  /** 無し：エラー。gap：トレースの抜け。unsupported：まだ扱えない構文（エラーではない）。 */
+  kind?: "gap" | "unsupported";
 }
 
 export interface PhaseInfo {

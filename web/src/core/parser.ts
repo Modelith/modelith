@@ -2,7 +2,7 @@
 // 正規表現で文を区切り、宣言・関係・メタデータを取り出す。Rust の CST パーサに置き換えるまでの実装で、
 // 出力は reference/golden/*.json と一致させる。
 
-import type { Block, Entry, ParseError, ParseResult, Rel, Scope } from "./types";
+import type { Block, Entry, ParseError, ParseResult, Rel, Scope, Unsupported } from "./types";
 
 export const DEF_KINDS = [
   "metadata def", "occurrence def", "part def", "requirement def", "constraint def", "port def", "item def", "attribute def",
@@ -14,9 +14,30 @@ export const USAGE_KINDS = [
   "concern", "analysis", "verification", "state", "action", "interface", "calc", "connection", "subject", "stakeholder",
 ];
 const KW_ALT = [...DEF_KINDS, "package", ...USAGE_KINDS].map((k) => k.replace(/ /g, "\\s+")).join("|");
+/** 基本名か引用名（NAME、8.2.2.1）。 */
+const NAME = "[A-Za-z_]\\w*|'[^']*'";
+/**
+ * 宣言の頭。グループ: 1 種類、2・3 短い名前（引用あり・なし）、4 名前の前の再定義など、5 名前、
+ * 6 名前の後の関係（: 型付け、:> 特殊化・部分集合、:>> 再定義、::> 参照）、7 共役、8 相手。
+ */
 const DECL_RE = new RegExp(
-  "^(" + KW_ALT + ")(?![\\w])\\s*(?:<'([^']*)'>\\s*)?([A-Za-z_]\\w*)?\\s*(?:(?::>>|:>|:)\\s*(~?)\\s*([A-Za-z_][\\w:]*))?",
+  "^(" + KW_ALT + ")(?![\\w])\\s*(?:<(?:'([^']*)'|([A-Za-z_]\\w*))>\\s*)?" +
+    "(?:(redefines|subsets|references|:>>|::>|:>)\\s*)?(" + NAME + ")?\\s*" +
+    "(?:(:>>|::>|:>|:|specializes|subsets|redefines|references)\\s*(~?)\\s*([A-Za-z_][\\w:]*|'[^']*'))?",
 );
+/** 前置メタデータ（#M、8.2.2.27）。 */
+const PREFIX_META_RE = /^(?:#([A-Za-z_]\w*)\s+)+/;
+/** SysML の予約語（SysML-textual-bnf の RESERVED_KEYWORD）。どの読み方にも当たらない文がこれで始まれば、まだ扱えない構文として知らせる。 */
+const RESERVED = new Set(
+  ("about abstract accept action actor after alias all allocate allocation analysis and as assert assign assume at attribute bind binding " +
+    "by calc case comment concern connect connection constant constraint crosses decide def default defined dependency derived do doc else " +
+    "end entry enum event exhibit exit expose false filter first flow for fork frame from hastype if implies import in include individual " +
+    "inout interface istype item join language library locale loop merge message meta metadata new nonunique not null objective occurrence " +
+    "of or ordered out package parallel part perform port private protected public redefines ref references render rendering rep require " +
+    "requirement return satisfy send snapshot specializes stakeholder standard state subject subsets succession terminate then timeslice to " +
+    "transition true until use variant variation verification verify via view viewpoint when while xor").split(" "),
+);
+const unquote = (s: string): string => (s.startsWith("'") && s.endsWith("'") ? s.slice(1, -1) : s);
 const MOD_RE = /^(?:(?:private|public|protected|abstract|in|out|inout|derived|readonly|end|ref|variation|individual)\s+)+/;
 const SKIP_RE =
   /^(import|alias|doc|comment|entry|transition|first|accept|objective|require|assume|assert|exit|do|if|else|succession|bind|message|dependency|allocate|expose|filter|language|rep|then|@\w+)\b/;
@@ -48,6 +69,7 @@ export function parse(text: string): ParseResult {
   const entries: Entry[] = [];
   const rels: Rel[] = [];
   const errors: ParseError[] = [];
+  const unsupported: Unsupported[] = [];
   const stack: Scope[] = [];
   const top = (): Scope | null => stack[stack.length - 1] ?? null;
   const named = (b: Scope | null): Entry | null => {
@@ -115,15 +137,30 @@ export function parse(text: string): ParseResult {
       rels.push({ rel: "transition", from: mm[1]!, ev: mm[2] || "", to: mm[3]!, pe, start: hs, end: endPos });
       return null;
     }
+    // 前置メタデータは、続く宣言のメタデータとして読む（ADR-0013）
+    const pm = h.match(PREFIX_META_RE);
+    const prefixMeta = pm ? [...pm[0].matchAll(/#([A-Za-z_]\w*)/g)].map((x) => x[1]!) : [];
+    if (pm) h = h.slice(pm[0].length);
     if (/^then\s+action\b/.test(h)) h = h.replace(/^then\s+/, "");
     if (/^return\s+/.test(h)) h = h.replace(/^return\s+/, "");
     if (SKIP_RE.test(h)) return null;
     if ((mm = h.match(DECL_RE)) && mm[1]) {
       const kind = mm[1].replace(/\s+/g, " ");
+      const isDef = / def$/.test(kind);
+      // 名前の後の関係のうち、型として読むのは型付け（:）と、定義の特殊化（:> / specializes）だけ。
+      // 使用の :> は部分集合、:>> は再定義、::> は参照で、型ではない（8.2.2.6）
+      const op = mm[6] ?? "";
+      const typed = op === ":" || (isDef && (op === ":>" || op === "specializes"));
+      // 名前の無い再定義（:>> mass）は、再定義する特徴の名前を名前にする
+      const name = mm[5] ? unquote(mm[5]) : "";
       const e: Entry = {
-        kind, isDef: / def$/.test(kind), short: mm[2] || "", name: mm[3] || "", conj: !!mm[4], type: mm[5] ? lastSeg(mm[5]) : "",
+        kind, isDef, short: mm[2] ?? mm[3] ?? "", name, conj: typed && !!mm[7], type: typed && mm[8] ? lastSeg(unquote(mm[8])) : "",
         owner, pe, start: hs, headEnd: endPos, end: endPos + 1, head: h, mods, exprs: [], children: [], idx: entries.length,
       };
+      if (prefixMeta.length) {
+        e.meta ||= {};
+        for (const md of prefixMeta) e.meta[md] ||= {};
+      }
       const vm = h.match(/=\s*(.+)$/);
       if (vm) e.value = vm[1]!.trim();
       const cm = h.match(/connect\s+([\w.]+)\s+to\s+([\w.]+)/);
@@ -142,6 +179,7 @@ export function parse(text: string): ParseResult {
       return e;
     }
     if (pe && (term === "}" || /[=<>]/.test(h))) pe.exprs.push({ text: h, via: owner && owner.anon ? owner.kw : "" });
+    else if (RESERVED.has(h.split(/[\s{;]/)[0] ?? "")) unsupported.push({ start: hs, end: endPos, head: h });
     return null;
   }
 
@@ -186,5 +224,5 @@ export function parse(text: string): ParseResult {
       errors.push({ pos: lm.index ?? 0, msg: "@layout コメントが読み取れません" });
     }
   }
-  return { entries, rels, errors, layout };
+  return { entries, rels, errors, layout, unsupported };
 }

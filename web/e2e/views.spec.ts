@@ -80,6 +80,18 @@ test.describe("テキストと図の同期", () => {
     expect((await editorText(page)).slice(caret)).toMatch(/^part b : Missing/);
   });
 
+  test("F-EDIT-8: まだ扱えない構文は、黙って捨てずに問題一覧で知らせ、エラーとしては数えない", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator("#ed").fill("package P {\n    part def A;\n    case def C;\n}\n");
+    // Assert
+    const info = page.locator("#problems button.unsupported");
+    await expect(info).toContainText("3 行目");
+    await expect(info).toContainText("「case def C」は Modelith ではまだ扱えない");
+    await expect(page.locator("#syncText")).toHaveText("同期済み");
+  });
+
   test("F-VIEW-5: モデルのツリーを名前で絞り込み、選ぶと図で選択される", async ({ page }) => {
     // Arrange
     await openApp(page);
