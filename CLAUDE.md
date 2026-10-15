@@ -23,6 +23,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | --- | --- |
 | [programming-principles](.claude/skills/programming-principles/SKILL.md) | SOLID、テスト可能なコード（判断と I/O の分離・依存の注入）、YAGNI、可読性 |
 | [testing-principles](.claude/skills/testing-principles/SKILL.md) | ISTQB の 7 原則、単体 → 結合 → 統合、同値分割・境界値・正常系／異常系、AAA パターン |
+| [release](.claude/skills/release/SKILL.md) | 版を出す手順（下書きまで。公開はメンテナ）と、リリースノートの決まった形 |
 
 スキルは「書くときの指針」であり、ハーネスで強制するのは fmt・clippy・ShellCheck・テストの成否だけ（ADR-0008）。
 同じ種類の違反が繰り返されたら、その時点で機械的な検査を足す。
@@ -66,6 +67,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | web のテスト | `npm test --prefix web`（単体・結合。パーサのテストは TS と Rust の両方で動く）、`scripts/e2e.sh`（統合・UI。ブラウザは Docker の公式イメージで動かす。テスト名に要求 ID を書く） |
 | wasm のビルド（web のテスト・アプリの前に必要） | `scripts/build-wasm.sh` |
 | ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
+| リリースの準備（版の書き換えとノートのひな形） | `scripts/release-prepare.sh <版>`（リリースノートの検査は `node web/tools/release-notes-cli.ts check [<版>]`） |
 | PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |
 | PR 向け先検証 | `scripts/check-pr-base.sh <base> <head>` |
 

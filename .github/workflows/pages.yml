@@ -1,9 +1,10 @@
 name: Pages
 
-# リリースのタグ（vX.Y.Z[-段階.N]）を打つと Web アプリを GitHub Pages に公開する（docs/development/releasing.md）。
+# GitHub のリリースを公開すると、そのタグの Web アプリを GitHub Pages に公開する（docs/development/releasing.md）。
+# リリースの下書きは release-draft.yml が作り、公開（Publish）はメンテナが画面で行う。公開したときにタグも作られる。
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:

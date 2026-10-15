@@ -13,19 +13,22 @@
 ## alpha・beta を出す
 
 1. `dev` が CI グリーンであることを確認する。
-2. リリース用ブランチ `chore/release-vX.Y.Z-<段階>.<番号>` を `dev` から作り、バージョン番号を更新する。
-   - Cargo のワークスペース（`Cargo.toml` の `[workspace.package] version`）
-   - `web/package.json` の `version`
-3. リリースノートを生成し、内容を確認する。
-4. PR（`chore(release): vX.Y.Z-<段階>.<番号>`）を `dev` に向けて出し、CI グリーンで Squash merge する。
-5. `dev` のマージコミットにタグ `vX.Y.Z-<段階>.<番号>` を打ち、GitHub Release を「プレリリース」として作る。
-6. タグを push すると `.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。公開後、画面右上の「ヘルプ」でバージョンを確かめる。
+2. `dev` から `chore/release-v<版>` を作り、`scripts/release-prepare.sh <版>` を実行する。
+   版（`Cargo.toml`・`web/package.json` とそれぞれのロックファイル）を書き換え、リリースノートのひな形 `docs/releases/v<版>.md` を作る。
+3. リリースノートの「（ここに書く）」を埋め（下の「リリースノート」）、`node web/tools/release-notes-cli.ts check <版>` で確かめる。
+4. PR（`chore(release): v<版>`）を `dev` に向けて出し、CI グリーンで Squash merge する。
+   マージすると「Release draft」ワークフローが動き、`dev` のマージコミットを対象に、リリースの下書き（プレリリース）を作る。
+5. メンテナが下書きを確かめ、「Publish release」を押す。このときタグ `v<版>` が作られ、`.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。
+6. 公開後、画面右上の「ヘルプ」でバージョンを確かめ、[リリース計画](release-plan.md) のその行に「（公開済み）」を足す。
+
+エージェントは 1〜4 と 6 を行い、5 の公開だけをメンテナに頼む（[release スキル](../../.claude/skills/release/SKILL.md)）。
 
 ## rc を出す
 
-1. 上の 1〜4 を rc の番号で行う。
-2. `dev` → `main` の PR（`chore(release): vX.Y.Z-rc.N`）を作る。**マージにはメンテナの明示的な許可が必要。** 方式はマージコミット。
-3. `main` のマージコミットにタグ `vX.Y.Z-rc.N` を打ち、プレリリースとして公開する。
+1. 上の 1〜4 を rc の番号で行う（`dev` へのマージでは下書きは作られない）。
+2. `dev` → `main` の PR（`chore(release): v<版>`）を作る。**マージにはメンテナの明示的な許可が必要。** 方式はマージコミット。
+   マージすると、`main` のマージコミットを対象に下書きが作られる。
+3. メンテナが下書きを公開する。
 4. 不具合が見つかったら `dev` で修正し、rc の番号を上げて 1 からやり直す。
 
 ## GitHub Pages の初期設定（一度だけ）
@@ -45,5 +48,13 @@
 
 ## リリースノート
 
-Conventional Commits の履歴から [git-cliff](https://git-cliff.org/) で生成する（設定は最初のリリース時に追加する）。
-生成結果をそのまま使わず、利用者に関係する変更が伝わるように手で整える。
+版ごとに `docs/releases/v<版>.md` に置き、GitHub のリリースの本文にそのまま使う。読み手は利用者で、形は決めてある。
+
+1. `# Modelith <版>`
+2. この版で何が変わったかの要約（1 段落）
+3. `## 主な変更`：「- 項目の名前：何ができるようになったか」の箇条書き
+4. `## <前の版> をお使いの方へ`（任意）：保存形式の変更など、前の版から移る人への注意
+5. ご注意・商標・ライセンス（決まった部分。`web/tools/release-notes.ts` の `FOOTER`）
+
+形は `scripts/check.sh` が検査する（`release-notes-cli.ts check`）。書き方の細則は [release スキル](../../.claude/skills/release/SKILL.md)。
+公開済みの版の本文を直すときは、ファイルを直す PR をマージしてから「Release draft」を版を渡して手で起動する（本文だけを差し替える）。
