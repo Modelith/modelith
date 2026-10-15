@@ -16,21 +16,18 @@ description: Modelith の版（alpha・beta・rc）を出す手順と、リリ�
 ## 手順（alpha・beta）
 
 1. `dev` の CI がグリーンで、出したい変更がすべて `dev` に入っていることを確かめる。
-2. `dev` から `chore/release-v<版>` を作る。
-3. 版を上げる。
-   - `Cargo.toml` の `[workspace.package] version`
-   - `web/package.json`（`npm version <版> --no-git-tag-version --prefix web`）
-   - `cargo update -w`
-4. リリースノートのひな形を作る：`node web/tools/release-notes-cli.ts new <版>`。`docs/releases/v<版>.md` ができる。
-5. 「（ここに書く）」を、下の「書き方」に従って埋める。
-6. `node web/tools/release-notes-cli.ts check <版>` で、形と版の一致を確かめる。`scripts/check.sh` も通す。
-7. PR `chore(release): v<版>` を `dev` に向けて出す。本文にはリリースノートの全文を入れ、CI グリーンで Squash merge する。
-8. 「Release draft」ワークフローを、`version` に版を渡して起動する（`actions_run_trigger`、`workflow_id: release-draft.yml`、`ref: dev`、inputs は `version` と `branch: dev`）。
-   下書きが、`dev` の先頭を対象に、ノートを本文にして作られる。
-9. 下書きのリンクをメンテナに渡し、「Publish release」を押してもらう。リンクは `https://github.com/modelith/modelith/releases` の下書きの行から取る。
-10. 公開されたら、Pages のワークフローが成功したことと、画面右上の「ヘルプ」に出る版を確かめる。リリース計画（release-plan.md）のその行に「（公開済み）」を足す PR を出す。
+2. `dev` から `chore/release-v<版>` を作り、`scripts/release-prepare.sh <版>` を実行する（版の書き換えと、ノートのひな形）。
+3. `docs/releases/v<版>.md` の「（ここに書く）」を、下の「書き方」に従って埋める。
+   前の版から出した PR（`git log v<前の版>..origin/dev --oneline`）を読み、利用者に見える変化を拾う。
+4. `node web/tools/release-notes-cli.ts check <版>` と `scripts/check.sh` を通す。
+5. PR `chore(release): v<版>` を `dev` に向けて出す。本文にはリリースノートの全文を入れる。CI グリーンで Squash merge する。
+6. マージで「Release draft」ワークフローが動き、下書きができる。実行の結果（`actions_list` / `get_job_logs`）から、下書きのページのリンクを取る。
+7. 下書きのリンクをメンテナに渡し、「Publish release」を押してもらう。
+8. 公開されたら、Pages のワークフローが成功したことと、画面右上の「ヘルプ」に出る版を確かめる。リリース計画（release-plan.md）のその行に「（公開済み）」を足す PR を出す。
 
-公開済みの版のノートを直すときは、`docs/releases/v<版>.md` を直す PR をマージしてから、同じワークフローを同じ版で起動する（本文だけを差し替える）。
+下書きが作られなかったときは、ワークフローのログの理由（ノートが無い・版が違う・ブランチが違う）を直す。
+手で作り直すときは、ワークフロー `release-draft.yml` を `ref: dev`、inputs `version`・`branch: dev` で起動する（`actions_run_trigger`）。
+公開済みの版のノートを直すときも、同じく手で起動する（本文だけを差し替える）。メンテナに頼まれたときだけ行う。
 
 ## リリースノートの書き方
 

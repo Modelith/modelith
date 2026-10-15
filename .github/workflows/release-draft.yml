@@ -1,9 +1,13 @@
 name: Release draft
 
-# リリースの下書きを作る（docs/development/releasing.md）。版を上げる PR を dev にマージしてから、手で（またはエージェントが）起動する。
-# 下書きの本文は docs/releases/v<版>.md。公開（Publish）はメンテナが GitHub の画面で行い、公開すると Pages のワークフローが動く。
-# 既に公開したリリースに対して起動すると、本文だけを差し替える。
+# リリースの下書きを作る（docs/development/releasing.md）。下書きの本文は docs/releases/v<版>.md。
+# - 版を上げる PR を dev（rc・正式版は main）にマージすると、自動で下書きを作る（その版のノートがあり、リリースがまだ無いとき）
+# - 手で起動すると、下書きが無ければ作り、あれば本文だけを差し替える
+# 公開（Publish）はメンテナが GitHub の画面で行い、公開するとタグが作られ、Pages のワークフローが動く。
 on:
+  push:
+    branches: [dev, main]
+    paths: ["Cargo.toml", "docs/releases/**"]
   workflow_dispatch:
     inputs:
       version:
@@ -29,12 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.branch }}
+          # 手で起動したときは選んだブランチ、push のときはそのコミット
+          ref: ${{ inputs.branch || github.ref }}
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - name: Create or update the release draft
-        run: scripts/release-draft.sh "$VERSION"
+        run: scripts/release-draft.sh "${VERSION:---auto}"
         env:
           VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}

@@ -67,7 +67,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | web のテスト | `npm test --prefix web`（単体・結合。パーサのテストは TS と Rust の両方で動く）、`scripts/e2e.sh`（統合・UI。ブラウザは Docker の公式イメージで動かす。テスト名に要求 ID を書く） |
 | wasm のビルド（web のテスト・アプリの前に必要） | `scripts/build-wasm.sh` |
 | ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
-| リリースノート（ひな形・検査） | `node web/tools/release-notes-cli.ts new <版>` / `check [<版>]` |
+| リリースの準備（版の書き換えとノートのひな形） | `scripts/release-prepare.sh <版>`（リリースノートの検査は `node web/tools/release-notes-cli.ts check [<版>]`） |
 | PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |
 | PR 向け先検証 | `scripts/check-pr-base.sh <base> <head>` |
 
