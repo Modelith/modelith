@@ -282,7 +282,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         part def Core {
-            doc /* パーサ・モデル構築・テキスト編集（web/src/core。暫定の TS 版。ADR-0009） */
+            doc /* パーサ・モデル構築・テキスト編集（web/src/core の暫定の TS 版。ADR-0009。Rust 版 crates/modelith-core に順に差し替える。ADR-0015） */
         }
         part def DiagramUI {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
@@ -404,6 +404,13 @@ package ModelithRequirements {
             objective {
                 verify StandardViewReq;
                 verify NoSilentDropReq;
+            }
+        }
+        verification def RustSyntaxTest {
+            doc /* crates/modelith-core/src/syntax：Rust のパーサの字句と構文木（木の形・ロスレス・途中で切った入力でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）。ADR-0015 */
+            objective {
+                verify NoSilentDropReq;
+                verify ProblemsReq;
             }
         }
         verification def NewPackageTest {
