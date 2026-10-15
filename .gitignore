@@ -26,6 +26,8 @@ rustc-ice-*.txt
 # Node / web
 node_modules/
 web/dist/
+# Rust のコアから作る wasm（scripts/build-wasm.sh）
+web/src/core/wasm/
 web/test-results/
 web/playwright-report/
 

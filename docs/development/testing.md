@@ -14,9 +14,17 @@
 
 `scripts/check.sh` がこの順に実行し、失敗した段階で止まる。CI も同じ。
 
+### パーサは TS と Rust の両方で確かめる
+
+`web/src/core/golden.test.ts`（ゴールデン）と `spec.test.ts`（仕様のケース）は、暫定の TS パーサと Rust のパーサ（wasm）の両方で同じテストを動かす（ADR-0015）。
+Rust がモックと意図して違う結果を出すケースは、`golden.test.ts` の許容リストに理由を添えて登録する。
+wasm は `scripts/build-wasm.sh` が `web/src/core/wasm/` に書き出す（コミットしない）。`scripts/check.sh` と `scripts/e2e.sh` は先にこれを実行する。
+`npm test --prefix web` を単独で動かすときは、先に `scripts/build-wasm.sh` を実行する。
+
 ## 実行
 
 ```bash
+scripts/build-wasm.sh          # Rust のコアの wasm を作る（web のテストとアプリが使う）
 npm test --prefix web          # 単体・結合
 scripts/e2e.sh                 # e2e・UI（ビルドしてから、基準のブラウザで操作する）
 scripts/e2e.sh -g F-FILE       # 要求 ID でしぼる（引数は Playwright にそのまま渡す）

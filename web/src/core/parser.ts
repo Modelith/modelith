@@ -237,14 +237,17 @@ export function parse(text: string): ParseResult {
   }
   if (m.slice(i).trim()) errors.push({ pos: i, msg: "末尾の文が「;」で終わっていません" });
   for (const b of stack) errors.push({ pos: b.start, msg: `「${(!b.anon && b.name) || b.head || "{"}」のブロックが閉じていません` });
-  let layout: Record<string, unknown> = {};
+  return { entries, rels, errors, layout: readLayout(text, errors), unsupported };
+}
+
+/** `/* @layout {…} *\/` コメントの中身（ADR-0005 の移行期の形式）。読めなければ errors に足して空を返す。 */
+export function readLayout(text: string, errors: ParseError[]): Record<string, unknown> {
   const lm = text.match(LAYOUT_RE);
-  if (lm) {
-    try {
-      layout = JSON.parse(lm[1]!) as Record<string, unknown>;
-    } catch {
-      errors.push({ pos: lm.index ?? 0, msg: "@layout コメントが読み取れません" });
-    }
+  if (!lm) return {};
+  try {
+    return JSON.parse(lm[1]!) as Record<string, unknown>;
+  } catch {
+    errors.push({ pos: lm.index ?? 0, msg: "@layout コメントが読み取れません" });
+    return {};
   }
-  return { entries, rels, errors, layout, unsupported };
 }
