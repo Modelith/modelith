@@ -40,8 +40,10 @@ ensure_wasm_bindgen() {
     echo "wasm-bindgen $version を取得します" >&2
     curl -sSfL -o "$archive" "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$version/$name.tar.gz"
     echo "$WASM_BINDGEN_SHA256  $archive" | sha256sum --check --quiet
-    tar -xzf "$archive" -C target/tools
-    mv "target/tools/$name" "$dir"
+    # 前の途中までの展開が残っていても、作り直す
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    tar -xzf "$archive" -C "$dir" --strip-components=1
   fi
   echo "$dir/wasm-bindgen"
 }
