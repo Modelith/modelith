@@ -28,3 +28,67 @@ export function thirdPartyNotices(parts: BundledPart[]): string {
 export function appLicense(copyright: string, agpl: string, pluginException: string): string {
   return `${copyright}\n\nModelith は GNU Affero General Public License version 3（以下の全文）に、Modelith Plugin Exception（末尾）を加えた条件で提供します。\n\n${agpl.trim()}\n\n${pluginException.trim()}\n`;
 }
+
+/** `cargo metadata` の出力のうち、ここで使う部分。 */
+export interface CargoPackage {
+  id: string;
+  name: string;
+  version: string;
+  license: string | null;
+  /** 取得元。リポジトリの中のクレート（Modelith 自身）は null。 */
+  source: string | null;
+  manifest_path: string;
+  targets: { kind: string[] }[];
+}
+export interface CargoMetadata {
+  packages: CargoPackage[];
+  resolve: { nodes: { id: string; deps: { pkg: string; dep_kinds: { kind: string | null }[] }[] }[] };
+}
+
+/**
+ * wasm に組み込まれる第三者のクレート。`root` から通常の依存（ビルド用・テスト用を除く）をたどる。
+ * 手続きマクロとその依存はビルドのときだけ使い、配布物に入らないので、たどらない。Modelith 自身のクレートは除く。
+ */
+export function wasmRuntimeCrates(meta: CargoMetadata, root: string): CargoPackage[] {
+  const byId = new Map(meta.packages.map((p) => [p.id, p]));
+  const nodes = new Map(meta.resolve.nodes.map((n) => [n.id, n]));
+  const rootId = meta.packages.find((p) => p.name === root)?.id;
+  if (!rootId) throw new Error(`cargo metadata に ${root} がありません`);
+  const seen = new Set<string>([rootId]);
+  const stack = [rootId];
+  while (stack.length) {
+    for (const d of nodes.get(stack.pop()!)?.deps ?? []) {
+      const p = byId.get(d.pkg);
+      const normal = d.dep_kinds.some((k) => k.kind === null);
+      const macro = p?.targets.some((t) => t.kind.includes("proc-macro"));
+      if (!p || !normal || macro || seen.has(d.pkg)) continue;
+      seen.add(d.pkg);
+      stack.push(d.pkg);
+    }
+  }
+  return [...seen]
+    .flatMap((id) => byId.get(id) ?? [])
+    .filter((p) => p.source !== null)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * SPDX の式から、同梱するときに従うライセンスを選ぶ。選べるとき（OR）は MIT を選び、AND はすべてに従う。
+ * 例: `MIT OR Apache-2.0` → MIT、`(MIT OR Apache-2.0) AND Unicode-3.0` → MIT と Unicode-3.0。
+ */
+export function chooseLicenses(spdx: string): string[] {
+  return spdx
+    .replace(/[()]/g, "")
+    .split(/\s+AND\s+/)
+    .map((clause) => {
+      const options = clause.split(/\s+OR\s+|\//).map((s) => s.trim());
+      return options.includes("MIT") ? "MIT" : options[0]!;
+    });
+}
+
+/** ライセンスごとの、クレートに入っているライセンス文のファイル名（先にあるものを使う）。 */
+export const LICENSE_FILES: Record<string, string[]> = {
+  MIT: ["LICENSE-MIT", "LICENSE-MIT.md", "LICENSE"],
+  "Apache-2.0": ["LICENSE-APACHE", "LICENSE"],
+  "Unicode-3.0": ["LICENSE-UNICODE"],
+};

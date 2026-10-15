@@ -80,6 +80,16 @@ test.describe("テキストと図の同期", () => {
     expect((await editorText(page)).slice(caret)).toMatch(/^part b : Missing/);
   });
 
+  test("F-EDIT-5: 「}」の前で「;」を書き忘れた宣言も、構文エラーとして行番号付きで示す（Rust のパーサ、ADR-0015）", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator("#ed").fill("package P {\n    part def A {\n        part b : A\n    }\n}\n");
+    // Assert
+    const problem = page.locator('#problems button:has-text("「;」がありません")');
+    await expect(problem).toContainText("3 行目");
+  });
+
   test("F-EDIT-8: まだ扱えない構文は、黙って捨てずに問題一覧で知らせ、エラーとしては数えない", async ({ page }) => {
     // Arrange
     await openApp(page);

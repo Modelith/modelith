@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appLicense, thirdPartyNotices, viteCoreLicense } from "./licenses";
+import { appLicense, chooseLicenses, thirdPartyNotices, viteCoreLicense, wasmRuntimeCrates, type CargoMetadata, type CargoPackage } from "./licenses";
 
 describe("viteCoreLicense", () => {
   it("Vite 本体の MIT の部分だけを取り出し、同梱依存の一覧は除く", () => {
@@ -41,5 +41,52 @@ describe("appLicense", () => {
     // Assert
     expect(out.startsWith("Copyright (C) 2026 X\n")).toBe(true);
     expect(out.indexOf("AGPL")).toBeLessThan(out.indexOf("EXCEPTION"));
+  });
+});
+
+describe("wasmRuntimeCrates", () => {
+  const pkg = (name: string, kinds = ["lib"], source: string | null = "registry"): CargoPackage => ({
+    id: name, name, version: "1.0.0", license: "MIT", source, manifest_path: `/r/${name}/Cargo.toml`, targets: [{ kind: kinds }],
+  });
+  const dep = (pkg: string, kind: string | null = null) => ({ pkg, dep_kinds: [{ kind }] });
+
+  it("通常の依存をたどり、手続きマクロ・ビルド用の依存・Modelith 自身のクレートは除く", () => {
+    // Arrange
+    const meta: CargoMetadata = {
+      packages: [pkg("root", ["cdylib"], null), pkg("core", ["lib"], null), pkg("rowan"), pkg("hashbrown"), pkg("derive", ["proc-macro"]), pkg("syn"), pkg("cc")],
+      resolve: {
+        nodes: [
+          { id: "root", deps: [dep("core"), dep("cc", "build")] },
+          { id: "core", deps: [dep("rowan"), dep("derive")] },
+          { id: "rowan", deps: [dep("hashbrown")] },
+          { id: "derive", deps: [dep("syn")] },
+        ],
+      },
+    };
+    // Act
+    const names = wasmRuntimeCrates(meta, "root").map((p) => p.name);
+    // Assert
+    expect(names).toEqual(["hashbrown", "rowan"]);
+  });
+
+  it("起点のクレートが無ければ失敗する（異常系）", () => {
+    // Arrange
+    const meta: CargoMetadata = { packages: [], resolve: { nodes: [] } };
+    // Act・Assert
+    expect(() => wasmRuntimeCrates(meta, "root")).toThrow(/root/);
+  });
+});
+
+describe("chooseLicenses", () => {
+  it.each([
+    ["MIT OR Apache-2.0", ["MIT"]],
+    ["Apache-2.0/MIT", ["MIT"]],
+    ["Unlicense OR MIT", ["MIT"]],
+    ["MIT", ["MIT"]],
+    ["(MIT OR Apache-2.0) AND Unicode-3.0", ["MIT", "Unicode-3.0"]],
+    ["Apache-2.0", ["Apache-2.0"]],
+  ])("%s → %j", (spdx, expected) => {
+    // Act・Assert
+    expect(chooseLicenses(spdx)).toEqual(expected);
   });
 });

@@ -282,7 +282,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         part def Core {
-            doc /* パーサ・モデル構築・テキスト編集（web/src/core の暫定の TS 版。ADR-0009。Rust 版 crates/modelith-core に順に差し替える。ADR-0015） */
+            doc /* パーサ（Rust の crates/modelith-core を wasm にして使う。ADR-0015）・モデル構築・テキスト編集（web/src/core の暫定の TS 版。ADR-0009。alpha.4 で Rust に差し替える） */
         }
         part def DiagramUI {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
