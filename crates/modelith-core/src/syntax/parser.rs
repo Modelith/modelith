@@ -41,6 +41,8 @@ pub(crate) struct Parser<'t> {
     input: Vec<Input<'t>>,
     pos: usize,
     events: Vec<Event>,
+    /// 今読んでいるブロック `{ … }` の入れ子の深さ。
+    pub depth: usize,
 }
 
 /// 開始した節。`complete` か `abandon` で閉じる。
@@ -56,6 +58,7 @@ impl<'t> Parser<'t> {
             input,
             pos: 0,
             events: Vec::new(),
+            depth: 0,
         }
     }
 

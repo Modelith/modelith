@@ -105,7 +105,28 @@ function initToolbar(): void {
 
 // 解析に使う Rust のコア（wasm）を読み込んでから、画面を組み立てる（ADR-0015）。
 // 待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
-await Promise.all([initCore(CORE_WASM), document.fonts.ready]);
+try {
+  await Promise.all([initCore(CORE_WASM), document.fonts.ready]);
+} catch (e) {
+  showStartupError(e);
+  // 続きの組み立てはしない（解析できないまま画面を組み立てると、壊れた状態で操作できてしまう）
+  await new Promise<never>(() => {});
+}
+
+/** 起動できなかったことを、画面の真ん中に出す（通信の失敗や、WebAssembly を使えない古いブラウザ）。 */
+function showStartupError(e: unknown): void {
+  const box = document.createElement("div");
+  box.id = "startupError";
+  box.setAttribute("role", "alert");
+  box.innerHTML =
+    "<b>Modelith を起動できませんでした</b>" +
+    "<p>テキストを読み取る部品を読み込めませんでした。ページを読み込み直してください。" +
+    "直らないときは、新しいブラウザ（Chrome・Edge・Firefox・Safari の最新版）で開いてください。</p>";
+  const detail = document.createElement("small");
+  detail.textContent = e instanceof Error ? e.message : String(e);
+  box.append(detail);
+  document.body.append(box);
+}
 $("#defs").innerHTML = DEFS;
 loadUi();
 if (store.get(EDGE_KEY) === "curve") setEdgeStyle("curve");

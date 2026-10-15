@@ -14,9 +14,22 @@ export async function initCore(wasmUrl: string): Promise<void> {
   await initWasm({ module_or_path: wasmUrl });
 }
 
-/** テキストを解析して宣言・関係・構文エラー・配置情報を返す（Rust のパーサ）。 */
+/**
+ * テキストを解析して宣言・関係・構文エラー・配置情報を返す（Rust のパーサ）。例外は投げない。
+ * コアの中で予期しない失敗が起きたときは、要素の無い結果と、そのことを伝える構文エラーを返す（テキストには触れない）。
+ */
 export function parse(text: string): ParseResult {
-  return fromRust(parseJson(text), text);
+  return safeParse(text, parseJson);
+}
+
+/** `parseJson` が失敗しても例外を投げずに結果を返す（`parseJson` を差し替えてテストできるように分けている）。 */
+export function safeParse(text: string, parseJson: (text: string) => string): ParseResult {
+  try {
+    return fromRust(parseJson(text), text);
+  } catch (e) {
+    const errors = [{ pos: 0, msg: `テキストを読み取れませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` }];
+    return { entries: [], rels: [], errors, layout: readLayout(text, errors), unsupported: [] };
+  }
 }
 
 /** 持ち主の番号（名前のある宣言か、名前の無いブロック）。 */

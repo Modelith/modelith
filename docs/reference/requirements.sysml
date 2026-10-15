@@ -197,6 +197,9 @@ package ModelithRequirements {
         requirement def <'Q-3'> LookReq {
             doc /* OS の明るい・暗い配色に合わせて表示する。どちらの配色でも、マウスを乗せた部品とキーボードで選んだ部品が見分けられる */
         }
+        requirement def <'Q-5'> RobustReq {
+            doc /* どんなテキストを入れても解析で止まらず（深い入れ子・書き損じ・途中までの入力を含む）、読めない箇所は問題一覧で知らせる。起動に必要な部品を読み込めないときは、白い画面のままにせず、理由と対処を示す */
+        }
         requirement def <'Q-4'> PlainWordsReq {
             doc /* 画面の文言（トースト・ダイアログ・空の図の案内・メニュー・問題一覧）は、SysML v2 の構文を知らない人にも分かる図の言葉で書き、次の操作を画面の操作で示す。SysML v2 の用語は補足にとどめる（ADR-0014） */
         }
@@ -264,6 +267,7 @@ package ModelithRequirements {
         #derivation dependency from NarrowScreenReq to AnywhereNeed;
         #derivation dependency from LookReq to AnywhereNeed;
         #derivation dependency from PlainWordsReq to EditBothWaysNeed;
+        #derivation dependency from RobustReq to SafetyNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
@@ -363,6 +367,8 @@ package ModelithRequirements {
         satisfy NarrowScreenReq by AppShell;
         satisfy LookReq by AppShell;
         satisfy PlainWordsReq by AppShell;
+        satisfy RobustReq by Core;
+        satisfy RobustReq by AppShell;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
@@ -407,10 +413,11 @@ package ModelithRequirements {
             }
         }
         verification def RustSyntaxTest {
-            doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・ロスレス・途中で切った入力でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置）。ADR-0015 */
+            doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・ロスレス・途中で切った入力や深い入れ子でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置）。web/src/core/rust.test.ts：コアが失敗しても例外を投げずに知らせる。ADR-0015 */
             objective {
                 verify NoSilentDropReq;
                 verify ProblemsReq;
+                verify RobustReq;
             }
         }
         verification def NewPackageTest {
@@ -424,6 +431,7 @@ package ModelithRequirements {
             objective {
                 verify OpenFolderReq;
                 verify RecentFolderReq;
+                verify RobustReq;
                 verify LayoutReq;
                 verify UnsavedLayoutReq;
             }
@@ -486,7 +494,7 @@ package ModelithRequirements {
             }
         }
         verification def FilesE2E {
-            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く） */
+            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
             objective {
                 verify UnsavedLayoutReq;
                 verify OpenFolderReq;
