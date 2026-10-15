@@ -58,3 +58,15 @@ test("F-FILE-10・F-VIEW-6: モデルと配置ファイルを一緒に選んで�
   await expect(page.locator("#docName")).toHaveText("m.sysml");
   await expect(page.locator('#gNodes .node[data-key="Mine"]')).toHaveAttribute("transform", /translate\(600,\s*400\)/);
 });
+
+test("Q-5: テキストを読み取る部品（wasm）を読み込めないと、白い画面のままにせず、読み込み直すよう案内する（異常系）", async ({ page }) => {
+  // Arrange
+  await page.route("**/*.wasm", (route) => route.abort());
+  // Act
+  await page.goto("./");
+  // Assert
+  const box = page.locator("#startupError");
+  await expect(box).toBeVisible();
+  await expect(box).toContainText("ページを読み込み直してください");
+  await expect(page.locator("#gNodes .node")).toHaveCount(0);
+});

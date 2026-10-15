@@ -400,6 +400,38 @@ fn doc_without_body_is_an_error() {
 // ---- ロスレスとエラーへの強さ（ADR-0015） ----
 
 #[test]
+fn deep_nesting_stops_at_the_limit_without_overflowing_the_stack() {
+    // Arrange（境界値: 上限ちょうど・上限を超える・とても深い）
+    for (n, expect_error) in [
+        (grammar::MAX_DEPTH, false),
+        (grammar::MAX_DEPTH + 1, true),
+        (100_000, true),
+    ] {
+        let text = format!("{}{}", "part a {".repeat(n), "}".repeat(n));
+        // Act
+        let p = parse(&text);
+        // Assert
+        assert_eq!(p.syntax().text().to_string(), text, "{n}");
+        let too_deep = p
+            .errors()
+            .iter()
+            .any(|e| e.message.starts_with("入れ子が深すぎる"));
+        assert_eq!(too_deep, expect_error, "{n}");
+    }
+}
+
+#[test]
+fn deep_nesting_without_closing_braces_is_lossless() {
+    // Arrange（異常系: 閉じない「{」が続く）
+    let text = "{".repeat(50_000);
+    // Act
+    let p = parse(&text);
+    // Assert
+    assert_eq!(p.syntax().text().to_string(), text);
+    assert!(!p.errors().is_empty());
+}
+
+#[test]
 fn valid_cases_parse_without_errors() {
     for (name, text) in VALID {
         // Act

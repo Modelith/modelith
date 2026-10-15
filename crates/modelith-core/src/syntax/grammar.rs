@@ -23,13 +23,43 @@ pub(crate) fn source_file(p: &mut Parser<'_>) {
     m.complete(p, SOURCE_FILE);
 }
 
+/// ブロックの入れ子の上限。これより深い `{ … }` は中を読まずにエラーにする（再帰でスタックがあふれないように）。
+pub(crate) const MAX_DEPTH: usize = 256;
+
+/// 深すぎるブロック。対応する `}` まで（無ければ末尾まで）を、入れ子を数えながら 1 つの ERROR にする。
+fn too_deep(p: &mut Parser<'_>) {
+    let m = p.start();
+    p.error(format!(
+        "入れ子が深すぎるため、この {{ … }} の中は読み取りません（{MAX_DEPTH} 段まで）"
+    ));
+    let mut depth = 0usize;
+    while !p.at_eof() {
+        match p.current() {
+            L_BRACE => depth += 1,
+            R_BRACE => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        p.bump();
+        if depth == 0 {
+            break;
+        }
+    }
+    m.complete(p, ERROR);
+}
+
 /// `{ … }`。閉じていなければ、持ち主の宣言の頭にエラーを置く。`label` は持ち主の名前。
 fn body(p: &mut Parser<'_>, owner: usize, label: &str) {
+    if p.depth >= MAX_DEPTH {
+        too_deep(p);
+        return;
+    }
     let m = p.start();
     p.bump();
+    p.depth += 1;
     while !p.at_eof() && !p.at(R_BRACE) {
         member_or_skip(p);
     }
+    p.depth -= 1;
     if !p.eat(R_BRACE) {
         let message = if label.is_empty() {
             "「{」に対応する「}」がありません".to_owned()

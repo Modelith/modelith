@@ -251,3 +251,10 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 @media (max-width:760px){ .fi .x{visibility:visible} .fi{min-height:34px} }
 #dialog .row{flex-wrap:wrap}
 #dialog .row button{white-space:normal;text-align:left}
+
+/* 起動できなかったときの案内（main.ts） */
+#startupError{position:fixed;inset:0;margin:auto;width:min(420px,calc(100vw - 32px));height:fit-content;padding:20px 24px;
+  background:var(--panel);color:var(--ink);border:1px solid var(--rule);font-family:var(--sans);border-radius:10px;
+  box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:1000;line-height:1.6}
+#startupError p{margin:8px 0}
+#startupError small{color:var(--ink2);word-break:break-all}
