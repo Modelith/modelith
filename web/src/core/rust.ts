@@ -4,6 +4,20 @@
 
 import { readLayout } from "./parser";
 import type { Block, Entry, ParseResult, Rel, Scope, Unsupported } from "./types";
+import initWasm, { parse as parseJson } from "./wasm/modelith_core.js";
+
+/**
+ * Rust のコア（wasm）を読み込む。アプリは起動時に一度だけ待つ（ADR-0015：alpha.3 では画面と同じスレッドで同期で呼ぶ）。
+ * テストは testing/setup.ts が先に読み込んでおく。
+ */
+export async function initCore(wasmUrl: string): Promise<void> {
+  await initWasm({ module_or_path: wasmUrl });
+}
+
+/** テキストを解析して宣言・関係・構文エラー・配置情報を返す（Rust のパーサ）。 */
+export function parse(text: string): ParseResult {
+  return fromRust(parseJson(text), text);
+}
 
 /** 持ち主の番号（名前のある宣言か、名前の無いブロック）。 */
 type RawScope = { e: number } | { b: number };

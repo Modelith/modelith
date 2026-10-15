@@ -23,6 +23,8 @@ import { S } from "./app/state";
 import { DEFS } from "./app/svg";
 import { relayout, toast } from "./app/sync";
 import { CC } from "./app/views";
+import { initCore } from "./core";
+import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
 const EDGE_KEY = "modelith-edgestyle";
 
@@ -101,6 +103,9 @@ function initToolbar(): void {
   });
 }
 
+// 解析に使う Rust のコア（wasm）を読み込んでから、画面を組み立てる（ADR-0015）。
+// 待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
+await Promise.all([initCore(CORE_WASM), document.fonts.ready]);
 $("#defs").innerHTML = DEFS;
 loadUi();
 if (store.get(EDGE_KEY) === "curve") setEdgeStyle("curve");

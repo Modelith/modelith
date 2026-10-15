@@ -4,6 +4,10 @@ import { execSync } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { Reporter, TestCase, TestResult as PwResult } from "@playwright/test/reporter";
 import { summarize, toHtml, toMarkdown, type TestResult } from "../tools/requirements-report";
+import { initSync } from "../src/core/wasm/modelith_core.js";
+
+// 要求仕様を読むコアは Rust（wasm）。Node の中で先に読み込む（ADR-0015）
+initSync({ module: readFileSync(new URL("../src/core/wasm/modelith_core_bg.wasm", import.meta.url)) });
 
 const SPEC = new URL("../../docs/reference/requirements.sysml", import.meta.url);
 const OUT = new URL("../reports/", import.meta.url);
