@@ -45,7 +45,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 
 詳細は [docs/development/branching-strategy.md](docs/development/branching-strategy.md)。要点のみ:
 
-- 作業ブランチは `dev` から作り、PR は `dev` に向ける（GitHub の既定ブランチは `main` なので、PR 作成時に base を `dev` と明示する）。`main` / `dev` へ直接 commit / push しない（フックでブロックされる）
+- 作業ブランチは `dev` から作り、PR は `dev` に向ける（GitHub の既定ブランチは `dev`。PR 作成時も base を `dev` と明示する）。`main` / `dev` へ直接 commit / push しない（フックでブロックされる）
 - ブランチ名: `<type>/<topic>`（type: feat|fix|refactor|docs|test|perf|ci|chore|claude）
 - コミット / PR タイトル: `<type>(<scope>): <summary>`（Conventional Commits）
 - 1 ブランチ 1 目的。依頼範囲外のリファクタや整形を混ぜない
