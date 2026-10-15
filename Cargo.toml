@@ -19,8 +19,8 @@ unsafe_code = "forbid"
 unwrap_used = "warn"
 expect_used = "warn"
 
-# ブラウザに配る wasm を小さくする（ADR-0015）
+# ブラウザに配る wasm。速度を優先する（"s" より 3 のほうが小さく、速かった。ADR-0015）
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
 codegen-units = 1

@@ -46,6 +46,8 @@ pub struct SyntaxError {
 pub struct Parse {
     green: GreenNode,
     errors: Vec<SyntaxError>,
+    /// コメントと注記の範囲（バイト）。
+    comments: Vec<(usize, usize)>,
 }
 
 impl Parse {
@@ -57,6 +59,11 @@ impl Parse {
     /// 字句と構文のエラー（位置の順）。
     pub fn errors(&self) -> &[SyntaxError] {
         &self.errors
+    }
+
+    /// コメント（`/* */`）と注記（`//`・`//* */`）の範囲（バイト、位置の順）。
+    pub fn comments(&self) -> &[(usize, usize)] {
+        &self.comments
     }
 
     /// 木を、節と位置の入れ子の文字列にする（テストと調査用）。
@@ -112,7 +119,22 @@ pub fn parse(text: &str) -> Parse {
     }
     .build(events, &mut errors);
     errors.sort_by_key(|e| e.offset);
-    Parse { green, errors }
+    let comments = tokens
+        .iter()
+        .zip(&starts)
+        .filter(|(t, _)| {
+            matches!(
+                t.kind,
+                SyntaxKind::REGULAR_COMMENT | SyntaxKind::LINE_NOTE | SyntaxKind::BLOCK_NOTE
+            )
+        })
+        .map(|(t, &s)| (s, s + t.len))
+        .collect();
+    Parse {
+        green,
+        errors,
+        comments,
+    }
 }
 
 /// パーサに渡すトークン（生のトークンの番号）。空白と注記は除く。

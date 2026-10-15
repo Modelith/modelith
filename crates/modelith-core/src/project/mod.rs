@@ -92,17 +92,10 @@ struct Ctx {
 impl Ctx {
     fn new(text: &str, parse: &Parse) -> Self {
         let mut masked = text.as_bytes().to_vec();
-        for t in parse
-            .syntax()
-            .descendants_with_tokens()
-            .filter_map(|e| e.into_token())
-        {
-            if matches!(t.kind(), REGULAR_COMMENT | LINE_NOTE | BLOCK_NOTE) {
-                let r = t.text_range();
-                for b in &mut masked[usize::from(r.start())..usize::from(r.end())] {
-                    if *b != b'\n' {
-                        *b = b' ';
-                    }
+        for &(start, end) in parse.comments() {
+            for b in &mut masked[start..end] {
+                if *b != b'\n' {
+                    *b = b' ';
                 }
             }
         }
