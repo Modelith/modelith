@@ -29,7 +29,7 @@ announce() {
   echo "現在のブランチ: $branch"
   [[ $branch == main || $branch == dev ]] &&
     echo "注意: $branch 上にいます。変更前に 'git switch dev && git switch -c <type>/<topic>' でブランチを作成してください。"
-  echo "PR の向け先は dev（既定ブランチは main なので base を明示）。トピック → dev は CI グリーンなら Squash で自分でマージしてよい。main へのマージはメンテナの許可が必要。"
+  echo "PR の向け先は dev（PR 作成時に base を明示する）。トピック → dev は CI グリーンなら Squash で自分でマージしてよい。main へのマージはメンテナの許可が必要。"
   echo "コードとテストは .claude/skills/programming-principles と testing-principles に従う。完了条件: scripts/check.sh がグリーン。"
 }
 

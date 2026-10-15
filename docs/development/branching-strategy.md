@@ -45,7 +45,7 @@ git switch -c feat/kerml-parser
 scripts/check.sh            # ローカルでハーネスを通す
 git commit -m "feat(parser): add KerML lexer"
 git push -u origin feat/kerml-parser
-# → 向け先に dev を明示して PR 作成（GitHub の既定ブランチは main のため）。CI グリーンで Squash merge。ブランチは自動削除。
+# → 向け先を dev にして PR 作成（既定ブランチは dev。明示もする）。CI グリーンで Squash merge。ブランチは自動削除。
 ```
 
 `dev` が先に進んだ場合は **rebase ではなく `dev` をマージ** して追従してよい（Squash merge なので履歴は汚れない）。
