@@ -56,14 +56,14 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "modelith-cli"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "modelith-core",
 ]
 
 [[package]]
 name = "modelith-core"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "expect-test",
  "rowan",
@@ -73,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "modelith-wasm"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "modelith-core",
  "serde_json",
