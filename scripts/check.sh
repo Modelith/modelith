@@ -20,8 +20,9 @@ ensure_dependencies() {
 }
 
 stage_static() {
-  step "[static] 禁止ファイル・ShellCheck"
+  step "[static] 禁止ファイル・ShellCheck・リリースノートの形"
   scripts/check-forbidden-files.sh
+  node web/tools/release-notes-cli.ts check
   shellcheck -x scripts/*.sh scripts/lib/*.sh .claude/hooks/*.sh
   step "[static] rust: fmt / $([[ $MODE == fast ]] && echo check || echo clippy)"
   cargo fmt --all -- --check

@@ -16,16 +16,18 @@
 2. リリース用ブランチ `chore/release-vX.Y.Z-<段階>.<番号>` を `dev` から作り、バージョン番号を更新する。
    - Cargo のワークスペース（`Cargo.toml` の `[workspace.package] version`）
    - `web/package.json` の `version`
-3. リリースノートを生成し、内容を確認する。
+3. リリースノートを書く（下の「リリースノート」）。`node web/tools/release-notes-cli.ts new <版>` でひな形を作り、埋めて、`check <版>` で確かめる。
 4. PR（`chore(release): vX.Y.Z-<段階>.<番号>`）を `dev` に向けて出し、CI グリーンで Squash merge する。
-5. `dev` のマージコミットにタグ `vX.Y.Z-<段階>.<番号>` を打ち、GitHub Release を「プレリリース」として作る。
-6. タグを push すると `.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。公開後、画面右上の「ヘルプ」でバージョンを確かめる。
+5. Actions の「Release draft」を、`version` に版を渡して起動する。`dev` の先頭を対象に、リリースの下書き（プレリリース）が作られる。
+6. メンテナが下書きを確かめ、「Publish release」を押す。このときタグ `vX.Y.Z-<段階>.<番号>` が作られ、`.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。公開後、画面右上の「ヘルプ」でバージョンを確かめる。
+
+エージェントは 1〜5 まで行い、6 の公開だけをメンテナに頼む（[release スキル](../../.claude/skills/release/SKILL.md)）。
 
 ## rc を出す
 
 1. 上の 1〜4 を rc の番号で行う。
 2. `dev` → `main` の PR（`chore(release): vX.Y.Z-rc.N`）を作る。**マージにはメンテナの明示的な許可が必要。** 方式はマージコミット。
-3. `main` のマージコミットにタグ `vX.Y.Z-rc.N` を打ち、プレリリースとして公開する。
+3. 「Release draft」を、`version` に版、`branch` に `main` を渡して起動し、下書きをプレリリースとして公開する。
 4. 不具合が見つかったら `dev` で修正し、rc の番号を上げて 1 からやり直す。
 
 ## GitHub Pages の初期設定（一度だけ）
@@ -45,5 +47,13 @@
 
 ## リリースノート
 
-Conventional Commits の履歴から [git-cliff](https://git-cliff.org/) で生成する（設定は最初のリリース時に追加する）。
-生成結果をそのまま使わず、利用者に関係する変更が伝わるように手で整える。
+版ごとに `docs/releases/v<版>.md` に置き、GitHub のリリースの本文にそのまま使う。読み手は利用者で、形は決めてある。
+
+1. `# Modelith <版>`
+2. この版で何が変わったかの要約（1 段落）
+3. `## 主な変更`：「- 項目の名前：何ができるようになったか」の箇条書き
+4. `## <前の版> をお使いの方へ`（任意）：保存形式の変更など、前の版から移る人への注意
+5. ご注意・商標・ライセンス（決まった部分。`web/tools/release-notes.ts` の `FOOTER`）
+
+形は `scripts/check.sh` が検査する（`release-notes-cli.ts check`）。書き方の細則は [release スキル](../../.claude/skills/release/SKILL.md)。
+公開済みの版の本文を直すときは、ファイルを直す PR をマージしてから「Release draft」を同じ版で起動する（本文だけを差し替える）。
