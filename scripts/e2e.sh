@@ -9,6 +9,9 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# アプリは Rust のコアの wasm を使う（ADR-0015）
+scripts/build-wasm.sh
+
 # クラウドの作業環境（Claude Code on the web）には Docker が入っているが、セッションの開始時にはデーモンが止まっている。
 # そこで動いているときだけ、止まっていれば起動する（開発者のコンピュータでは何もしない）
 if [[ ${CLAUDE_CODE_REMOTE:-} == true ]] && command -v dockerd >/dev/null && ! docker info >/dev/null 2>&1; then

@@ -18,3 +18,9 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+# ブラウザに配る wasm を小さくする（ADR-0015）
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

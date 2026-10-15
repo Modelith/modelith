@@ -378,7 +378,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         verification def CoreGoldenTest {
-            doc /* web/src/core/golden.test.ts：解析とモデル構築がゴールデンと一致する */
+            doc /* web/src/core/golden.test.ts：解析とモデル構築がゴールデンと一致する（暫定の TS パーサと Rust のパーサの両方で。ADR-0015） */
             objective {
                 verify ParseParityReq;
                 verify ProblemsReq;
@@ -400,14 +400,14 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013） */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサで動かす（ADR-0015） */
             objective {
                 verify StandardViewReq;
                 verify NoSilentDropReq;
             }
         }
         verification def RustSyntaxTest {
-            doc /* crates/modelith-core/src/syntax：Rust のパーサの字句と構文木（木の形・ロスレス・途中で切った入力でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）。ADR-0015 */
+            doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・ロスレス・途中で切った入力でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置）。ADR-0015 */
             objective {
                 verify NoSilentDropReq;
                 verify ProblemsReq;

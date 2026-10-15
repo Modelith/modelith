@@ -30,6 +30,9 @@ stage_static() {
   else
     cargo clippy --workspace --all-targets --all-features -- -D warnings
   fi
+  # web の型検査とテストは、Rust のコアの wasm を使う（ADR-0015）
+  step "[static] wasm build"
+  scripts/build-wasm.sh
   step "[static] web: typecheck"
   npm run --prefix web -s typecheck
 }
@@ -51,8 +54,6 @@ stage_integration() {
 }
 
 stage_system() {
-  step "[system] wasm build"
-  cargo build -p modelith-wasm --target wasm32-unknown-unknown --quiet
   step "[system] golden（モックとの一致。モックが手元に無ければスキップ）"
   node reference/tools/gen-golden.mjs --check
   step "[system] e2e・UI テスト（ビルドしたアプリを、基準のブラウザで操作する）"

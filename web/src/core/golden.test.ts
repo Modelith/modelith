@@ -2,8 +2,8 @@
 // 投影の方法は reference/tools/gen-golden.mjs と同じにする。
 import { describe, expect, it } from "vitest";
 import { build } from "./model";
-import { parse } from "./parser";
-import type { Entry } from "./types";
+import { PARSERS } from "./testing/parsers";
+import type { Entry, ParseResult } from "./types";
 
 const goldens = import.meta.glob<Record<string, unknown>>("../../../reference/golden/*.json", { eager: true, import: "default" });
 const cases = {
@@ -26,16 +26,35 @@ function simplify(v: unknown, seen = new Set<unknown>()): unknown {
 }
 
 /**
- * 問題一覧の文言は比べない。文言は画面の言葉の決まり（ADR-0014）で Modelith が決めるもので、モックに合わせない。
- * どこに・どの種類の問題を出すかは、モックと一致させる。
+ * 構文エラーと問題一覧の文言は比べない。文言は画面の言葉の決まり（ADR-0014）で Modelith が決めるもので、モックに合わせない。
+ * どこに・どの種類の問題を出すかは、モックと一致させる（ADR-0015）。
  */
 function withoutWording(v: unknown): unknown {
-  const o = v as { model?: { problems?: { pos: number; kind?: string }[] } };
-  if (!o.model?.problems) return v;
-  return { ...o, model: { ...o.model, problems: o.model.problems.map(({ pos, kind }) => ({ pos, ...(kind ? { kind } : {}) })) } };
+  type Located = { pos: number; kind?: string };
+  const o = v as { errors?: Located[]; model?: { problems?: Located[] } };
+  const strip = (xs: Located[] | undefined) => xs?.map(({ pos, kind }) => ({ pos, ...(kind ? { kind } : {}) }));
+  return { ...o, errors: strip(o.errors), model: o.model && { ...o.model, problems: strip(o.model.problems) } };
 }
 
-function project(text: string): Record<string, unknown> {
+/**
+ * Rust のパーサが、SysML v2 仕様に合わせて意図してモックと違う結果を出すケース（ADR-0002 の許容リスト、ADR-0013・ADR-0015）。
+ * 足した構文エラーの位置を返す。比べる前に、構文エラーと、それを写した問題一覧から取り除く。
+ */
+const RUST_EXTRA_ERRORS: Record<string, { reason: string; pos: (text: string) => number[] }> = {
+  "syntax-errors": {
+    reason: "「}」の前で「;」を書き忘れた宣言も構文エラーにする（BNF では、宣言は「;」か本体で終わる）",
+    pos: (text) => [text.indexOf("part b : B") + "part b : B".length],
+  },
+};
+
+function withoutAllowed(v: unknown, positions: number[]): unknown {
+  type Located = { pos: number };
+  const o = v as { errors: Located[]; model: { problems: Located[] } };
+  const keep = (x: Located) => !positions.includes(x.pos);
+  return { ...o, errors: o.errors.filter(keep), model: { ...o.model, problems: o.model.problems.filter(keep) } };
+}
+
+function project(text: string, parse: (text: string) => ParseResult): Record<string, unknown> {
   const P = parse(text);
   const M = build(P);
   const ref = (e: Entry | null): number | null => (e ? e.idx : null);
@@ -67,15 +86,21 @@ describe("暫定コアとゴールデンの一致", () => {
     expect(missing).toEqual([]);
   });
 
-  for (const [path, text] of Object.entries(cases)) {
-    const name = baseName(path);
-    it(`${name}: 解析とモデル構築の結果がモックと一致する`, () => {
-      // Arrange
-      const golden = Object.entries(goldens).find(([p]) => baseName(p) === name)?.[1];
-      // Act
-      const actual = JSON.parse(JSON.stringify({ case: name, ...project(text) })) as unknown;
-      // Assert
-      expect(withoutWording(actual)).toEqual(withoutWording(golden));
-    });
+  for (const [impl, parse] of PARSERS) {
+    for (const [path, text] of Object.entries(cases)) {
+      const name = baseName(path);
+      it(`${impl}: ${name}: 解析とモデル構築の結果がモックと一致する`, () => {
+        // Arrange
+        const golden = Object.entries(goldens).find(([p]) => baseName(p) === name)?.[1];
+        const allowed = impl === "Rust" ? (RUST_EXTRA_ERRORS[name]?.pos(text) ?? []) : [];
+        // Act
+        const actual = JSON.parse(JSON.stringify({ case: name, ...project(text, parse) })) as unknown;
+        // Assert
+        expect(withoutWording(withoutAllowed(actual, allowed))).toEqual(withoutWording(golden));
+        // 許容リストが古くなっていない（取り除いた位置に、本当にエラーがある）
+        const errors = (actual as { errors: { pos: number }[] }).errors.map((e) => e.pos);
+        expect(allowed.filter((p) => !errors.includes(p))).toEqual([]);
+      });
+    }
   }
 });

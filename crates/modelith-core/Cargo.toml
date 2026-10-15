@@ -9,9 +9,11 @@ rust-version.workspace = true
 
 [dependencies]
 rowan = "0.16"
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 expect-test = "1.5"
+serde_json = "1"
 
 [lints]
 workspace = true

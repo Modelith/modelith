@@ -4,6 +4,7 @@
 //! 図の操作を含むすべての変更はテキスト編集として表現する。
 
 mod line_index;
+pub mod project;
 pub mod syntax;
 
 pub use line_index::{LineCol, LineIndex};
