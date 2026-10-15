@@ -1,7 +1,7 @@
 # SysML v2 仕様との対応表
 
 Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示す。
-対象は暫定の TypeScript コア（`web/src/core/`）と図（`web/src/app/views.ts`）。Rust コアにはまだ SysML の解析が無い（`crates/modelith-core` は行位置の計算だけ）。
+対象は暫定の TypeScript コア（`web/src/core/`）と図（`web/src/app/views.ts`）。Rust コア（`crates/modelith-core/src/syntax`）は、BNF に沿った構文木の解析を段階 A（ADR-0015）まで持つが、まだアプリでは使っていない。
 
 - 照合日: 2026-10-13（2026-10-14 に、ADR-0013 で直した項目を更新）
 - 照合したコミット: `88d7525`（dev）
