@@ -21,3 +21,4 @@
 | [0014](0014-plain-words-for-users.md) | 画面の言葉は、SysML v2 の構文を知らない人に合わせる | 採用 |
 | [0015](0015-rust-parser.md) | Rust パーサの作り方と、暫定コアからの差し替え方 | 採用（2026-10-15 改訂） |
 | [0016](0016-rust-model-and-worker.md) | モデル構築と図の操作を Rust に移し、コアを Worker で動かす | 採用 |
+| [0018](0018-plugin-host.md) | プラグインのホスト（v0 の検査ルールと v1 の TypeScript プラグイン） | 提案 |
