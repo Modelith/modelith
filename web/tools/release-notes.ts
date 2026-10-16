@@ -1,5 +1,5 @@
 // リリースノートの定型（純粋関数）。ファイルの読み書きは release-notes-cli.ts が行う。
-// 形は docs/development/releasing.md の「リリースノート」に従う。中身（要約・主な変更・前の版をお使いの方へ）は人かエージェントが書き、
+// 形は docs/development/releasing.md の「リリースノート」に従う。中身（要約・変更の種類ごとの節・前の版をお使いの方へ）は人かエージェントが書き、
 // 決まった部分（ご注意・商標・ライセンス）はここから入れる。
 
 /** すべての版に付ける、決まった部分。変えるときはここだけを直し、新しい版から反映する。 */
@@ -24,6 +24,9 @@ Copyright (C) 2026 The Modelith Authors
 
 /** 書き手が埋める箇所の印。残っていれば検査で落とす。 */
 export const TODO = "（ここに書く）";
+
+/** 変更の種類ごとの節（この順に並べる。使わない節は書かない）。 */
+export const CHANGE_SECTIONS = ["## 新しい機能", "## 改善", "## 不具合の修正", "## その他"] as const;
 
 /**
  * 版（SemVer。`0.1.0-alpha.3` など）の形か。
@@ -52,19 +55,21 @@ export const isPrerelease = (v: string): boolean => v.includes("-");
  *
  * @param version 出す版
  * @param previous 直前の版。あれば「## <前の版> をお使いの方へ」の節を入れる
- * @returns 見出し・要約・主な変更・（前の版の節）・決まった部分（FOOTER）を並べた Markdown
+ * @returns 見出し・要約・変更の種類ごとの節（4 つすべて。使わない節は書き手が消す）・（前の版の節）・決まった部分（FOOTER）を並べた Markdown
  * @example
  * skeleton("0.1.0-alpha.4", "0.1.0-alpha.3")
- * // → "# Modelith 0.1.0-alpha.4\n\n（ここに書く）\n\n## 主な変更\n\n- （ここに書く）：（ここに書く）\n\n## 0.1.0-alpha.3 をお使いの方へ\n…" + FOOTER
+ * // → "# Modelith 0.1.0-alpha.4\n\n（ここに書く）\n\n## 新しい機能\n\n- （ここに書く）：（ここに書く）\n\n## 改善\n…## 0.1.0-alpha.3 をお使いの方へ\n…" + FOOTER
  */
 export function skeleton(version: string, previous?: string): string {
   const upgrade = previous ? `## ${previous} をお使いの方へ\n\n- ${TODO}\n\n` : "";
-  return `# Modelith ${version}\n\n${TODO}\n\n## 主な変更\n\n- ${TODO}：${TODO}\n\n${upgrade}${FOOTER}`;
+  const changes = CHANGE_SECTIONS.map((h) => `${h}\n\n- ${TODO}：${TODO}\n\n`).join("");
+  return `# Modelith ${version}\n\n${TODO}\n\n${changes}${upgrade}${FOOTER}`;
 }
 
 /**
  * リリースノートの形を確かめ、問題を返す（空なら合格）。
- * 1 行目が `# Modelith <版>`、次に要約の段落、`## 主な変更` の箇条書き、任意で `## <前の版> をお使いの方へ`、最後に決まった部分。
+ * 1 行目が `# Modelith <版>`、次に要約の段落、変更の種類ごとの節（新しい機能・改善・不具合の修正・その他。この順で 1 つ以上、それぞれ箇条書き）、
+ * 任意で `## <前の版> をお使いの方へ`、最後に決まった部分。
  *
  * @param version ノートの版（1 行目と比べる）
  * @param text ノートの全文（改行は LF でも CRLF でもよい）
@@ -84,11 +89,21 @@ export function validate(version: string, text: string): string[] {
   const sections = lines.filter((l) => l.startsWith("## "));
   const footerSections = FOOTER.split("\n").filter((l) => l.startsWith("## "));
   const own = sections.slice(0, sections.length - footerSections.length);
-  if (own[0] !== "## 主な変更") problems.push("要約の次の節は「## 主な変更」にしてください");
-  const extra = own.filter((s) => s !== "## 主な変更" && !/^## \d+\.\d+\.\d+\S* をお使いの方へ$/.test(s));
-  if (extra.length) problems.push(`決まっていない節があります：${extra.join("、")}（使えるのは「## 主な変更」と「## <前の版> をお使いの方へ」）`);
-  const changes = sectionBody(lines, "## 主な変更");
-  if (!changes.some((l) => l.startsWith("- "))) problems.push("「## 主な変更」に箇条書き（- ）を 1 つ以上書いてください");
+  const isChange = (h: string): boolean => (CHANGE_SECTIONS as readonly string[]).includes(h);
+  const isUpgrade = (h: string): boolean => /^## \d+\.\d+\.\d+\S* をお使いの方へ$/.test(h);
+  const allowed = `${CHANGE_SECTIONS.map((h) => `「${h}」`).join("")}と「## <前の版> をお使いの方へ」`;
+  const extra = own.filter((h) => !isChange(h) && !isUpgrade(h));
+  if (extra.length) problems.push(`決まっていない節があります：${extra.join("、")}（使えるのは${allowed}）`);
+  const changes = own.filter(isChange);
+  if (!changes.length) problems.push(`要約の次に、変更の節（${CHANGE_SECTIONS.map((h) => `「${h}」`).join("")}のどれか）を 1 つ以上書いてください`);
+  const known = own.filter((h) => isChange(h) || isUpgrade(h));
+  const rank = (h: string): number => (isChange(h) ? (CHANGE_SECTIONS as readonly string[]).indexOf(h) : CHANGE_SECTIONS.length);
+  if (known.some((h, i) => i > 0 && rank(h) <= rank(known[i - 1] ?? ""))) {
+    problems.push("節は「新しい機能・改善・不具合の修正・その他・<前の版> をお使いの方へ」の順に、1 つずつ並べてください");
+  }
+  for (const h of changes) {
+    if (!sectionBody(lines, h).some((l) => l.startsWith("- "))) problems.push(`「${h}」に箇条書き（- ）を 1 つ以上書いてください`);
+  }
   if (!body.endsWith(FOOTER)) problems.push("最後は決まった部分（ご注意・商標・ライセンス）をそのまま付けてください（release-notes-cli.ts new で入ります）");
   if (body.includes(TODO)) problems.push(`埋めていない箇所「${TODO}」が残っています`);
   return problems;
@@ -98,11 +113,11 @@ export function validate(version: string, text: string): string[] {
  * 見出しの節の本文の行を取り出す。
  *
  * @param lines ノートの行
- * @param heading 見出しの行（`## 主な変更` など。完全に一致するもの）
+ * @param heading 見出しの行（`## 改善` など。完全に一致するもの）
  * @returns 見出しの次の行から、次の `## ` 見出しの手前までの行。見出しが無ければ空
  * @example
- * sectionBody(["## 主な変更", "- a", "## 商標"], "## 主な変更") // → ["- a"]
- * sectionBody(["## 商標"], "## 主な変更")                     // → []
+ * sectionBody(["## 改善", "- a", "## 商標"], "## 改善") // → ["- a"]
+ * sectionBody(["## 商標"], "## 改善")                 // → []
  */
 function sectionBody(lines: string[], heading: string): string[] {
   const start = lines.indexOf(heading);

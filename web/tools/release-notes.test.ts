@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { compareVersions, FOOTER, isPrerelease, isVersion, previousVersion, skeleton, TODO, validate } from "./release-notes";
+import { CHANGE_SECTIONS, compareVersions, FOOTER, isPrerelease, isVersion, previousVersion, skeleton, TODO, validate } from "./release-notes";
 
 /** 形の正しいノート。 */
 const good = (version = "0.1.0-alpha.4", upgrade = "") =>
-  `# Modelith ${version}\n\n要約です。\n\n## 主な変更\n\n- 図：速くなりました\n\n${upgrade}${FOOTER}`;
+  `# Modelith ${version}\n\n要約です。\n\n## 新しい機能\n\n- 枠：枠で描けます\n\n## 不具合の修正\n\n- 名前：正しく変わるようになりました\n\n${upgrade}${FOOTER}`;
 
 describe("skeleton", () => {
   it("前の版があれば「をお使いの方へ」の節を入れ、決まった部分を最後に付ける", () => {
@@ -12,6 +12,7 @@ describe("skeleton", () => {
     // Assert
     expect(s.startsWith("# Modelith 0.1.0-alpha.4\n")).toBe(true);
     expect(s).toContain("## 0.1.0-alpha.3 をお使いの方へ");
+    for (const h of CHANGE_SECTIONS) expect(s).toContain(`${h}\n`);
     expect(s.endsWith(FOOTER)).toBe(true);
   });
 
@@ -42,7 +43,7 @@ describe("validate", () => {
     expect(problems).toContain("1 行目は「# Modelith 0.1.0-alpha.5」にしてください");
   });
 
-  it("要約が無い・主な変更が無い・決まっていない節がある・決まった部分を変えた、をそれぞれ知らせる（異常系）", () => {
+  it("要約が無い・変更の節が無い・決まっていない節がある・決まった部分を変えた、をそれぞれ知らせる（異常系）", () => {
     // Arrange
     const text = `# Modelith 0.1.0-alpha.4\n\n## 開発者向け\n\n- ADR を足した\n\n${FOOTER.replace("無保証", "保証なし")}`;
     // Act
@@ -50,11 +51,27 @@ describe("validate", () => {
     // Assert
     expect(problems).toEqual([
       "1 行目の後に、この版の要約を 1 段落で書いてください",
-      "要約の次の節は「## 主な変更」にしてください",
-      "決まっていない節があります：## 開発者向け（使えるのは「## 主な変更」と「## <前の版> をお使いの方へ」）",
-      "「## 主な変更」に箇条書き（- ）を 1 つ以上書いてください",
+      "決まっていない節があります：## 開発者向け（使えるのは「## 新しい機能」「## 改善」「## 不具合の修正」「## その他」と「## <前の版> をお使いの方へ」）",
+      "要約の次に、変更の節（「## 新しい機能」「## 改善」「## 不具合の修正」「## その他」のどれか）を 1 つ以上書いてください",
       "最後は決まった部分（ご注意・商標・ライセンス）をそのまま付けてください（release-notes-cli.ts new で入ります）",
     ]);
+  });
+
+  it("変更の節の順番が違う・前の版の節が先にある・箇条書きの無い節を知らせる（異常系）", () => {
+    // Arrange
+    const text = `# Modelith 0.1.0-alpha.4\n\n要約。\n\n## 不具合の修正\n\n- a：直りました\n\n## 新しい機能\n\n説明だけ\n\n${FOOTER}`;
+    // Act
+    const problems = validate("0.1.0-alpha.4", text);
+    // Assert
+    expect(problems).toEqual([
+      "節は「新しい機能・改善・不具合の修正・その他・<前の版> をお使いの方へ」の順に、1 つずつ並べてください",
+      "「## 新しい機能」に箇条書き（- ）を 1 つ以上書いてください",
+    ]);
+  });
+
+  it("変更の節は 1 つだけでもよい（境界値）", () => {
+    // Act・Assert
+    expect(validate("0.1.0-alpha.4", `# Modelith 0.1.0-alpha.4\n\n要約。\n\n## その他\n\n- 文書：直しました\n\n${FOOTER}`)).toEqual([]);
   });
 });
 
