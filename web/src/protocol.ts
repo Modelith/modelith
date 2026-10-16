@@ -18,7 +18,17 @@ export interface TextEdit {
   newText: string;
 }
 
-/** テキストに編集を適用する。編集同士の範囲は重ならない前提。 */
+/**
+ * テキストに編集を適用する。編集同士の範囲は重ならない前提（後ろから順に当てるので位置はずれない）。
+ *
+ * @param text 元のテキスト
+ * @param edits LSP の形の編集の列（位置は元のテキストの行と、UTF-16 の列。順は問わない）
+ * @returns 編集を当てた後のテキスト。テキストに無い行を指す編集があれば RangeError を投げる
+ * @example
+ * applyEdits("a\nb", [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } }, newText: "B" }]) // → "a\nB"
+ * applyEdits("a", [])                                                                                            // → "a"（0 件）
+ * applyEdits("a", [{ range: { start: { line: 5, character: 0 }, end: { line: 5, character: 0 } }, newText: "x" }]) // → RangeError を投げる
+ */
 export function applyEdits(text: string, edits: readonly TextEdit[]): string {
   const lineStarts = [0];
   for (let i = 0; i < text.length; i++) if (text[i] === "\n") lineStarts.push(i + 1);

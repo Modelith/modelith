@@ -40,10 +40,46 @@ const KW_FOR: &[(&str, &str)] = &[
     ("interface def", "interface"),
 ];
 
+/// 2 列の表（`NEW_NAME`・`KW_FOR` など）から、キーに当たる値を引く。
+///
+/// # 引数
+///
+/// - `table`：（キー, 値）の表
+/// - `k`：引くキー（`part def` など、宣言の種類）
+///
+/// # 戻り値
+///
+/// 最初に当たった値。無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// lookup(NEW_NAME, "part def")  → Some("NewPart")
+/// lookup(KW_FOR, "state def")   → Some("exhibit state")
+/// lookup(NEW_NAME, "item def")  → None   // 表に無い
+/// ```
 fn lookup(table: &[(&str, &'static str)], k: &str) -> Option<&'static str> {
     table.iter().find(|(x, _)| *x == k).map(|(_, v)| *v)
 }
 
+/// 意図を、操作ごとの書き換えに振り分ける。キーで指す要素は、操作の前にすべて `find` で探す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト（解析結果・モデルつき）
+/// - `intent`：図の操作の意図（ADR-0016）
+///
+/// # 戻り値
+///
+/// 操作でできたテキスト（位置はバイト）と、選ぶ要素・光らせる範囲。要素が見つからないときや操作できないときは、画面にそのまま出す理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P { part def NewPart; part def NewPart2; }" のとき
+/// run(d, AddNode { kind: "part def" })        → Ok(select = Some("NewPart3"))
+/// run(d, Rename { key: "Gone", name: "X" })   → Err("操作する要素「Gone」が見つかりません。…")
+/// ```
 pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
     match intent {
         Intent::AddNode {
@@ -135,12 +171,48 @@ pub(super) struct Found {
     pub entry: usize,
 }
 
+/// キーの要素が見つからないときの理由の文を作る（画面にそのまま出す。ADR-0014）。
+///
+/// # 引数
+///
+/// - `key`：見つからなかったキー（図の要素のキー、または `u:名前`・`l:名前`、図の対象のキー）
+///
+/// # 戻り値
+///
+/// 理由の文。
+///
+/// # 例
+///
+/// ```text
+/// missing("Gone") → "操作する要素「Gone」が見つかりません。テキストが先に変わった可能性があります"
+/// missing("")     → "操作する要素「」が見つかりません。テキストが先に変わった可能性があります"
+/// ```
 fn missing(key: &str) -> Refusal {
     format!("操作する要素「{key}」が見つかりません。テキストが先に変わった可能性があります")
 }
 
 impl Doc<'_> {
     /// キーの要素。`u:名前`・`l:名前` は、ctx（部品定義・シナリオ）の中の部品・ライフライン。
+    /// それ以外のキーは、図の要素のキー（同じ名前が 2 つ目なら `名前@持ち主`）として探す。
+    ///
+    /// # 引数
+    ///
+    /// - `key`：要素のキー（`A`・`A@Q`・`u:e`・`l:x` など）
+    /// - `ctx`：`u:`・`l:` のキーのときの図の対象のキー（部品定義・シナリオ）。None なら空のキーとして探す
+    ///
+    /// # 戻り値
+    ///
+    /// 見つかった宣言の番号。要素や図の対象が無ければ、理由の文（`Err`）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P { part def E; part def C { part e : E; } }" のとき
+    /// find("C", None)         → Ok(Found { entry: C の番号 })
+    /// find("u:e", Some("C"))  → Ok(Found { entry: C の中の e の番号 })
+    /// find("u:e", None)       → Err("操作する要素「」が見つかりません。…")   // 対象が無い
+    /// find("Gone", None)      → Err("操作する要素「Gone」が見つかりません。…")
+    /// ```
     pub(super) fn find(&self, key: &str, ctx: Option<&str>) -> Result<Found, Refusal> {
         if let Some(name) = key.strip_prefix("u:").or_else(|| key.strip_prefix("l:")) {
             let c = self.context(ctx.unwrap_or_default())?;
@@ -163,6 +235,22 @@ impl Doc<'_> {
     }
 
     /// 内部ブロック図・シーケンス図の対象（宣言の番号）。
+    ///
+    /// # 引数
+    ///
+    /// - `key`：図の対象の、図の要素のキー（部品定義・シナリオのキー）
+    ///
+    /// # 戻り値
+    ///
+    /// 対象の宣言の番号。キーの要素が無ければ、理由の文（`Err`）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P { part def C; }" のとき
+    /// context("C")    → Ok(C の番号)
+    /// context("Gone") → Err("操作する要素「Gone」が見つかりません。…")
+    /// ```
     pub(super) fn context(&self, key: &str) -> Result<usize, Refusal> {
         self.m
             .nodes
@@ -172,6 +260,20 @@ impl Doc<'_> {
             .ok_or_else(|| missing(key))
     }
 
+    /// テキストに出てくる、名前のある宣言の名前すべて（新しい名前が使われていないかを調べるのに使う）。
+    ///
+    /// # 戻り値
+    ///
+    /// 名前の集まり（空の名前は含めない）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P { part def A; part a : A; }" のとき
+    /// names() → {"P", "A", "a"}
+    /// // d.text = "" のとき
+    /// names() → {}
+    /// ```
     pub(super) fn names(&self) -> HashSet<&str> {
         self.p
             .entries
@@ -181,11 +283,42 @@ impl Doc<'_> {
             .collect()
     }
 
+    /// 書いた順で最初の package。暫定コアの `firstPackage`（`web/src/app/ops.ts`）と同じ。
+    ///
+    /// # 戻り値
+    ///
+    /// package の宣言の番号。package が無ければ None。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "part def A; package P { } package Q { }" のとき
+    /// first_package() → Some(P の番号)
+    /// // d.text = "part def A;" のとき
+    /// first_package() → None
+    /// ```
     pub(super) fn first_package(&self) -> Option<usize> {
         self.p.entries.iter().position(|e| e.kind == "package")
     }
 
-    /// e から上へたどった、最初の @Phase の値。
+    /// e から上へたどった、最初の @Phase の値（自分か、外側の宣言から受け継ぐ）。値が空の指定は飛ばす。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// フェーズの値（`stage = K::a` なら `a`）。自分にも外側にも無ければ None。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package Q { @Phase { stage = K::a; } part def X; }" のとき
+    /// phase_of(X の番号) → Some("a")   // Q から受け継ぐ
+    /// // d.text = "package P { part def A; }" のとき
+    /// phase_of(A の番号) → None
+    /// ```
     pub(super) fn phase_of(&self, i: usize) -> Option<&str> {
         let mut a = Some(i);
         while let Some(x) = a {
@@ -203,7 +336,24 @@ impl Doc<'_> {
         None
     }
 
-    /// 子の名前と重ならない名前（base、base2、base3 …）。
+    /// 子の名前と重ならない名前（base、base2、base3 …）。暫定コアの `uniqueChild` と同じ。直下の子の名前だけと比べる。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：子を持つ宣言の番号
+    /// - `base`：もとにする名前
+    ///
+    /// # 戻り値
+    ///
+    /// 直下の子に無い名前。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "part def C { part e : E; }" のとき
+    /// unique_child(C の番号, "e") → "e2"
+    /// unique_child(C の番号, "f") → "f"   // 重ならなければそのまま
+    /// ```
     pub(super) fn unique_child(&self, i: usize, base: &str) -> String {
         let taken: HashSet<&str> = self
             .e(i)
@@ -215,6 +365,23 @@ impl Doc<'_> {
     }
 }
 
+/// 使われていない名前（base、base2、base3 …）を、使われているかを調べる関数で探す。
+///
+/// # 引数
+///
+/// - `base`：もとにする名前
+/// - `taken`：名前が使われていれば true を返す関数
+///
+/// # 戻り値
+///
+/// 使われていない最初の名前。
+///
+/// # 例
+///
+/// ```text
+/// unique("NewPart", |n| ["NewPart", "NewPart2"].contains(&n)) → "NewPart3"
+/// unique("NewPart", |_| false)                                → "NewPart"
+/// ```
 pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
     let mut n = base.to_owned();
     let mut k = 2;
@@ -226,6 +393,31 @@ pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
 }
 
 /// 定義を追加する。置く package は、同じ種類の要素が最後に置かれた package（無ければ最初の package）。
+/// package が無く `new_package` があれば、テキストの末尾（`@layout` コメントの前）に作ってそこに置く。
+/// 名前は種類ごとの `NewPart` などで、使われていれば番号を付ける。フェーズの指定は、置く package から受け継ぐ値と違うときだけ書く。
+/// 暫定コアの `OPS.addNode`（`web/src/app/ops.ts`）と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `kind`：追加する定義の種類（`part def`・`requirement def` など）
+/// - `phase`：絞り込み中のフェーズの値（`detail` など）。None なら書かない
+/// - `new_package`：package が無いときに作る package の名前
+///
+/// # 戻り値
+///
+/// 追加後のテキストと、選ぶ名前・光らせる範囲（足した定義）。package が無く作る名前も無いとき、作る名前が使えないときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// add_node(Doc("package P { part def NewPart; part def NewPart2; }"), "part def", None, None)
+///   → Ok(select = Some("NewPart3"))
+/// add_node(Doc("// メモ\n/* @layout {} */\n"), "part def", None, Some("Model"))
+///   → Ok(text = "// メモ\n\npackage Model {\n    part def NewPart {\n    }\n}\n\n/* @layout {} */\n")
+/// add_node(Doc("part def A;"), "part def", None, None)
+///   → Err("要素を置く、モデルの入れ物（package）がありません")
+/// ```
 fn add_node(
     d: &Doc<'_>,
     kind: &str,
@@ -277,6 +469,27 @@ fn add_node(
 }
 
 /// テキストの末尾（配置の `@layout` コメントがあればその前）に、空の package を足す（F-EDIT-7）。
+/// 前のテキストとの間は空行 1 つにし、`@layout` コメントがあれば、その前にも空行を入れる。
+///
+/// # 引数
+///
+/// - `text`：元のテキスト
+/// - `name`：作る package の名前（基本名。英字か `_` で始め、英字・数字・`_` だけ）
+///
+/// # 戻り値
+///
+/// 足した後のテキストと、足した package の位置（バイトオフセット。子を挿入できる形）。名前が使えなければ理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// append_package("", "M")
+///   → Ok(("package M {\n}\n", Target { start: 0, head_end: 10, close: Some(12) }))
+/// append_package("part def A;", "M")
+///   → Ok(("part def A;\n\npackage M {\n}\n", Target { start: 13, head_end: 23, close: Some(25) }))
+/// append_package("", "1x")
+///   → Err("入れ物の名前は、英字か _ で始め、英字・数字・_ だけで付けてください")
+/// ```
 pub(super) fn append_package(text: &str, name: &str) -> Result<(String, Target), Refusal> {
     if !is_basic_name(name) {
         return Err(
@@ -306,6 +519,23 @@ pub(super) fn append_package(text: &str, name: &str) -> Result<(String, Target),
 }
 
 /// 移行期の `/* @layout … */` コメントの位置（暫定コアの LAYOUT_RE と同じく、閉じているものの最初の 1 つ）。
+/// `/*` の後ろの空白は飛ばして `@layout` かを見る。
+///
+/// # 引数
+///
+/// - `text`：テキスト
+///
+/// # 戻り値
+///
+/// コメントの始まり（`/*` のバイトオフセット）。閉じた `@layout` コメントが無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// layout_comment_start("a /* @layout {} */") → Some(2)
+/// layout_comment_start("/* x */")            → None
+/// layout_comment_start("/* @layout {")       → None   // 閉じていない
+/// ```
 fn layout_comment_start(text: &str) -> Option<usize> {
     let mut from = 0;
     while let Some(i) = text[from..].find("/*") {
@@ -320,6 +550,26 @@ fn layout_comment_start(text: &str) -> Option<usize> {
 }
 
 /// 内部ブロック図の部品・シーケンス図のライフラインを追加する（`part 名前 : 型;`）。
+/// 名前は型の名前の先頭を小文字にしたもので、対象の中で重なれば番号を付ける。暫定コアの `OPS.addUsage` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ctx`：図の対象（部品定義・シナリオ）のキー
+/// - `ty`：部品の型の名前
+///
+/// # 戻り値
+///
+/// 追加後のテキストと、選ぶ名前・光らせる範囲（足した宣言）。図の対象が無ければ理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// add_usage(Doc("package P { part def E; part def C { part e : E; } }"), "C", "E")
+///   → Ok(text = "package P { part def E; part def C { part e : E; part e2 : E; } }", select = Some("e2"))
+/// add_usage(Doc("package P { }"), "Gone", "E")
+///   → Err("操作する要素「Gone」が見つかりません。…")
+/// ```
 fn add_usage(d: &Doc<'_>, ctx: &str, ty: &str) -> Result<Change, Refusal> {
     let c = d.context(ctx)?;
     let name = d.unique_child(c, &lower_first(ty));
@@ -331,7 +581,22 @@ fn add_usage(d: &Doc<'_>, ctx: &str, ty: &str) -> Result<Change, Refusal> {
     })
 }
 
-/// トークンとその位置（バイト）。
+/// テキストを字句に分け、トークンとその位置（バイト）を返す。空白・コメントのトークンも含める。
+///
+/// # 引数
+///
+/// - `text`：テキスト
+///
+/// # 戻り値
+///
+/// （トークンの種類, 始まりのバイトオフセット, トークンの文字列）の列（書いた順）。
+///
+/// # 例
+///
+/// ```text
+/// tokens("part a;") → [(KEYWORD, 0, "part"), (WHITESPACE, 4, " "), (IDENT, 5, "a"), (SEMI, 6, ";")]
+/// tokens("")        → []
+/// ```
 pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
     let mut at = 0;
     tokenize(text)
@@ -346,6 +611,27 @@ pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
 }
 
 /// 名前を変え、参照もまとめて書き換える。定義なら名前の出てくるところすべて、使用なら持ち主の中の宣言と `名前.`・`名前 :` などの参照。
+/// コメントの中・長い名前の一部・`a.e` の `.` の後ろの名前は変えない。定義なら引用名（`'名前'`）の中も変える。暫定コアの `OPS.rename` と同じ。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：名前を変える宣言
+/// - `nn`：新しい名前（基本名）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（名前を変えた宣言の頭）。同じ名前なら、テキストを変えずに返す。
+/// 名前が使えないとき・既に使われているときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// rename(Doc("package P { part def E { port e; } part def C { part e : E; part f : E; flow from e.e to f.e; } }"), C の中の e, "g")
+///   → Ok(text = "package P { part def E { port e; } part def C { part g : E; part f : E; flow from g.e to f.e; } }")
+/// rename(Doc("package P { part def A; part def B; }"), A, "B")  → Err("「B」は既に使われています")
+/// rename(Doc("package P { part def A; }"), A, "1A")             → Err(BAD_NAME)
+/// ```
 fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if !is_basic_name(nn) {
         return Err(BAD_NAME.to_owned());
@@ -423,6 +709,26 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
 }
 
 /// 要素を削除する。行全体を占めるなら行ごと消す。選んだ要素の中に選んだ要素があれば、外側だけを消す。
+/// 光らせる範囲は、最後に消した位置（テキストの前のほう）の 1 バイト。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `keys`：消す要素のキー（1 つ以上。同じものが重なってもよい）
+/// - `ctx`：`u:`・`l:` のキーのときの図の対象のキー
+///
+/// # 戻り値
+///
+/// 消した後のテキスト。キーの要素が 1 つでも見つからなければ理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// delete(Doc("package P {\n    part def A;\n    part def C {\n        part def D;\n    }\n    part def B;\n}\n"), ["D", "C", "A"], None)
+///   → Ok(text = "package P {\n    part def B;\n}\n")   // D は C と一緒に消える
+/// delete(Doc("package P { part def A; }"), ["u:x"], Some("Gone"))
+///   → Err("操作する要素「Gone」が見つかりません。…")
+/// ```
 fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Refusal> {
     let mut spans: Vec<(usize, usize)> = Vec::new();
     for k in keys {
@@ -460,6 +766,26 @@ pub(super) struct EdgeAt {
 }
 
 /// 内部ブロック図・シーケンス図の関係の ID（UI の `web/src/app/views.ts` と同じ ID）。
+/// シナリオ（`occurrence def`）なら、メッセージを書いた順に `msg|順番|名前`。
+/// それ以外なら、対象の直下の部品どうしの流れ・接続に `flow|u:部品|u:部品|アイテム#番号`（同じ形の線は出てきた順に番号を付ける）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `c`：図の対象（部品定義・シナリオ）の宣言の番号
+///
+/// # 戻り値
+///
+/// （ID, 関係の範囲と関係の番号）の列。関係が無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P { part def E; part def C { part a : E; part b : E; flow from a to b; } occurrence def S { part x : E; message m1 from x to x; } }" のとき
+/// context_edges(d, C の番号) → [("flow|u:a|u:b|#1", …)]
+/// context_edges(d, S の番号) → [("msg|0|m1", …)]
+/// context_edges(d, E の番号) → []
+/// ```
 pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
     let ctx = d.e(c);
     let line = |r: &crate::project::Rel| Span {
@@ -524,7 +850,25 @@ pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
     out
 }
 
-/// シナリオのメッセージ（書いた順。`ParseResult.rels` の番号）。
+/// シナリオのメッセージ（書いた順。`ParseResult.rels` の番号）。対象の直下に書いたものだけを集める。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `c`：シナリオの宣言の番号
+///
+/// # 戻り値
+///
+/// メッセージの関係の番号（書いた位置の順）。無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "occurrence def S { part x : E; message m1 from x to x; message m2 from x to x; }" のとき
+/// messages(d, S の番号) → [m1 の関係の番号, m2 の関係の番号]
+/// // d.text = "part def C;" のとき
+/// messages(d, C の番号) → []
+/// ```
 pub(super) fn messages(d: &Doc<'_>, c: usize) -> Vec<usize> {
     let mut ms: Vec<usize> = (0..d.p.rels.len())
         .filter(|&i| {
@@ -536,7 +880,24 @@ pub(super) fn messages(d: &Doc<'_>, c: usize) -> Vec<usize> {
 }
 
 impl Doc<'_> {
-    /// ID の関係。ctx があれば、その図の関係から先に探す。
+    /// ID の関係。ctx があれば、その図の関係から先に探し、無ければモデルの線から探す。
+    ///
+    /// # 引数
+    ///
+    /// - `id`：関係の ID（モデルの線の ID、または `context_edges` の ID）
+    /// - `ctx`：内部ブロック図・シーケンス図の対象のキー。None ならモデルの線だけから探す
+    ///
+    /// # 戻り値
+    ///
+    /// 関係の範囲（UTF-16）と関係の番号。図の対象や関係が見つからなければ理由の文（`Err`）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P { part def E; part def C { part a : E; part b : E; flow from a to b; } }" のとき
+    /// edge("flow|u:a|u:b|#1", Some("C")) → Ok(EdgeAt { src: flow の文の範囲, rel: Some(…) })
+    /// edge("x", None)                    → Err("操作する関係が見つかりません。テキストが先に変わった可能性があります")
+    /// ```
     pub(super) fn edge(&self, id: &str, ctx: Option<&str>) -> Result<EdgeAt, Refusal> {
         let in_ctx = match ctx {
             Some(c) => context_edges(self, self.context(c)?)
@@ -558,7 +919,25 @@ impl Doc<'_> {
     }
 }
 
-/// 関係を削除する（関係を書いた文を消す）。
+/// 関係を削除する（関係を書いた文を消す。行全体を占めるなら行ごと消す）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `id`：関係の ID
+/// - `ctx`：内部ブロック図・シーケンス図の対象のキー
+///
+/// # 戻り値
+///
+/// 消した後のテキストと、光らせる範囲（消した位置の 1 バイト）。関係が見つからなければ理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// delete_edge(Doc("package P {\n    part def A;\n    requirement def R;\n    satisfy R by A;\n}\n"), satisfy の線の ID, None)
+///   → Ok(text = "package P {\n    part def A;\n    requirement def R;\n}\n")
+/// delete_edge(Doc("package P { }"), "x", None) → Err("操作する関係が見つかりません。…")
+/// ```
 fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refusal> {
     let src = d.edge(id, ctx)?.src;
     let (text, at) = remove_range(d.text, d.b(src.start), d.b(src.end));
@@ -569,7 +948,33 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
     })
 }
 
-/// a から b への関係を書く。
+/// a から b への関係を書く。暫定コアの `OPS.connect` と同じ書き方。
+/// `comp` は a の中に部品、`satisfy`・`derive` は同じ関係を最後に書いた場所（無ければ最初の package）に文、
+/// `verify` は a の `objective` の中（無ければ `objective { … }` を作る）、`frame` は a の中に関心事、
+/// `flow` は 2 つの部品を持つ定義（内部ブロック図なら対象）の中に流れを書く。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `rel`：関係の種類（`comp`・`satisfy`・`verify`・`frame`・`derive`・`flow`）
+/// - `a`・`b`：関係の始まりと終わりの宣言
+/// - `fp`・`tp`：流れの始まり・終わりのポートの名前（`flow` だけで使う。None ならポートを書かない）
+/// - `ctx`：内部ブロック図の対象のキー。`flow` で a が使用のときに使う
+///
+/// # 戻り値
+///
+/// 書いた後のテキストと、光らせる範囲（足した文）。書く場所が無いとき・知らない種類のときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P {\n    part def A;\n    part def B;\n    requirement def R;\n}\n" のとき
+/// connect(d, "comp", A, B, None, None, None)     → Ok(text に "part def A {\n        part b : B;\n    }")
+/// connect(d, "satisfy", A, R, None, None, None)  → Ok(text に "    satisfy R by A;\n}")
+/// // d.text = "package P { part def E; part def F; }" のとき
+/// connect(d, "flow", E, F, None, None, None)     → Err("2 つの部品を両方持つ部品定義がないため、流れを書けません")
+/// connect(d, "bogus", E, F, None, None, None)    → Err("関係の種類「bogus」は扱えません")
+/// ```
 fn connect(
     d: &Doc<'_>,
     rel: &str,
@@ -657,11 +1062,39 @@ fn connect(
     })
 }
 
+/// 関係を書く package が無いときの理由の文を作る（画面にそのまま出す。ADR-0014）。
+///
+/// # 戻り値
+///
+/// 理由の文。
+///
+/// # 例
+///
+/// ```text
+/// no_package() → "関係を書く、モデルの入れ物（package）がありません"
+/// ```
 fn no_package() -> Refusal {
     "関係を書く、モデルの入れ物（package）がありません".to_owned()
 }
 
-/// a と b を部品として持つ最初の定義（flow を書く場所）と、その部品。
+/// a と b を部品として持つ最初の定義（flow を書く場所）と、その部品。部品は型の名前で探す（直下の `part` だけ）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `a`・`b`：部品の型の名前（定義の名前）
+///
+/// # 戻り値
+///
+/// （定義の番号, a を型にした部品の番号, b を型にした部品の番号）。両方を持つ定義が無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P { part def E; part def F; part def C { part e : E; part f : F; } }" のとき
+/// common_parent(d, "E", "F") → Some((C の番号, e の番号, f の番号))
+/// common_parent(d, "E", "X") → None
+/// ```
 fn common_parent(d: &Doc<'_>, a: &str, b: &str) -> Option<(usize, usize, usize)> {
     d.p.entries
         .iter()
@@ -679,6 +1112,23 @@ fn common_parent(d: &Doc<'_>, a: &str, b: &str) -> Option<(usize, usize, usize)>
 }
 
 /// 宣言の本体（open の後ろ）にある `objective { … }` の位置（コメント・文字列の中は見ない）。
+///
+/// # 引数
+///
+/// - `text`：テキスト
+/// - `open`：宣言の本体の開き括弧の位置（バイトオフセット）
+///
+/// # 戻り値
+///
+/// `objective` の始まりと、その閉じ括弧（`head_end`・`close` とも閉じ括弧のバイトオフセット）。`objective` が無いか、閉じていなければ None。
+///
+/// # 例
+///
+/// ```text
+/// objective_block("verification def V { objective { verify R; } }", 19)
+///   → Some(Target { start: 21, head_end: 43, close: Some(43) })
+/// objective_block("verification def V { }", 19) → None
+/// ```
 fn objective_block(text: &str, open: usize) -> Option<Target> {
     let ts = tokens(text);
     let oi = ts

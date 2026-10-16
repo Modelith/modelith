@@ -31,6 +31,11 @@ export type DirEntry =
 
 /** 上書きしようとしたファイルが、読み込んだ後に他で変更されていた。 */
 export class ConflictError extends Error {
+  /**
+   * 競合の例外を作る（メッセージは「パス は読み込んだ後に変更されています」）。
+   *
+   * @param ref 上書きしようとしたファイル
+   */
   constructor(readonly ref: FileRef) {
     super(`${ref.path} は読み込んだ後に変更されています`);
     this.name = "ConflictError";
@@ -69,6 +74,16 @@ export interface FilePicker extends ProviderInfo {
 
 /** 保存先を選んで保存できる（選ばなければ null）。 */
 export interface SaveAsTarget extends ProviderInfo {
+  /**
+   * 保存先を選んでテキストを保存する。
+   *
+   * @param suggestedName 保存先の名前の候補（拡張子を含むファイル名）
+   * @param text 保存するテキスト
+   * @returns 保存したファイルの参照と版。保存先を選ばなければ null
+   * @example
+   * await target.saveAs("out.sysml", "package P;") // → { ref: { …, name: "out.sysml" }, version: "…" }
+   * await target.saveAs("out.sysml", "package P;") // → null（キャンセル）
+   */
   saveAs(suggestedName: string, text: string): Promise<{ ref: FileRef; version: string } | null>;
 }
 
@@ -99,33 +114,136 @@ export interface SiblingFiles extends ProviderInfo {
 export type FileProvider = ProviderInfo &
   Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator, keyof ProviderInfo>>;
 
+/**
+ * ファイルを読めるプロバイダか（`read` があるか）。
+ *
+ * @param p プロバイダ
+ * @returns 読めれば true（型を Readable に絞る）
+ * @example
+ * isReadable(new BrowserFileProvider(io)) // → true
+ * isReadable({ id: "x", label: "x" })     // → false
+ */
 export const isReadable = (p: FileProvider): p is Readable => typeof p.read === "function";
+/**
+ * ファイルを上書きできるプロバイダか（`write` があるか）。
+ *
+ * @param p プロバイダ
+ * @returns 上書きできれば true（型を Writable に絞る）
+ * @example
+ * isWritable(new LocalFolderProvider(…)) // → true
+ * isWritable(new BrowserFileProvider(io)) // → false（ダウンロードしかできない）
+ */
 export const isWritable = (p: FileProvider): p is Writable => typeof p.write === "function";
+/**
+ * フォルダを選び、一覧し、ファイルを作れるプロバイダか（`pickFolder`・`list`・`createFile` がそろっているか）。
+ *
+ * @param p プロバイダ
+ * @returns 3 つともあれば true（型を FolderSource に絞る）
+ * @example
+ * isFolderSource(new LocalFolderProvider(…)) // → true
+ * isFolderSource(new BrowserFileProvider(io)) // → false
+ */
 export const isFolderSource = (p: FileProvider): p is FolderSource =>
   typeof p.pickFolder === "function" && typeof p.list === "function" && typeof p.createFile === "function";
+/**
+ * ファイルを 1 つ選べるプロバイダか（`pickFile` があるか）。
+ *
+ * @param p プロバイダ
+ * @returns 選べれば true（型を FilePicker に絞る）
+ * @example
+ * isFilePicker(new BrowserFileProvider(io)) // → true
+ * isFilePicker({ id: "x", label: "x" })     // → false
+ */
 export const isFilePicker = (p: FileProvider): p is FilePicker => typeof p.pickFile === "function";
+/**
+ * 保存先を選んで保存できるプロバイダか（`saveAs` があるか）。
+ *
+ * @param p プロバイダ
+ * @returns 保存できれば true（型を SaveAsTarget に絞る）
+ * @example
+ * isSaveAsTarget(new BrowserFileProvider(io)) // → true
+ * isSaveAsTarget({ id: "x", label: "x" })     // → false
+ */
 export const isSaveAsTarget = (p: FileProvider): p is SaveAsTarget => typeof p.saveAs === "function";
+/**
+ * 隣のファイル（配置ファイル、ADR-0005）を読み書きできるプロバイダか（`hasSiblings`・`readSibling`・`writeSibling` がそろっているか）。
+ *
+ * @param p プロバイダ
+ * @returns 3 つともあれば true（型を SiblingFiles に絞る）
+ * @example
+ * hasSiblingFiles(new BrowserFileProvider(io)) // → true
+ * hasSiblingFiles({ id: "x", label: "x" })     // → false
+ */
 export const hasSiblingFiles = (p: FileProvider): p is SiblingFiles =>
   typeof p.hasSiblings === "function" && typeof p.readSibling === "function" && typeof p.writeSibling === "function";
+/**
+ * 1 つだけ開いたファイルを、開いたフォルダの中から探せるプロバイダか（`locate` があるか）。
+ *
+ * @param p プロバイダ
+ * @returns 探せれば true（型を FileLocator に絞る）
+ * @example
+ * canLocate(new LocalFolderProvider(…)) // → true
+ * canLocate(new BrowserFileProvider(io)) // → false
+ */
 export const canLocate = (p: FileProvider): p is FileLocator => typeof p.locate === "function";
+/**
+ * 前回のフォルダを覚えて開き直せるプロバイダか（`recentFolder`・`reopenRecent` がそろっているか）。
+ *
+ * @param p プロバイダ
+ * @returns 両方あれば true（型を RecentFolders に絞る）
+ * @example
+ * hasRecentFolders(new LocalFolderProvider(…)) // → true
+ * hasRecentFolders(new BrowserFileProvider(io)) // → false
+ */
 export const hasRecentFolders = (p: FileProvider): p is RecentFolders =>
   typeof p.recentFolder === "function" && typeof p.reopenRecent === "function";
 
-/** モデルとして扱うファイルか。 */
+/**
+ * モデルとして扱うファイルか（拡張子が .sysml か .kerml。大文字・小文字は区別しない）。
+ *
+ * @param name ファイル名
+ * @returns モデルのファイルなら true
+ * @example
+ * isModelFile("m.sysml")       // → true
+ * isModelFile("M.KERML")       // → true（大文字）
+ * isModelFile("m.layout.json") // → false
+ */
 export const isModelFile = (name: string): boolean => /\.(sysml|kerml)$/i.test(name);
 
 /** プロバイダを id で引く。 */
 export class ProviderRegistry {
   private readonly map = new Map<string, FileProvider>();
 
+  /**
+   * プロバイダを id で引けるようにする（同じ id があれば後のものにする）。
+   *
+   * @param providers 使うプロバイダの一覧
+   */
   constructor(providers: FileProvider[]) {
     for (const p of providers) this.map.set(p.id, p);
   }
 
+  /**
+   * プロバイダを id で引く。
+   *
+   * @param id プロバイダの id（"local"・"browser" など）
+   * @returns プロバイダ。無ければ undefined
+   * @example
+   * registry.get("browser") // → BrowserFileProvider
+   * registry.get("nope")    // → undefined
+   */
   get(id: string): FileProvider | undefined {
     return this.map.get(id);
   }
 
+  /**
+   * 登録したプロバイダすべて（登録した順）。
+   *
+   * @returns プロバイダの一覧。1 つも無ければ空
+   * @example
+   * new ProviderRegistry([local, browser]).all() // → [local, browser]
+   * new ProviderRegistry([]).all()               // → []
+   */
   all(): FileProvider[] {
     return [...this.map.values()];
   }

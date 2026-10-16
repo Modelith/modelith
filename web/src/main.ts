@@ -29,16 +29,26 @@ import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
 const EDGE_KEY = "modelith-edgestyle";
 
+/**
+ * 線の描き方を切り替え、ボタンの文言を合わせ、選んだ描き方を覚える（次に開いたときも使う）。図の描き直しはしない。
+ *
+ * @param s 線の描き方（"ortho" は直角、"curve" は曲線）
+ */
 function setEdgeStyle(s: "ortho" | "curve"): void {
   S.edgeStyle = s;
   $("#btnEdge").textContent = s === "curve" ? "線：曲線" : "線：直角";
   store.set(EDGE_KEY, s);
 }
 
+/** 開いているメニュー（details.menu）をすべて閉じる。 */
 function closeMenus(): void {
   document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => (d.open = false));
 }
 
+/**
+ * メニューを組み立てる。メニューの外をクリックしたら閉じ、SVG の保存・draw.io への書き出しのボタンをつなぎ、
+ * 版・著作権・動いている版のソースとライセンスへのリンク（AGPL §13）を入れる。
+ */
 function initMenus(): void {
   document.addEventListener("click", (ev) => {
     document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => {
@@ -61,6 +71,10 @@ function initMenus(): void {
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#licenseLink").href = `https://github.com/modelith/modelith/blob/${__APP_COMMIT__}/README.md#license`;
 }
 
+/**
+ * ツールバーのボタン（ビューとして保存・線の描き方・並べ直し・ミニマップ）と、
+ * キーボードの近道（Ctrl/⌘+A ですべて選ぶ、Ctrl/⌘+Z で元に戻す、Ctrl/⌘+Shift+Z・Ctrl/⌘+Y でやり直す）をつなぐ。
+ */
 function initToolbar(): void {
   $("#btnSaveView").onclick = () => void saveAsView();
   $("#btnEdge").onclick = () => {
@@ -115,7 +129,12 @@ try {
   await new Promise<never>(() => {});
 }
 
-/** 起動できなかったことを、画面の真ん中に出す（通信の失敗や、WebAssembly を使えない古いブラウザ）。 */
+/**
+ * 起動できなかったことを、画面の真ん中に出す（通信の失敗や、WebAssembly を使えない古いブラウザ）。
+ * 案内の文と、失敗の詳しい内容（例外のメッセージ）を body の最後に加える。
+ *
+ * @param e 起動のときに投げられた値（Error ならそのメッセージを出す）
+ */
 function showStartupError(e: unknown): void {
   const box = document.createElement("div");
   box.id = "startupError";

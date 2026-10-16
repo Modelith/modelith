@@ -18,6 +18,24 @@ pub struct LineIndex {
 }
 
 impl LineIndex {
+    /// テキストを写し取り、各行の始まり（バイトオフセット）の表を作る。
+    ///
+    /// 行は `\n` で区切る（`\r` は列の 1 文字として数える）。空のテキストも 1 行として扱う。
+    ///
+    /// # 引数
+    ///
+    /// - `text`：変換の元にするテキスト（全体を内部に写す）
+    ///
+    /// # 戻り値
+    ///
+    /// 行頭の表を持つ `LineIndex`。失敗しない。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// LineIndex::new("a\nb") → 行頭 [0, 2]
+    /// LineIndex::new("")     → 行頭 [0]（空でも 1 行）
+    /// ```
     pub fn new(text: &str) -> Self {
         let line_starts = std::iter::once(0)
             .chain(text.match_indices('\n').map(|(i, _)| i + 1))
@@ -29,6 +47,27 @@ impl LineIndex {
     }
 
     /// バイトオフセットを行・列に変換する。範囲外や文字境界でない場合は `None`。
+    ///
+    /// # 引数
+    ///
+    /// - `offset`：テキストの先頭からのバイトオフセット（`0` 以上、テキストの長さ以下。長さちょうどはテキストの末尾）
+    ///
+    /// # 戻り値
+    ///
+    /// 0 始まりの行と、行頭からの列（UTF-16 コード単位）。`offset` がテキストの長さを超えるか、
+    /// マルチバイト文字の途中を指すときは `None`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // テキスト "part def A;\n// 日本語\npart b : A;"
+    /// line_col(0)                → Some({ line: 0, col: 0 })
+    /// line_col(12)               → Some({ line: 1, col: 0 })    // 改行の直後
+    /// line_col("語" の直後)       → Some({ line: 1, col: 6 })    // 漢字は UTF-16 で 1 単位
+    /// line_col(len)              → Some({ line: 2, col: 11 })   // テキストの末尾
+    /// line_col(len + 1)          → None                         // 範囲外
+    /// line_col("語" の 2 バイト目) → None                         // 文字境界でない
+    /// ```
     pub fn line_col(&self, offset: usize) -> Option<LineCol> {
         if offset > self.text.len() || !self.text.is_char_boundary(offset) {
             return None;
@@ -42,7 +81,27 @@ impl LineIndex {
         })
     }
 
-    /// 行・列をバイトオフセットに変換する。範囲外の場合は `None`。
+    /// 行・列をバイトオフセットに変換する。範囲外の場合は `None`。`line_col` の逆。
+    ///
+    /// # 引数
+    ///
+    /// - `pos`：0 始まりの行と列（列は UTF-16 コード単位。行の長さちょうどは行末＝改行の手前）
+    ///
+    /// # 戻り値
+    ///
+    /// テキストの先頭からのバイトオフセット。行が無い、列が行の長さを超える、
+    /// または列がサロゲートペアの途中を指すときは `None`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // テキスト "part def A;\n// 日本語\npart b : A;"
+    /// offset({ line: 0, col: 11 }) → Some(11)   // 行末（改行の位置）
+    /// offset({ line: 0, col: 12 }) → None       // 行の長さ + 1
+    /// offset({ line: 3, col: 0 })  → None       // 最終行 + 1
+    /// // テキスト ""
+    /// offset({ line: 0, col: 0 })  → Some(0)
+    /// ```
     pub fn offset(&self, pos: LineCol) -> Option<usize> {
         let start = *self.line_starts.get(pos.line as usize)?;
         let end = self

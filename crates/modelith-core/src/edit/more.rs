@@ -8,6 +8,25 @@ use crate::syntax::is_keyword;
 
 // ---- メッセージ（シーケンス図） ----
 
+/// シーケンス図の関係の ID（`msg|順番|名前`）から、シナリオの中のメッセージを探す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `c`：シナリオの宣言の番号
+/// - `id`：メッセージの ID（`msg|順番|名前`。順番は 0 始まりで、書いた順）
+///
+/// # 戻り値
+///
+/// ID に当たるメッセージの順番と、シナリオのメッセージすべて（`ParseResult.rels` の番号、書いた順）。無ければ理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = SEQ（m1、then m2 の 2 つのメッセージを持つシナリオ S）のとき
+/// message_at(d, S の番号, "msg|1|m2") → Ok((1, [m1 の関係の番号, m2 の関係の番号]))
+/// message_at(d, S の番号, "msg|0|m2") → Err("操作するメッセージが見つかりません。…")   // 順番が合わない
+/// ```
 fn message_at(d: &Doc<'_>, c: usize, id: &str) -> Result<(usize, Vec<usize>), Refusal> {
     let ms = messages(d, c);
     let i = ms
@@ -18,18 +37,70 @@ fn message_at(d: &Doc<'_>, c: usize, id: &str) -> Result<(usize, Vec<usize>), Re
     Ok((i, ms))
 }
 
-/// メッセージの文の範囲（バイト。`;` まで）。
+/// メッセージの文の範囲（バイト。`then` があれば `then` から `;` まで）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ri`：メッセージの関係の番号（`ParseResult.rels` の添字）
+///
+/// # 戻り値
+///
+/// 文の始まりと終わり（バイトオフセット。終わりは `;` の次）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text の中の "then message m2 of Sig from b to a;" の関係の番号を ri とすると
+/// message_span(d, ri) → (then の位置, ; の次の位置)
+/// ```
 fn message_span(d: &Doc<'_>, ri: usize) -> (usize, usize) {
     let r = &d.p.rels[ri];
     (d.b(r.start), d.b(r.end + 1))
 }
 
+/// 文が `then` と空白で始まるか（`then message …` か）。
+///
+/// # 引数
+///
+/// - `s`：文（またはその後ろのテキスト）
+///
+/// # 戻り値
+///
+/// `then` の後に空白が続けば true。
+///
+/// # 例
+///
+/// ```text
+/// starts_with_then("then message m2 from b to a;") → true
+/// starts_with_then("thenx message")                → false   // 語の一部
+/// starts_with_then("message m1 from a to b;")      → false
+/// ```
 fn starts_with_then(s: &str) -> bool {
     s.strip_prefix("then")
         .is_some_and(|r| r.starts_with(char::is_whitespace))
 }
 
 /// メッセージを足す（名前は msg1・msg2 …。前のメッセージが then で始まれば、then を付ける）。
+/// 名前の番号は「今のメッセージの数 + 1」から始め、使われていれば次へ進む。暫定コアの `MSGOPS.add` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ctx`：シナリオのキー
+/// - `from`・`to`：送り手と受け手のライフラインのキー（`l:名前`。先頭の 2 文字を除いた名前を書く）
+///
+/// # 戻り値
+///
+/// 足した後のテキストと、選ぶ名前・光らせる範囲（足した文）。シナリオが無ければ理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// add_message(Doc(SEQ), "S", "l:b", "l:a")
+///   → Ok(text に "then message m2 of Sig from b to a;\n    then message msg3 from b to a;\n}", select = Some("msg3"))
+/// add_message(Doc(SEQ), "Gone", "l:a", "l:b") → Err("操作する要素「Gone」が見つかりません。…")
+/// ```
 pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Result<Change, Refusal> {
     let c = d.context(ctx)?;
     let ms = messages(d, c);
@@ -63,7 +134,27 @@ pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Resul
     })
 }
 
-/// メッセージの名前とアイテムの型を書き換える。
+/// メッセージの名前とアイテムの型を書き換える。空なら書かない。`then` と送り手・受け手は保つ。暫定コアの `MSGOPS.update` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ctx`：シナリオのキー
+/// - `id`：メッセージの ID（`msg|順番|名前`）
+/// - `name`：新しい名前（基本名。空なら名前を書かない）
+/// - `ty`：アイテムの型（空なら `of 型` を書かない）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、光らせる範囲（書き換えた文）。名前が使えないとき・シナリオやメッセージが無いときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "go", "Cmd") → Ok(text に "then message go of Cmd from b to a;")
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "", "")      → Ok(text に "then message from b to a;")
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "1x", "")    → Err(BAD_NAME)
+/// ```
 pub(super) fn update_message(
     d: &Doc<'_>,
     ctx: &str,
@@ -105,7 +196,27 @@ pub(super) fn update_message(
     })
 }
 
-/// メッセージの順番を入れ替える（文を入れ替え、then の有無は位置に残す）。dir は -1（上へ）か 1（下へ）。
+/// メッセージの順番を入れ替える（文を入れ替え、then の有無は位置に残す）。dir は -1（上へ）か 1（下へ）。暫定コアの `MSGOPS.move` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ctx`：シナリオのキー
+/// - `id`：動かすメッセージの ID（`msg|順番|名前`）
+/// - `dir`：-1 なら 1 つ前と、1 なら 1 つ後と入れ替える
+///
+/// # 戻り値
+///
+/// 入れ替えた後のテキストと、光らせる範囲（入れ替えた 2 つの文を含む範囲）。先頭より前・末尾より後へは動かせず、理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// move_message(Doc(SEQ), "S", "msg|1|m2", -1)
+///   → Ok(text に "    message m2 of Sig from b to a;\n    then message m1 from a to b;\n")
+/// move_message(Doc(SEQ), "S", "msg|0|m1", -1) → Err("これ以上は動かせません")
+/// move_message(Doc(SEQ), "S", "msg|1|m2", 1)  → Err("これ以上は動かせません")
+/// ```
 pub(super) fn move_message(d: &Doc<'_>, ctx: &str, id: &str, dir: i8) -> Result<Change, Refusal> {
     let c = d.context(ctx)?;
     let (i, ms) = message_at(d, c, id)?;
@@ -145,6 +256,28 @@ pub(super) fn move_message(d: &Doc<'_>, ctx: &str, id: &str, dir: i8) -> Result<
 // ---- フェーズ（@Phase） ----
 
 /// 要素のフェーズを設定する。value が空なら、その要素に書いた指定を外す。複数のときは、まとめて設定する。
+/// 自分に `@Phase` を書いていれば値だけを書き換え、無ければ `@Phase { stage = 列挙::値; }` を中に足す。暫定コアの `PHASEOPS.set` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `found`：設定する要素（1 つ以上）
+/// - `value`：フェーズの値（列挙の値の名前。空なら指定を外す。外せるのは 1 つの要素のときだけ）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、光らせる範囲。フェーズの定義が無いとき・受け継いだ指定を外そうとしたとき・受け継いだ値と同じとき・複数で空の値のときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = PH（A は自分に K::a、C は package Q から K::b を受け継ぐ）のとき
+/// set_phase(d, [A], "b")    → Ok(text に "part def A { @Phase { stage = K::b; } }")
+/// set_phase(d, [B], "a")    → Ok(text に "part def B {\n        @Phase { stage = K::a; }\n    }")
+/// set_phase(d, [A], "")     → Ok(text に "part def A { }")
+/// set_phase(d, [C], "")     → Err("パッケージから継承しているため、ここでは外せません")
+/// set_phase(Doc("package P { part def A; }"), [A], "x") → Err("フェーズの定義がありません")
+/// ```
 pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Change, Refusal> {
     let en =
         d.m.phase_enum
@@ -214,6 +347,23 @@ pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Cha
 }
 
 /// 重ならない編集をまとめて当てる（後ろから当てるので位置はずれない）。結果と、最初の編集の位置。
+/// 同じ位置の編集が 2 つ以上あれば、最初の 1 つだけを当てる。
+///
+/// # 引数
+///
+/// - `text`：元のテキスト
+/// - `splices`：編集の列（位置は元のテキストのバイトオフセット。順は問わない）
+///
+/// # 戻り値
+///
+/// 編集を当てた後のテキストと、いちばん前の編集の位置（編集が無ければ 0）。
+///
+/// # 例
+///
+/// ```text
+/// apply_all("abcd", [Splice { at: 3, del: 1, ins: "D" }, Splice { at: 0, del: 1, ins: "A" }]) → ("AbcD", 0)
+/// apply_all("abcd", [])                                                                      → ("abcd", 0)
+/// ```
 fn apply_all(text: &str, mut splices: Vec<Splice>) -> (String, usize) {
     splices.sort_by_key(|s| s.at);
     splices.dedup_by_key(|s| s.at);
@@ -226,6 +376,24 @@ fn apply_all(text: &str, mut splices: Vec<Splice>) -> (String, usize) {
 }
 
 /// フェーズの定義（metadata def と enum def）を最初の package に足す。package が無ければ new_package の名前で作る。
+/// 足すのは package の開き括弧の直後で、`PhaseKind` の 4 つの値（StakeholderNeeds・SystemRequirements・Architecture・Verification）を持つ。暫定コアの `PHASEOPS.init` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `new_package`：package が無いときに作る package の名前
+///
+/// # 戻り値
+///
+/// 足した後のテキストと、光らせる範囲（足した定義）。最初の package が `{ }` で囲まれていないとき・package が無く作る名前も無いとき・名前が使えないときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// init_phases(Doc("package P {\n    part def A;\n}\n"), None) → Ok(足した後のモデルのフェーズは 4 つ)
+/// init_phases(Doc(""), Some("M"))                         → Ok(text は "package M {\n" で始まる)
+/// init_phases(Doc("package P;"), None)                    → Err("このファイルの書き方では、フェーズを足せません（最初の package が { } で囲まれていません）")
+/// ```
 pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Change, Refusal> {
     let (text, start, open) = match (d.first_package(), new_package) {
         (Some(p), _) => {
@@ -260,7 +428,25 @@ pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Chan
 // ---- ポート ----
 
 impl Doc<'_> {
-    /// ポートを置く先（使用なら型の定義、見つからなければ使用そのもの）。
+    /// ポートを置く先（使用なら型の定義、見つからなければ使用そのもの）。型の定義は図の要素から名前で探す。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：要素の宣言の番号（定義か、内部ブロック図の部品）
+    ///
+    /// # 戻り値
+    ///
+    /// ポートを置く宣言の番号。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = PORTS（part def E と、C の中の part a : E）のとき
+    /// port_host(a の番号) → E の番号   // 使用は型の定義
+    /// port_host(E の番号) → E の番号
+    /// // 型の定義が図の要素に無い使用 x なら
+    /// port_host(x の番号) → x の番号
+    /// ```
     fn port_host(&self, i: usize) -> usize {
         let e = self.e(i);
         if e.is_def {
@@ -273,6 +459,24 @@ impl Doc<'_> {
             .map_or(i, |n| n.entry)
     }
 
+    /// 要素のポート（ポートを置く先の直下にある、その名前の宣言）。
+    ///
+    /// # 引数
+    ///
+    /// - `f`：要素（定義か、内部ブロック図の部品）
+    /// - `port`：ポートの名前
+    ///
+    /// # 戻り値
+    ///
+    /// ポートの宣言の番号。無ければ理由の文（`Err`）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = PORTS（part def E { out port o; }）のとき
+    /// port(a, "o") → Ok(E の中の o の番号)
+    /// port(a, "x") → Err("ポート「x」が見つかりません。テキストが先に変わった可能性があります")
+    /// ```
     fn port(&self, f: &Found, port: &str) -> Result<usize, Refusal> {
         let host = self.port_host(f.entry);
         self.e(host)
@@ -296,7 +500,24 @@ pub struct FlowEnd {
     pub to: bool,
 }
 
-/// 文の中の `kw 名前` の名前（後ろに名前の文字や . が続かないもの）の位置。
+/// 文の中の `kw 名前` の名前（後ろに名前の文字や . が続かないもの）の位置。キーワードと名前の間には空白が要る。
+///
+/// # 引数
+///
+/// - `stmt`：文（`flow from a to b;` など）
+/// - `kws`：名前の前に来るキーワードの候補（`from`・`connect`・`to` など）
+/// - `name`：探す名前（`a` や `a.p` などの参照）
+///
+/// # 戻り値
+///
+/// 名前の始まり（`stmt` の中のバイトオフセット）。当たるものが無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// after_keyword("flow from a to b;", &["to"], "b")     → Some(15)
+/// after_keyword("flow from a.p to b;", &["from"], "a") → None   // 後ろに . が続く
+/// ```
 fn after_keyword(stmt: &str, kws: &[&str], name: &str) -> Option<usize> {
     let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
     let mut from = 0;
@@ -316,6 +537,30 @@ fn after_keyword(stmt: &str, kws: &[&str], name: &str) -> Option<usize> {
 }
 
 /// 接続点をポートにする（宣言を足し、その接続点につながる flow を「部品.ポート」に書き換える）。
+/// 宣言はポートを置く先（使用なら型の定義）に `向き port 名前 : 型;` で足す。見つからない線や流れでない線は飛ばす。暫定コアの `pins.ts` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：ポートを作る要素（定義か、内部ブロック図の部品）
+/// - `name`：ポートの名前（基本名）
+/// - `dir`：向き（`in`・`out`・`inout`）
+/// - `ty`：ポートの型（空なら書かない）
+/// - `flows`：書き換える線の ID と、書き換える端（始まりか終わりか）
+/// - `ctx`：内部ブロック図の対象のキー（線の ID を探すのに使う）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（足した宣言）。名前・向きが使えないとき、置く先で名前が使われているときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// make_port(Doc(PORTS), b, "i", "in", "Sig", [{ id: "flow|u:a|u:b|#1", to: true }], Some("C"))
+///   → Ok(text に "part def E { out port o; in port i : Sig; }" と "flow from a to b.i;")
+/// make_port(Doc(PORTS), E, "o", "in", "", [], None) → Err("「o」は E の中で既に使われています")
+/// make_port(Doc(PORTS), E, "x", "up", "", [], None) → Err("ポートの向き「up」は扱えません")
+/// ```
 pub(super) fn make_port(
     d: &Doc<'_>,
     f: &Found,
@@ -390,7 +635,25 @@ pub(super) fn make_port(
     })
 }
 
-/// ポートの向き（in / out / inout）を書き換える。
+/// ポートの向き（in / out / inout）を書き換える。可視性（`private` など）は残し、元の向きを新しい向きに置き換える（無ければ足す）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：ポートを持つ要素
+/// - `port`：ポートの名前
+/// - `dir`：新しい向き（`in`・`out`・`inout`）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、光らせる範囲（ポートの宣言の頭）。向きが使えないとき・ポートが無いときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// set_port_dir(Doc(PORTS), E, "o", "inout") → Ok(text に "part def E { inout port o; }")
+/// set_port_dir(Doc(PORTS), E, "o", "up")    → Err("ポートの向き「up」は扱えません")
+/// ```
 pub(super) fn set_port_dir(
     d: &Doc<'_>,
     f: &Found,
@@ -424,7 +687,24 @@ pub(super) fn set_port_dir(
     })
 }
 
-/// ポートを削除する。
+/// ポートを削除する（宣言を消す。行全体を占めるなら行ごと消す）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：ポートを持つ要素（内部ブロック図の部品なら、型の定義のポートを消す）
+/// - `port`：ポートの名前
+///
+/// # 戻り値
+///
+/// 消した後のテキストと、光らせる範囲（消した位置の 1 バイト）。ポートが無ければ理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// delete_port(Doc(PORTS), a, "o") → Ok(text に "part def E { }")
+/// delete_port(Doc(PORTS), a, "x") → Err("ポート「x」が見つかりません。…")
+/// ```
 pub(super) fn delete_port(d: &Doc<'_>, f: &Found, port: &str) -> Result<Change, Refusal> {
     let e = d.e(d.port(f, port)?);
     let (text, at) = remove_range(d.text, d.b(e.start), d.b(e.end));
@@ -437,7 +717,24 @@ pub(super) fn delete_port(d: &Doc<'_>, f: &Found, port: &str) -> Result<Change, 
 
 // ---- 保存された図（view と expose、F-VIEW-8） ----
 
-/// SysML の名前として書く（基本名に使えない文字や予約語を含むときは引用名、8.2.2.1）。
+/// SysML の名前として書く（基本名に使えない文字や予約語を含むときは引用名、8.2.2.1）。引用名の中の `\` と `'` は `\` で逃がす。
+///
+/// # 引数
+///
+/// - `name`：要素の名前（引用符を外した名前）
+///
+/// # 戻り値
+///
+/// テキストに書く名前。基本名で予約語でなければそのまま、そうでなければ `'…'`。
+///
+/// # 例
+///
+/// ```text
+/// sysml_name("Kettle_1") → "Kettle_1"
+/// sysml_name("全体図")   → "'全体図'"
+/// sysml_name("part")     → "'part'"     // 予約語
+/// sysml_name("it's")     → "'it\'s'"
+/// ```
 pub fn sysml_name(name: &str) -> String {
     if is_basic_name(name) && !is_keyword(name) {
         return name.to_owned();
@@ -447,6 +744,22 @@ pub fn sysml_name(name: &str) -> String {
 
 impl Doc<'_> {
     /// 名前を持つ親をたどった名前の並び（package P の中の A なら ["P", "A"]）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// 外側から順の名前の並び（引用名にはしない）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P { part def A; }" のとき
+    /// name_path(A の番号) → ["P", "A"]
+    /// name_path(P の番号) → ["P"]   // 外側が無い
+    /// ```
     fn name_path(&self, i: usize) -> Vec<&str> {
         let mut names = Vec::new();
         let mut a = Some(i);
@@ -459,6 +772,22 @@ impl Doc<'_> {
     }
 
     /// テキストに書く修飾名（P::A。名前は必要なら引用名にする）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// `::` でつないだ修飾名。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P {\n    part def A;\n    part def '電気 ケトル';\n}\n" のとき
+    /// qualified_name(A の番号)           → "P::A"
+    /// qualified_name(電気 ケトル の番号) → "P::'電気 ケトル'"
+    /// ```
     pub(super) fn qualified_name(&self, i: usize) -> String {
         self.name_path(i)
             .into_iter()
@@ -467,7 +796,24 @@ impl Doc<'_> {
             .join("::")
     }
 
-    /// e だけを出している expose（中身をまとめて出す expose は含めない）。
+    /// e だけを出している expose（中身をまとめて出す expose は含めない）。`::*`・`::**`・`[ ]` の絞り込みが無く、対象が e の修飾名と同じものを集める。
+    ///
+    /// # 引数
+    ///
+    /// - `view`：view の宣言の番号
+    /// - `i`：要素の宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// e だけを出している expose（書いた順）。無ければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P {\n    part def A;\n    part def B;\n    view v {\n        expose P::A;\n    }\n}\n" のとき
+    /// exposes_only_for(v の番号, A の番号) → [expose P::A]
+    /// exposes_only_for(v の番号, B の番号) → []
+    /// ```
     fn exposes_only_for(&self, view: usize, i: usize) -> Vec<&Expose> {
         let plain = self.name_path(i).join("::");
         self.e(view)
@@ -478,6 +824,23 @@ impl Doc<'_> {
             .collect()
     }
 
+    /// 名前の図（モデルの view）を探す。
+    ///
+    /// # 引数
+    ///
+    /// - `name`：view の名前
+    ///
+    /// # 戻り値
+    ///
+    /// view の宣言の番号。無ければ理由の文（`Err`）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // d.text = "package P { view v { } }" のとき
+    /// view_named("v")    → Ok(v の番号)
+    /// view_named("gone") → Err("図「gone」が見つかりません。テキストが先に変わった可能性があります")
+    /// ```
     fn view_named(&self, name: &str) -> Result<usize, Refusal> {
         self.m
             .views
@@ -491,6 +854,22 @@ impl Doc<'_> {
 }
 
 /// 描き方に対応する標準ビュー定義（9.2.20）。
+///
+/// # 引数
+///
+/// - `kind`：図の描き方（`general`・`interconnection`・`stateTransition`・`sequence`）
+///
+/// # 戻り値
+///
+/// 標準ビュー定義の名前。知らない描き方なら None。
+///
+/// # 例
+///
+/// ```text
+/// std_view_for("general")  → Some("GeneralView")
+/// std_view_for("sequence") → Some("SequenceView")
+/// std_view_for("bogus")    → None
+/// ```
 fn std_view_for(kind: &str) -> Option<&'static str> {
     match kind {
         "general" => Some("GeneralView"),
@@ -501,7 +880,29 @@ fn std_view_for(kind: &str) -> Option<&'static str> {
     }
 }
 
-/// 図を保存するときの view の宣言。要素は 1 つずつ expose する。indent は view を置く位置の字下げ。
+/// 図を保存するときの view の宣言。要素は 1 つずつ expose する。indent は view を置く位置の字下げ。暫定コアの `view-text.ts` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `name`：図の名前（必要なら引用名にする）
+/// - `std`：標準ビュー定義の名前（`GeneralView` など）
+/// - `targets`：図に出す要素の宣言の番号
+/// - `indent`：view を置く位置の字下げ（expose はこれより 1 段深く書く）
+///
+/// # 戻り値
+///
+/// view の宣言（先頭に字下げは付けない。閉じ括弧の前には `indent` を付ける）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P {\n    part def A;\n    part def '電気 ケトル';\n}\n" のとき
+/// view_declaration(d, "全体", "GeneralView", [A, 電気 ケトル], "    ")
+///   → "view '全体' : GeneralView {\n        expose P::A;\n        expose P::'電気 ケトル';\n    }"
+/// view_declaration(d, "v", "GeneralView", [], "    ")
+///   → "view v : GeneralView {\n    }"   // 要素が無い
+/// ```
 fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], indent: &str) -> String {
     let lines: Vec<String> = targets
         .iter()
@@ -515,7 +916,27 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
     )
 }
 
-/// 表示中の図を、名前を付けて保存する（最初の package に view を書く）。
+/// 表示中の図を、名前を付けて保存する（最初の package に view を書く）。名前の前後の空白は除く。暫定コアの `view-ops.ts` と同じ書き方。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `name`：図の名前
+/// - `kind`：図の描き方（`general`・`interconnection`・`stateTransition`・`sequence`）
+/// - `targets`：図に出す要素
+///
+/// # 戻り値
+///
+/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// save_view(Doc("package P {\n    part def A;\n    part def '電気 ケトル';\n}\n"), "全体", "general", [A, 電気 ケトル])
+///   → Ok(text に "    view '全体' : GeneralView {\n        expose P::A;\n        expose P::'電気 ケトル';\n    }\n}")
+/// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err("「v」という図は既にあります。別の名前にしてください")
+/// save_view(Doc("package P { part def A; view v; }"), "w", "general", [])  → Err("図に要素が無いため、保存できません")
+/// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
     name: &str,
@@ -551,6 +972,25 @@ pub(super) fn save_view(
 }
 
 /// 保存された図に要素を入れる（expose を足す）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `view`：view の名前
+/// - `f`：入れる要素
+///
+/// # 戻り値
+///
+/// 足した後のテキストと、光らせる範囲（足した expose）。図が無いとき・既に図にあるときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P {\n    part def A;\n    part def B;\n    view v {\n        expose P::A;\n    }\n}\n" のとき
+/// add_to_view(d, "v", B)    → Ok(text に "        expose P::A;\n        expose P::B;\n    }")
+/// add_to_view(d, "v", A)    → Err("「A」は既にこの図にあります")
+/// add_to_view(d, "gone", B) → Err("図「gone」が見つかりません。…")
+/// ```
 pub(super) fn add_to_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, Refusal> {
     let v = d.view_named(view)?;
     let e = d.e(f.entry);
@@ -575,6 +1015,24 @@ pub(super) fn add_to_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, 
 }
 
 /// 保存された図から要素を外す（その要素だけを出している expose を消す）。モデルの要素は残す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `view`：view の名前
+/// - `f`：外す要素
+///
+/// # 戻り値
+///
+/// 消した後のテキストと、光らせる範囲（消した位置の 1 バイト）。図が無いとき・その要素だけを出している expose が無いときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P {\n    part def A;\n    part def B;\n    view v {\n        expose P::A;\n    }\n}\n" のとき
+/// remove_from_view(d, "v", A) → Ok(text に "    view v {\n    }")
+/// remove_from_view(d, "v", B) → Err("「B」は、ほかの要素とまとめてこの図に入っているため、…")
+/// ```
 pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, Refusal> {
     let v = d.view_named(view)?;
     let mut xs: Vec<(usize, usize)> = d

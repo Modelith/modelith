@@ -13,9 +13,29 @@ const LIGHT: Record<string, string> = {
   "k-ver": "#387428", "k-ver-bg": "#E6F2E0", "k-concern": "#A0385A", "k-concern-bg": "#F9E6ED", "k-beh": "#65479A", "k-beh-bg": "#EEE8F7",
   "k-other": "#5A6572", "k-other-bg": "#F1F3F4",
 };
+/**
+ * 書き出し用の明るい配色から、色の名前に当たる色を引く（F-EXP-1・F-EXP-2）。
+ *
+ * @param k 色の名前（CSS 変数の名前から -- を除いたもの。"ink"・"k-part-bg" など）
+ * @returns 色（#RRGGBB）。知らない名前なら "#000000"
+ * @example
+ * LC("k-part") // → "#2D5A87"
+ * LC("nope")   // → "#000000"（知らない名前）
+ */
 const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
 
-/** 現在のビューを draw.io の XML にする。 */
+/**
+ * 現在のビューを draw.io の XML にする（F-EXP-2）。要素は配置の座標の箱に、ポートは小さな箱に、
+ * 線は経路の出口・入口を指定した直角の線にする。シーケンス図はライフラインとメッセージにする。
+ *
+ * @returns draw.io（app.diagrams.net）で読み込める mxfile の XML
+ * @example
+ * // 「構造」の図に要素が 1 つも無い
+ * drawioXml()
+ * // → '<mxfile host="app.diagrams.net"><diagram id="v" name="構造"><mxGraphModel grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'
+ * // 構造の図に part def A がある
+ * drawioXml() // → 上の root の中に <mxCell id="n2" value="«part def»&lt;br&gt;&lt;b&gt;A&lt;/b&gt;" … vertex="1" …> が入る
+ */
 export function drawioXml(): string {
   const v = curView();
   const cc = viewContent(S.M, v);
@@ -91,7 +111,17 @@ export function drawioXml(): string {
   return wrapXml(v.label);
 }
 
-/** 現在のビューを単独の SVG にする（明るい配色で、CSS 変数を使わない）。 */
+/**
+ * 現在のビューを単独の SVG にする（F-EXP-1）。明るい配色で、CSS 変数を使わない。
+ * 表示範囲は、要素と package の枠（F-VIEW-9）がすべて入るように余白 40（枠つきの図はさらに 60）をとる。
+ *
+ * @returns SVG の文字列（白い背景つき）
+ * @example
+ * // 図に要素が 1 つも無い
+ * svgExport() // → '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs>…</defs><rect x="0" y="0" width="100" height="100" fill="#FFFFFF"/></svg>'
+ * // 要素が (0, 0) に 1 つ（高さ 44）だけある自動の図
+ * svgExport() // → '<svg … viewBox="-40 -40 304 124" width="304" height="124">…</svg>'
+ */
 export function svgExport(): string {
   const content = viewContent(S.M, curView());
   const L = curLayout();
@@ -120,7 +150,13 @@ export function svgExport(): string {
   return svg(x0, y0, x1 - x0, y1 - y0, es + ns);
 }
 
-/** 文字列をファイルとしてダウンロードさせる。 */
+/**
+ * 文字列をファイルとしてダウンロードさせる（一時的な URL を作ってリンクを押し、すぐに URL を解放する）。
+ *
+ * @param filename 保存するファイル名（"model.svg" など）
+ * @param data ファイルの中身
+ * @param type MIME タイプ（"image/svg+xml" など）
+ */
 export function download(filename: string, data: string, type: string): void {
   const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement("a");
@@ -130,7 +166,10 @@ export function download(filename: string, data: string, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-/** draw.io の書き出しダイアログ。 */
+/**
+ * draw.io の書き出しダイアログのボタンに操作をつなぐ。起動時に 1 回呼ぶ。
+ * 閉じるボタンでダイアログを隠し、コピーのボタンで XML をクリップボードに写して、結果をボタンの文字で 2 秒示す。
+ */
 export function initExport(): void {
   $("#modalClose").onclick = () => {
     $("#modal").hidden = true;
@@ -154,6 +193,9 @@ export function initExport(): void {
   };
 }
 
+/**
+ * 現在のビューの draw.io の XML を、書き出しダイアログの欄に入れて表示する（F-EXP-2）。
+ */
 export function showDrawio(): void {
   $<HTMLTextAreaElement>("#modalText").value = drawioXml();
   $("#modal").hidden = false;

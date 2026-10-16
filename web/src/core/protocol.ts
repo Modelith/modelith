@@ -28,7 +28,17 @@ export interface CoreState {
 
 /**
  * 1 つの依頼を処理して返事を作る（`init` 以外。届いた順に処理するので、`edit` は直前に届いたテキストに対して計算する）。
- * Worker の中でも、テストで同じスレッドでも、同じこの関数を使う。
+ * Worker の中でも、テストで同じスレッドでも、同じこの関数を使う。`didChange` なら state.text を書き換える。
+ *
+ * @param state コアの状態（最後に受け取ったテキスト）
+ * @param req 画面からの依頼（`didChange` か `edit`）
+ * @param fns コアの中身（wasm の `analyze`・`edit`。テストでは差し替える）
+ * @returns 依頼と同じ版の返事（`analyzed` か `edited`）。fns が例外を投げればそのまま投げる
+ * @example
+ * handle(state, { type: "didChange", version: 1, text: "package P;" }, fns)
+ * // → { type: "analyzed", version: 1, json: fns.analyze("package P;") }
+ * handle(state, { type: "edit", version: 1, id: 7, intent }, fns)
+ * // → { type: "edited", version: 1, id: 7, json: fns.edit(state.text, JSON.stringify(intent)) }
  */
 export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init" }>, fns: CoreFns): CoreResponse {
   if (req.type === "didChange") {

@@ -14,17 +14,58 @@ import { commitLayout, toast } from "./sync";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
 import type { Pos, Side } from "./layout";
 
+/**
+ * 図の枠の要素（#wrap）を返す。
+ *
+ * @returns 図の枠の要素。無ければ $ が例外を投げる
+ * @example
+ * wrapEl().id // → "wrap"
+ */
 const wrapEl = (): HTMLElement => $("#wrap");
 
-/** 画面座標を図の枠内の座標にする。 */
+/**
+ * 画面座標を図の枠内の座標（枠の左上からの px）にする。
+ *
+ * @param cx 画面の x（clientX、px）
+ * @param cy 画面の y（clientY、px）
+ * @returns 図の枠の左上からの [x, y]（px）
+ * @example
+ * // 図の枠の左上が画面の (300, 50)
+ * local(350, 70) // → [50, 20]
+ * local(300, 50) // → [0, 0]（枠の左上）
+ */
 export function local(cx: number, cy: number): [number, number] {
   const r = wrapEl().getBoundingClientRect();
   return [cx - r.left, cy - r.top];
 }
-/** 図の枠内の座標を図の座標にする。 */
+/**
+ * 図の枠内の座標を図の座標にする（表示の移動 S.tf.x・S.tf.y と拡大率 S.tf.s を戻す）。
+ *
+ * @param lx 図の枠の左上からの x（px）
+ * @param ly 図の枠の左上からの y（px）
+ * @returns 図の座標 [x, y]
+ * @example
+ * // S.tf が { x: 40, y: 40, s: 1 }
+ * toCanvas(140, 90)  // → [100, 50]
+ * // S.tf が { x: 0, y: 0, s: 2 }（2 倍に拡大）
+ * toCanvas(100, 100) // → [50, 50]
+ */
 export const toCanvas = (lx: number, ly: number): [number, number] => [(lx - S.tf.x) / S.tf.s, (ly - S.tf.y) / S.tf.s];
 
-/** 図の座標に最も近い要素の縁（接続点があればそれ）。 */
+/**
+ * 図の座標に最も近い、表示中の要素の縁を探す（近くに接続点があればそれ）。線を引くときの端を決めるのに使う。
+ *
+ * @param cx 図の座標の x
+ * @param cy 図の座標の y
+ * @param tolPx 縁からの許容の距離（画面の px。拡大率で図の座標に直す。既定 10）
+ * @param allowInside 要素の内側も当たりにするなら true（既定 false）
+ * @param exclude 除く要素のキー（線の始まりの要素など）。除かなければ null
+ * @returns 要素のキー・辺・辺に沿った割合・接続点の ID（無ければ null）・距離 d。近くに縁が無ければ null
+ * @example
+ * // 拡大率 1。要素 A の箱が (0, 0, 224×44) で、接続点は無い
+ * borderHit(100, -3) // → { node: "A", side: "t", t: 0.446, pin: null, d: 3 }
+ * borderHit(100, -30) // → null（許容の距離より遠い）
+ */
 function borderHit(cx: number, cy: number, tolPx = 10, allowInside = false, exclude: string | null = null): (EndSpec & { d: number }) | null {
   const tol = tolPx / S.tf.s;
   let best: (EndSpec & { d: number }) | null = null;
@@ -65,8 +106,25 @@ const ptrs = new Map<number, [number, number]>();
 let drag: Drag | null = null;
 let pinch: { d: number; s: number; cx: number; cy: number; x: number; y: number } | null = null;
 let longPress: ReturnType<typeof setTimeout> | undefined;
+/**
+ * 座標を 10 単位に丸める（要素を動かすときの格子）。
+ *
+ * @param v 図の座標
+ * @returns 10 の倍数に丸めた値
+ * @example
+ * snap(14) // → 10
+ * snap(15) // → 20（ちょうど半分は切り上げ）
+ */
 const snap = (v: number): number => Math.round(v / 10) * 10;
 
+/**
+ * 図の上でポインタを押したとき。押した場所（ライフライン・＋ハンドル・接続点・要素・線・何も無いところ）に応じて
+ * ドラッグの種類を決める。2 本指ならピンチを始める。Shift・Ctrl で要素を押すと選択に足し引きする。
+ * 何も無いところでは、移動の道具・中ボタン・スペース・Alt・タッチ・シーケンス図ならパン、それ以外は範囲選択にする。
+ * タッチの長押しでは右クリックメニューを開く（F-VIEW-4）。右ボタンは無視する。
+ *
+ * @param ev ポインタのイベント
+ */
 function onPointerDown(ev: PointerEvent): void {
   if (ev.button === 2) return;
   const svg = $("#canvas");
@@ -135,6 +193,13 @@ function onPointerDown(ev: PointerEvent): void {
   }
 }
 
+/**
+ * 図の上でポインタを動かしたとき。押していないマウスなら、縁に＋ハンドルを出す。
+ * ピンチなら拡大・縮小し、ドラッグ中ならその種類に応じて、メッセージ・線を引く、接続点を縁に沿って動かす、
+ * 範囲選択の枠を描く、要素（複数選択ならまとめて）を 10 単位で動かす、表示範囲を動かす。5px 未満の動きは無視する。
+ *
+ * @param ev ポインタのイベント
+ */
 function onPointerMove(ev: PointerEvent): void {
   if (!ptrs.has(ev.pointerId)) {
     // ボタンを押していないマウスの移動：縁に＋ハンドルを出す
@@ -223,6 +288,13 @@ function onPointerMove(ev: PointerEvent): void {
   }
 }
 
+/**
+ * 図の上でポインタを離したとき。範囲選択なら枠に掛かった要素を選び、メッセージ・線を引いていたら
+ * 相手の要素へのメッセージを足すか、関係の種類を選ぶ状態にする。要素・接続点を動かしたら配置を確定する。
+ * 動かさずに離したらクリック（tap）として扱う。
+ *
+ * @param ev ポインタのイベント
+ */
 function onPointerUp(ev: PointerEvent): void {
   ptrs.delete(ev.pointerId);
   if (pinch) {
@@ -286,7 +358,12 @@ function onPointerUp(ev: PointerEvent): void {
   tap(d);
 }
 
-/** 動かさずに離したとき（クリック・タップ）。 */
+/**
+ * 動かさずに離したとき（クリック・タップ）。道具を選んでいれば要素を置き、関係を引く途中なら相手を決め、
+ * ＋ハンドルなら関係を引き始め、接続点・要素・線なら選んでテキストの対応箇所へスクロールする。何も無いところなら選択を解く。
+ *
+ * @param d 押したときのドラッグの情報（種類と押した位置）
+ */
 function tap(d: Drag): void {
   S.confirmDel = false;
   S.renaming = false;
@@ -355,7 +432,11 @@ function tap(d: Drag): void {
   renderInspector();
 }
 
-/** 中心を基準に拡大・縮小する。 */
+/**
+ * 図の枠の中心を基準に拡大・縮小する（F-VIEW-4）。拡大率は 0.25〜2.2 に収める。
+ *
+ * @param f 倍率（1.2 で拡大、1 / 1.2 で縮小）
+ */
 export function zoomBy(f: number): void {
   const r = wrapEl().getBoundingClientRect();
   const cx = r.width / 2, cy = r.height / 2;
@@ -366,7 +447,10 @@ export function zoomBy(f: number): void {
   applyTf();
 }
 
-/** ビュー全体が収まるように表示する。 */
+/**
+ * ビュー全体（要素と package の枠）が収まるように、表示の移動と拡大率を決める（F-VIEW-4）。拡大率は 1.1 まで。
+ * 要素が無いか配置が無ければ、拡大率 1 で左上から少し離して表示する。
+ */
 export function fit(): void {
   const cc = viewContent(S.M, curView());
   const L = curLayout().pos;
@@ -408,7 +492,14 @@ export function fit(): void {
   applyTf();
 }
 
-/** 内部ブロック図・シーケンス図に、型 type の部品を図の枠内の位置に置く。 */
+/**
+ * 内部ブロック図・シーケンス図に、型 type の部品を図の枠内の位置に置く（テキストの編集になる。F-EDIT-2）。
+ * シーケンス図では位置によらずライフラインを足す。
+ *
+ * @param type 部品の型（部品定義の名前）
+ * @param lx 図の枠の左上からの x（px）。置く要素の見出しの中央になる
+ * @param ly 図の枠の左上からの y（px）
+ */
 export function placeUsageAt(type: string, lx: number, ly: number): void {
   if (S.view === "seq") {
     OPS.addUsage(type, [0, 0]);

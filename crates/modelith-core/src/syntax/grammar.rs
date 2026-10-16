@@ -7,7 +7,13 @@
 use super::kind::SyntaxKind::{self, *};
 use super::parser::{ErrorAt, Parser};
 
-/// ファイル全体（RootNamespace）。
+/// ファイル全体（RootNamespace）。入力の末尾まで要素を読み、`SOURCE_FILE` の節にする。
+///
+/// 対応する `{` の無い `}` は、その 1 つを `ERROR` の節にして「対応する「{」がない「}」があります」を置き、続きを読む。
+///
+/// # 引数
+///
+/// - `p`：入力の先頭にいるパーサ（読み終えると末尾にいる）
 pub(crate) fn source_file(p: &mut Parser<'_>) {
     let m = p.start();
     while !p.at_eof() {
@@ -27,6 +33,12 @@ pub(crate) fn source_file(p: &mut Parser<'_>) {
 pub(crate) const MAX_DEPTH: usize = 256;
 
 /// 深すぎるブロック。対応する `}` まで（無ければ末尾まで）を、入れ子を数えながら 1 つの ERROR にする。
+///
+/// 「入れ子が深すぎるため、この { … } の中は読み取りません（256 段まで）」のエラーを、開きの `{` の先頭に置く。
+///
+/// # 引数
+///
+/// - `p`：深さが `MAX_DEPTH` に達したブロックの開き `{` にいるパーサ
 fn too_deep(p: &mut Parser<'_>) {
     let m = p.start();
     p.error(format!(
@@ -48,6 +60,14 @@ fn too_deep(p: &mut Parser<'_>) {
 }
 
 /// `{ … }`。閉じていなければ、持ち主の宣言の頭にエラーを置く。`label` は持ち主の名前。
+///
+/// 深さが `MAX_DEPTH` 以上なら中を読まずに `too_deep` に任せる。中の要素を `}` か末尾まで読み、`BODY` の節にする。
+///
+/// # 引数
+///
+/// - `p`：開き `{` にいるパーサ
+/// - `owner`：持ち主の宣言の頭のトークンの番号（閉じていないときのエラーの位置）
+/// - `label`：持ち主の名前。空なら「「{」に対応する「}」がありません」、あれば「「P」のブロックが閉じていません」の形の文言にする
 fn body(p: &mut Parser<'_>, owner: usize, label: &str) {
     if p.depth >= MAX_DEPTH {
         too_deep(p);
@@ -72,6 +92,12 @@ fn body(p: &mut Parser<'_>, owner: usize, label: &str) {
 }
 
 /// 要素 1 つ。1 つもトークンを読めなかったときは、そのトークンをエラーとして読み飛ばす（必ず進む）。
+///
+/// 読み飛ばしたトークンは `ERROR` の節にし、「読めない記号があります」を置く。
+///
+/// # 引数
+///
+/// - `p`：要素の頭にいるパーサ（末尾ではないこと）
 fn member_or_skip(p: &mut Parser<'_>) {
     let before = p.position();
     member(p);
@@ -84,6 +110,26 @@ fn member_or_skip(p: &mut Parser<'_>) {
 }
 
 /// 宣言の頭に来るキーワードのうち、種類を決めるもの。返り値は（キーワードの数、定義の節、使用の節）。
+///
+/// 読み進めない。`event occurrence`・`use case` は 2 語で 1 つの種類とする。
+///
+/// # 引数
+///
+/// - `p`：パーサ
+/// - `n`：調べるトークンの、今の位置からの距離（0 が今のトークン）
+///
+/// # 戻り値
+///
+/// `Some((キーワードの数, 定義の節の種類, 使用の節の種類))`。種類を決めるキーワードでなければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// kind_keyword("part def A", 0)         → Some((1, PART_DEFINITION, PART_USAGE))
+/// kind_keyword("event occurrence e", 0) → Some((2, OCCURRENCE_DEFINITION, OCCURRENCE_USAGE))
+/// kind_keyword("use x", 0)              → None   // `use` の後に `case` が無い
+/// kind_keyword("a : T", 0)              → None   // キーワードでない
+/// ```
 fn kind_keyword(p: &Parser<'_>, n: usize) -> Option<(usize, SyntaxKind, SyntaxKind)> {
     if !p.nth_at(n, KEYWORD) {
         return None;
@@ -217,11 +263,38 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "viewpoint",
 ];
 
+/// 今のトークンが、新しい要素の頭になるキーワード（`MEMBER_START_KEYWORDS`）か。
+///
+/// 改行の後でこれが真なら、前の文の `;` の書き忘れとみなして宣言や式を打ち切る。
+///
+/// # 引数
+///
+/// - `p`：パーサ
+///
+/// # 戻り値
+///
+/// 今のトークンが `KEYWORD` で、表にある語なら `true`。
+///
+/// # 例
+///
+/// ```text
+/// // 今のトークンが
+/// part（KEYWORD） → true
+/// to（KEYWORD）   → false   // 表に無い
+/// a（IDENT）     → false   // キーワードでない
+/// ```
 fn at_member_start(p: &Parser<'_>) -> bool {
     p.at(KEYWORD) && MEMBER_START_KEYWORDS.contains(&p.nth_text(0))
 }
 
 /// 要素 1 つ（OwnedMember・PackageMember・DefinitionBodyItem など）。
+///
+/// 頭のコメント、前置きの語（可視性・修飾・`#メタデータ`）、種類のキーワード、ほかのキーワード、`@`、
+/// キーワードの無い使用、式の順に見分けて節を作る。どれでもなければ何も読まない（`member_or_skip` が読み飛ばす）。
+///
+/// # 引数
+///
+/// - `p`：要素の頭にいるパーサ
 fn member(p: &mut Parser<'_>) {
     let m = p.start();
     if p.at(REGULAR_COMMENT) {
@@ -301,6 +374,26 @@ fn member(p: &mut Parser<'_>) {
 }
 
 /// キーワードで始まる、種類キーワード以外の要素。
+///
+/// 文法を持たないキーワード（段階 A）は、黙って捨てずに `UNSUPPORTED_MEMBER` として読む（F-EDIT-8）。
+///
+/// # 引数
+///
+/// - `p`：キーワードにいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（前置きの語を含む。閉じていないブロックのエラーの位置）
+///
+/// # 戻り値
+///
+/// 要素の節の種類（呼び出し側が `complete` に使う）。
+///
+/// # 例
+///
+/// ```text
+/// keyword_member("doc /* 説明 */")      → DOCUMENTATION
+/// keyword_member("import A::*::**;")   → IMPORT
+/// keyword_member("perform a;")         → PERFORM_ACTION_USAGE
+/// keyword_member("send x via p;")      → UNSUPPORTED_MEMBER   // 文法を持たない文
+/// ```
 fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
     let kw = p.nth_text(0);
     match kw {
@@ -438,6 +531,24 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
 
 /// `perform action a`・`perform a` のように、後ろに種類のキーワードが続いてもよい頭。
 /// 種類のキーワードがあれば、続く名前は新しい要素の名前、無ければ参照として読む（BNF の UsageDeclaration と OwnedReferenceSubsetting）。
+///
+/// # 引数
+///
+/// - `p`：頭のキーワード（`perform` など）にいるパーサ
+/// - `owner`：この要素の頭のトークンの番号
+/// - `kws`：頭の後ろに続いてよい種類のキーワードの並び（`["action"]`・`["use", "case"]` など）。全部そろったときだけ名前を読む
+/// - `kind`：返す節の種類
+///
+/// # 戻り値
+///
+/// `kind` をそのまま返す。
+///
+/// # 例
+///
+/// ```text
+/// headed("perform action a : A;", …, &["action"], PERFORM_ACTION_USAGE) → PERFORM_ACTION_USAGE（a は NAME）
+/// headed("perform a;", …, &["action"], PERFORM_ACTION_USAGE)            → PERFORM_ACTION_USAGE（a は参照、NAME なし）
+/// ```
 fn headed(p: &mut Parser<'_>, owner: usize, kws: &[&str], kind: SyntaxKind) -> SyntaxKind {
     p.bump();
     let named = kws.iter().enumerate().all(|(i, kw)| p.nth_at_kw(i, kw));
@@ -450,7 +561,25 @@ fn headed(p: &mut Parser<'_>, owner: usize, kws: &[&str], kind: SyntaxKind) -> S
     kind
 }
 
-/// 名前で始まる文が、キーワードの無い使用の宣言か（式ではないか）。
+/// 名前で始まる文が、キーワードの無い使用の宣言か（式ではないか）。読み進めない。
+///
+/// # 引数
+///
+/// - `p`：文の頭にいるパーサ
+///
+/// # 戻り値
+///
+/// 今のトークンが関係の記号（`:`・`:>`・`:>>`・`::>`）か、名前の次が関係の記号・`=`・`:=`・`;`・`[`・`{`・`<`・
+/// 関係のキーワード（`redefines` など）なら `true`。それ以外（式など）は `false`。
+///
+/// # 例
+///
+/// ```text
+/// is_feature_declaration("stage = K::X;") → true
+/// is_feature_declaration(":>> mass;")     → true
+/// is_feature_declaration("a * b == c")    → false   // 式
+/// is_feature_declaration("a.b;")          → false
+/// ```
 fn is_feature_declaration(p: &Parser<'_>) -> bool {
     if matches!(p.current(), COLON | COLON_GT | COLON_GT2 | COLON2_GT) {
         return true;
@@ -471,12 +600,53 @@ fn is_feature_declaration(p: &Parser<'_>) -> bool {
 
 /// 宣言の名前より後ろ（Identification・FeatureSpecializationPart・MultiplicityPart・ValuePart など）と、終わり（`;` か本体）。
 /// `named` のときだけ、先頭の名前を新しい要素の名前として読む。名前を返す。
+///
+/// # 引数
+///
+/// - `p`：種類のキーワードの直後（名前があればその位置）にいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（閉じていないブロックのエラーの位置）
+/// - `named`：先頭の名前を新しい要素の名前（`NAME`）として読むか。偽なら参照として読む
+/// - `is_def`：定義か。真なら `:>` を特殊化（`SUBCLASSIFICATION`）、偽なら部分集合（`SUBSETTING`）として読む
+///
+/// # 戻り値
+///
+/// 読んだ名前（引用名は引用符を外す）。名前が無いときは空文字列。
+///
+/// # 例
+///
+/// ```text
+/// declaration("Engine :> Base;", owner, true, true)  → "Engine"（:> は SUBCLASSIFICATION）
+/// declaration("'a b' : T;", owner, true, false)      → "a b"
+/// declaration("a;", owner, false, false)             → ""（a は参照）
+/// declaration("a : T", owner, true, false)           → "a"（「;」がありません のエラー）
+/// ```
 fn declaration(p: &mut Parser<'_>, owner: usize, named: bool, is_def: bool) -> String {
     let name = declaration_tail(p, named, is_def);
     end(p, owner, &name, true);
     name
 }
 
+/// 宣言の名前より後ろを、終わり（`;`・`{`・`}`・末尾）の手前まで読む。終わりそのものは読まない。
+///
+/// 改行の後に新しい要素の頭のキーワードが来たら、`;` の書き忘れとみなしてそこで止める。
+///
+/// # 引数
+///
+/// - `p`：種類のキーワードの直後にいるパーサ
+/// - `named`：最初の名前を新しい要素の名前（`NAME`）として読むか。名前の後ろが `.`・`::`・`to` なら参照として読む
+/// - `is_def`：定義か。真なら `:>` を `SUBCLASSIFICATION`、偽なら `SUBSETTING` にする
+///
+/// # 戻り値
+///
+/// 読んだ名前（引用名は引用符を外す）。名前が無いときは空文字列。
+///
+/// # 例
+///
+/// ```text
+/// declaration_tail("<P1> Engine :> Base {", true, true) → "Engine"（<P1> は SHORT_NAME）
+/// declaration_tail("kettle.heater;", true, false)       → ""（特徴の連鎖は参照）
+/// declaration_tail("b : B\n    part c : C;", true, false) → "b"（改行の後の part の手前で止まる）
+/// ```
 fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool) -> String {
     let mut name = String::new();
     let mut name_slot = named;
@@ -545,6 +715,15 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool) -> String {
 }
 
 /// 宣言の終わり。`;` か本体 `{ … }`。どちらも無ければエラー。
+///
+/// どちらも無いときは、直前に読んだトークンの末尾に「「;」がありません」を置く（何も読み進めない）。
+///
+/// # 引数
+///
+/// - `p`：宣言の終わりにいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（本体が閉じていないときのエラーの位置）
+/// - `label`：要素の名前（本体が閉じていないときのエラーの文言に使う。空でもよい）
+/// - `allow_body`：本体 `{ … }` を許すか（`import`・`expose`・`filter` は偽）
 fn end(p: &mut Parser<'_>, owner: usize, label: &str, allow_body: bool) {
     if p.eat(SEMI) {
         return;
@@ -557,6 +736,13 @@ fn end(p: &mut Parser<'_>, owner: usize, label: &str, allow_body: bool) {
 }
 
 /// `doc`・`comment` の後ろ（Identification、`about`、`locale`、本文の REGULAR_COMMENT）。
+///
+/// 本文の `/* … */` が無ければ、今のトークンの先頭に「本文（/* … */）がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`doc`・`comment` の直後にいるパーサ
+/// - `about`：`about` の後の参照の並びを読むか（`comment` は真、`doc` は偽）
 fn comment_tail(p: &mut Parser<'_>, about: bool) {
     if p.at(LT) && p.nth_at_name(1) && p.nth_at(2, GT) {
         let m = p.start();
@@ -589,6 +775,12 @@ fn comment_tail(p: &mut Parser<'_>, about: bool) {
 }
 
 /// `import`・`expose` の対象（`A::B`、`A::*`、`A::**`、`A::*::**`、後ろの `[ … ]`）。
+///
+/// 対象を `QUALIFIED_NAME`、後ろの絞り込みを `EXPRESSION` の節にする。名前が無ければ「対象の名前がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`import`・`expose`（と `all`）の直後にいるパーサ
 fn import_target(p: &mut Parser<'_>) {
     if p.at_name() {
         let m = p.start();
@@ -611,6 +803,14 @@ fn import_target(p: &mut Parser<'_>) {
 }
 
 /// 関係（型付け・特殊化など）。`ops` 個の記号かキーワードの後に、`~` と参照のカンマ区切りが続く。
+///
+/// 相手の名前が無ければ「関係の相手の名前がありません」を置いて止める。
+///
+/// # 引数
+///
+/// - `p`：関係の記号かキーワードにいるパーサ
+/// - `ops`：読み飛ばす記号・キーワードの数（`:` は 1、`defined by` は 2）
+/// - `kind`：関係の節の種類（`FEATURE_TYPING`・`SUBSETTING` など）
 fn relationship(p: &mut Parser<'_>, ops: usize, kind: SyntaxKind) {
     let m = p.start();
     for _ in 0..ops {
@@ -631,7 +831,13 @@ fn relationship(p: &mut Parser<'_>, ops: usize, kind: SyntaxKind) {
     m.complete(p, kind);
 }
 
-/// `= 式`・`:= 式`・`default = 式`。
+/// `= 式`・`:= 式`・`default = 式`。`FEATURE_VALUE` の節にする。
+///
+/// 式が無ければ「値の式がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`=`・`:=`・`default` にいるパーサ
 fn feature_value(p: &mut Parser<'_>) {
     let m = p.start();
     if p.eat_kw("default") {
@@ -648,6 +854,12 @@ fn feature_value(p: &mut Parser<'_>) {
 }
 
 /// 修飾名（`A::B`）か、特徴の連鎖（`a.b.c`）。
+///
+/// 連鎖のときは各部分の `QUALIFIED_NAME` を `FEATURE_CHAIN` の節で包む。
+///
+/// # 引数
+///
+/// - `p`：名前（基本名・引用名）にいるパーサ
 fn reference(p: &mut Parser<'_>) {
     let n = qualified_name_len(p, 0);
     let chain = p.nth_at(n, DOT) && p.nth_at_name(n + 1);
@@ -662,6 +874,11 @@ fn reference(p: &mut Parser<'_>) {
     }
 }
 
+/// 修飾名（`A::B::C`）1 つを読み、`QUALIFIED_NAME` の節にする。`::` の後に名前が無ければ `::` の手前で止める。
+///
+/// # 引数
+///
+/// - `p`：名前（基本名・引用名）にいるパーサ
 fn qualified_name(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump();
@@ -672,7 +889,24 @@ fn qualified_name(p: &mut Parser<'_>) {
     m.complete(p, QUALIFIED_NAME);
 }
 
-/// n 番目から始まる修飾名のトークン数。
+/// n 番目から始まる修飾名のトークン数。読み進めない。
+///
+/// # 引数
+///
+/// - `p`：パーサ
+/// - `n`：修飾名の最初の名前の、今の位置からの距離（そこが名前であること）
+///
+/// # 戻り値
+///
+/// 名前と `::` を合わせたトークン数（1 以上）。`::` の後に名前が無ければ、その `::` は数えない。
+///
+/// # 例
+///
+/// ```text
+/// qualified_name_len("A::B::C x", 0) → 5
+/// qualified_name_len("a.b", 0)       → 1
+/// qualified_name_len("A::*", 0)      → 1   // * は名前でない
+/// ```
 fn qualified_name_len(p: &Parser<'_>, n: usize) -> usize {
     let mut i = n + 1;
     while p.nth_at(i, COLON2) && p.nth_at_name(i + 1) {
@@ -682,6 +916,13 @@ fn qualified_name_len(p: &Parser<'_>, n: usize) -> usize {
 }
 
 /// `[ … ]`。中は括弧の釣り合いだけで読む。
+///
+/// `;`・`{`・`}`・末尾に着いても閉じていなければ、直前のトークンの末尾に「「]」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：開き `[` にいるパーサ
+/// - `kind`：節の種類（多重度は `MULTIPLICITY`、`import` の絞り込みは `EXPRESSION`）
 fn bracketed(p: &mut Parser<'_>, kind: SyntaxKind) {
     let m = p.start();
     p.bump();
@@ -702,6 +943,28 @@ fn bracketed(p: &mut Parser<'_>, kind: SyntaxKind) {
 
 /// まだ文法として読まない式（段階 A）。`;`・`{`・`}`、対応の無い閉じ括弧、括弧の外の（`stop_at_keyword` なら）キーワードの手前まで。
 /// 何か読んだら true。
+///
+/// 改行の後に新しい要素の頭のキーワードが来たら、そこで止める。開いた括弧が閉じないまま止まったら
+/// 「括弧が閉じていません」を置く。読んだトークンは `EXPRESSION` の節にする。
+///
+/// # 引数
+///
+/// - `p`：式の頭にいるパーサ
+/// - `stop_at_keyword`：括弧の外で（2 つ目以降の）キーワードに着いたら止めるか（宣言の途中の式は真）
+///
+/// # 戻り値
+///
+/// 1 つ以上のトークンを読んだら `true`。何も読まなかったら `false`（節も作らない）。
+///
+/// # 例
+///
+/// ```text
+/// expression("a * b == c }", false) → true（EXPRESSION は "a * b == c"）
+/// expression("1 to x;", true)       → true（EXPRESSION は "1"、to の手前で止まる）
+/// expression("f(x;", false)         → true（「括弧が閉じていません」）
+/// expression(";", false)            → false
+/// expression(") a", false)          → false   // 対応の無い閉じ括弧
+/// ```
 fn expression(p: &mut Parser<'_>, stop_at_keyword: bool) -> bool {
     let m = p.start();
     let mut depth = 0usize;
@@ -737,6 +1000,12 @@ fn expression(p: &mut Parser<'_>, stop_at_keyword: bool) -> bool {
 }
 
 /// 対応する開きの無い `)`・`]` を、エラーとして読み飛ばす。
+///
+/// その 1 トークンを `ERROR` の節にし、「対応する括弧がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：読み飛ばすトークンにいるパーサ
 fn stray(p: &mut Parser<'_>) {
     let e = p.start();
     p.error("対応する括弧がありません");
@@ -745,6 +1014,24 @@ fn stray(p: &mut Parser<'_>) {
 }
 
 /// 引用名の引用符を外す（`'a b'` → `a b`）。
+///
+/// `\'` などのエスケープは解かない。
+///
+/// # 引数
+///
+/// - `s`：名前のトークンの文字列（基本名か引用名）
+///
+/// # 戻り値
+///
+/// 両端が `'` なら外した文字列。そうでなければ `s` をそのまま写したもの。
+///
+/// # 例
+///
+/// ```text
+/// unquote("'a b'") → "a b"
+/// unquote("Engine") → "Engine"
+/// unquote("'a")     → "'a"   // 閉じていない
+/// ```
 fn unquote(s: &str) -> String {
     s.strip_prefix('\'')
         .and_then(|t| t.strip_suffix('\''))

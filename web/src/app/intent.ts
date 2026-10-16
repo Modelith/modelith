@@ -27,8 +27,18 @@ export async function opsIdle(): Promise<void> {
 }
 
 /**
- * 意図をコアに渡し、返ってきた編集を今のテキストに当てる。操作できなければ理由を知らせて null。
+ * 意図をコアに渡し、返ってきた編集を今のテキスト（S.text）に当てる。操作できなければ理由をトーストで知らせて null。
  * 返事を待つ間にテキストが変わったら、古い位置を書き換えないよう、その操作はやめる（ADR-0016 §4）。
+ * テキストそのもの（S.text）はここでは書き換えない。画面への反映は呼び出し側が setText で行う。
+ *
+ * @param intent 図の操作の意図（`rename`・`delete`・`connect` など。crates/modelith-core/src/edit が受け取る形）
+ * @returns 編集を当てた後のテキスト・変わり始めの位置（UTF-16。編集が無ければ 0）・選ぶ要素の名前・光らせる範囲。
+ *   コアが断ったとき、または返事の前にテキストが変わったときは null
+ * @example
+ * // S.text が "package P { part def A; }" のとき
+ * await perform({ op: "rename", key: "A", name: "Motor" })
+ * // → { text: "package P { part def Motor; }", at: （変わり始めの位置）, select: "Motor", flash: … }
+ * await perform({ op: "rename", key: "Gone", name: "B" }) // → null（理由をトーストで出す）
  */
 export async function perform(intent: Intent): Promise<Performed | null> {
   const base = S.text;

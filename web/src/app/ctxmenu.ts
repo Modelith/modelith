@@ -18,8 +18,21 @@ import { addToView, canAddToView, editableView, removeFromView } from "./view-op
 export type CtxItem = { sep: true } | { head: string } | { label: string; icon?: string; disabled?: boolean; act: () => void };
 
 let open = false;
+/**
+ * 右クリックメニューが開いているか。
+ *
+ * @returns 開いていれば true
+ * @example
+ * // openCtx で項目のあるメニューを開いた後
+ * isCtxOpen() // → true
+ * // closeCtx の後
+ * isCtxOpen() // → false
+ */
 export const isCtxOpen = (): boolean => open;
 
+/**
+ * 右クリックメニューを閉じて中身を消す。開いていなければ何もしない。
+ */
 export function closeCtx(): void {
   if (!open) return;
   open = false;
@@ -28,6 +41,14 @@ export function closeCtx(): void {
   el.innerHTML = "";
 }
 
+/**
+ * 右クリックメニューを開く（F-VIEW-4）。画面からはみ出さないように位置を詰める。
+ * 項目を押すとメニューを閉じてから、その項目の操作を行う。項目が無ければ開かない。
+ *
+ * @param cx 開く位置の x（画面の座標、px）
+ * @param cy 開く位置の y（画面の座標、px）
+ * @param items メニューの項目（区切り・見出し・操作）
+ */
 export function openCtx(cx: number, cy: number, items: CtxItem[]): void {
   if (!items.length) return;
   const el = $("#ctx");
@@ -50,6 +71,11 @@ export function openCtx(cx: number, cy: number, items: CtxItem[]): void {
   };
 }
 
+/**
+ * 要素を 1 つだけ選び、図・テキストの色付け・インスペクタを描き直す。
+ *
+ * @param k 要素のキー
+ */
 const selectOnly = (k: string): void => {
   setSelection([k]);
   render();
@@ -57,6 +83,20 @@ const selectOnly = (k: string): void => {
   renderInspector();
 };
 
+/**
+ * 要素の上で開くメニューの項目を作る。複数選択の中の要素なら、整列・工程の一括設定・一括削除を並べる。
+ * そうでなければ、テキストで見る・名前の変更・関係の追加・定義を開く・工程・削除（保存された図では
+ * 「この図から外す」と「モデルから削除」を分ける。F-VIEW-8）を並べる。
+ *
+ * @param n 要素
+ * @returns メニューの項目
+ * @example
+ * // part def Vehicle だけを選び、工程の無いモデルで、自動の図
+ * itemsForNode(Vehicle).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["«part def» Vehicle", "テキストで見る", "名前を変更", "関係を追加…", "選択に追加", …, "—", "削除"]
+ * // A・B の 2 個を選択中に A で開いた
+ * itemsForNode(A)[0] // → { head: "2 個を選択中" }
+ */
 function itemsForNode(n: ModelNode): CtxItem[] {
   const items: CtxItem[] = [];
   const phases = S.M.phases;
@@ -99,6 +139,18 @@ function itemsForNode(n: ModelNode): CtxItem[] {
   return items;
 }
 
+/**
+ * 線の上で開くメニューの項目を作る。メッセージなら、名前・型の編集と順番の移動も並べる。
+ *
+ * @param ed 線
+ * @returns メニューの項目
+ * @example
+ * // satisfy の線
+ * itemsForEdge(ed).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["«satisfy»", "テキストで見る", "—", "関係を削除"]
+ * // 最初のメッセージ（idx 0）では「上へ移動」を押せない
+ * itemsForEdge(msg)[3] // → { label: "上へ移動", disabled: true, act }
+ */
 function itemsForEdge(ed: ModelEdge): CtxItem[] {
   const i = ed.idx ?? 0;
   const items: CtxItem[] = [
@@ -127,6 +179,19 @@ function itemsForEdge(ed: ModelEdge): CtxItem[] {
   return items;
 }
 
+/**
+ * 接続点の上で開くメニューの項目を作る。ポートなら向きの変更と削除、自由な接続点ならポートにする・外すを並べる。
+ *
+ * @param node 接続点を持つ要素
+ * @param pin 接続点
+ * @returns メニューの項目
+ * @example
+ * // 自由な接続点 a1
+ * itemsForPin(n, { id: "a1", side: "t", t: 0.5 }).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["接続点", "ポートにする…", "接続点を外す"]
+ * // in のポート p
+ * itemsForPin(n, pin)[0] // → { head: "ポート p" }
+ */
 function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
   const port = pin.port;
   const items: CtxItem[] = [{ head: port ? `ポート ${port.name}` : "接続点" }];
@@ -142,6 +207,19 @@ function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
   return items;
 }
 
+/**
+ * 図の何も無いところで開くメニューの項目を作る。その位置に要素（内部ブロック図・シーケンス図では、
+ * 部品定義を 12 個までの部品・ライフライン）を置く項目と、すべて選択・並べ直す・全体を表示を並べる。
+ *
+ * @param lx 開いた位置の x（図の枠の中の座標、px）
+ * @param ly 開いた位置の y（図の枠の中の座標、px）
+ * @returns メニューの項目
+ * @example
+ * // 「構造」の図
+ * itemsForCanvas(100, 80)[0] // → { head: "ここに要素を追加" }
+ * // 内部ブロック図
+ * itemsForCanvas(100, 80)[0] // → { head: "ここに部品を置く" }
+ */
 function itemsForCanvas(lx: number, ly: number): CtxItem[] {
   const items: CtxItem[] = [];
   if (S.view === "ibd" || S.view === "seq") {
@@ -162,7 +240,19 @@ function itemsForCanvas(lx: number, ly: number): CtxItem[] {
   return items;
 }
 
-/** 図の上の位置に応じたメニュー項目。 */
+/**
+ * 図の上の位置に応じたメニュー項目を返す。接続点・要素・線・何も無いところの順に、当たったものの項目にする。
+ *
+ * @param target 右クリックした要素（DOM）
+ * @param clientX 右クリックした位置の x（画面の座標、px）
+ * @param clientY 右クリックした位置の y（画面の座標、px）
+ * @returns メニューの項目
+ * @example
+ * // part def Vehicle の箱の上で、Vehicle だけが選ばれている
+ * ctxItemsAt(el, x, y)[0] // → { head: "«part def» Vehicle" }
+ * // 「構造」の図の何も無いところ
+ * ctxItemsAt(el, x, y)[0] // → { head: "ここに要素を追加" }
+ */
 export function ctxItemsAt(target: Element, clientX: number, clientY: number): CtxItem[] {
   const pEl = target.closest<HTMLElement>(".pin"), nEl = target.closest<HTMLElement>(".node, .lifeline"), eEl = target.closest<HTMLElement>(".edge");
   if (pEl) {
@@ -182,6 +272,11 @@ export function ctxItemsAt(target: Element, clientX: number, clientY: number): C
   return itemsForCanvas(lx, ly);
 }
 
+/**
+ * 右クリックメニューを図とツリーにつなぐ（F-VIEW-4・F-VIEW-5）。起動時に 1 回呼ぶ。
+ * 図では位置に応じた項目を、ツリーでは行の要素の項目（テキストで見る・この図で選択・図に入れる・名前の変更・削除など）を出す。
+ * メニューの外を押すか Esc でメニューを閉じる。
+ */
 export function initCtxMenu(): void {
   document.addEventListener("pointerdown", (ev) => {
     if (open && !closest(ev, "#ctx")) closeCtx();

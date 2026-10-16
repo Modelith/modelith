@@ -20,6 +20,9 @@ import { isCtxOpen } from "./ctxmenu";
 const UI_KEY = "modelith-ui-v1";
 const TABS_KEY = "modelith-tabs-v1";
 
+/**
+ * 保存したパネルの設定（表示・幅など）を localStorage から S.ui に読み込む。壊れていれば既定値のままにする。
+ */
 export function loadUi(): void {
   try {
     Object.assign(S.ui, JSON.parse(store.get(UI_KEY) ?? "{}") as Partial<UiPrefs>);
@@ -27,9 +30,25 @@ export function loadUi(): void {
     /* 壊れた設定は無視して既定値を使う */
   }
 }
+/**
+ * パネルの設定（S.ui）を localStorage に保存する。
+ */
 export const saveUi = (): void => store.set(UI_KEY, JSON.stringify(S.ui));
+/**
+ * 狭い画面（幅 760px 以下）か。狭い画面ではツリー・図・テキストをタブで切り替える（Q-2）。
+ *
+ * @returns 狭い画面なら true
+ * @example
+ * // 幅 390px の画面
+ * isNarrow() // → true
+ * // 幅 1280px の画面
+ * isNarrow() // → false
+ */
 export const isNarrow = (): boolean => window.matchMedia("(max-width:760px)").matches;
 
+/**
+ * パネル（ツリー｜図｜テキスト）の表示と幅を画面に反映する。狭い画面では列の幅を CSS に任せる。
+ */
 export function applyPanes(): void {
   const m = $("#main");
   m.dataset["tree"] = S.ui.tree ? "on" : "off";
@@ -43,7 +62,12 @@ export function applyPanes(): void {
   m.style.gridTemplateColumns = `${S.ui.tree ? S.ui.treeW : 0}px ${S.ui.tree ? 5 : 0}px minmax(0,1fr) ${S.ui.text ? 5 : 0}px ${S.ui.text ? S.ui.textW : 0}px`;
 }
 
-/** 狭い画面ではタブを切り替え、広い画面では隠れているパネルを開く。 */
+/**
+ * 狭い画面ではタブを切り替え、広い画面では隠れているパネルを開く（Q-2）。
+ * 切り替えた先が図なら次の描画で描き直し、ツリーなら選択した行が見えるようにツリーを描き直す。
+ *
+ * @param t 見せるパネル（"tree"：ツリー・"diagram"：図・"text"：テキスト）
+ */
 export function setTab(t: "tree" | "diagram" | "text"): void {
   if (!isNarrow()) {
     if (t === "text" && !S.ui.text) {
@@ -69,6 +93,9 @@ export function setTab(t: "tree" | "diagram" | "text"): void {
   }
 }
 
+/**
+ * パネルの表示の切り替えボタン・幅を変える仕切り・狭い画面のタブに操作をつなぐ。幅の変更は保存する。
+ */
 function initPanes(): void {
   $("#togTree").onclick = () => {
     S.ui.tree = !S.ui.tree;
@@ -115,8 +142,31 @@ function initPanes(): void {
 
 /* ---- 図のタブ ---- */
 let tabSeq = 1;
+/**
+ * 表示中の図のタブを返す。
+ *
+ * @returns id が S.tabId のタブ。無ければ undefined
+ * @example
+ * // S.tabId が 2 で、id 2 のタブがある
+ * curTab()?.id // → 2
+ * // S.tabId が null
+ * curTab()     // → undefined
+ */
 const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
 
+/**
+ * タブに出す名前を作る。保存された図はその名前、内部ブロック図・シーケンス図は対象の名前つき、
+ * 他のビューはビューの名前（工程で絞っていれば工程の名前つき）にする。
+ *
+ * @param t タブ
+ * @returns タブの名前
+ * @example
+ * tabLabel({ id: 1, view: "trace", ctx: null, phase: "" })                 // → "トレーサビリティ"
+ * tabLabel({ id: 1, view: "trace", ctx: null, phase: "SystemRequirements" }) // → "トレーサビリティ：システム要求"
+ * tabLabel({ id: 2, view: "ibd", ctx: "Vehicle", phase: "" })              // → "ibd Vehicle"
+ * tabLabel({ id: 3, view: "seq", ctx: null, phase: "" })                   // → "sd （未選択）"
+ * tabLabel({ id: 4, view: "all", ctx: null, phase: "", mv: "Overview" })    // → "Overview"
+ */
 function tabLabel(t: Tab): string {
   if (t.mv) return t.mv;
   const v = VIEWS.find((x) => x.id === t.view);
@@ -127,6 +177,9 @@ function tabLabel(t: Tab): string {
   return v.label + (t.phase ? `：${phaseLabel(t.phase)}` : "");
 }
 
+/**
+ * 表示中のタブに、今の対象（内部ブロック図・シーケンス図）と工程の絞り込みを書き戻す。タブが無ければ何もしない。
+ */
 function syncCurTab(): void {
   const t = curTab();
   if (!t) return;
@@ -134,11 +187,17 @@ function syncCurTab(): void {
   t.phase = S.phase || "";
 }
 
+/**
+ * 開いているタブと表示中のタブを localStorage に保存する（F-VIEW-2）。
+ */
 export function saveTabs(): void {
   syncCurTab();
   store.set(TABS_KEY, JSON.stringify({ tabs: S.tabs.map(({ id, view, ctx, phase, mv }) => ({ id, view, ctx, phase, ...(mv ? { mv } : {}) })), active: S.tabId }));
 }
 
+/**
+ * 図のタブバーを描き直す（F-VIEW-2）。タブが 2 つ以上なら閉じるボタンを付け、末尾に、ビューと保存された図を開く「＋」メニューを置く。
+ */
 export function renderTabs(): void {
   syncCurTab();
   $("#tabbar").innerHTML =
@@ -162,6 +221,14 @@ export function renderTabs(): void {
     `</div></details>`;
 }
 
+/**
+ * タブに切り替える（F-VIEW-2）。今のタブの対象と表示位置を保存してから、切り替え先のビュー・対象・工程を
+ * S に反映し、選択と道具を解き、タブ・パレット・サブバー・図・インスペクタを描き直す。
+ * 切り替え先に表示位置があれば戻し、無いか fit を指定したら全体を表示する。タブを保存する。id のタブが無ければ何もしない。
+ *
+ * @param id 切り替え先のタブの id
+ * @param opts keepSel：選択を解かない・fit：全体を表示する
+ */
 export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean } = {}): void {
   const cur = curTab();
   if (cur) {
@@ -195,7 +262,12 @@ export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean
   saveTabs();
 }
 
-/** テキストに書かれた view を図として開く（同じ view のタブがあればそれに切り替える、F-VIEW-7）。 */
+/**
+ * テキストに書かれた view を図として開く（同じ view のタブがあればそれに切り替える、F-VIEW-7）。
+ * 新しいタブを作ったときは全体を表示する。
+ *
+ * @param name view の名前
+ */
 export function openModelView(name: string): void {
   const ex = S.tabs.find((t) => t.mv === name);
   if (ex) return activateTab(ex.id);
@@ -205,7 +277,13 @@ export function openModelView(name: string): void {
   activateTab(t.id, { fit: true });
 }
 
-/** ビューを開く（同じビュー・同じ対象のタブがあればそれに切り替える）。 */
+/**
+ * ビューを開く（同じビュー・同じ対象のタブがあればそれに切り替える。F-VIEW-2）。新しいタブを作ったときは全体を表示する。
+ *
+ * @param view ビューの ID（"trace"・"ibd" など）
+ * @param ctx 内部ブロック図・シーケンス図の対象のキー。指定しなければ null（同じビューのタブがあればそれを使う）
+ * @param opts keepSel：選択を解かない
+ */
 export function openTab(view: string, ctx?: string | null, opts: { keepSel?: boolean } = {}): void {
   const ex = S.tabs.find((t) => !t.mv && t.view === view && ((view !== "ibd" && view !== "seq") || !ctx || t.ctx === ctx));
   if (ex && !(ctx && ex.ctx !== ctx)) {
@@ -217,6 +295,11 @@ export function openTab(view: string, ctx?: string | null, opts: { keepSel?: boo
   activateTab(t.id, { ...opts, fit: true });
 }
 
+/**
+ * タブを閉じる。最後の 1 つは閉じない。表示中のタブを閉じたら、1 つ前（無ければ先頭）のタブに切り替える。
+ *
+ * @param id 閉じるタブの id
+ */
 function closeTab(id: number): void {
   if (S.tabs.length <= 1) return;
   const i = S.tabs.findIndex((t) => t.id === id);
@@ -231,9 +314,29 @@ function closeTab(id: number): void {
   }
 }
 
+/**
+ * 新しく開くタブの既定の対象を選ぶ。内部ブロック図は部品の最も多いブロック、シーケンス図は最初のシナリオ。
+ *
+ * @param view ビューの ID
+ * @returns 対象のキー。対象を持たないビューや、対象が無ければ null
+ * @example
+ * // occurrence def Start がある
+ * defaultCtx("seq")   // → "Start"
+ * defaultCtx("trace") // → null（対象を持たないビュー）
+ */
 const defaultCtx = (view: string): string | null =>
   view === "ibd" ? (defaultIbdContext(S.M)?.key ?? null) : view === "seq" ? (seqContexts(S.M)[0]?.key ?? null) : null;
 
+/**
+ * localStorage に保存したタブを読む。
+ *
+ * @returns 保存したタブと表示中のタブの id。無いか壊れていれば null
+ * @example
+ * // { "tabs": [{ "id": 1, "view": "trace", … }], "active": 1 } を保存済み
+ * readSavedTabs() // → { tabs: [{ id: 1, view: "trace", … }], active: 1 }
+ * // 保存が無い
+ * readSavedTabs() // → null
+ */
 function readSavedTabs(): { tabs?: Tab[]; active?: number } | null {
   try {
     return JSON.parse(store.get(TABS_KEY) ?? "null") as { tabs?: Tab[]; active?: number } | null;
@@ -242,6 +345,11 @@ function readSavedTabs(): { tabs?: Tab[]; active?: number } | null {
   }
 }
 
+/**
+ * 図のタブを用意する（F-VIEW-2）。起動時に 1 回呼ぶ。保存したタブを戻し（知らないビューのタブは捨てる）、
+ * 無ければ既定の 4 つ（トレーサビリティ・制御ループ・内部ブロック図・シーケンス図）を開く。
+ * 保存した表示中のタブ（無ければ先頭）に切り替え、タブバーのクリック・中クリック・「＋」メニューに操作をつなぐ。
+ */
 export function initTabs(): void {
   const saved = readSavedTabs();
   if (saved?.tabs?.length) S.tabs = saved.tabs.filter((t) => VIEWS.some((v) => v.id === t.view));
@@ -322,10 +430,42 @@ export const PALETTE: Record<string, [string, string][]> = {
   ],
 };
 
+/**
+ * 道具が「移動」（表示範囲を動かす）か。
+ *
+ * @param t 道具。選択の道具なら null
+ * @returns 移動の道具なら true
+ * @example
+ * isHand({ hand: true })        // → true
+ * isHand({ kind: "part def" })  // → false
+ * isHand(null)                  // → false
+ */
 const isHand = (t: Tool | null): boolean => !!t && "hand" in t;
+/**
+ * 要素を置く道具なら、置く要素の種類を返す。
+ *
+ * @param t 道具。選択の道具なら null
+ * @returns 要素の種類。要素を置く道具でなければ null
+ * @example
+ * toolKind({ kind: "part def" }) // → "part def"
+ * toolKind({ hand: true })       // → null
+ */
 const toolKind = (t: Tool | null): string | null => (t && "kind" in t ? t.kind : null);
+/**
+ * 部品（ライフライン）を置く道具なら、その部品の型の名前を返す。
+ *
+ * @param t 道具。選択の道具なら null
+ * @returns 部品の型（部品定義の名前）。部品を置く道具でなければ null
+ * @example
+ * toolUsage({ usage: "Engine" }) // → "Engine"
+ * toolUsage(null)                // → null
+ */
 const toolUsage = (t: Tool | null): string | null => (t && "usage" in t ? t.usage : null);
 
+/**
+ * パレット（選択・移動と、ビューに置ける要素の道具）を描き直す。内部ブロック図・シーケンス図では部品定義を選ぶ欄を出し、
+ * 編集できない保存された図では要素の道具を出さない。図を保存するボタンの表示と、配置中のカーソルも合わせる。
+ */
 export function renderPalette(): void {
   let h =
     `<button class="tool" data-tool="" aria-pressed="${!S.tool}" title="選択：ドラッグで範囲選択（Esc）">${SELECT_ICON}<span>選択</span></button>` +
@@ -346,6 +486,12 @@ export function renderPalette(): void {
   $("#wrap").classList.toggle("placing", !!S.tool && !isHand(S.tool));
 }
 
+/**
+ * 道具を選ぶ。接続の途中を取り消し、パレット・図・インスペクタを描き直す。
+ * 要素や部品を置く道具なら、図の上をクリックすると置けることをトーストで知らせる。
+ *
+ * @param tool 選ぶ道具。null は選択の道具
+ */
 export function setTool(tool: Tool | null): void {
   S.tool = tool;
   cancelConnect();
@@ -358,13 +504,29 @@ export function setTool(tool: Tool | null): void {
   toast(u ? `図の上をクリックすると「${u}」を部品として置きます（Esc で取消）` : `図の上をクリックすると${kindLabel(toolKind(tool) ?? "")}を置きます（Esc で取消）`);
 }
 
-/** 画面上の位置（図の枠内の座標）に置くときの、要素の左上の座標。 */
+/**
+ * 画面上の位置（図の枠内の座標）に置くときの、要素の左上の座標。位置が要素の見出しの中央になるようにずらし、10 単位に丸める。
+ *
+ * @param lx 図の枠の左上からの x（px）
+ * @param ly 図の枠の左上からの y（px）
+ * @returns 要素の左上の図の座標
+ * @example
+ * // 拡大率 1、ずらしなし（S.tf が { x: 0, y: 0, s: 1 }）
+ * dropPos(200, 100) // → [90, 80]
+ * dropPos(0, 0)     // → [-110, -20]
+ */
 function dropPos(lx: number, ly: number): [number, number] {
   const [cx, cy] = toCanvas(lx, ly);
   return [Math.round((cx - W / 2) / 10) * 10, Math.round((cy - 22) / 10) * 10];
 }
 
-/** 選んでいる道具で、画面上の位置（図の枠内の座標）に要素を置く。 */
+/**
+ * 選んでいる道具で、画面上の位置（図の枠内の座標）に要素を置く。道具は選択に戻し、パレットを描き直す。
+ * 部品の道具なら部品を、要素の道具なら要素を置く（テキストの編集になる。F-EDIT-2）。
+ *
+ * @param lx 図の枠の左上からの x（px）
+ * @param ly 図の枠の左上からの y（px）
+ */
 export function placeTool(lx: number, ly: number): void {
   const tool = S.tool;
   S.tool = null;
@@ -375,6 +537,10 @@ export function placeTool(lx: number, ly: number): void {
   renderPalette();
 }
 
+/**
+ * パレットのボタンと部品の選択欄に操作をつなぐ。同じ道具をもう一度押すと選択に戻る。
+ * シーケンス図では「シナリオ」と部品の選択で、すぐにシナリオ・ライフラインを足す。
+ */
 function initPalette(): void {
   const pal = $("#palette");
   pal.addEventListener("click", (ev) => {
@@ -452,13 +618,36 @@ function initKeys(): void {
 
 /* ---- モデルツリー ---- */
 const TREE_SKIP = new Set(["subject", "stakeholder"]);
+/**
+ * 要素の、外側からの名前の道筋（名前の無い要素は種類）を `::` でつなぐ。ツリーの開閉を覚えるキーに使う。
+ *
+ * @param e 要素
+ * @returns 道筋
+ * @example
+ * // package P の中の part def Vehicle
+ * pathOf(Vehicle) // → "P::Vehicle"
+ * // 最上位の package P
+ * pathOf(P)       // → "P"
+ */
 const pathOf = (e: Entry): string => {
   const p: string[] = [];
   for (let a: Entry | null = e; a; a = a.pe) p.unshift(a.name || a.kind);
   return p.join("::");
 };
 
-/** 要素をどのビューで開くか。 */
+/**
+ * 要素をどのビューで開くかを決める。
+ *
+ * @param e 要素（無ければ null・undefined）
+ * @returns 開くビューの ID・対象（ctx）・保存された図の名前（mv）・メニューの文言。開くビューが無ければ null
+ * @example
+ * // 部品を持つ part def Vehicle
+ * openTarget(Vehicle)   // → { view: "ibd", ctx: "Vehicle", label: "内部ブロック図で開く" }
+ * // 部品を持たない part def Engine
+ * openTarget(Engine)    // → { view: "structure", label: "構造で開く" }
+ * // attribute（定義でない属性）
+ * openTarget(attr)      // → null
+ */
 export function openTarget(e: Entry | null | undefined): { view: string; ctx?: string; mv?: string; label: string } | null {
   if (!e) return null;
   if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: "保存された図を開く" };
@@ -471,6 +660,18 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
   return null;
 }
 
+/**
+ * テキストの要素に当たる図の要素のキーを探す。内部ブロック図・シーケンス図の対象の中の部品は `u:`・`l:` のキーにし、
+ * それ以外は自身か、最も近い外側の、図に描く要素のキーにする。
+ *
+ * @param e テキストの要素
+ * @returns 図の要素のキー。当たる要素が無ければ null
+ * @example
+ * // part def Vehicle の中の attribute mass（構造の図）
+ * keyForEntry(mass)   // → "Vehicle"
+ * // 内部ブロック図で Vehicle を表示中、Vehicle の部品 engine
+ * keyForEntry(engine) // → "u:engine"
+ */
 function keyForEntry(e: Entry): string | null {
   const c = CC();
   if (c.ctx && e.pe === c.ctx.entry) {
@@ -484,6 +685,16 @@ function keyForEntry(e: Entry): string | null {
   return null;
 }
 
+/**
+ * 選択中の要素を返す。ツリーで選んだ要素を優先し、無ければ図で選んだ要素のテキストの要素にする。
+ *
+ * @returns 選択中の要素。何も選んでいなければ null
+ * @example
+ * // ツリーで part def Vehicle の行を選んだ（S.treeSel がその番号）
+ * selectedEntry()?.name // → "Vehicle"
+ * // 何も選んでいない
+ * selectedEntry()       // → null
+ */
 function selectedEntry(): Entry | null {
   const t = S.treeSel != null ? S.P.entries[S.treeSel] : undefined;
   if (t) return t;
@@ -492,6 +703,10 @@ function selectedEntry(): Entry | null {
 
 let lastTreeSel: Entry | null = null;
 
+/**
+ * モデルツリーを描き直す（F-VIEW-5）。絞り込みの文字列（S.treeQ）に名前か短い名前が合う要素と、その外側だけを出す。
+ * 選択中の要素の外側は開き、選択が変わったらその行が見えるようにスクロールする。行には追加・開く・テキストで見るのボタンを付ける。
+ */
 export function renderTree(): void {
   const el = $("#tree");
   const q = S.treeQ.trim().toLowerCase();
@@ -543,7 +758,13 @@ export function renderTree(): void {
   S.treeScrollForce = false;
 }
 
-/** 要素を選択し、テキストと図の両方で見えるようにする。 */
+/**
+ * 要素を選択し、テキストと図の両方で見えるようにする（F-VIEW-5）。テキストの対応箇所に印を付けてスクロールし、
+ * 図に出ていればその要素を中央に寄せ、図・テキスト・インスペクタを描き直す。
+ *
+ * @param e 選ぶ要素
+ * @param fromTree ツリーも描き直すなら true（既定 true）
+ */
 export function selectEntry(e: Entry, fromTree = true): void {
   clearSel();
   S.sel = keyForEntry(e);
@@ -558,7 +779,12 @@ export function selectEntry(e: Entry, fromTree = true): void {
   if (fromTree) renderTree();
 }
 
-/** 要素に合ったビューを開いて選択する。 */
+/**
+ * 要素に合ったビュー（openTarget）を開いて選択する。開くビューが無ければ、今のビューで選択するだけにする。
+ * 狭い画面では図のタブに切り替える。
+ *
+ * @param e 開く要素
+ */
 export function openEntry(e: Entry): void {
   const ot = openTarget(e);
   if (!ot) {
@@ -572,8 +798,23 @@ export function openEntry(e: Entry): void {
   selectEntry(e);
 }
 
+/**
+ * ツリーの行の data 属性の番号から、テキストの要素を引く。
+ *
+ * @param idx 要素の番号（S.P.entries の添字の文字列）
+ * @returns 要素。idx が無いか、番号に当たる要素が無ければ undefined
+ * @example
+ * // S.P.entries[0] が package P
+ * entryAt("0")       // → P
+ * entryAt(undefined) // → undefined
+ */
 const entryAt = (idx: string | undefined): Entry | undefined => (idx == null ? undefined : S.P.entries[Number(idx)]);
 
+/**
+ * モデルツリーに操作をつなぐ（F-VIEW-5）。行のクリックで選択、開閉の印で開閉、ボタンで開く・図に入れる・テキストで見る、
+ * ダブルクリックと Enter で開く、矢印キーで行を移る、検索欄で絞り込む。マウスで行を図へドラッグすると、
+ * 保存された図に入れるか、内部ブロック図・シーケンス図に部品として置く。
+ */
 function initTree(): void {
   const tree = $("#tree");
   const wrapEl = $("#wrap");
@@ -706,6 +947,10 @@ function initTree(): void {
 }
 
 /* ---- サブバー（対象ブロック・フェーズ・トレースの抜け） ---- */
+/**
+ * 図の上のサブバーを描き直す。保存された図ではその名前と種類、内部ブロック図・シーケンス図では対象の選択欄、
+ * 他のビューでは工程の絞り込み（工程が無ければ「フェーズ管理を始める」）を出し、工程があればトレースの抜けの件数を出す（F-TRACE-1・F-TRACE-2）。
+ */
 export function renderSub(): void {
   const parts: string[] = [];
   const ctxSel = (cs: { key: string; name: string }[], cur: string | null, label: string): string =>
@@ -737,6 +982,10 @@ export function renderSub(): void {
   $("#subbar").innerHTML = parts.join("");
 }
 
+/**
+ * サブバーに操作をつなぐ。対象・工程を選んだら選択を解いて図を描き直して全体を表示し、タブを保存する。
+ * 「フェーズ管理を始める」で工程を用意し、トレースの抜けのボタンで最初の抜けをテキストと問題一覧で示す。
+ */
 function initSub(): void {
   const sub = $("#subbar");
   sub.addEventListener("change", (ev) => {
