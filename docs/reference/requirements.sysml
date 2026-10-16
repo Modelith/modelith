@@ -61,6 +61,9 @@ package ModelithRequirements {
         requirement def <'N-7'> OpenSourceNeed {
             doc /* ソースを入手・確認・改変し、自分の環境にも置きたい */
         }
+        requirement def <'N-9'> IntegrationNeed {
+            doc /* ほかのウェブアプリ（自然言語から SysML v2 のテキストを作るポータルなど）から、テキストを渡して図にし、図のデータを受け取りたい（ADR-0017、提案） */
+        }
         requirement def <'N-8'> AnywhereNeed {
             doc /* インストールせずに、PC でもスマホでもすぐ使いたい */
         }
@@ -179,6 +182,26 @@ package ModelithRequirements {
             doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
         }
 
+        // ---- ほかのアプリとの連携（ADR-0017、提案） -------------------
+        requirement def <'F-INT-1'> EmbedReq {
+            doc /* ほかのウェブアプリが Modelith を埋め込み（iframe）、テキスト（と任意の配置・表示する図）を渡すと、その図を表示する。やり取りは版つきのメッセージで行い、古い版への返事は捨てる */
+        }
+        requirement def <'F-INT-2'> DiagramDataReq {
+            doc /* 埋め込んだアプリの求めに応じて、図のデータ（SVG・要素と関係の位置を持つ図の JSON・draw.io）と配置を返す。要素のキーと関係の ID は、図の操作と同じものにする */
+        }
+        requirement def <'F-INT-3'> ProblemFeedbackReq {
+            doc /* 渡されたテキストの問題（構文エラー・まだ扱えない構文・トレースの抜け）を、位置（行・列）と種類つきで、埋め込んだアプリに返す */
+        }
+        requirement def <'F-INT-4'> EmbedEditReq {
+            doc /* 埋め込まれた画面で利用者がテキストや図を直したら、直したテキストと配置を、埋め込んだアプリに知らせる */
+        }
+        requirement def <'F-INT-5'> OpenLinkReq {
+            doc /* テキストを入れたリンク（URL の # 以降）で Modelith を開ける。テキストは配信元に送られない */
+        }
+        requirement def <'F-INT-6'> EmbedIsolationReq {
+            doc /* 埋め込まれたときは、渡されたテキストだけを扱い、利用者のフォルダ・下書き・前回のセッションに触れず、ブラウザにも保存しない。返事は渡した親にだけ送り、埋め込まれていることを画面に示す。自分の環境に置く人は、埋め込める親を設定で絞れる */
+        }
+
         // ---- 書き出し ----------------------------------------------
         requirement def <'F-EXP-1'> SvgExportReq {
             doc /* 表示中のビューを SVG ファイルとして保存できる */
@@ -209,7 +232,7 @@ package ModelithRequirements {
             doc /* モデルの正本はテキストだけとする。図の中身は標準の view としてテキストに、配置はテキストの隣の配置ファイルに保存する（ADR-0001・ADR-0005） */
         }
         requirement def <'C-2'> PrivacyReq {
-            doc /* 利用者のモデルや操作の情報を、利用者が選んだ保存先（手元のファイル、利用者自身のクラウドストレージ）以外に送らない。フォントなども同梱し、外部の CDN やアクセス解析を使わない。クラウドを使わない利用者は、配信元以外と通信しない（ADR-0012） */
+            doc /* 利用者のモデルや操作の情報を、利用者が選んだ保存先（手元のファイル、利用者自身のクラウドストレージ）以外に送らない。フォントなども同梱し、外部の CDN やアクセス解析を使わない。クラウドを使わない利用者は、配信元以外と通信しない（ADR-0012）。ほかのアプリに埋め込まれたときは、渡されたテキストから作った結果を、渡した親のアプリにだけ返す（ADR-0017、提案） */
         }
         requirement def <'C-3'> SourceOfferReq {
             doc /* 動いている版（ビルドしたコミット）のソースコードへのリンクを画面に示す（AGPL 第 13 条） */
@@ -261,6 +284,12 @@ package ModelithRequirements {
         #derivation dependency from FallbackReq to AnywhereNeed;
         #derivation dependency from UntitledDraftReq to SafetyNeed;
         #derivation dependency from CloudReq to FilesNeed;
+        #derivation dependency from EmbedReq to IntegrationNeed;
+        #derivation dependency from DiagramDataReq to IntegrationNeed;
+        #derivation dependency from ProblemFeedbackReq to IntegrationNeed;
+        #derivation dependency from EmbedEditReq to IntegrationNeed;
+        #derivation dependency from OpenLinkReq to IntegrationNeed;
+        #derivation dependency from EmbedIsolationReq to SafetyNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from DrawioExportReq to ExportNeed;
         #derivation dependency from ResponsiveReq to EditBothWaysNeed;
@@ -312,6 +341,9 @@ package ModelithRequirements {
         part def Exporter {
             doc /* SVG・draw.io への書き出し（web/src/app/export.ts） */
         }
+        part def EmbedHost {
+            doc /* 埋め込まれたときの受け口。親のアプリとのメッセージと、図のデータの組み立て（未実装。ADR-0017、提案） */
+        }
         part def AppShell {
             doc /* 起動・メニュー・ヘッダー・配信の設定（web/src/main.ts・vite.config.ts・Pages） */
         }
@@ -325,6 +357,7 @@ package ModelithRequirements {
             part fallback : BrowserFileProvider;
             part cloud : CloudProvider;
             part exporter : Exporter;
+            part embed : EmbedHost;
             part shell : AppShell;
         }
 
@@ -361,6 +394,12 @@ package ModelithRequirements {
         satisfy FallbackReq by BrowserFileProvider;
         satisfy UntitledDraftReq by Workspace;
         satisfy CloudReq by CloudProvider;
+        satisfy EmbedReq by EmbedHost;
+        satisfy DiagramDataReq by EmbedHost;
+        satisfy ProblemFeedbackReq by EmbedHost;
+        satisfy EmbedEditReq by EmbedHost;
+        satisfy OpenLinkReq by AppShell;
+        satisfy EmbedIsolationReq by EmbedHost;
         satisfy SvgExportReq by Exporter;
         satisfy DrawioExportReq by Exporter;
         satisfy ResponsiveReq by Core;
