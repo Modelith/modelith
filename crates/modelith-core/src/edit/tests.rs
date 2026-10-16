@@ -2,7 +2,7 @@
 //! 画面からの振る舞いは e2e テストで確かめる。
 
 use super::more::sysml_name;
-use super::text::{diff, remove_range};
+use super::text::{diff, indent_at, line_start, remove_range, utf16_of};
 use super::*;
 
 /// UTF-16 の位置の編集を適用する。
@@ -362,6 +362,31 @@ fn remove_range_keeps_text_on_same_line() {
     // 同値分割：行全体・行の一部
     assert_eq!(remove_range("a\n  b;\nc", 4, 6), ("a\nc".to_owned(), 2));
     assert_eq!(remove_range("x; b; y", 3, 5), ("x; y".to_owned(), 3));
+}
+
+#[test]
+fn utf16_of_counts_up_to_the_start_of_the_character() {
+    // 同値分割：文字の境目・サロゲートペアの文字の途中・範囲外。境界値：0 と末尾
+    assert_eq!(utf16_of("a🚀b", 0), 0);
+    assert_eq!(utf16_of("a🚀b", 5), 3);
+    assert_eq!(utf16_of("a🚀b", 6), 4);
+    assert_eq!(utf16_of("a🚀b", 2), 1, "文字の途中は文字の先頭");
+    assert_eq!(utf16_of("a🚀b", 9), 4, "範囲外は全体の長さ");
+}
+
+#[test]
+fn line_start_clamps_to_the_text_like_the_ts_core() {
+    // 同値分割：行の中・文字の途中・範囲外。境界値：改行の直後と末尾
+    assert_eq!(line_start("ab\ncd", 4), 3);
+    assert_eq!(line_start("ab\ncd", 3), 3);
+    assert_eq!(line_start("ab\ncd", 5), 3);
+    assert_eq!(line_start("x\né", 3), 2, "文字の途中は、その文字の行");
+    assert_eq!(
+        line_start("ab\ncd", 9),
+        3,
+        "範囲外は最後の行（暫定コアの lineStart と同じ）"
+    );
+    assert_eq!(indent_at("x\n  y", 99), "  ");
 }
 
 #[test]
