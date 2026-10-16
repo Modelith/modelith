@@ -1,6 +1,6 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。
 
-import type { EdgeKind, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
+import type { EdgeKind, Entry, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
 import { emptyView, type ViewLayout } from "./layout";
 import { S } from "./state";
 
@@ -18,12 +18,20 @@ export interface ViewDef {
   depth?: boolean;
 }
 
+export interface PackageFrame {
+  name: string;
+  keys: string[];
+  inner: number[];
+}
+
 export interface ViewContent {
   nodes: ModelNode[];
   edges: ModelEdge[];
   dim?: Set<string>;
   empty?: string;
   frame?: { kind: string; title: string };
+  /** 図に出した package の枠（F-VIEW-9）。`inner` は、この枠の中にある枠の番号。 */
+  packages?: PackageFrame[];
   ctx?: ModelNode;
   seq?: boolean;
 }
@@ -168,6 +176,19 @@ export function syncModelViewKind(): void {
   if (t) t.view = S.view;
 }
 
+/** 保存された図の package の枠（F-VIEW-9）。枠の中の枠は、package の入れ子から決める。 */
+function packageFrames(mv: ModelView, shown: Set<string>): PackageFrame[] {
+  const within = (e: Entry, outer: Entry): boolean => {
+    for (let a = e.pe; a; a = a.pe) if (a === outer) return true;
+    return false;
+  };
+  return mv.frames.map((f) => ({
+    name: f.name,
+    keys: f.nodeKeys.filter((k) => shown.has(k)),
+    inner: mv.frames.flatMap((g, j) => (within(g.entry, f.entry) ? [j] : [])),
+  }));
+}
+
 /** テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）。 */
 function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
   if (!mv) return { nodes: [], edges: [], empty: `保存された図「${S.modelView ?? ""}」は、モデルから消えています。` };
@@ -182,9 +203,11 @@ function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
   const keys = new Set(mv.nodeKeys);
   const nodes = M.nodes.filter((n) => keys.has(n.key));
   if (!nodes.length) {
-    return { nodes, edges: [], empty: `図「${mv.name}」に出せる要素がありません。モデルの入れ物（package）そのものを出す描き方は、まだありません（テキストで中身を出すときは expose P::*; と書きます）。` };
+    const where = mv.frames.length ? `モデルの入れ物（${mv.frames.map((f) => f.name).join("・")}）の中に、` : "";
+    return { nodes, edges: [], empty: `図「${mv.name}」に、${where}図に出せる要素がありません。` };
   }
-  return phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
+  const content = phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
+  return { ...content, packages: packageFrames(mv, new Set(content.nodes.map((n) => n.key))) };
 }
 
 let cache: { M: Model | null; k: string | null; v: ViewContent | null } = { M: null, k: null, v: null };

@@ -1,7 +1,7 @@
 // テキストに書かれた view を、描く要素と描き方に解決する（暫定コア、ADR-0005・ADR-0013、F-VIEW-7）。
 // 仕様：8.2.2.26 Views and Viewpoints（view・expose・filter・render）、9.2.20 標準ビュー定義（StandardViewDefinitions）。
 
-import type { Entry, Expose, ModelNode, ModelView, Problem, ViewKind } from "./types";
+import type { Entry, Expose, ModelFrame, ModelNode, ModelView, Problem, ViewKind } from "./types";
 
 /** 標準ビュー定義（名前と短い名前）と、Modelith の描き方。null は専用の描き方が無い（ノードと線の図で代わりに描く）。 */
 const STANDARD_VIEWS: Record<string, { std: string; kind: ViewKind | null }> = {};
@@ -146,8 +146,18 @@ export function buildViews(
       }
       for (const e of exposed(x, target)) if (!own || own(e)) shown.add(e);
     }
-    const nodeKeys = [...shown].filter((e) => tests.every((test) => test(e))).flatMap((e) => nodeOf.get(e)?.key ?? []);
-    views.push({ name: v.name, entry: v, kind: kind ?? "general", std: t.std, nodeKeys, targets });
+    const passes = (e: Entry): boolean => tests.every((test) => test(e));
+    const visible = [...shown].filter(passes);
+    const nodeKeys = visible.flatMap((e) => nodeOf.get(e)?.key ?? []);
+    // package そのものを出したら、枠として描き、中の要素も図に出す（F-VIEW-9、8.2.3.5）
+    const frames: ModelFrame[] = visible
+      .filter((e) => e.kind === "package")
+      .map((p) => {
+        const keys = descendants(p).filter(passes).flatMap((e) => nodeOf.get(e)?.key ?? []);
+        for (const k of keys) if (!nodeKeys.includes(k)) nodeKeys.push(k);
+        return { name: p.name, entry: p, nodeKeys: keys };
+      });
+    views.push({ name: v.name, entry: v, kind: kind ?? "general", std: t.std, nodeKeys, targets, frames });
   }
   return views;
 }

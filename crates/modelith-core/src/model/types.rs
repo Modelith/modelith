@@ -63,6 +63,16 @@ pub struct Problem {
     pub kind: Option<&'static str>,
 }
 
+/// 図に出した package（package そのものを expose したもの）。枠として描き、中の要素を枠の中に示す（F-VIEW-9）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Frame {
+    pub name: String,
+    pub entry: usize,
+    /// 枠の中に示す要素（package の中の、図に描く要素）のキー。
+    pub node_keys: Vec<String>,
+}
+
 /// テキストに書かれた view（図として表示する。ADR-0005、F-VIEW-7）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,6 +83,8 @@ pub struct View {
     pub std: Option<&'static str>,
     pub node_keys: Vec<String>,
     pub targets: Vec<usize>,
+    /// 枠として描く package（外側から順）。
+    pub frames: Vec<Frame>,
 }
 
 /// モデル。

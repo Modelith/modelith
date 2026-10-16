@@ -76,7 +76,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 | 要素 | BNF | 対応 | 根拠・備考 |
 | --- | --- | --- | --- |
-| `package`（入れ子を含む） | Package | ○ | ツリーに出る。図のノードにはならない |
+| `package`（入れ子を含む） | Package | ○ | ツリーに出る。図のノードにはならない。保存された図で package そのものを expose すると、名前を書いた枠（フォルダの形、8.2.3.5）として描き、中の要素を枠の中に示す（F-VIEW-9） |
 | `standard library package` | LibraryPackage | × | パッケージごと消える |
 | `import Q::A` / `::*` / `::**` / `all` | Import 系 | × | 捨てる。他のファイルは読まない |
 | `import Q::*[@F]` | FilterPackage | × | |

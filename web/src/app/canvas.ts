@@ -9,7 +9,7 @@ import { placeTool } from "./panels";
 import { pinsFor } from "./pins";
 import { applyTf, boxOf, highlight, render, renderOverlay, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type EndSpec } from "./state";
-import { SEQ, seqGeom } from "./svg";
+import { packageBoxes, SEQ, seqGeom } from "./svg";
 import { commitLayout, toast } from "./sync";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
 import type { Pos, Side } from "./layout";
@@ -388,10 +388,15 @@ export function fit(): void {
     y1 = g.y0 + g.h + 20;
   } else {
     const fr = !!cc.frame;
-    x0 = Math.min(...placed.map((q) => q.p[0])) - (fr ? 80 : 60);
-    y0 = Math.min(...placed.map((q) => q.p[1])) - (fr ? 100 : 40);
-    x1 = Math.max(...placed.map((q) => q.p[0])) + W + (fr ? 80 : 60);
-    y1 = Math.max(...placed.map((q) => q.p[1] + nodeH(q.n))) + (fr ? 70 : 40);
+    // package の枠（F-VIEW-9）も画面に入れる
+    const pk = packageBoxes(cc, (k) => {
+      const q = placed.find((x) => x.n.key === k);
+      return q ? { x: q.p[0], y: q.p[1], w: W, h: nodeH(q.n) } : undefined;
+    }).map((p) => p.r);
+    x0 = Math.min(...placed.map((q) => q.p[0]), ...pk.map((b) => b.x)) - (fr ? 80 : 60);
+    y0 = Math.min(...placed.map((q) => q.p[1]), ...pk.map((b) => b.y)) - (fr ? 100 : 40);
+    x1 = Math.max(...placed.map((q) => q.p[0] + W), ...pk.map((b) => b.x + b.w)) + (fr ? 80 : 60);
+    y1 = Math.max(...placed.map((q) => q.p[1] + nodeH(q.n)), ...pk.map((b) => b.y + b.h)) + (fr ? 70 : 40);
   }
   const r = wrapEl().getBoundingClientRect();
   const bottomPad = $("#insp").hidden ? 0 : 70;
