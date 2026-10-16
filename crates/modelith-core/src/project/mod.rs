@@ -5,7 +5,7 @@
 //! 構文木から取り、文の頭の文字列（`head`・式）は、コメントを空白にして空白をまとめたテキストから取る。
 //! alpha.4 でモデル構築を Rust に移すときに、この層は置き換える。
 
-mod text;
+pub(crate) mod text;
 mod types;
 
 pub use types::*;

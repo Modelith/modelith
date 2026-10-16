@@ -32,6 +32,11 @@ export function applyEdits(text: string, edits: readonly Edit[]): string {
   return t;
 }
 
+/** コアが返したテキストの編集（UTF-16 の [start, end) の置き換え）を当てる。 */
+export function applyTextEdits(text: string, edits: readonly { start: number; end: number; text: string }[]): string {
+  return applyEdits(text, edits.map((e) => ({ at: e.start, del: e.end - e.start, ins: e.text })));
+}
+
 /**
  * 宣言の中に 1 行を足す編集。ブロックなら閉じ括弧の前に、`;` で終わる宣言ならブロックに書き換えて入れる。
  */

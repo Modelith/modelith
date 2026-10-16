@@ -7,7 +7,7 @@ import { readLayout } from "./parser";
 import type {
   Block, Entry, Model, ModelEdge, ModelNode, ModelView, ParseResult, PhaseInfo, Port, Problem, Rel, Scope, Unsupported,
 } from "./types";
-import initWasm, { analyze as analyzeJson } from "./wasm/modelith_core.js";
+import initWasm, { analyze as analyzeJson, edit as editJson } from "./wasm/modelith_core.js";
 
 /**
  * Rust のコア（wasm）を読み込む。アプリは起動時に一度だけ待つ（ADR-0015：alpha.3 では画面と同じスレッドで同期で呼ぶ）。
@@ -154,4 +154,49 @@ function toModel(raw: RawModel, P: ParseResult): Model {
   return {
     nodes, views, edges, problems: raw.problems, nodeOf, byName, rels: P.rels, phases: raw.phases, phaseEnum: raw.phaseEnum, phaseOf,
   };
+}
+
+/**
+ * 図の操作の意図（ADR-0016）。要素は図の要素のキー、関係は ID で指す（テキスト上の位置は使わない）。
+ * `ctx` は内部ブロック図・シーケンス図の対象（部品定義・シナリオのキー）。`u:名前`・`l:名前` のキーは、その中の部品・ライフライン。
+ */
+export type Intent =
+  | { op: "addNode"; kind: string; phase?: string | null; newPackage?: string }
+  | { op: "addUsage"; ctx: string; type: string }
+  | { op: "rename"; key: string; name: string; ctx?: string }
+  | { op: "delete"; keys: string[]; ctx?: string }
+  | { op: "deleteEdge"; id: string; ctx?: string }
+  | { op: "connect"; rel: string; from: string; to: string; fromPort?: string | null; toPort?: string | null; ctx?: string };
+
+/** テキストの編集（古いテキストの [start, end) を text に置き換える。位置は UTF-16）。 */
+export interface TextEdit {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** 操作の結果。`select` は操作の後に選ぶ要素の名前、`flash` は編集後のテキストで光らせる範囲。 */
+export interface EditResult {
+  edits: TextEdit[];
+  select?: string;
+  flash?: [number, number];
+}
+
+/** 操作できなかったとき、その理由（画面にそのまま出す文）。 */
+export interface Refused {
+  refused: string;
+}
+
+/** 今のテキストに意図を当てて、テキストの編集を返す（Rust のコア）。例外は投げない。 */
+export function edit(text: string, intent: Intent): EditResult | Refused {
+  return safeEdit(text, intent, editJson);
+}
+
+/** `editJson` が失敗しても例外を投げずに結果を返す（`editJson` を差し替えてテストできるように分けている）。 */
+export function safeEdit(text: string, intent: Intent, editJson: (text: string, intent: string) => string): EditResult | Refused {
+  try {
+    return JSON.parse(editJson(text, JSON.stringify(intent))) as EditResult | Refused;
+  } catch (e) {
+    return { refused: `操作できませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` };
+  }
 }

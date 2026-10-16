@@ -1,0 +1,409 @@
+//! 図の操作の単体テスト。テキストに意図を当て、編集後のテキストを比べる（ADR-0016）。
+//! 画面からの振る舞いは e2e テストで確かめる。
+
+use super::text::{diff, remove_range};
+use super::*;
+
+/// UTF-16 の位置の編集を適用する。
+fn apply(text: &str, edits: &[TextEdit]) -> String {
+    let mut u: Vec<u16> = text.encode_utf16().collect();
+    for e in edits.iter().rev() {
+        u.splice(e.start..e.end, e.text.encode_utf16());
+    }
+    String::from_utf16_lossy(&u)
+}
+
+fn run(text: &str, json: &str) -> (String, Outcome) {
+    let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+    let out = edit(text, &intent).unwrap_or_else(|e| panic!("{json}: {e}"));
+    (apply(text, &out.edits), out)
+}
+
+fn refused(text: &str, json: &str) -> String {
+    let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+    edit(text, &intent).expect_err(json)
+}
+
+/// 光らせる範囲の文字列（編集後のテキストの UTF-16 の位置）。
+fn flashed(text: &str, out: &Outcome) -> String {
+    let [a, b] = out.flash.expect("光らせる範囲");
+    String::from_utf16_lossy(&text.encode_utf16().collect::<Vec<_>>()[a..b])
+}
+
+// ---- 要素の追加 ----
+
+#[test]
+fn add_node_puts_definition_in_package_of_same_kind() {
+    // Arrange（同じ種類が最後に置かれた package に入れる）
+    let text = "package A {\n    part def X;\n}\npackage B {\n    requirement def R;\n}\n";
+    // Act
+    let (after, out) = run(text, r#"{"op":"addNode","kind":"requirement def"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package A {\n    part def X;\n}\npackage B {\n    requirement def R;\n    requirement def NewRequirement {\n        doc /* ここに要求文を書く */\n    }\n}\n"
+    );
+    assert_eq!(out.select.as_deref(), Some("NewRequirement"));
+    assert!(flashed(&after, &out).contains("requirement def NewRequirement {"));
+}
+
+#[test]
+fn add_node_picks_unused_name() {
+    // Arrange（境界値：NewPart も NewPart2 も使われている）
+    let text = "package P { part def NewPart; part def NewPart2; }";
+    // Act
+    let (_, out) = run(text, r#"{"op":"addNode","kind":"part def"}"#);
+    // Assert
+    assert_eq!(out.select.as_deref(), Some("NewPart3"));
+}
+
+#[test]
+fn add_node_writes_phase_only_when_not_inherited() {
+    // Arrange
+    let defs = "enum def K { enum a; enum b; } metadata def Phase { attribute stage : K; }";
+    let text =
+        format!("package P {{ {defs} }}\npackage Q {{ @Phase {{ stage = K::a; }} part def X; }}\n");
+    // Act（Q は a を継いでいる。a を書かず、b なら書く）
+    let (same, _) = run(&text, r#"{"op":"addNode","kind":"part def","phase":"a"}"#);
+    let (other, _) = run(&text, r#"{"op":"addNode","kind":"part def","phase":"b"}"#);
+    // Assert
+    assert!(
+        same.contains("part def X; part def NewPart {\n    } }"),
+        "{same}"
+    );
+    assert!(
+        other.contains("part def X; part def NewPart {\n        @Phase { stage = K::b; }\n    } }"),
+        "{other}"
+    );
+}
+
+#[test]
+fn add_node_without_package_creates_one_before_layout_comment() {
+    // Arrange（package が無いファイル。配置の @layout コメントは末尾に残す）
+    let text = "// メモ\n/* @layout {} */\n";
+    // Act
+    let (after, out) = run(
+        text,
+        r#"{"op":"addNode","kind":"part def","newPackage":"Model"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "// メモ\n\npackage Model {\n    part def NewPart {\n    }\n}\n\n/* @layout {} */\n"
+    );
+    assert_eq!(out.select.as_deref(), Some("NewPart"));
+}
+
+#[test]
+fn add_node_without_package_is_refused_unless_asked_to_create_one() {
+    // 異常系：package が無く、作る名前も無い・作る名前が使えない
+    assert!(refused("part def A;", r#"{"op":"addNode","kind":"part def"}"#).contains("package"));
+    assert!(
+        refused(
+            "",
+            r#"{"op":"addNode","kind":"part def","newPackage":"1x"}"#
+        )
+        .contains("英字")
+    );
+}
+
+#[test]
+fn add_usage_adds_part_with_lowercase_unique_name() {
+    // Arrange
+    let text = "package P { part def E; part def C { part e : E; } }";
+    // Act
+    let (after, out) = run(text, r#"{"op":"addUsage","ctx":"C","type":"E"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def E; part def C { part e : E; part e2 : E; } }"
+    );
+    assert_eq!(out.select.as_deref(), Some("e2"));
+}
+
+// ---- 名前の変更 ----
+
+#[test]
+fn rename_definition_changes_every_reference_but_not_comments_or_longer_names() {
+    // Arrange
+    let text = "package P {\n    part def Engine; // Engine の説明\n    part def Car { part e : Engine; }\n    part def EngineX;\n    part def 'Q' { part q : 'Engine'; }\n}";
+    // Act
+    let (after, out) = run(text, r#"{"op":"rename","key":"Engine","name":"Motor"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def Motor; // Engine の説明\n    part def Car { part e : Motor; }\n    part def EngineX;\n    part def 'Q' { part q : 'Motor'; }\n}"
+    );
+    assert_eq!(out.select.as_deref(), Some("Motor"));
+    assert_eq!(flashed(&after, &out), "part def Motor");
+}
+
+#[test]
+fn rename_usage_changes_declaration_and_paths_only() {
+    // Arrange（使用の名前は、宣言と「名前.」の参照だけを変える。型の名前や a.e の e は変えない）
+    let text = "package P { part def E { port e; } part def C { part e : E; part f : E; flow from e.e to f.e; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:e","ctx":"C","name":"g"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def E { port e; } part def C { part g : E; part f : E; flow from g.e to f.e; } }"
+    );
+}
+
+#[test]
+fn rename_flash_follows_earlier_renamed_references() {
+    // Arrange（境界値：宣言より前に参照がある。光らせる範囲が、ずれた後の宣言を指す）
+    let text = "package P { part def C { part a : Long; } part def Long; }";
+    // Act
+    let (after, out) = run(text, r#"{"op":"rename","key":"Long","name":"L"}"#);
+    // Assert
+    assert_eq!(flashed(&after, &out), "part def L");
+}
+
+#[test]
+fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
+    // 同値分割：使えない名前・既にある名前・同じ名前
+    let text = "package P { part def A; part def B; }";
+    assert!(refused(text, r#"{"op":"rename","key":"A","name":"1A"}"#).contains("英字"));
+    assert!(
+        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
+    );
+    let (after, out) = run(text, r#"{"op":"rename","key":"A","name":"A"}"#);
+    assert_eq!((after.as_str(), out.edits.len()), (text, 0));
+}
+
+#[test]
+fn unknown_key_is_refused() {
+    // 異常系：テキストが先に変わって、要素が無くなった
+    let text = "package P { part def A; }";
+    assert!(refused(text, r#"{"op":"rename","key":"Gone","name":"X"}"#).contains("Gone"));
+    assert!(refused(text, r#"{"op":"delete","keys":["u:x"],"ctx":"Gone"}"#).contains("Gone"));
+}
+
+// ---- 削除 ----
+
+#[test]
+fn delete_removes_whole_line_of_definition() {
+    // Arrange
+    let text = "package P {\n    part def A;\n    part def B;\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["A"]}"#);
+    // Assert
+    assert_eq!(after, "package P {\n    part def B;\n}\n");
+}
+
+#[test]
+fn delete_many_skips_elements_inside_other_selected_elements() {
+    // Arrange（C の中の部品と C を両方選ぶ。外側だけ消す）
+    let text = "package P {\n    part def A;\n    part def C {\n        part def D;\n    }\n    part def B;\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["D","C","A"]}"#);
+    // Assert
+    assert_eq!(after, "package P {\n    part def B;\n}\n");
+}
+
+#[test]
+fn delete_edge_removes_relation_statement() {
+    // Arrange
+    let text = "package P {\n    part def A;\n    requirement def R;\n    satisfy R by A;\n}\n";
+    let id = Doc::new(text)
+        .m
+        .edges
+        .iter()
+        .find(|e| e.kind == "satisfy")
+        .map(|e| e.id.clone())
+        .unwrap_or_default();
+    // Act
+    let (after, _) = run(text, &format!(r#"{{"op":"deleteEdge","id":"{id}"}}"#));
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def A;\n    requirement def R;\n}\n"
+    );
+}
+
+#[test]
+fn delete_edge_in_internal_block_diagram_uses_context_ids() {
+    // Arrange（内部ブロック図の流れと、シーケンス図のメッセージ。ID は UI の views.ts と同じ）
+    let text = "package P { part def E; part def C { part a : E; part b : E; flow from a to b; } \
+                occurrence def S { part x : E; message m1 from x to x; } }";
+    // Act
+    let (ibd, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"flow|u:a|u:b|#1","ctx":"C"}"#,
+    );
+    let (seq, _) = run(text, r#"{"op":"deleteEdge","id":"msg|0|m1","ctx":"S"}"#);
+    // Assert
+    assert!(
+        !ibd.contains("flow from") && ibd.contains("message m1"),
+        "{ibd}"
+    );
+    assert!(
+        !seq.contains("message m1") && seq.contains("flow from"),
+        "{seq}"
+    );
+}
+
+#[test]
+fn delete_edge_with_unknown_id_is_refused() {
+    assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
+}
+
+// ---- 関係の追加 ----
+
+#[test]
+fn connect_writes_each_relation_kind() {
+    // Arrange
+    let text = "package P {\n    part def A;\n    part def B;\n    requirement def R;\n    requirement def S;\n    concern def K;\n    verification def V;\n}\n";
+    let cases = [
+        (
+            r#"{"op":"connect","rel":"comp","from":"A","to":"B"}"#,
+            "part def A {\n        part b : B;\n    }",
+        ),
+        (
+            r#"{"op":"connect","rel":"satisfy","from":"A","to":"R"}"#,
+            "    satisfy R by A;\n}",
+        ),
+        (
+            r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
+            "verification def V {\n        objective { verify R; }\n    }",
+        ),
+        (
+            r#"{"op":"connect","rel":"frame","from":"R","to":"K"}"#,
+            "requirement def R {\n        frame concern k : K;\n    }",
+        ),
+        (
+            r#"{"op":"connect","rel":"derive","from":"R","to":"S"}"#,
+            "    #derivation dependency from R to S;\n}",
+        ),
+    ];
+    for (json, want) in cases {
+        // Act
+        let (after, out) = run(text, json);
+        // Assert
+        assert!(after.contains(want), "{json}\n{after}");
+        assert!(out.flash.is_some(), "{json}");
+    }
+}
+
+#[test]
+fn connect_verify_adds_to_existing_objective() {
+    // Arrange
+    let text = "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"verify","from":"V","to":"S"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P { requirement def R; requirement def S; verification def V { objective { verify R; verify S; } } }"
+    );
+}
+
+#[test]
+fn connect_flow_between_parts_and_ports() {
+    // Arrange
+    let text = "package P { part def E; part def F; part def C { part e : E; part f : F; } }";
+    // Act（定義どうし：両方を部品に持つ定義に書く。内部ブロック図の部品どうし：ポートつき）
+    let (defs, _) = run(text, r#"{"op":"connect","rel":"flow","from":"E","to":"F"}"#);
+    let (usages, _) = run(
+        text,
+        r#"{"op":"connect","rel":"flow","from":"u:e","to":"u:f","fromPort":"o","toPort":"i","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(defs.contains("part f : F; flow from e to f; }"), "{defs}");
+    assert!(usages.contains("flow from e.o to f.i;"), "{usages}");
+}
+
+#[test]
+fn connect_is_refused_when_flow_has_no_place_or_kind_is_unknown() {
+    // 異常系
+    let text = "package P { part def E; part def F; }";
+    assert!(refused(text, r#"{"op":"connect","rel":"flow","from":"E","to":"F"}"#).contains("流れ"));
+    assert!(
+        refused(
+            text,
+            r#"{"op":"connect","rel":"bogus","from":"E","to":"F"}"#
+        )
+        .contains("bogus")
+    );
+}
+
+// ---- 位置 ----
+
+#[test]
+fn edits_and_flash_are_utf16_positions() {
+    // Arrange（境界値：前に多バイト文字とサロゲートペアがある）
+    let text = "package P {\n    // 日本語 🚀\n    part def A;\n}\n";
+    // Act
+    let (after, out) = run(text, r#"{"op":"rename","key":"A","name":"Bb"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    // 日本語 🚀\n    part def Bb;\n}\n"
+    );
+    assert_eq!(flashed(&after, &out), "part def Bb");
+}
+
+#[test]
+fn diff_keeps_surrogate_pairs_whole() {
+    // 境界値：同じ上位サロゲートを持つ 2 つの絵文字
+    let (s, e, t) = diff("a😀b", "a😁b").unwrap_or_default();
+    assert_eq!((s, e, t.as_str()), (1, 3, "😁"));
+    assert_eq!(diff("same", "same"), None);
+}
+
+#[test]
+fn remove_range_keeps_text_on_same_line() {
+    // 同値分割：行全体・行の一部
+    assert_eq!(remove_range("a\n  b;\nc", 4, 6), ("a\nc".to_owned(), 2));
+    assert_eq!(remove_range("x; b; y", 3, 5), ("x; y".to_owned(), 3));
+}
+
+#[test]
+fn bad_intent_json_is_rejected_by_serde() {
+    // 異常系：知らない操作・欠けた項目
+    assert!(serde_json::from_str::<Intent>(r#"{"op":"explode"}"#).is_err());
+    assert!(serde_json::from_str::<Intent>(r#"{"op":"rename","key":"A"}"#).is_err());
+}
+
+#[test]
+fn random_intents_never_panic() {
+    // Arrange（ファジング：いろいろなテキストに、いろいろなキーで操作を当てる。断るのはよいが panic しない）
+    let texts = [
+        "",
+        "package P {",
+        "package P { part def A { part b : B; } part def B; requirement def R; satisfy R by A; }",
+        "package P { part def C { part a : A; part b : A; flow from a.x to b.y; } occurrence def S { part l : A; message m from l to l; } }",
+        "part def A; /* @layout {} */ 'q'",
+        "package 🚀 { part def 日本語; }",
+    ];
+    let keys = ["A", "B", "R", "C", "S", "u:a", "l:l", "", "u:", "日本語"];
+    for text in texts {
+        for k in keys {
+            for op in [
+                format!(r#"{{"op":"rename","key":"{k}","name":"Z","ctx":"C"}}"#),
+                format!(r#"{{"op":"delete","keys":["{k}","A"],"ctx":"S"}}"#),
+                format!(r#"{{"op":"deleteEdge","id":"{k}","ctx":"C"}}"#),
+                format!(r#"{{"op":"addUsage","ctx":"{k}","type":"A"}}"#),
+                format!(r#"{{"op":"addNode","kind":"{k}","phase":"x","newPackage":"N"}}"#),
+                format!(r#"{{"op":"connect","rel":"flow","from":"{k}","to":"B","ctx":"C"}}"#),
+                format!(r#"{{"op":"connect","rel":"verify","from":"{k}","to":"R"}}"#),
+            ] {
+                let intent: Intent =
+                    serde_json::from_str(&op).unwrap_or_else(|e| panic!("{op}: {e}"));
+                // Act・Assert（panic しない。編集は古いテキストの範囲に収まる）
+                if let Ok(out) = edit(text, &intent) {
+                    let len = text.encode_utf16().count();
+                    assert!(
+                        out.edits.iter().all(|e| e.start <= e.end && e.end <= len),
+                        "{text} {op}"
+                    );
+                }
+            }
+        }
+    }
+}

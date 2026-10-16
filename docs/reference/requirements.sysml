@@ -290,7 +290,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         part def Core {
-            doc /* パーサとモデル構築（Rust の crates/modelith-core を wasm にして使う。ADR-0015・ADR-0016）・テキスト編集（web/src/core の暫定の TS 版。ADR-0009。alpha.4 で Rust に差し替える） */
+            doc /* パーサとモデル構築（Rust の crates/modelith-core を wasm にして使う。ADR-0015・ADR-0016）・図の操作のテキスト編集（Rust に移している途中。残りは web/src/app と web/src/core の暫定の TS 版。ADR-0009・ADR-0016） */
         }
         part def DiagramUI {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
@@ -433,6 +433,15 @@ package ModelithRequirements {
                 verify PhaseReq;
                 verify TraceGapReq;
                 verify StandardViewReq;
+                verify RobustReq;
+            }
+        }
+        verification def RustEditTest {
+            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
+            objective {
+                verify DiagramToTextReq;
+                verify RenameReq;
+                verify NewPackageGuideReq;
                 verify RobustReq;
             }
         }
