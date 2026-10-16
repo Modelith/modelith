@@ -22,10 +22,28 @@ export interface RequirementRow {
 
 const ID_RE = /\b[FQC]-(?:[A-Z]+-)?\d+\b/g;
 
-/** テスト名に書かれた要求 ID。 */
+/**
+ * テスト名に書かれた要求 ID（F-FILE-2・Q-5・C-3 など）を取り出す。
+ *
+ * @param title テストの名前
+ * @returns 出てきた順の要求 ID（重複は除く）。無ければ空
+ * @example
+ * idsIn("F-VIEW-7・F-VIEW-3: 配置を保存する") // → ["F-VIEW-7", "F-VIEW-3"]
+ * idsIn("起動する")                           // → []
+ */
 export const idsIn = (title: string): string[] => [...new Set(title.match(ID_RE) ?? [])];
 
-/** 要求仕様とテスト結果から、システム要求ごとの行を作る（利用者要求 N-* は除く）。 */
+/**
+ * 要求仕様とテスト結果から、システム要求ごとの行を作る（利用者要求 N-* は除く）。
+ * 実行したテストに失敗があれば failed、すべて合格なら ok、e2e が無く verify で結ばれていれば other-tests、どちらも無ければ unverified。
+ *
+ * @param spec 要求仕様（docs/reference/requirements.sysml）の全文
+ * @param results e2e・UI テストの結果
+ * @returns 要求仕様に書いた順の行
+ * @example
+ * summarize(spec, [{ title: "F-FILE-2: 保存できる", status: "passed" }])
+ * // → [{ id: "F-FILE-2", …, tests: [その結果], state: "ok" }, …]
+ */
 export function summarize(spec: string, results: TestResult[]): RequirementRow[] {
   const P = parse(spec);
   const M = build(P);
@@ -55,19 +73,42 @@ const LABEL: Record<RequirementRow["state"], string> = {
   unverified: "未検証（未実装）",
 };
 
-/** 件数の集計。 */
+/**
+ * 状態ごとの件数を数える。
+ *
+ * @param rows 要求ごとの行
+ * @returns 4 つの状態それぞれの件数（無い状態は 0）
+ * @example
+ * counts([{ …, state: "ok" }, { …, state: "ok" }]) // → { ok: 2, failed: 0, "other-tests": 0, unverified: 0 }
+ */
 export function counts(rows: RequirementRow[]): Record<RequirementRow["state"], number> {
   const c = { ok: 0, failed: 0, "other-tests": 0, unverified: 0 };
   for (const r of rows) c[r.state]++;
   return c;
 }
 
+/**
+ * 要求の e2e・UI テストの合格数を「合格/実行」の形にする（飛ばしたテストは数えない）。
+ *
+ * @param r 要求の行
+ * @returns `2/3` の形。実行したテストが無ければ「—」
+ * @example
+ * passRate({ …, tests: [passed, failed, skipped] }) // → "1/2"
+ */
 const passRate = (r: RequirementRow): string => {
   const ran = r.tests.filter((t) => t.status !== "skipped");
   return ran.length ? `${ran.filter((t) => t.status === "passed").length}/${ran.length}` : "—";
 };
 
-/** GitHub の Markdown（Actions のサマリ）。 */
+/**
+ * GitHub の Markdown（Actions のサマリ）で、要求ごとの表を作る。
+ *
+ * @param rows 要求ごとの行
+ * @returns 見出し・状態ごとの件数・表（要求・内容・結果・e2e・UI・検証）。表の中の `|` と改行は書き換える
+ * @example
+ * toMarkdown([{ id: "F-FILE-2", doc: "保存", state: "ok", tests: [合格 1], verifiedBy: [], … }])
+ * // → "## 要求ごとのテスト結果\n\n✅ e2e・UI テストで合格: **1**…\n| F-FILE-2 | 保存 | ✅ | 1/1 | — |\n"
+ */
 export function toMarkdown(rows: RequirementRow[]): string {
   const c = counts(rows);
   const head =
@@ -78,9 +119,26 @@ export function toMarkdown(rows: RequirementRow[]): string {
   return head + rows.map((r) => `| ${r.id} | ${esc(r.doc)} | ${MARK[r.state]} | ${passRate(r)} | ${r.verifiedBy.join(", ") || "—"} |`).join("\n") + "\n";
 }
 
+/**
+ * HTML の特別な文字（`&`・`<`・`>`・`"`）を文字参照にする。
+ *
+ * @param s 書き出す文字列
+ * @returns そのまま HTML に埋め込める文字列
+ * @example
+ * html('<a href="x">') // → "&lt;a href=&quot;x&quot;&gt;"
+ */
 const html = (s: string): string => s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch] ?? ch);
 
-/** 単独で開ける HTML（テストの詳細は e2e/index.html の Playwright レポートへリンクする）。 */
+/**
+ * 要求ごとのテスト結果を、単独で開ける HTML にする（テストの詳細は e2e/index.html の Playwright レポートへリンクする）。
+ *
+ * @param rows 要求ごとの行
+ * @param meta 版・コミット（先頭 7 文字を出す）・日付
+ * @returns 明るい配色・暗い配色の両方に対応した HTML 文書の全文
+ * @example
+ * toHtml(rows, { version: "0.1.0-alpha.4", commit: "efc39c54f48c…", date: "2026-10-16" })
+ * // → "<!doctype html>…<div class=\"meta\">0.1.0-alpha.4（efc39c5）・2026-10-16…"
+ */
 export function toHtml(rows: RequirementRow[], meta: { version: string; commit: string; date: string }): string {
   const c = counts(rows);
   const body = rows
