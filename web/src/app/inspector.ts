@@ -216,9 +216,12 @@ export function act(a: string): void {
       renderInspector();
       return;
     case "renameOk":
-      if (n && OPS.rename(n, inputValue("#renameIn").trim())) {
-        S.renaming = false;
-        renderInspector();
+      if (n) {
+        void OPS.rename(n, inputValue("#renameIn").trim()).then((ok) => {
+          if (!ok) return;
+          S.renaming = false;
+          renderInspector();
+        });
       }
       return;
     case "connect":
@@ -270,9 +273,12 @@ export function act(a: string): void {
       return;
     case "msgOk": {
       const ed = edgeById(S.selEdge);
-      if (ed && MSGOPS.update(ed, inputValue("#msgName").trim(), inputValue("#msgType"))) {
-        S.msgEdit = false;
-        renderInspector();
+      if (ed) {
+        void MSGOPS.update(ed, inputValue("#msgName").trim(), inputValue("#msgType")).then((ok) => {
+          if (!ok) return;
+          S.msgEdit = false;
+          renderInspector();
+        });
       }
       return;
     }

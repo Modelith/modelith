@@ -12,7 +12,7 @@ import { attachEnds } from "./pins";
 import { KW_FOR, type RelKind } from "./relations";
 import { highlight, render } from "./render";
 import { cancelConnect, clearSel, S } from "./state";
-import { commitLayout, setText, toast } from "./sync";
+import { commitLayout, setText, settled, toast } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
 import type { Pos } from "./layout";
 import { isPackageName, packageNameFor } from "./new-package";
@@ -59,7 +59,7 @@ export const OPS = {
       if (!np) return;
       newPackage = np;
     }
-    const r = perform({ op: "addNode", kind, phase: S.phase, newPackage });
+    const r = await perform({ op: "addNode", kind, phase: S.phase, newPackage });
     const name = r?.select;
     if (!r || !name) return;
     if (kind === "occurrence def" && S.view === "seq") {
@@ -72,21 +72,22 @@ export const OPS = {
     S.sel = name;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
+    await settled();
     // 保存された図に置いたときは、その図にも入れる（F-VIEW-8）
     const added = S.P.entries.find((e) => e.kind === kind && e.name === name);
-    if (added && editableView()) addToView(added, undefined, { quiet: true });
+    if (added && editableView()) await addToView(added, undefined, { quiet: true });
     toast(`${kindLabel(kind)}「${name}」を追加しました`);
     startRename();
   },
 
   /** 内部ブロック図の部品・シーケンス図のライフラインを追加する。 */
-  addUsage(type: string, pos: Pos): void {
+  async addUsage(type: string, pos: Pos): Promise<void> {
     const c = CC();
     if (!c.ctx) {
       toast("追加先がありません");
       return;
     }
-    const r = perform({ op: "addUsage", ctx: c.ctx.key, type });
+    const r = await perform({ op: "addUsage", ctx: c.ctx.key, type });
     const nm = r?.select;
     if (!r || !nm) return;
     if (S.view === "ibd") curLayout().pos["u:" + nm] = pos;
@@ -98,9 +99,9 @@ export const OPS = {
   },
 
   /** 名前を変え、参照と配置情報もまとめて書き換える。 */
-  rename(n: ModelNode, nn: string): boolean {
+  async rename(n: ModelNode, nn: string): Promise<boolean> {
     if (nn === n.name) return true;
-    const r = perform({ op: "rename", key: n.key, name: nn, ctx: ctxKey() });
+    const r = await perform({ op: "rename", key: n.key, name: nn, ctx: ctxKey() });
     if (!r) return false;
     // 図の要素のキーも名前に合わせて変える（内部ブロック図の部品・ライフラインは u:・l: を付けたまま）
     const nk = (/^[ul]:/.exec(n.key)?.[0] ?? "") + nn;
@@ -130,8 +131,8 @@ export const OPS = {
     return true;
   },
 
-  deleteNode(n: ModelNode): void {
-    const r = perform({ op: "delete", keys: [n.key], ctx: ctxKey() });
+  async deleteNode(n: ModelNode): Promise<void> {
+    const r = await perform({ op: "delete", keys: [n.key], ctx: ctxKey() });
     if (!r) return;
     for (const v of Object.values(S.layout)) delete v.pos[n.key];
     S.sel = null;
@@ -140,8 +141,8 @@ export const OPS = {
     toast(`「${n.name}」を削除しました`);
   },
 
-  deleteEdge(ed: ModelEdge): void {
-    const r = perform({ op: "deleteEdge", id: ed.id, ctx: ctxKey() });
+  async deleteEdge(ed: ModelEdge): Promise<void> {
+    const r = await perform({ op: "deleteEdge", id: ed.id, ctx: ctxKey() });
     if (!r) return;
     S.selEdge = null;
     setText(r.text, { changeAt: r.at, flash: r.flash });
@@ -149,10 +150,10 @@ export const OPS = {
   },
 
   /** a から b への関係を追加する。線を描いて追加した場合は、その端の位置も記録する。 */
-  connect(a: ModelNode, b: ModelNode, rel: RelKind): void {
+  async connect(a: ModelNode, b: ModelNode, rel: RelKind): Promise<void> {
     const wire = S.wire;
     const portOf = (sp: { pin: string | null } | null | undefined): string | null => (sp?.pin?.startsWith("port:") ? sp.pin.slice(5) : null);
-    const r = perform({ op: "connect", rel, from: a.key, to: b.key, fromPort: wire ? portOf(wire.from) : null, toPort: wire ? portOf(wire.to) : null, ctx: ctxKey() });
+    const r = await perform({ op: "connect", rel, from: a.key, to: b.key, fromPort: wire ? portOf(wire.from) : null, toPort: wire ? portOf(wire.to) : null, ctx: ctxKey() });
     const what = {
       comp: `「${a.name} が ${b.name} を${kindLabel(KW_FOR[b.kind] ?? "part")}として持つ」`,
       satisfy: `「${a.name} が ${b.name} を満たす」`,
@@ -165,6 +166,7 @@ export const OPS = {
     const before = new Set([...S.M.edges, ...CC().edges].map((e) => e.id));
     cancelConnect();
     setText(r.text, { changeAt: r.at, flash: r.flash });
+    await settled();
     if (wire && wire.to) {
       const ne = [...CC().edges, ...S.M.edges].find((e) => !before.has(e.id) && e.kind === rel && e.from === a.key && e.to === b.key);
       if (ne) {
@@ -180,12 +182,13 @@ export const OPS = {
 
 /** シーケンス図のメッセージの操作。 */
 export const MSGOPS = {
-  add(fromKey: string, toKey: string): void {
+  async add(fromKey: string, toKey: string): Promise<void> {
     const ctx = CC().ctx?.key;
-    const r = ctx ? perform({ op: "addMessage", ctx, from: fromKey, to: toKey }) : null;
+    const r = ctx ? await perform({ op: "addMessage", ctx, from: fromKey, to: toKey }) : null;
     const nm = r?.select;
     if (!r || !nm) return;
     setText(r.text, { changeAt: r.at, flash: r.flash });
+    await settled();
     const ne = CC().edges.find((e) => e.label === nm);
     clearSel();
     if (ne) {
@@ -198,11 +201,12 @@ export const MSGOPS = {
     toast(`メッセージ「${nm}」を追加しました`);
   },
 
-  update(e: ModelEdge, name: string, type: string): boolean {
+  async update(e: ModelEdge, name: string, type: string): Promise<boolean> {
     const ctx = CC().ctx?.key;
-    const r = ctx ? perform({ op: "updateMessage", ctx, id: e.id, name, type }) : null;
+    const r = ctx ? await perform({ op: "updateMessage", ctx, id: e.id, name, type }) : null;
     if (!r) return false;
     setText(r.text, { changeAt: r.at, flash: r.flash });
+    await settled();
     const ne = CC().edges[e.idx ?? -1];
     if (ne) S.selEdge = ne.id;
     render();
@@ -211,11 +215,12 @@ export const MSGOPS = {
   },
 
   /** メッセージの順番を入れ替える（文を入れ替え、then の有無は位置に残す）。 */
-  move(e: ModelEdge, dir: -1 | 1): void {
+  async move(e: ModelEdge, dir: -1 | 1): Promise<void> {
     const ctx = CC().ctx?.key;
-    const r = ctx ? perform({ op: "moveMessage", ctx, id: e.id, dir }) : null;
+    const r = ctx ? await perform({ op: "moveMessage", ctx, id: e.id, dir }) : null;
     if (!r) return;
     setText(r.text, { changeAt: r.at, flash: r.flash });
+    await settled();
     const ne = CC().edges[(e.idx ?? 0) + dir];
     if (ne) S.selEdge = ne.id;
     render();
@@ -227,8 +232,8 @@ export const MSGOPS = {
 /** フェーズ（@Phase メタデータ）の操作。 */
 export const PHASEOPS = {
   /** 要素のフェーズを設定する。value が空なら、その要素に書いた指定を外す。 */
-  set(n: ModelNode, value: string): void {
-    const r = perform({ op: "setPhase", keys: [n.key], value, ctx: ctxKey() });
+  async set(n: ModelNode, value: string): Promise<void> {
+    const r = await perform({ op: "setPhase", keys: [n.key], value, ctx: ctxKey() });
     if (!r) {
       renderInspector();
       return;
@@ -245,7 +250,7 @@ export const PHASEOPS = {
       if (!np) return;
       newPackage = np;
     }
-    const r = perform({ op: "initPhases", newPackage });
+    const r = await perform({ op: "initPhases", newPackage });
     if (!r) return;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     toast("フェーズの定義を追加しました。要素を選んでフェーズを設定できます");
@@ -311,15 +316,15 @@ export function alignSel(mode: AlignMode): void {
   toast(`${ns.length} 個を整列しました`);
 }
 
-export function deleteSel(): void {
+export async function deleteSel(): Promise<void> {
   const ns = selNodes();
   const only = ns[0];
   if (!only) return;
   if (ns.length === 1) {
-    OPS.deleteNode(only);
+    await OPS.deleteNode(only);
     return;
   }
-  const r = perform({ op: "delete", keys: ns.map((n) => n.key), ctx: ctxKey() });
+  const r = await perform({ op: "delete", keys: ns.map((n) => n.key), ctx: ctxKey() });
   if (!r) return;
   for (const n of ns) for (const v of Object.values(S.layout)) delete v.pos[n.key];
   clearSel();
@@ -329,15 +334,15 @@ export function deleteSel(): void {
 }
 
 /** 選んだ定義のフェーズをまとめて設定する。 */
-export function setPhaseSel(value: string): void {
+export async function setPhaseSel(value: string): Promise<void> {
   const ns = selNodes().filter((n) => n.isDef);
   const only = ns[0];
   if (!only || !S.M.phases) return;
   if (ns.length === 1) {
-    PHASEOPS.set(only, value);
+    await PHASEOPS.set(only, value);
     return;
   }
-  const r = perform({ op: "setPhase", keys: ns.map((n) => n.key), value, ctx: ctxKey() });
+  const r = await perform({ op: "setPhase", keys: ns.map((n) => n.key), value, ctx: ctxKey() });
   if (!r) return;
   setText(r.text, { changeAt: r.at, flash: r.flash });
   toast(`${ns.length} 個を「${phaseLabel(value)}」にしました`);

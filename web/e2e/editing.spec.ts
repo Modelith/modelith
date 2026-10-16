@@ -28,7 +28,8 @@ test("F-EDIT-3: 名前を変えると、参照もまとめて変わる", async (
   await page.locator('[data-act="rename"]').click();
   await page.locator("#renameIn").fill("BoilingTimeReq");
   await page.keyboard.press("Enter");
-  // Assert
+  // Assert（編集はコアの Worker で計算するので、図に反映されるのを待つ。ADR-0016）
+  await expect(page.locator('#gNodes .node[data-key="BoilingTimeReq"]')).toBeVisible();
   const after = await editorText(page);
   expect(before).toBeGreaterThan(1);
   expect(count(after, "BoilTimeReq")).toBe(0);
