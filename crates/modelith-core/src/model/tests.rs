@@ -1,0 +1,390 @@
+//! モデル構築の単体テスト。暫定コアとの一致そのものは、web の golden.test.ts・spec.test.ts・model-diff.test.ts が確かめる（ADR-0016）。
+//! ここでは、番号での参照・キーと ID の付け方・問題の種類など、モデル構築に固有の約束と、どんな入力でも止まらないことを確かめる。
+
+use super::*;
+use crate::project::project;
+use crate::syntax::parse;
+
+fn run(text: &str) -> (ParseResult, Model) {
+    let p = project(text, &parse(text));
+    let m = build(&p);
+    (p, m)
+}
+
+fn node<'a>(m: &'a Model, key: &str) -> &'a Node {
+    m.nodes
+        .iter()
+        .find(|n| n.key == key)
+        .unwrap_or_else(|| panic!("{key} がありません"))
+}
+
+#[test]
+fn definitions_become_nodes_that_point_to_their_entries() {
+    // Arrange
+    let text = "package P { part def A; attribute def B; metadata def M; view def V; }";
+    // Act
+    let (p, m) = run(text);
+    // Assert（メタデータとビューの定義は図に描かない）
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["A", "B"]);
+    let a = node(&m, "A");
+    assert_eq!(p.entries[a.entry].name, "A");
+    assert_eq!(
+        (a.kind.as_str(), a.is_def, a.fam),
+        ("part def", true, "part")
+    );
+}
+
+#[test]
+fn same_name_in_another_package_gets_owner_in_key() {
+    // Arrange（境界値：2 つ目の同じ名前）
+    let text = "package P { part def A; } package Q { part def A; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["A", "A@Q"]);
+}
+
+#[test]
+fn ports_take_direction_from_their_definition() {
+    // Arrange
+    let text =
+        "package P { port def Pt { in item x : Real; } part def H { port a : Pt; port b : ~Pt; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（~ で向きが逆になる）
+    let h = node(&m, "H");
+    let dirs: Vec<(&str, bool, &str)> = h
+        .ports
+        .iter()
+        .map(|p| (p.name.as_str(), p.conj, p.dir))
+        .collect();
+    assert_eq!(dirs, [("a", false, "in"), ("b", true, "out")]);
+}
+
+#[test]
+fn usage_with_unknown_type_is_an_error_but_library_type_is_not() {
+    // Arrange（異常系と、標準ライブラリの型の境界）
+    let text = "package P { part def A { attribute x : Real; part y : Nope; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs.len(), 1, "{msgs:?}");
+    assert!(msgs[0].contains("Nope"), "{msgs:?}");
+    assert_eq!(m.problems[0].kind, None);
+}
+
+#[test]
+fn edges_get_unique_ids_even_when_written_twice() {
+    // Arrange（同じ関係を 2 回書く）
+    let text = "package P { part def A { part b : B; part c : B; } part def B; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let ids: Vec<&str> = m.edges.iter().map(|e| e.id.as_str()).collect();
+    let unique: std::collections::HashSet<&&str> = ids.iter().collect();
+    assert_eq!(unique.len(), ids.len(), "{ids:?}");
+}
+
+#[test]
+fn flow_edge_points_to_its_relation_by_index() {
+    // Arrange
+    let text = "package P { port def Pt { out item y : Real; in item x : Real; } \
+                part def S { port o : Pt; } part def T { port i : Pt; } \
+                part def H { part s : S; part t : T; flow from s.o.y to t.i.x; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let flow = m.edges.iter().find(|e| e.kind == "flow").expect("流れの線");
+    let rel = flow.rel.expect("関係の番号");
+    assert!(
+        matches!(p.rels[rel].kind, crate::project::RelKind::Flow { .. }),
+        "{:?}",
+        p.rels[rel]
+    );
+}
+
+#[test]
+fn unsupported_statement_head_is_shortened_to_40_utf16_units() {
+    // Arrange（境界値：41 文字の頭）
+    let name = "あ".repeat(41);
+    let text = format!("package P {{ case def {name}; }}");
+    // Act
+    let (_, m) = run(&text);
+    // Assert
+    let info = m
+        .problems
+        .iter()
+        .find(|p| p.kind == Some("unsupported"))
+        .expect("まだ扱えない構文");
+    assert!(info.msg.contains('…'), "{}", info.msg);
+    assert!(!info.msg.contains(&name), "{}", info.msg);
+    let shown = info
+        .msg
+        .split('「')
+        .nth(1)
+        .and_then(|m| m.split('」').next())
+        .unwrap_or_default();
+    assert_eq!(shown.encode_utf16().count(), 41, "{shown}"); // 40 単位と「…」
+}
+
+#[test]
+fn phases_come_from_the_phase_metadata_and_report_trace_gaps() {
+    // Arrange
+    let text = "package P { enum def Stage { enum concept; enum detail; } \
+                metadata def Phase { attribute stage : Stage; } \
+                requirement def R1 { @Phase { stage = concept; } } \
+                requirement def R2 { @Phase { stage = detail; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        m.phases.as_deref(),
+        Some(&["concept".to_owned(), "detail".to_owned()][..])
+    );
+    assert_eq!(m.phase_enum.as_deref(), Some("Stage"));
+    assert_eq!(node(&m, "R2").phase.as_deref(), Some("detail"));
+    assert!(node(&m, "R2").phase_own);
+    let gaps = m.problems.iter().filter(|p| p.kind == Some("gap")).count();
+    // R1：展開先が無い。R2：導出元・満たす要素・検証が無い
+    assert_eq!(gaps, 4);
+}
+
+#[test]
+fn no_phase_metadata_means_no_phases() {
+    // Arrange（異常系：Phase はあるが stage の型が列挙でない）
+    let text = "package P { metadata def Phase { attribute stage : Real; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(m.phases, None);
+    assert_eq!(m.phase_enum, None);
+}
+
+#[test]
+fn view_exposes_members_and_filters_by_metaclass() {
+    // Arrange
+    let text = "package P { part def A; part a : A; attribute def B; \
+                view v { expose P::*; filter @PartDefinition; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let v = &m.views[0];
+    assert_eq!((v.name.as_str(), v.kind, v.std), ("v", "general", None));
+    assert_eq!(v.node_keys, ["A"]);
+    assert_eq!(
+        v.targets
+            .iter()
+            .map(|&t| p.entries[t].name.as_str())
+            .collect::<Vec<_>>(),
+        ["P"]
+    );
+}
+
+#[test]
+fn view_reports_missing_target_and_unsupported_rendering() {
+    // Arrange（異常系：見つからない expose と、図にできない render）
+    let text = "package P { view v : GridView { expose Nope::X; render asElementTable; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let kinds: Vec<Option<&str>> = m.problems.iter().map(|p| p.kind).collect();
+    assert_eq!(
+        kinds,
+        [Some("unsupported"), Some("unsupported"), None],
+        "{:?}",
+        m.problems
+    );
+    assert_eq!(m.views[0].std, Some("GridView"));
+    assert_eq!(m.views[0].kind, "general");
+}
+
+#[test]
+fn standard_view_names_and_labels() {
+    // 同値分割：名前・短い名前・標準でない名前
+    assert!(views::is_standard_view("InterconnectionView"));
+    assert!(views::is_standard_view("iv"));
+    assert!(!views::is_standard_view("MyView"));
+    assert_eq!(views::std_view_label(Some("SequenceView")), "シーケンス図");
+    assert_eq!(views::std_view_label(None), "一般の図");
+}
+
+#[test]
+fn family_and_library_types() {
+    // 同値分割：種類ごとの系統
+    assert_eq!(family("requirement def"), "req");
+    assert_eq!(family("verification"), "ver");
+    assert_eq!(family("calc def"), "con");
+    assert_eq!(family("state"), "beh");
+    assert_eq!(family("part"), "part");
+    assert_eq!(family("item def"), "other");
+    assert!(is_lib("Real") && is_lib("MassValue") && !is_lib("Engine"));
+}
+
+/// 決まった種から作る乱数（xorshift。テストを毎回同じにする）。
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self, n: usize) -> usize {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 % n as u64) as usize
+    }
+}
+
+/// 乱数で並べる字句。キーワード・記号・名前・壊れた形（閉じない括弧やコメント・多バイト文字）を混ぜる。
+const TOKENS: &[&str] = &[
+    "package",
+    "part",
+    "def",
+    "attribute",
+    "port",
+    "item",
+    "in",
+    "out",
+    "inout",
+    "requirement",
+    "satisfy",
+    "by",
+    "verify",
+    "verification",
+    "objective",
+    "concern",
+    "frame",
+    "state",
+    "action",
+    "transition",
+    "first",
+    "then",
+    "accept",
+    "do",
+    "entry",
+    "exit",
+    "flow",
+    "from",
+    "to",
+    "connect",
+    "connection",
+    "interface",
+    "end",
+    "enum",
+    "metadata",
+    "view",
+    "expose",
+    "filter",
+    "render",
+    "doc",
+    "subject",
+    "message",
+    "of",
+    "perform",
+    "exhibit",
+    "calc",
+    "constraint",
+    "use",
+    "case",
+    "occurrence",
+    "abstract",
+    "ref",
+    "derived",
+    "#Phase",
+    "@Phase",
+    "@",
+    "#",
+    "{",
+    "}",
+    "(",
+    ")",
+    "[",
+    "]",
+    ";",
+    ":",
+    "::",
+    ":>",
+    ":>>",
+    "~",
+    ".",
+    ",",
+    "=",
+    "*",
+    "**",
+    "<'R1'>",
+    "/*",
+    "*/",
+    "//",
+    "\"s\"",
+    "1.5",
+    "A",
+    "B",
+    "Pt",
+    "Phase",
+    "stage",
+    "Stage",
+    "Real",
+    "GeneralView",
+    "iv",
+    "asTreeDiagram",
+    "日本語",
+    "\n",
+    "/* @layout {\"A\":{\"x\":1}} */",
+    "/* @layout {",
+];
+
+#[test]
+fn random_input_never_panics_and_positions_stay_in_text() {
+    // Arrange（ファジング：乱数で並べた字句を、解析とモデル構築に通す。ADR-0016）
+    let mut rng = Rng(0x2026_1016);
+    for _ in 0..2000 {
+        let len = 1 + rng.next(60);
+        let text: String = (0..len)
+            .map(|_| TOKENS[rng.next(TOKENS.len())])
+            .collect::<Vec<_>>()
+            .join(" ");
+        let utf16_len = text.encode_utf16().count();
+        // Act
+        let (p, m) = run(&text);
+        // Assert
+        assert!(m.problems.iter().all(|x| x.pos <= utf16_len), "{text}");
+        assert!(m.nodes.iter().all(|n| n.entry < p.entries.len()), "{text}");
+        assert!(
+            m.edges
+                .iter()
+                .all(|e| e.rel.is_none_or(|r| r < p.rels.len())),
+            "{text}"
+        );
+        assert!(
+            m.views.iter().all(
+                |v| v.entry < p.entries.len() && v.targets.iter().all(|&t| t < p.entries.len())
+            ),
+            "{text}"
+        );
+        let keys: std::collections::HashSet<&str> =
+            m.nodes.iter().map(|n| n.key.as_str()).collect();
+        assert!(
+            m.edges
+                .iter()
+                .all(|e| keys.contains(e.from.as_str()) && keys.contains(e.to.as_str())),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn random_bytes_never_panic() {
+    // Arrange（ファジング：字句の形を持たない入力。制御文字・サロゲートの外の文字を含む）
+    let mut rng = Rng(0x5eed);
+    let chars = [
+        '{', '}', ';', ':', '@', '#', '/', '*', '"', '\'', '<', '>', 'a', ' ', '\n', '\0', 'あ',
+        '🚀', '\u{feff}',
+    ];
+    for _ in 0..2000 {
+        let text: String = (0..rng.next(80))
+            .map(|_| chars[rng.next(chars.len())])
+            .collect();
+        // Act・Assert（panic しない）
+        let _ = run(&text);
+    }
+}

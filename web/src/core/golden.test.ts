@@ -1,9 +1,8 @@
 // 暫定コアの出力がゴールデン（モックの出力）と一致することを確かめる結合テスト（ADR-0002・ADR-0009）。
 // 投影の方法は reference/tools/gen-golden.mjs と同じにする。
 import { describe, expect, it } from "vitest";
-import { build } from "./model";
 import { PARSERS } from "./testing/parsers";
-import type { Entry, ParseResult } from "./types";
+import type { Entry, Model, ParseResult } from "./types";
 
 const goldens = import.meta.glob<Record<string, unknown>>("../../../reference/golden/*.json", { eager: true, import: "default" });
 const cases = {
@@ -54,7 +53,7 @@ function withoutAllowed(v: unknown, positions: number[]): unknown {
   return { ...o, errors: o.errors.filter(keep), model: { ...o.model, problems: o.model.problems.filter(keep) } };
 }
 
-function project(text: string, parse: (text: string) => ParseResult): Record<string, unknown> {
+function project(text: string, parse: (text: string) => ParseResult, build: (P: ParseResult) => Model): Record<string, unknown> {
   const P = parse(text);
   const M = build(P);
   const ref = (e: Entry | null): number | null => (e ? e.idx : null);
@@ -86,7 +85,7 @@ describe("暫定コアとゴールデンの一致", () => {
     expect(missing).toEqual([]);
   });
 
-  for (const [impl, parse] of PARSERS) {
+  for (const [impl, parse, build] of PARSERS) {
     for (const [path, text] of Object.entries(cases)) {
       const name = baseName(path);
       it(`${impl}: ${name}: 解析とモデル構築の結果がモックと一致する`, () => {
@@ -94,7 +93,7 @@ describe("暫定コアとゴールデンの一致", () => {
         const golden = Object.entries(goldens).find(([p]) => baseName(p) === name)?.[1];
         const allowed = impl === "Rust" ? (RUST_EXTRA_ERRORS[name]?.pos(text) ?? []) : [];
         // Act
-        const actual = JSON.parse(JSON.stringify({ case: name, ...project(text, parse) })) as unknown;
+        const actual = JSON.parse(JSON.stringify({ case: name, ...project(text, parse, build) })) as unknown;
         // Assert
         expect(withoutWording(withoutAllowed(actual, allowed))).toEqual(withoutWording(golden));
         // 許容リストが古くなっていない（取り除いた位置に、本当にエラーがある）

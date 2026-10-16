@@ -1,10 +1,13 @@
 // Rust のコア（wasm）が返す解析結果を、暫定コアと同じオブジェクトの形に戻す（ADR-0015）。
 // Rust は要素どうしの参照を番号で返すので、ここで親・子・持ち主のオブジェクトの参照につなぎ直す。
-// `@layout` コメント（移行期の形式）は、ここで読む。
+// モデル（ADR-0016 の手順 A）も同じく番号で返るので、`build` でオブジェクトの参照に戻す。
+// `@layout` コメント（移行期の形式）の中身は、ここで読む（読み取れないことは Rust が構文エラーとして返す）。
 
 import { readLayout } from "./parser";
-import type { Block, Entry, ParseResult, Rel, Scope, Unsupported } from "./types";
-import initWasm, { parse as parseJson } from "./wasm/modelith_core.js";
+import type {
+  Block, Entry, Model, ModelEdge, ModelNode, ModelView, ParseResult, PhaseInfo, Port, Problem, Rel, Scope, Unsupported,
+} from "./types";
+import initWasm, { analyze as analyzeJson } from "./wasm/modelith_core.js";
 
 /**
  * Rust のコア（wasm）を読み込む。アプリは起動時に一度だけ待つ（ADR-0015：alpha.3 では画面と同じスレッドで同期で呼ぶ）。
@@ -19,16 +22,24 @@ export async function initCore(wasmUrl: string): Promise<void> {
  * コアの中で予期しない失敗が起きたときは、要素の無い結果と、そのことを伝える構文エラーを返す（テキストには触れない）。
  */
 export function parse(text: string): ParseResult {
-  return safeParse(text, parseJson);
+  return safeParse(text, analyzeJson);
 }
 
-/** `parseJson` が失敗しても例外を投げずに結果を返す（`parseJson` を差し替えてテストできるように分けている）。 */
-export function safeParse(text: string, parseJson: (text: string) => string): ParseResult {
+/** 解析結果ごとの、Rust が作ったモデル（番号のまま）。`build` で取り出す。 */
+const models = new WeakMap<ParseResult, RawModel>();
+
+/** `analyzeJson` が失敗しても例外を投げずに結果を返す（`analyzeJson` を差し替えてテストできるように分けている）。 */
+export function safeParse(text: string, analyzeJson: (text: string) => string): ParseResult {
   try {
-    return fromRust(parseJson(text), text);
+    const raw = JSON.parse(analyzeJson(text)) as { parse: RawParseResult; model: RawModel };
+    const P = fromRaw(raw.parse, text);
+    models.set(P, raw.model);
+    return P;
   } catch (e) {
     const errors = [{ pos: 0, msg: `テキストを読み取れませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` }];
-    return { entries: [], rels: [], errors, layout: readLayout(text, errors), unsupported: [] };
+    const P: ParseResult = { entries: [], rels: [], errors, layout: readLayout(text, errors), unsupported: [] };
+    models.set(P, { nodes: [], views: [], edges: [], problems: [...errors], phases: null, phaseEnum: null });
+    return P;
   }
 }
 
@@ -56,7 +67,10 @@ export interface RawParseResult {
 
 /** Rust の解析結果（JSON の文字列）を、暫定コアと同じ `ParseResult` にする。 */
 export function fromRust(json: string, text: string): ParseResult {
-  const raw = JSON.parse(json) as RawParseResult;
+  return fromRaw(JSON.parse(json) as RawParseResult, text);
+}
+
+function fromRaw(raw: RawParseResult, text: string): ParseResult {
   const entries: Entry[] = raw.entries.map((e) => ({ ...e, owner: null, pe: null, children: [], phaseBlock: undefined }));
   const blocks: Block[] = raw.blocks.map((b) => ({ ...b, anon: true, owner: null }));
   const scope = (s: RawScope | null | undefined): Scope | null => {
@@ -80,6 +94,64 @@ export function fromRust(json: string, text: string): ParseResult {
     const rel = r.rel === "connect" ? { ...rest, pe: entry(r.pe), usage: entry(usage) } : { ...rest, pe: entry(r.pe) };
     return rel as unknown as Rel;
   });
-  const errors = [...raw.errors];
-  return { entries, rels, errors, layout: readLayout(text, errors), unsupported: raw.unsupported };
+  // 読み取れない @layout コメントは Rust が構文エラーに入れているので、ここで足したエラーは捨てる
+  return { entries, rels, errors: [...raw.errors], layout: readLayout(text, []), unsupported: raw.unsupported };
+}
+
+type RawPort = Omit<Port, "entry"> & { entry: number };
+type RawNode = Omit<ModelNode, "entry" | "ports"> & { entry: number; ports: RawPort[] };
+type RawEdge = Omit<ModelEdge, "rel"> & { rel?: number };
+type RawView = Omit<ModelView, "entry" | "targets"> & { entry: number; targets: number[] };
+
+/** Rust の `Model`（JSON）。宣言は `entries`、関係は `rels` の番号で指す。 */
+export interface RawModel {
+  nodes: RawNode[];
+  views: RawView[];
+  edges: RawEdge[];
+  problems: Problem[];
+  phases: string[] | null;
+  phaseEnum: string | null;
+}
+
+/**
+ * 解析結果からモデル（図の要素・関係・問題・フェーズ）を作る（Rust のモデル構築、ADR-0016）。
+ * 中身は `parse` のときに Rust が作っている。ここでは番号をオブジェクトの参照に戻すだけ。
+ * `parse`（Rust）が返したものでない解析結果は受け付けない。
+ */
+export function build(P: ParseResult): Model {
+  const raw = models.get(P);
+  if (!raw) throw new Error("build には、parse（Rust）が返した解析結果を渡してください");
+  return toModel(raw, P);
+}
+
+function toModel(raw: RawModel, P: ParseResult): Model {
+  const entry = (i: number): Entry => {
+    const e = P.entries[i];
+    if (!e) throw new Error(`モデルが指す宣言（${i}）がありません`);
+    return e;
+  };
+  const nodes: ModelNode[] = raw.nodes.map((n) => ({ ...n, entry: entry(n.entry), ports: n.ports.map((p) => ({ ...p, entry: entry(p.entry) })) }));
+  const nodeOf = new Map<Entry, ModelNode>(nodes.map((n) => [n.entry, n]));
+  const byName = new Map<string, Entry[]>();
+  for (const e of P.entries) {
+    if (!e.name) continue;
+    const list = byName.get(e.name);
+    if (list) list.push(e);
+    else byName.set(e.name, [e]);
+  }
+  const edges: ModelEdge[] = raw.edges.map(({ rel, ...e }) => {
+    const r = rel == null ? undefined : P.rels[rel];
+    return r ? { ...e, rel: r } : e;
+  });
+  const views: ModelView[] = raw.views.map((v) => ({ ...v, entry: entry(v.entry), targets: v.targets.map(entry) }));
+  const phaseOf = (e: Entry): PhaseInfo | null => {
+    for (let a: Entry | null = e; a; a = a.pe) {
+      const stage = a.meta?.["Phase"]?.["stage"];
+      if (stage) return { value: stage, own: a === e, holder: a };
+    }
+    return null;
+  };
+  return {
+    nodes, views, edges, problems: raw.problems, nodeOf, byName, rels: P.rels, phases: raw.phases, phaseEnum: raw.phaseEnum, phaseOf,
+  };
 }
