@@ -3,11 +3,11 @@
 use std::collections::HashSet;
 
 use super::text::{Target, indent_at, insert_into, lower_first, remove_range};
-use super::{Change, Doc, Intent, Refusal};
+use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
 use crate::syntax::{SyntaxKind, tokenize};
 
-const BAD_NAME: &str = "名前は英字か _ で始め、英字・数字・_ だけで付けてください";
+pub(super) const BAD_NAME: &str = "名前は英字か _ で始め、英字・数字・_ だけで付けてください";
 
 /// 追加する定義の名前（種類ごと）。
 const NEW_NAME: &[(&str, &str)] = &[
@@ -55,6 +55,57 @@ pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
         Intent::Rename { key, name, ctx } => rename(d, &d.find(key, ctx.as_deref())?, name),
         Intent::Delete { keys, ctx } => delete(d, keys, ctx.as_deref()),
         Intent::DeleteEdge { id, ctx } => delete_edge(d, id, ctx.as_deref()),
+        Intent::AddMessage { ctx, from, to } => more::add_message(d, ctx, from, to),
+        Intent::UpdateMessage { ctx, id, name, ty } => more::update_message(d, ctx, id, name, ty),
+        Intent::MoveMessage { ctx, id, dir } => more::move_message(d, ctx, id, *dir),
+        Intent::SetPhase { keys, value, ctx } => {
+            let found = keys
+                .iter()
+                .map(|k| d.find(k, ctx.as_deref()))
+                .collect::<Result<Vec<_>, _>>()?;
+            more::set_phase(d, &found, value)
+        }
+        Intent::InitPhases { new_package } => more::init_phases(d, new_package.as_deref()),
+        Intent::MakePort {
+            key,
+            name,
+            dir,
+            ty,
+            flows,
+            ctx,
+        } => more::make_port(
+            d,
+            &d.find(key, ctx.as_deref())?,
+            name,
+            dir,
+            ty,
+            flows,
+            ctx.as_deref(),
+        ),
+        Intent::SetPortDir {
+            key,
+            port,
+            dir,
+            ctx,
+        } => more::set_port_dir(d, &d.find(key, ctx.as_deref())?, port, dir),
+        Intent::DeletePort { key, port, ctx } => {
+            more::delete_port(d, &d.find(key, ctx.as_deref())?, port)
+        }
+        Intent::SaveView {
+            name,
+            kind,
+            targets,
+        } => {
+            let found = targets
+                .iter()
+                .map(|k| d.find(k, None))
+                .collect::<Result<Vec<_>, _>>()?;
+            more::save_view(d, name, kind, &found)
+        }
+        Intent::AddToView { view, key } => more::add_to_view(d, view, &d.find(key, None)?),
+        Intent::RemoveFromView { view, key } => {
+            more::remove_from_view(d, view, &d.find(key, None)?)
+        }
         Intent::Connect {
             rel,
             from,
@@ -112,7 +163,7 @@ impl Doc<'_> {
     }
 
     /// 内部ブロック図・シーケンス図の対象（宣言の番号）。
-    fn context(&self, key: &str) -> Result<usize, Refusal> {
+    pub(super) fn context(&self, key: &str) -> Result<usize, Refusal> {
         self.m
             .nodes
             .iter()
@@ -121,7 +172,7 @@ impl Doc<'_> {
             .ok_or_else(|| missing(key))
     }
 
-    fn names(&self) -> HashSet<&str> {
+    pub(super) fn names(&self) -> HashSet<&str> {
         self.p
             .entries
             .iter()
@@ -130,12 +181,12 @@ impl Doc<'_> {
             .collect()
     }
 
-    fn first_package(&self) -> Option<usize> {
+    pub(super) fn first_package(&self) -> Option<usize> {
         self.p.entries.iter().position(|e| e.kind == "package")
     }
 
     /// e から上へたどった、最初の @Phase の値。
-    fn phase_of(&self, i: usize) -> Option<&str> {
+    pub(super) fn phase_of(&self, i: usize) -> Option<&str> {
         let mut a = Some(i);
         while let Some(x) = a {
             let e = self.e(x);
@@ -153,7 +204,7 @@ impl Doc<'_> {
     }
 
     /// 子の名前と重ならない名前（base、base2、base3 …）。
-    fn unique_child(&self, i: usize, base: &str) -> String {
+    pub(super) fn unique_child(&self, i: usize, base: &str) -> String {
         let taken: HashSet<&str> = self
             .e(i)
             .children
@@ -164,7 +215,7 @@ impl Doc<'_> {
     }
 }
 
-fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
+pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
     let mut n = base.to_owned();
     let mut k = 2;
     while taken(&n) {
@@ -281,7 +332,7 @@ fn add_usage(d: &Doc<'_>, ctx: &str, ty: &str) -> Result<Change, Refusal> {
 }
 
 /// トークンとその位置（バイト）。
-fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
+pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
     let mut at = 0;
     tokenize(text)
         .0
@@ -401,29 +452,35 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
     })
 }
 
-/// 内部ブロック図・シーケンス図の関係の ID と範囲（UI の `web/src/app/views.ts` と同じ ID）。
-fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, Span)> {
+/// 図の関係の範囲と、関係を書いた文（`ParseResult.rels` の番号）。
+#[derive(Debug, Clone, Copy)]
+pub(super) struct EdgeAt {
+    pub src: Span,
+    pub rel: Option<usize>,
+}
+
+/// 内部ブロック図・シーケンス図の関係の ID（UI の `web/src/app/views.ts` と同じ ID）。
+pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
     let ctx = d.e(c);
-    let mut out = Vec::new();
+    let line = |r: &crate::project::Rel| Span {
+        start: r.start,
+        end: r.end + 1,
+    };
     if ctx.kind == "occurrence def" {
-        let mut msgs: Vec<_> =
-            d.p.rels
-                .iter()
-                .filter(|r| r.pe == Some(c) && matches!(r.kind, RelKind::Message { .. }))
-                .collect();
-        msgs.sort_by_key(|r| r.start);
-        for (i, r) in msgs.into_iter().enumerate() {
-            if let RelKind::Message { name, .. } = &r.kind {
-                out.push((
+        return messages(d, c)
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, ri)| match &d.p.rels[ri].kind {
+                RelKind::Message { name, .. } => Some((
                     format!("msg|{i}|{name}"),
-                    Span {
-                        start: r.start,
-                        end: r.end + 1,
+                    EdgeAt {
+                        src: line(&d.p.rels[ri]),
+                        rel: Some(ri),
                     },
-                ));
-            }
-        }
-        return out;
+                )),
+                _ => None,
+            })
+            .collect();
     }
     let part = |path: &str| {
         let head = path.split('.').next().unwrap_or("");
@@ -432,18 +489,11 @@ fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, Span)> {
             .copied()
             .find(|&i| d.e(i).kind == "part" && !d.e(i).name.is_empty() && d.e(i).name == head)
     };
+    let mut out = Vec::new();
     let mut seen: Vec<(String, usize)> = Vec::new();
-    for r in d.p.rels.iter().filter(|r| r.pe == Some(c)) {
+    for (ri, r) in d.p.rels.iter().enumerate().filter(|(_, r)| r.pe == Some(c)) {
         let (a, b, item, src) = match &r.kind {
-            RelKind::Flow { a, b, item } => (
-                a,
-                b,
-                item,
-                Span {
-                    start: r.start,
-                    end: r.end + 1,
-                },
-            ),
+            RelKind::Flow { a, b, item } => (a, b, item, line(r)),
             RelKind::Connect { a, b, item, usage } => (
                 a,
                 b,
@@ -469,24 +519,48 @@ fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, Span)> {
                 1
             }
         };
-        out.push((format!("{base}#{k}"), src));
+        out.push((format!("{base}#{k}"), EdgeAt { src, rel: Some(ri) }));
     }
     out
 }
 
+/// シナリオのメッセージ（書いた順。`ParseResult.rels` の番号）。
+pub(super) fn messages(d: &Doc<'_>, c: usize) -> Vec<usize> {
+    let mut ms: Vec<usize> = (0..d.p.rels.len())
+        .filter(|&i| {
+            d.p.rels[i].pe == Some(c) && matches!(d.p.rels[i].kind, RelKind::Message { .. })
+        })
+        .collect();
+    ms.sort_by_key(|&i| d.p.rels[i].start);
+    ms
+}
+
+impl Doc<'_> {
+    /// ID の関係。ctx があれば、その図の関係から先に探す。
+    pub(super) fn edge(&self, id: &str, ctx: Option<&str>) -> Result<EdgeAt, Refusal> {
+        let in_ctx = match ctx {
+            Some(c) => context_edges(self, self.context(c)?)
+                .into_iter()
+                .find(|(x, _)| x == id)
+                .map(|(_, e)| e),
+            None => None,
+        };
+        in_ctx
+            .or_else(|| {
+                self.m.edges.iter().find(|e| e.id == id).map(|e| EdgeAt {
+                    src: e.src,
+                    rel: e.rel,
+                })
+            })
+            .ok_or_else(|| {
+                "操作する関係が見つかりません。テキストが先に変わった可能性があります".to_owned()
+            })
+    }
+}
+
 /// 関係を削除する（関係を書いた文を消す）。
 fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refusal> {
-    let in_ctx = match ctx {
-        Some(c) => context_edges(d, d.context(c)?)
-            .into_iter()
-            .find(|(x, _)| x == id)
-            .map(|(_, s)| s),
-        None => None,
-    };
-    let src = in_ctx.or_else(|| d.m.edges.iter().find(|e| e.id == id).map(|e| e.src));
-    let src = src.ok_or_else(|| {
-        "操作する関係が見つかりません。テキストが先に変わった可能性があります".to_owned()
-    })?;
+    let src = d.edge(id, ctx)?.src;
     let (text, at) = remove_range(d.text, d.b(src.start), d.b(src.end));
     Ok(Change {
         text,

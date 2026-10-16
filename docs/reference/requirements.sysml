@@ -286,7 +286,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         part def Core {
-            doc /* パーサとモデル構築（Rust の crates/modelith-core を wasm にして使う。ADR-0015・ADR-0016）・図の操作のテキスト編集（Rust に移している途中。残りは web/src/app と web/src/core の暫定の TS 版。ADR-0009・ADR-0016） */
+            doc /* パーサ・モデル構築・図の操作のテキスト編集（Rust の crates/modelith-core を wasm にして使う。ADR-0015・ADR-0016） */
         }
         part def DiagramUI {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
@@ -399,12 +399,6 @@ package ModelithRequirements {
                 verify NoSilentWriteReq;
             }
         }
-        verification def ViewTextTest {
-            doc /* web/src/app/view-text.test.ts：画面で作る図のテキスト（引用名・修飾名・view の宣言と読み直し・図から外す expose の見つけ方） */
-            objective {
-                verify CreateViewReq;
-            }
-        }
         verification def SpecCasesTest {
             doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016） */
             objective {
@@ -432,16 +426,18 @@ package ModelithRequirements {
             }
         }
         verification def RustEditTest {
-            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
+            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
             objective {
                 verify DiagramToTextReq;
                 verify RenameReq;
                 verify NewPackageGuideReq;
+                verify CreateViewReq;
+                verify PhaseReq;
                 verify RobustReq;
             }
         }
         verification def NewPackageTest {
-            doc /* web/src/app/new-package.test.ts：ファイル名からの package 名の候補・名前の検査・package を足す位置 */
+            doc /* web/src/app/new-package.test.ts：ファイル名からの package 名の候補・名前の検査 */
             objective {
                 verify NewPackageGuideReq;
             }

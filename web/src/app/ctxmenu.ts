@@ -131,7 +131,7 @@ function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
   const port = pin.port;
   const items: CtxItem[] = [{ head: port ? `ポート ${port.name}` : "接続点" }];
   if (port) {
-    for (const d of ["in", "out", "inout"] as const) items.push({ label: `向き：${DIR_LABEL[d]}` + (port.dir === d ? "（現在）" : ""), act: () => PINOPS.setDir(port, d) });
+    for (const d of ["in", "out", "inout"] as const) items.push({ label: `向き：${DIR_LABEL[d]}` + (port.dir === d ? "（現在）" : ""), act: () => PINOPS.setDir(node, port, d) });
     items.push({ sep: true }, { label: "ポートを削除", act: () => { clearSel(); S.selPin = { node: node.key, pin: pin.id }; PINOPS.deletePort(node, pin); } });
   } else {
     items.push(

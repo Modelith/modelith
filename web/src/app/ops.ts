@@ -1,9 +1,8 @@
 // 図からの編集操作。すべてテキストの書き換えとして行い、setText で反映する（ADR-0001）。
 
-import {
-  applyEdits, applyTextEdits, edit, indentAt, insertEdit, insertInto, removeRange, type Edit, type Entry, type Intent, type ModelEdge, type ModelNode,
-} from "../core";
+import type { Entry, ModelEdge, ModelNode } from "../core";
 import { ask } from "./dialog";
+import { perform } from "./intent";
 import { kindLabel } from "./labels";
 import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
@@ -16,9 +15,8 @@ import { cancelConnect, clearSel, S } from "./state";
 import { commitLayout, setText, toast } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
 import type { Pos } from "./layout";
-import { appendPackage, isPackageName, packageNameFor } from "./new-package";
+import { isPackageName, packageNameFor } from "./new-package";
 
-const NAME_RE = /^[A-Za-z_]\w*$/;
 export const uniqueChild = (entry: Entry, base: string): string => {
   let n = base, k = 2;
   while (entry.children.some((c) => c.name === n)) n = base + k++;
@@ -28,24 +26,6 @@ const firstPackage = (): Entry | undefined => S.P.entries.find((e) => e.kind ===
 
 /** 内部ブロック図・シーケンス図の対象のキー（`u:`・`l:` のキーの要素を探す先）。 */
 const ctxKey = (): string | undefined => CC().ctx?.key;
-
-/** 図の操作の結果（編集を当てたテキストと、変わり始めの位置）。 */
-interface Performed {
-  text: string;
-  at: number;
-  select?: string;
-  flash?: [number, number];
-}
-
-/** 意図をコアに渡し、返ってきた編集をテキストに当てる（ADR-0016）。操作できなければ理由を知らせて null。 */
-function perform(intent: Intent): Performed | null {
-  const r = edit(S.text, intent);
-  if ("refused" in r) {
-    toast(r.refused);
-    return null;
-  }
-  return { text: applyTextEdits(S.text, r.edits), at: r.edits[0]?.start ?? 0, select: r.select, flash: r.flash };
-}
 
 /**
  * package の無いファイルで要素を置こうとしたとき、断らずに新しい package を作るよう案内する（F-EDIT-7）。
@@ -201,17 +181,11 @@ export const OPS = {
 /** シーケンス図のメッセージの操作。 */
 export const MSGOPS = {
   add(fromKey: string, toKey: string): void {
-    const c = CC();
-    if (!c.ctx) return;
-    const a = fromKey.slice(2), b = toKey.slice(2);
-    const used = new Set(c.edges.map((e) => e.label));
-    let k = c.edges.length + 1;
-    let nm = "msg" + k;
-    while (used.has(nm)) nm = "msg" + ++k;
-    const last = c.edges[c.edges.length - 1];
-    const useThen = !!last && /^then\s/.test(S.text.slice(last.src.start));
-    const r = insertInto(S.text, c.ctx.entry, `${useThen ? "then " : ""}message ${nm} from ${a} to ${b};`);
-    setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
+    const ctx = CC().ctx?.key;
+    const r = ctx ? perform({ op: "addMessage", ctx, from: fromKey, to: toKey }) : null;
+    const nm = r?.select;
+    if (!r || !nm) return;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
     const ne = CC().edges.find((e) => e.label === nm);
     clearSel();
     if (ne) {
@@ -225,16 +199,10 @@ export const MSGOPS = {
   },
 
   update(e: ModelEdge, name: string, type: string): boolean {
-    if (name && !NAME_RE.test(name)) {
-      toast("名前は英字か _ で始め、英字・数字・_ だけで付けてください");
-      return false;
-    }
-    const r = e.rel;
-    if (!r || r.rel !== "message") return false;
-    const old = S.text.slice(e.src.start, e.src.end);
-    const then = /^then\s/.test(old) ? "then " : "";
-    const ns = `${then}message ${name ? name + " " : ""}${type ? "of " + type + " " : ""}from ${r.a} to ${r.b};`;
-    setText(S.text.slice(0, e.src.start) + ns + S.text.slice(e.src.end), { changeAt: e.src.start, flash: [e.src.start, e.src.start + ns.length] });
+    const ctx = CC().ctx?.key;
+    const r = ctx ? perform({ op: "updateMessage", ctx, id: e.id, name, type }) : null;
+    if (!r) return false;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
     const ne = CC().edges[e.idx ?? -1];
     if (ne) S.selEdge = ne.id;
     render();
@@ -244,19 +212,11 @@ export const MSGOPS = {
 
   /** メッセージの順番を入れ替える（文を入れ替え、then の有無は位置に残す）。 */
   move(e: ModelEdge, dir: -1 | 1): void {
-    const c = CC();
-    const i = e.idx ?? 0;
-    const o = c.edges[i + dir];
-    if (!o) return;
-    const [A, B] = dir < 0 ? [o, e] : [e, o];
-    const t = S.text;
-    const ta = t.slice(A.src.start, A.src.end), tb = t.slice(B.src.start, B.src.end);
-    const pre = (s: string): string => /^then\s+/.exec(s)?.[0] ?? "";
-    const strip = (s: string): string => s.replace(/^then\s+/, "");
-    const na = pre(ta) + strip(tb), nb = pre(tb) + strip(ta);
-    const nt = t.slice(0, A.src.start) + na + t.slice(A.src.end, B.src.start) + nb + t.slice(B.src.end);
-    setText(nt, { changeAt: A.src.start, flash: [A.src.start, B.src.end + (na.length - ta.length) + (nb.length - tb.length)] });
-    const ne = CC().edges[i + dir];
+    const ctx = CC().ctx?.key;
+    const r = ctx ? perform({ op: "moveMessage", ctx, id: e.id, dir }) : null;
+    if (!r) return;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    const ne = CC().edges[(e.idx ?? 0) + dir];
     if (ne) S.selEdge = ne.id;
     render();
     highlight();
@@ -266,54 +226,28 @@ export const MSGOPS = {
 
 /** フェーズ（@Phase メタデータ）の操作。 */
 export const PHASEOPS = {
+  /** 要素のフェーズを設定する。value が空なら、その要素に書いた指定を外す。 */
   set(n: ModelNode, value: string): void {
-    const M = S.M, e = n.entry;
-    if (e.phaseVal && e.phaseBlock) {
-      if (!value) {
-        const r = removeRange(S.text, e.phaseBlock.start, e.phaseBlock.end ?? e.phaseBlock.start);
-        setText(r.text, { changeAt: r.at, flash: [r.at, r.at + 1] });
-        toast(`${n.name} のフェーズ指定を外しました`);
-        return;
-      }
-      const tok = `${M.phaseEnum}::${value}`;
-      setText(S.text.slice(0, e.phaseVal.start) + tok + S.text.slice(e.phaseVal.end), { changeAt: e.phaseVal.start, flash: [e.phaseVal.start, e.phaseVal.start + tok.length] });
-    } else {
-      if (!value) {
-        toast("パッケージから継承しているため、ここでは外せません");
-        renderInspector();
-        return;
-      }
-      const inh = M.phaseOf(e);
-      if (inh && inh.value === value) {
-        toast("すでにパッケージから継承しています");
-        return;
-      }
-      const r = insertInto(S.text, e, `@Phase { stage = ${M.phaseEnum}::${value}; }`);
-      setText(r.text, { changeAt: r.at, flash: [r.at, r.at + r.len] });
+    const r = perform({ op: "setPhase", keys: [n.key], value, ctx: ctxKey() });
+    if (!r) {
+      renderInspector();
+      return;
     }
-    toast(`${n.name} を「${phaseLabel(value)}」にしました`);
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    toast(value ? `${n.name} を「${phaseLabel(value)}」にしました` : `${n.name} のフェーズ指定を外しました`);
   },
 
   /** フェーズの定義（metadata def と enum def）を最初の package に足す。package が無ければ、作るよう案内する。 */
   async init(): Promise<void> {
-    let text = S.text;
-    let pkg = firstPackage();
-    if (!pkg) {
-      const name = await askPackageName();
-      if (!name) return;
-      ({ text, pkg } = appendPackage(S.text, name));
+    let newPackage: string | undefined;
+    if (!firstPackage()) {
+      const np = await askPackageName();
+      if (!np) return;
+      newPackage = np;
     }
-    if (pkg.open == null) {
-      toast("このファイルの書き方では、フェーズを足せません（最初の package が { } で囲まれていません）");
-      return;
-    }
-    const i1 = indentAt(text, pkg.start) + "    ";
-    const ins =
-      `\n${i1}// フェーズ管理：要素やパッケージに @Phase を付けて分類する（パッケージに付けると中の要素が継承）\n` +
-      `${i1}metadata def Phase { attribute stage : PhaseKind; }\n` +
-      `${i1}enum def PhaseKind { enum StakeholderNeeds; enum SystemRequirements; enum Architecture; enum Verification; }\n`;
-    const at = pkg.open + 1;
-    setText(text.slice(0, at) + ins + text.slice(at), { changeAt: at, flash: [at, at + ins.length] });
+    const r = perform({ op: "initPhases", newPackage });
+    if (!r) return;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
     toast("フェーズの定義を追加しました。要素を選んでフェーズを設定できます");
   },
 };
@@ -403,12 +337,8 @@ export function setPhaseSel(value: string): void {
     PHASEOPS.set(only, value);
     return;
   }
-  const edits: Edit[] = ns.map((n) =>
-    n.entry.phaseVal
-      ? { at: n.entry.phaseVal.start, del: n.entry.phaseVal.end - n.entry.phaseVal.start, ins: `${S.M.phaseEnum}::${value}` }
-      : insertEdit(S.text, n.entry, `@Phase { stage = ${S.M.phaseEnum}::${value}; }`),
-  );
-  const at = Math.min(...edits.map((e) => e.at));
-  setText(applyEdits(S.text, edits), { changeAt: at, flash: [at, at + 1] });
+  const r = perform({ op: "setPhase", keys: ns.map((n) => n.key), value, ctx: ctxKey() });
+  if (!r) return;
+  setText(r.text, { changeAt: r.at, flash: r.flash });
   toast(`${ns.length} 個を「${phaseLabel(value)}」にしました`);
 }
