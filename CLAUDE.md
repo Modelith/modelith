@@ -25,7 +25,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | [testing-principles](.claude/skills/testing-principles/SKILL.md) | ISTQB の 7 原則、単体 → 結合 → 統合、同値分割・境界値・正常系／異常系、AAA パターン |
 | [release](.claude/skills/release/SKILL.md) | 版を出す手順（下書きまで。公開はメンテナ）と、リリースノートの決まった形 |
 
-スキルは「書くときの指針」であり、ハーネスで強制するのは fmt・clippy・ShellCheck・テストの成否だけ（ADR-0008）。
+スキルは「書くときの指針」であり、ハーネスで強制するのは fmt・clippy・ShellCheck・テストの成否と、関数の doc コメント（ADR-0008）。
 同じ種類の違反が繰り返されたら、その時点で機械的な検査を足す。
 
 ## 守るべき設計原則
@@ -93,7 +93,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 - Rust edition 2024 / stable ツールチェーン（`rust-toolchain.toml`）、`unsafe` 禁止
 - TypeScript は `strict` + `noUncheckedIndexedAccess`
 - `unwrap()` / `expect()` はテストとプロトタイプ以外で避け、エラー型で返す
-- 公開 API には doc コメントを書く
+- テスト以外のすべての関数に doc コメント（概要・引数・戻り値・入力と期待する出力の例）を書く。書き方は programming-principles の「関数の doc コメント」。`scripts/check.sh` が不足を検出する
 - 周辺コードの命名・コメント密度・イディオムに合わせる
 
 ## ハーネスの改善
