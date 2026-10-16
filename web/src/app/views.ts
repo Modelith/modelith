@@ -1,6 +1,6 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。
 
-import type { EdgeKind, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
+import type { EdgeKind, Entry, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
 import { emptyView, type ViewLayout } from "./layout";
 import { S } from "./state";
 
@@ -18,12 +18,20 @@ export interface ViewDef {
   depth?: boolean;
 }
 
+export interface PackageFrame {
+  name: string;
+  keys: string[];
+  inner: number[];
+}
+
 export interface ViewContent {
   nodes: ModelNode[];
   edges: ModelEdge[];
   dim?: Set<string>;
   empty?: string;
   frame?: { kind: string; title: string };
+  /** 図に出した package の枠（F-VIEW-9）。`inner` は、この枠の中にある枠の番号。 */
+  packages?: PackageFrame[];
   ctx?: ModelNode;
   seq?: boolean;
 }
@@ -41,28 +49,100 @@ export const VIEWS: ViewDef[] = [
 const PHASE_LABEL: Record<string, string> = {
   StakeholderNeeds: "利用者要求", SystemRequirements: "システム要求", Architecture: "方式設計", Verification: "検証",
 };
+/**
+ * 工程（@Phase の値）の画面の名前を返す（F-TRACE-1）。知らない値はそのまま返す。
+ *
+ * @param p 工程の列挙値の名前
+ * @returns 画面に出す名前
+ * @example
+ * phaseLabel("SystemRequirements") // → "システム要求"
+ * phaseLabel("Custom")             // → "Custom"（知らない値）
+ */
 export const phaseLabel = (p: string): string => PHASE_LABEL[p] ?? p;
 
+/**
+ * ID からビューの定義を探す。知らない ID ならトレーサビリティのビューを返す。
+ *
+ * @param id ビューの ID（"trace"・"structure"・"ibd" など）
+ * @returns ビューの定義
+ * @example
+ * viewDef("ibd").label   // → "内部ブロック図"
+ * viewDef("nope").id     // → "trace"（知らない ID）
+ */
 export const viewDef = (id: string): ViewDef => VIEWS.find((x) => x.id === id) ?? (VIEWS[0] as ViewDef);
+/**
+ * 表示中のタブのビューの定義を返す（S.view から引く）。
+ *
+ * @returns ビューの定義
+ * @example
+ * // S.view が "structure"
+ * curView().label // → "構造"
+ */
 export const curView = (): ViewDef => viewDef(S.view);
 /** テキストの view の描き方を、それに当たる自動の図で描く（ADR-0005：標準の図の描き方は Modelith の既定で補う）。 */
 const BASE_VIEW: Record<ViewKind, string> = { general: "all", interconnection: "ibd", stateTransition: "behavior", sequence: "seq" };
+/**
+ * テキストの view の描き方（図の種類）を、それに当たる自動の図の ID にする。
+ *
+ * @param mv テキストに書かれた view
+ * @returns 自動の図のビュー ID
+ * @example
+ * baseViewOf({ kind: "interconnection", … })  // → "ibd"
+ * baseViewOf({ kind: "general", … })          // → "all"
+ */
 export const baseViewOf = (mv: ModelView): string => BASE_VIEW[mv.kind];
 
-/** 表示中のタブの、テキストに書かれた view（自動の図や、テキストから消えた view なら null）。 */
+/**
+ * 表示中のタブの、テキストに書かれた view を返す（F-VIEW-7）。
+ *
+ * @returns 名前が S.modelView の view。自動の図のタブや、テキストから消えた view なら null
+ * @example
+ * // S.modelView が "Overview" で、モデルに view Overview がある
+ * modelView()?.name // → "Overview"
+ * // S.modelView が null（自動の図）
+ * modelView()       // → null
+ */
 export const modelView = (): ModelView | null => (S.modelView ? (S.M.views.find((v) => v.name === S.modelView) ?? null) : null);
 
 /**
  * 配置情報のキー。内部ブロック図は対象ブロックごとに分ける。
  * テキストの view は view ごとに分ける（内部ブロック図・シーケンス図は、対象ごとの配置を自動の図と共有する）。
+ *
+ * @returns 表示中のタブの配置のキー
+ * @example
+ * // S.view が "ibd"、S.ibdCtx が "Vehicle"
+ * VK() // → "ibd:Vehicle"
+ * // S.view が "all"、S.modelView が "Overview"
+ * VK() // → "view:Overview"
+ * // S.view が "structure"、S.modelView が null
+ * VK() // → "structure"
  */
 export const VK = (): string => (S.view === "ibd" ? "ibd:" + S.ibdCtx : S.modelView && S.view !== "seq" ? "view:" + S.modelView : S.view);
-/** 現在のビューの配置（無ければ作る）。 */
+/**
+ * 現在のビューの配置を返す。無ければ空の配置を作って S.layout に加える。
+ *
+ * @returns S.layout[VK()] の配置（呼び出し側の変更はそのまま S.layout に残る）
+ * @example
+ * // S.view が "structure" で、まだ配置が無い
+ * curLayout() // → emptyView() と同じ中身（S.layout.structure に加わる）
+ */
 export function curLayout(): ViewLayout {
   const k = VK();
   return (S.layout[k] ||= emptyView());
 }
 
+/**
+ * 自動の図で表示する要素と関係を選ぶ。種類で選んだ要素に、pull の関係でつながる要素・部品の持ち主（pullComp）・
+ * 配置済みの要素を加え、その間の、ビューが描く種類の関係を選ぶ。
+ *
+ * @param M モデル
+ * @param v ビューの定義（kinds が null ならモデルのすべて）
+ * @returns 表示する要素と関係
+ * @example
+ * // M に part def A・port def P と、A から P への関係がある。structure のビューで、配置が無い
+ * baseContent(M, viewDef("structure")) // → { nodes: [A], edges: [] }
+ * baseContent(M, viewDef("all"))       // → { nodes: M.nodes, edges: M.edges }（すべて）
+ */
 function baseContent(M: Model, v: ViewDef): ViewContent {
   if (!v.kinds) return { nodes: M.nodes, edges: M.edges };
   const kinds = v.kinds;
@@ -76,6 +156,18 @@ function baseContent(M: Model, v: ViewDef): ViewContent {
   return { nodes: M.nodes.filter((n) => keys.has(n.key)), edges: M.edges.filter((e) => ek.includes(e.kind) && keys.has(e.from) && keys.has(e.to)) };
 }
 
+/**
+ * 選んだ工程（S.phase）の要素だけを残す（F-TRACE-1）。それらと線でつながる他の工程の要素は、薄く（dim）表示するために残す。
+ *
+ * @param M モデル（工程の列挙が無ければ絞り込まない）
+ * @param c 絞り込む前の内容
+ * @returns 絞り込んだ内容。S.phase が null か、モデルに工程が無ければ c をそのまま返す
+ * @example
+ * // S.phase が "SystemRequirements"。R1 がその工程、N1 が利用者要求の工程で、R1 から N1 へ線がある
+ * phaseFilter(M, { nodes: [R1, N1, X], edges: [e] }) // → { nodes: [R1, N1], edges: [e], dim: Set{"N1"} }
+ * // S.phase が null
+ * phaseFilter(M, c) // → c
+ */
 function phaseFilter(M: Model, c: ViewContent): ViewContent {
   if (!S.phase || !M.phases) return c;
   const keep = new Set(c.nodes.filter((n) => n.phase === S.phase).map((n) => n.key));
@@ -88,17 +180,55 @@ function phaseFilter(M: Model, c: ViewContent): ViewContent {
   return { nodes: c.nodes.filter((n) => vis.has(n.key)), edges: c.edges.filter((e) => keep.has(e.from) || keep.has(e.to)), dim };
 }
 
-/** 内部ブロック図の対象にできるブロック（部品を持つ part def）。 */
+/**
+ * 内部ブロック図の対象にできるブロック（名前のある部品を持つ part def）を集める。
+ *
+ * @param M モデル
+ * @returns 対象にできる part def のノード（モデルの順）。無ければ空
+ * @example
+ * // part def Vehicle { part engine : Engine; } と、部品の無い part def Engine がある
+ * ibdContexts(M).map((n) => n.key) // → ["Vehicle"]
+ */
 export const ibdContexts = (M: Model): ModelNode[] =>
   M.nodes.filter((n) => n.kind === "part def" && n.entry.children.some((c) => c.kind === "part" && c.name));
-/** シーケンス図の対象にできるシナリオ。 */
+/**
+ * シーケンス図の対象にできるシナリオ（occurrence def）を集める。
+ *
+ * @param M モデル
+ * @returns occurrence def のノード（モデルの順）。無ければ空
+ * @example
+ * // occurrence def Start がある
+ * seqContexts(M).map((n) => n.key) // → ["Start"]
+ */
 export const seqContexts = (M: Model): ModelNode[] => M.nodes.filter((n) => n.kind === "occurrence def");
-/** 内部ブロック図の既定の対象（部品が最も多いブロック）。 */
+/**
+ * 内部ブロック図の既定の対象（部品が最も多いブロック。同数なら先のもの）を選ぶ。
+ *
+ * @param M モデル
+ * @returns 対象のノード。対象にできるブロックが無ければ null
+ * @example
+ * // Vehicle が部品を 3 つ、Engine が 1 つ持つ
+ * defaultIbdContext(M)?.key // → "Vehicle"
+ * // 部品を持つ part def が無い
+ * defaultIbdContext(M)      // → null
+ */
 export function defaultIbdContext(M: Model): ModelNode | null {
   const count = (n: ModelNode): number => n.entry.children.filter((c) => c.kind === "part").length;
   return ibdContexts(M).reduce<ModelNode | null>((best, n) => (!best || count(n) > count(best) ? n : best), null);
 }
 
+/**
+ * 内部ブロック図の内容を作る。対象（S.ibdCtx）の部品を `u:部品名` のノードにし、対象の中の flow・connect を、
+ * 部品の間の線（ポートが分かれば接続点つき）にする。
+ *
+ * @param M モデル
+ * @returns 部品・線・対象の枠。対象が無ければ空で、作り方の案内（empty）を付ける
+ * @example
+ * // S.ibdCtx が "Vehicle"。Vehicle が部品 engine・wheel を持ち、engine.out から wheel.in へ flow がある
+ * ibdContent(M) // → { nodes: [u:engine, u:wheel], edges: [{ kind: "flow", from: "u:engine", to: "u:wheel", … }], frame: { kind: "part def", title: "Vehicle" }, ctx }
+ * // S.ibdCtx が null
+ * ibdContent(M) // → { nodes: [], edges: [], empty: "中に部品を持つ部品定義がまだありません。…" }
+ */
 function ibdContent(M: Model): ViewContent {
   const ctx = ibdContexts(M).find((n) => n.key === S.ibdCtx);
   if (!ctx) return { nodes: [], edges: [], empty: "中に部品を持つ部品定義がまだありません。「構造」の図で、部品定義から別の部品定義へ線を引き、「部品として持つ」を選ぶと作れます。" };
@@ -137,6 +267,18 @@ function ibdContent(M: Model): ViewContent {
   return { nodes, edges, frame: { kind: "part def", title: ctx.name }, ctx };
 }
 
+/**
+ * シーケンス図の内容を作る。対象のシナリオ（S.seqCtx）の部品を `l:名前` のライフラインにし、
+ * シナリオの中の message を書かれた順に線にする。
+ *
+ * @param M モデル
+ * @returns ライフライン・メッセージ（seq: true）。シナリオが無ければ空で、作り方の案内（empty）を付ける
+ * @example
+ * // S.seqCtx が "Start"。Start が部品 a・b と、a から b への message m を持つ
+ * seqContent(M) // → { nodes: [l:a, l:b], edges: [{ id: "msg|0|m", kind: "message", from: "l:a", to: "l:b", … }], seq: true, ctx }
+ * // S.seqCtx が null
+ * seqContent(M) // → { nodes: [], edges: [], seq: true, empty: "シナリオがまだありません。…" }
+ */
 function seqContent(M: Model): ViewContent {
   const ctx = seqContexts(M).find((n) => n.key === S.seqCtx);
   if (!ctx) return { nodes: [], edges: [], seq: true, empty: "シナリオがまだありません。上のパレットの「シナリオ」から作れます。" };
@@ -154,12 +296,27 @@ function seqContent(M: Model): ViewContent {
   return { nodes, edges, seq: true, ctx };
 }
 
-/** view の expose の対象（またはその型）が ctxs のどれかなら、それ。 */
+/**
+ * view の expose の対象（またはその型）が ctxs のどれかなら、それを返す。
+ *
+ * @param mv テキストに書かれた view
+ * @param ctxs 対象の候補（ibdContexts・seqContexts の結果）
+ * @returns 最初に当たった候補。当たらなければ undefined
+ * @example
+ * // view が Vehicle を expose している
+ * exposedContext(mv, [Vehicle, Truck])?.key // → "Vehicle"
+ * // view が部品 v : Truck を expose している
+ * exposedContext(mv, [Vehicle, Truck])?.key // → "Truck"（型で当たる）
+ * exposedContext(mv, [])                    // → undefined
+ */
 function exposedContext(mv: ModelView, ctxs: ModelNode[]): ModelNode | undefined {
   return ctxs.find((n) => mv.targets.some((t) => t === n.entry || (!t.isDef && t.type === n.name)));
 }
 
-/** テキストの view の描き方が変わったら（render や型を書き換えたとき）、表示中のタブの描き方を合わせる。 */
+/**
+ * テキストの view の描き方が変わったら（render や型を書き換えたとき）、表示中のタブの描き方を合わせる。
+ * S.view と、表示中のタブの view を書き換える。
+ */
 export function syncModelViewKind(): void {
   const mv = modelView();
   if (!mv || S.view === baseViewOf(mv)) return;
@@ -168,7 +325,40 @@ export function syncModelViewKind(): void {
   if (t) t.view = S.view;
 }
 
-/** テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）。 */
+/**
+ * 保存された図の package の枠を作る（F-VIEW-9）。枠の中の枠は、package の入れ子から決める。
+ *
+ * @param mv テキストに書かれた view
+ * @param shown 図に出す要素のキー（枠の中身はこれに絞る）
+ * @returns 枠ごとの名前・中の要素のキー・中の枠の番号（mv.frames の添字）
+ * @example
+ * // view が package P を expose し、P の中に package Q がある。P に A、Q に B があり、両方を図に出す
+ * packageFrames(mv, new Set(["A", "B"])) // → [{ name: "P", keys: ["A"], inner: [1] }, { name: "Q", keys: ["B"], inner: [] }]
+ */
+function packageFrames(mv: ModelView, shown: Set<string>): PackageFrame[] {
+  const within = (e: Entry, outer: Entry): boolean => {
+    for (let a = e.pe; a; a = a.pe) if (a === outer) return true;
+    return false;
+  };
+  return mv.frames.map((f) => ({
+    name: f.name,
+    keys: f.nodeKeys.filter((k) => shown.has(k)),
+    inner: mv.frames.flatMap((g, j) => (within(g.entry, f.entry) ? [j] : [])),
+  }));
+}
+
+/**
+ * テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）を作る。
+ * 内部ブロック図・シーケンス図の view では、expose の対象を S.ibdCtx・S.seqCtx に書き込んでから作る。
+ *
+ * @param M モデル
+ * @param mv 表示する view。テキストから消えていれば null
+ * @returns 表示する要素・関係・package の枠。出せる要素が無ければ空で、理由の案内（empty）を付ける
+ * @example
+ * // general の view Overview が A と B を expose し、A から B へ線 e がある
+ * modelViewContent(M, mv) // → { nodes: [A, B], edges: [e], packages: [] }
+ * modelViewContent(M, null) // → { nodes: [], edges: [], empty: "保存された図「…」は、モデルから消えています。" }
+ */
 function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
   if (!mv) return { nodes: [], edges: [], empty: `保存された図「${S.modelView ?? ""}」は、モデルから消えています。` };
   if (mv.kind === "interconnection") {
@@ -182,14 +372,27 @@ function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
   const keys = new Set(mv.nodeKeys);
   const nodes = M.nodes.filter((n) => keys.has(n.key));
   if (!nodes.length) {
-    return { nodes, edges: [], empty: `図「${mv.name}」に出せる要素がありません。モデルの入れ物（package）そのものを出す描き方は、まだありません（テキストで中身を出すときは expose P::*; と書きます）。` };
+    const where = mv.frames.length ? `モデルの入れ物（${mv.frames.map((f) => f.name).join("・")}）の中に、` : "";
+    return { nodes, edges: [], empty: `図「${mv.name}」に、${where}図に出せる要素がありません。` };
   }
-  return phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
+  const content = phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
+  return { ...content, packages: packageFrames(mv, new Set(content.nodes.map((n) => n.key))) };
 }
 
 let cache: { M: Model | null; k: string | null; v: ViewContent | null } = { M: null, k: null, v: null };
 
-/** ビューに表示する要素と関係（モデルと表示条件が同じ間はキャッシュする）。 */
+/**
+ * ビューに表示する要素と関係を返す（モデルと表示条件が同じ間はキャッシュする）。
+ * 自動の内部ブロック図・シーケンス図で対象が無効なら、既定の対象を S.ibdCtx・S.seqCtx に選び直す。
+ *
+ * @param M モデル
+ * @param v ビューの定義
+ * @returns 表示する内容（同じ条件なら前と同じオブジェクト）
+ * @example
+ * // S.modelView が null、S.phase が null
+ * viewContent(M, viewDef("all"))                                 // → { nodes: M.nodes, edges: M.edges }
+ * viewContent(M, viewDef("all")) === viewContent(M, viewDef("all")) // → true（キャッシュ）
+ */
 export function viewContent(M: Model, v: ViewDef): ViewContent {
   // テキストの view では、内部ブロック図・シーケンス図の対象は expose で決まる（modelViewContent）
   if (v.id === "ibd" && !S.modelView) {
@@ -209,19 +412,55 @@ export function viewContent(M: Model, v: ViewDef): ViewContent {
   return r;
 }
 
-/** 現在のビューの内容。 */
+/**
+ * 現在のビューの内容を返す（viewContent(S.M, curView()) の略）。
+ *
+ * @returns 表示中のタブの内容
+ * @example
+ * // S.view が "all"、絞り込みなし
+ * CC().nodes.length // → S.M.nodes.length
+ */
 export const CC = (): ViewContent => viewContent(S.M, curView());
 
-/** キーから要素を探す（`u:`・`l:` は現在のビューの部品・ライフライン）。 */
+/**
+ * キーから要素を探す（`u:`・`l:` は現在のビューの部品・ライフライン）。
+ *
+ * @param k 要素のキー
+ * @returns 見つかった要素。k が空か、見つからなければ null
+ * @example
+ * // モデルに part def Vehicle がある
+ * nodeByKey("Vehicle")    // → Vehicle のノード
+ * // 内部ブロック図に部品 engine を表示中
+ * nodeByKey("u:engine")   // → 部品 engine のノード
+ * nodeByKey(undefined)    // → null
+ */
 export function nodeByKey(k: string | null | undefined): ModelNode | null {
   if (!k) return null;
   if (/^[ul]:/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
   return S.M.nodes.find((n) => n.key === k) ?? null;
 }
 
+/**
+ * ID から線を探す。現在のビューの線を先に、無ければモデルの線から探す。
+ *
+ * @param id 線の ID
+ * @returns 見つかった線。id が空か、見つからなければ null
+ * @example
+ * // 内部ブロック図に flow の線 "flow|u:a|u:b|#1" を表示中
+ * edgeById("flow|u:a|u:b|#1") // → その線
+ * edgeById(null)              // → null
+ */
 export function edgeById(id: string | null | undefined): ModelEdge | null {
   if (!id) return null;
   return CC().edges.find((e) => e.id === id) ?? S.M.edges.find((e) => e.id === id) ?? null;
 }
 
+/**
+ * 現在のビューに表示している要素を返す。
+ *
+ * @returns 表示中の要素（CC().nodes）
+ * @example
+ * // 構造の図に A と B を表示中
+ * visibleNodes().map((n) => n.key) // → ["A", "B"]
+ */
 export const visibleNodes = (): ModelNode[] => CC().nodes;

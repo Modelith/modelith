@@ -9,11 +9,29 @@ const COMP_KINDS = new Set([
   "concern", "use case", "item", "port",
 ]);
 
-/** 標準ライブラリの型（未定義でも問題にしない）。 */
+/**
+ * 標準ライブラリの型か（モデルの中に定義が無くても「見つからない」と言わない）。
+ *
+ * @param t 型の名前（修飾なし）
+ * @returns 名前が `…Value`・`…Kind` で終わるか、Real・Integer・Boolean・String などの基本型なら true
+ * @example
+ * isLib("MassValue") // → true
+ * isLib("Real")      // → true
+ * isLib("Engine")    // → false
+ */
 export const isLib = (t: string): boolean =>
   /(Value|Kind)$/.test(t) || /^(Real|Integer|Boolean|String|Natural|Number|Complex|Anything)$/.test(t);
 
-/** 種類から色分けの系統を決める。 */
+/**
+ * 種類から色分けの系統を決める。
+ *
+ * @param kind 要素の種類（`part def`・`requirement` など、定義も使用も）
+ * @returns 色分けの系統。どれにも当たらなければ "other"
+ * @example
+ * family("requirement def") // → "req"
+ * family("state def")       // → "beh"
+ * family("port def")        // → "other"
+ */
 export function family(kind: string): Family {
   if (/^requirement/.test(kind)) return "req";
   if (/^concern/.test(kind)) return "concern";
@@ -24,7 +42,17 @@ export function family(kind: string): Family {
   return "other";
 }
 
-/** 解析結果からモデル（図の要素・関係・問題・フェーズ）を作る。 */
+/**
+ * 解析結果からモデル（図の要素・関係・問題・フェーズ・ビュー）を作る。
+ * 名前の解決に失敗したものは、例外にせず問題（problems）として加える。
+ *
+ * @param P パーサの解析結果
+ * @returns 図に投影するモデル
+ * @example
+ * build(parse("package P { part def A; }")).nodes.map((n) => n.key) // → ["A"]
+ * build(parse("package P { part def W { part a : X; } }")).problems.map((p) => p.msg)
+ * // → ["型「X」が見つかりません（a）"]（見つからない型）
+ */
 export function build(P: ParseResult): Model {
   const nodes: ModelNode[] = [];
   const nodeOf = new Map<Entry, ModelNode>();
@@ -219,9 +247,26 @@ export function build(P: ParseResult): Model {
   return { nodes, views, edges, problems, nodeOf, byName, rels: P.rels, phases, phaseEnum, phaseOf };
 }
 
+/**
+ * 修飾名の最後の区切り（`::` の後ろ）を取り出す。
+ *
+ * @param s 修飾名（`P::Q::A` など）
+ * @returns 最後の区切り。`::` が無ければ s のまま
+ * @example
+ * lastSeg("P::Q::A") // → "A"
+ * lastSeg("A")       // → "A"
+ */
 const lastSeg = (s: string): string => s.split("::").pop() ?? "";
 
-/** フェーズに沿った要求のトレースの抜け（導出・充足・検証）を問題として加える。 */
+/**
+ * フェーズに沿った要求のトレースの抜け（導出・充足・検証）を問題（kind: "gap"）として problems に加える。
+ * 最初のフェーズの要求は下位への展開が無いとき、それ以降のフェーズの要求は導出元・充足・検証のどれかが無いときに加える。
+ *
+ * @param nodes 図の要素（フェーズを割り当て済みのもの）
+ * @param edges 図の関係（derive・satisfy・verify を探す）
+ * @param phases フェーズの列挙値（上位から順に）
+ * @param problems 問題を書き足す先（書き換える）
+ */
 function addTraceGaps(nodes: ModelNode[], edges: ModelEdge[], phases: string[], problems: Problem[]): void {
   const label = (n: ModelNode): string => (n.short ? `<'${n.short}'>` : n.name);
   const has = (kind: ModelEdge["kind"], end: "from" | "to", key: string): boolean => edges.some((e) => e.kind === kind && e[end] === key);

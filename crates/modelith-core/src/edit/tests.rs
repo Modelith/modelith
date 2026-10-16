@@ -1,6 +1,7 @@
 //! 図の操作の単体テスト。テキストに意図を当て、編集後のテキストを比べる（ADR-0016）。
 //! 画面からの振る舞いは e2e テストで確かめる。
 
+use super::more::sysml_name;
 use super::text::{diff, remove_range};
 use super::*;
 
@@ -392,6 +393,18 @@ fn random_intents_never_panic() {
                 format!(r#"{{"op":"addNode","kind":"{k}","phase":"x","newPackage":"N"}}"#),
                 format!(r#"{{"op":"connect","rel":"flow","from":"{k}","to":"B","ctx":"C"}}"#),
                 format!(r#"{{"op":"connect","rel":"verify","from":"{k}","to":"R"}}"#),
+                format!(r#"{{"op":"addMessage","ctx":"{k}","from":"l:l","to":"l:{k}"}}"#),
+                format!(r#"{{"op":"moveMessage","ctx":"S","id":"{k}","dir":1}}"#),
+                format!(r#"{{"op":"setPhase","keys":["{k}","A"],"value":"{k}"}}"#),
+                format!(r#"{{"op":"initPhases","newPackage":"{k}"}}"#),
+                format!(
+                    r#"{{"op":"makePort","key":"{k}","name":"p","dir":"in","flows":[{{"id":"{k}","from":true}}],"ctx":"C"}}"#
+                ),
+                format!(r#"{{"op":"setPortDir","key":"{k}","port":"x","dir":"out","ctx":"C"}}"#),
+                format!(
+                    r#"{{"op":"saveView","name":"{k}","kind":"general","targets":["A","{k}"]}}"#
+                ),
+                format!(r#"{{"op":"removeFromView","view":"{k}","key":"A"}}"#),
             ] {
                 let intent: Intent =
                     serde_json::from_str(&op).unwrap_or_else(|e| panic!("{op}: {e}"));
@@ -406,4 +419,283 @@ fn random_intents_never_panic() {
             }
         }
     }
+}
+
+// ---- メッセージ ----
+
+const SEQ: &str = "package P { part def E; occurrence def S {\n    part a : E; part b : E;\n    message m1 from a to b;\n    then message m2 of Sig from b to a;\n} }";
+
+#[test]
+fn add_message_names_next_number_and_keeps_then() {
+    // Act
+    let (after, out) = run(
+        SEQ,
+        r#"{"op":"addMessage","ctx":"S","from":"l:b","to":"l:a"}"#,
+    );
+    // Assert（前のメッセージが then で始まるので then を付ける）
+    assert!(
+        after
+            .contains("then message m2 of Sig from b to a;\n    then message msg3 from b to a;\n}"),
+        "{after}"
+    );
+    assert_eq!(out.select.as_deref(), Some("msg3"));
+}
+
+#[test]
+fn update_message_rewrites_name_and_type_keeping_then() {
+    // Act（名前と型を変える・型を外す）
+    let (typed, _) = run(
+        SEQ,
+        r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"go","type":"Cmd"}"#,
+    );
+    let (bare, _) = run(
+        SEQ,
+        r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"","type":""}"#,
+    );
+    // Assert
+    assert!(
+        typed.contains("then message go of Cmd from b to a;"),
+        "{typed}"
+    );
+    assert!(bare.contains("then message from b to a;"), "{bare}");
+    assert!(
+        refused(
+            SEQ,
+            r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"1x","type":""}"#
+        )
+        .contains("英字")
+    );
+}
+
+#[test]
+fn move_message_swaps_statements_but_keeps_then_in_place() {
+    // Act
+    let (after, _) = run(
+        SEQ,
+        r#"{"op":"moveMessage","ctx":"S","id":"msg|1|m2","dir":-1}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("    message m2 of Sig from b to a;\n    then message m1 from a to b;\n"),
+        "{after}"
+    );
+    // 境界値：先頭より上・末尾より下には動かせない
+    assert!(
+        refused(
+            SEQ,
+            r#"{"op":"moveMessage","ctx":"S","id":"msg|0|m1","dir":-1}"#
+        )
+        .contains("動かせません")
+    );
+    assert!(
+        refused(
+            SEQ,
+            r#"{"op":"moveMessage","ctx":"S","id":"msg|1|m2","dir":1}"#
+        )
+        .contains("動かせません")
+    );
+}
+
+// ---- フェーズ ----
+
+const PH: &str = "package P {\n    enum def K { enum a; enum b; }\n    metadata def Phase { attribute stage : K; }\n    part def A { @Phase { stage = K::a; } }\n    part def B;\n}\npackage Q { @Phase { stage = K::b; } part def C; }\n";
+
+#[test]
+fn set_phase_replaces_value_or_adds_block() {
+    // Act
+    let (replaced, _) = run(PH, r#"{"op":"setPhase","keys":["A"],"value":"b"}"#);
+    let (added, _) = run(PH, r#"{"op":"setPhase","keys":["B"],"value":"a"}"#);
+    // Assert
+    assert!(
+        replaced.contains("part def A { @Phase { stage = K::b; } }"),
+        "{replaced}"
+    );
+    assert!(
+        added.contains("part def B {\n        @Phase { stage = K::a; }\n    }"),
+        "{added}"
+    );
+}
+
+#[test]
+fn set_phase_empty_removes_own_block_but_not_inherited_one() {
+    // Act・Assert（自分に書いた指定は外せる。継承しているものは外せない・同じ値は書かない）
+    let (removed, _) = run(PH, r#"{"op":"setPhase","keys":["A"],"value":""}"#);
+    assert!(removed.contains("part def A { }"), "{removed}");
+    assert!(refused(PH, r#"{"op":"setPhase","keys":["C"],"value":""}"#).contains("継承"));
+    assert!(refused(PH, r#"{"op":"setPhase","keys":["C"],"value":"b"}"#).contains("継承"));
+}
+
+#[test]
+fn set_phase_many_sets_each_definition() {
+    // Act
+    let (after, _) = run(PH, r#"{"op":"setPhase","keys":["A","B"],"value":"b"}"#);
+    // Assert
+    assert!(
+        after.contains("part def A { @Phase { stage = K::b; } }"),
+        "{after}"
+    );
+    assert!(
+        after.contains("part def B {\n        @Phase { stage = K::b; }\n    }"),
+        "{after}"
+    );
+}
+
+#[test]
+fn set_phase_without_phase_definition_is_refused() {
+    assert!(
+        refused(
+            "package P { part def A; }",
+            r#"{"op":"setPhase","keys":["A"],"value":"x"}"#
+        )
+        .contains("フェーズ")
+    );
+}
+
+#[test]
+fn init_phases_adds_definitions_to_first_package_or_new_one() {
+    // Act
+    let (after, _) = run(
+        "package P {\n    part def A;\n}\n",
+        r#"{"op":"initPhases"}"#,
+    );
+    let (fresh, _) = run("", r#"{"op":"initPhases","newPackage":"M"}"#);
+    // Assert（足した定義でフェーズが使えるようになる）
+    for t in [&after, &fresh] {
+        assert_eq!(Doc::new(t).m.phases.map(|p| p.len()), Some(4), "{t}");
+    }
+    assert!(fresh.starts_with("package M {\n"), "{fresh}");
+    assert!(refused("package P;", r#"{"op":"initPhases"}"#).contains("{ }"));
+}
+
+// ---- ポート ----
+
+const PORTS: &str = "package P {\n    part def E { out port o; }\n    part def C {\n        part a : E;\n        part b : E;\n        flow from a to b;\n    }\n}\n";
+
+#[test]
+fn make_port_adds_declaration_and_rewires_flows() {
+    // Act（内部ブロック図の部品 b に、線の行き先の接続点からポートを作る。宣言は型の定義 E に書く）
+    let (after, out) = run(
+        PORTS,
+        r#"{"op":"makePort","key":"u:b","ctx":"C","name":"i","dir":"in","type":"Sig","flows":[{"id":"flow|u:a|u:b|#1","to":true}]}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("part def E { out port o; in port i : Sig; }"),
+        "{after}"
+    );
+    assert!(after.contains("flow from a to b.i;"), "{after}");
+    assert_eq!(flashed(&after, &out).trim(), "in port i : Sig;");
+}
+
+#[test]
+fn make_port_is_refused_for_used_or_bad_names() {
+    assert!(
+        refused(
+            PORTS,
+            r#"{"op":"makePort","key":"E","name":"o","dir":"in"}"#
+        )
+        .contains("既に使われています")
+    );
+    assert!(
+        refused(
+            PORTS,
+            r#"{"op":"makePort","key":"E","name":"x y","dir":"in"}"#
+        )
+        .contains("英字")
+    );
+    assert!(
+        refused(
+            PORTS,
+            r#"{"op":"makePort","key":"E","name":"x","dir":"up"}"#
+        )
+        .contains("up")
+    );
+}
+
+#[test]
+fn set_port_dir_and_delete_port() {
+    // Act
+    let (dir, _) = run(
+        PORTS,
+        r#"{"op":"setPortDir","key":"E","port":"o","dir":"inout"}"#,
+    );
+    let (del, _) = run(
+        PORTS,
+        r#"{"op":"deletePort","key":"u:a","ctx":"C","port":"o"}"#,
+    );
+    // Assert
+    assert!(dir.contains("part def E { inout port o; }"), "{dir}");
+    assert!(del.contains("part def E { }"), "{del}");
+}
+
+// ---- 保存された図 ----
+
+#[test]
+fn sysml_name_quotes_non_basic_names_and_keywords() {
+    // 同値分割：基本名・日本語・空白・予約語・引用符（境界値）
+    assert_eq!(sysml_name("Kettle_1"), "Kettle_1");
+    assert_eq!(
+        ["全体図", "my view", "part"].map(sysml_name),
+        ["'全体図'", "'my view'", "'part'"]
+    );
+    assert_eq!(sysml_name("it's"), "'it\\'s'");
+}
+
+#[test]
+fn save_view_writes_view_with_one_expose_per_element() {
+    // Arrange
+    let text = "package P {\n    part def A;\n    part def '電気 ケトル';\n}\n";
+    // Act
+    let (after, out) = run(
+        text,
+        r#"{"op":"saveView","name":"全体","kind":"general","targets":["A","電気 ケトル"]}"#,
+    );
+    // Assert（書いた view を読むと、同じ要素を出す）
+    assert!(after.contains("    view '全体' : GeneralView {\n        expose P::A;\n        expose P::'電気 ケトル';\n    }\n}"), "{after}");
+    assert_eq!(out.select.as_deref(), Some("全体"));
+    assert_eq!(Doc::new(&after).m.views[0].node_keys, ["A", "電気 ケトル"]);
+}
+
+#[test]
+fn save_view_is_refused_without_name_targets_or_with_used_name() {
+    let text = "package P { part def A; view v; }";
+    assert!(
+        refused(
+            text,
+            r#"{"op":"saveView","name":" ","kind":"general","targets":["A"]}"#
+        )
+        .contains("名前")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"saveView","name":"v","kind":"general","targets":["A"]}"#
+        )
+        .contains("既にあります")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"saveView","name":"w","kind":"general","targets":[]}"#
+        )
+        .contains("要素が無い")
+    );
+}
+
+#[test]
+fn add_to_and_remove_from_view() {
+    // Arrange
+    let text = "package P {\n    part def A;\n    part def B;\n    view v {\n        expose P::A;\n    }\n}\n";
+    // Act
+    let (added, _) = run(text, r#"{"op":"addToView","view":"v","key":"B"}"#);
+    let (removed, _) = run(text, r#"{"op":"removeFromView","view":"v","key":"A"}"#);
+    // Assert
+    assert!(
+        added.contains("        expose P::A;\n        expose P::B;\n    }"),
+        "{added}"
+    );
+    assert!(removed.contains("    view v {\n    }"), "{removed}");
+    assert!(refused(text, r#"{"op":"addToView","view":"v","key":"A"}"#).contains("既に"));
+    assert!(refused(text, r#"{"op":"removeFromView","view":"v","key":"B"}"#).contains("まとめて"));
+    assert!(refused(text, r#"{"op":"addToView","view":"gone","key":"B"}"#).contains("gone"));
 }

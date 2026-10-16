@@ -197,6 +197,25 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     await expect(page.locator("#empty")).toContainText("保存された図「reqs」は、モデルから消えています");
   });
 
+  test("F-VIEW-9: package そのものを出すと、名前を書いた枠の中に中の要素を描く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#ed").fill("package P {\n    part def Outside;\n    package Drive { part def Motor; part def Gear; }\n    view drive { expose P::Drive; }\n}\n");
+    await page.waitForTimeout(400);
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="drive"]').click();
+    // Assert（枠の中に Motor と Gear。package の外の Outside は出さない）
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Gear", "Motor"]);
+    const frame = page.locator('#gEdges .pkg[data-pkg="Drive"], #canvas .pkg[data-pkg="Drive"]').first();
+    await expect(frame).toContainText("Drive");
+    const fb = (await frame.boundingBox())!;
+    for (const key of ["Motor", "Gear"]) {
+      const nb = (await page.locator(`#gNodes .node[data-key="${key}"]`).boundingBox())!;
+      expect(nb.x >= fb.x && nb.y >= fb.y && nb.x + nb.width <= fb.x + fb.width && nb.y + nb.height <= fb.y + fb.height).toBe(true);
+    }
+  });
+
   test("F-VIEW-7: 保存された図が無いときは、＋メニューでそう示す（境界値）", async ({ page }) => {
     // Arrange
     await openApp(page);

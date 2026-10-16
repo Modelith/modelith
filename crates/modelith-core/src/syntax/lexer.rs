@@ -20,7 +20,25 @@ pub struct LexError {
     pub message: String,
 }
 
-/// テキストをトークンに分ける。
+/// テキストをトークンに分ける（KerML 8.2.2.1）。どんな入力でも止まらず、トークンの長さの和は入力の長さに等しい。
+///
+/// # 引数
+///
+/// - `text`：SysML v2 のテキスト全体（空でもよい）
+///
+/// # 戻り値
+///
+/// 空白・注記・コメントを含むすべてのトークン（長さはバイト）と、字句のエラー（位置はバイトオフセット）。
+/// 閉じていないコメント・引用名・文字列や使えない文字があっても、トークンにしたうえでエラーに入れる。
+///
+/// # 例
+///
+/// ```text
+/// tokenize("part a;")              → ([KEYWORD 4, WHITESPACE 1, IDENT 1, SEMI 1], [])
+/// tokenize("part a; /* never closed")
+///   → (末尾は REGULAR_COMMENT, [{ offset: 8, message: "コメント（/* … */）が閉じていません" }])
+/// tokenize("")                     → ([], [])
+/// ```
 pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
     let mut tokens = Vec::new();
     let mut errors = Vec::new();
@@ -41,6 +59,26 @@ pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
 }
 
 /// 先頭のトークン 1 つの種類と長さ。閉じていない注記などはエラーの文言も返す。
+///
+/// 英字・`_` で始まる語は、キーワード（`is_keyword`）なら `KEYWORD`、そうでなければ `IDENT` にする。
+///
+/// # 引数
+///
+/// - `s`：まだトークンにしていない残りのテキスト
+///
+/// # 戻り値
+///
+/// `(種類, 長さ（バイト）, エラーの文言)`。`s` が空なら `(ERROR_TOKEN, 0, None)`。
+///
+/// # 例
+///
+/// ```text
+/// next_token("part a")  → (KEYWORD, 4, None)
+/// next_token("  \nx")   → (WHITESPACE, 3, None)
+/// next_token("// a\nb") → (LINE_NOTE, 4, None)
+/// next_token("1..*")    → (NUMBER, 1, None)
+/// next_token("部品")    → (ERROR_TOKEN, 3, Some("使えない文字があります"))
+/// ```
 fn next_token(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
     use SyntaxKind::*;
     let bytes = s.as_bytes();
@@ -82,6 +120,25 @@ fn next_token(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
 }
 
 /// `/*`・`//*` で始まる注記・コメントの終わりまで。
+///
+/// # 引数
+///
+/// - `s`：`/*` か `//*` で始まる残りのテキスト
+/// - `open`：開きの記号の長さ（バイト。`/*` は 2、`//*` は 3）
+/// - `kind`：返すトークンの種類（`REGULAR_COMMENT` か `BLOCK_NOTE`）
+///
+/// # 戻り値
+///
+/// `(kind, 長さ, エラーの文言)`。長さは閉じの `*/` まで含む。閉じが無ければテキストの末尾までとし、
+/// 「コメント（/* … */）が閉じていません」を返す。
+///
+/// # 例
+///
+/// ```text
+/// block_end("/* c */ x", 2, REGULAR_COMMENT) → (REGULAR_COMMENT, 7, None)
+/// block_end("//* b */", 3, BLOCK_NOTE)       → (BLOCK_NOTE, 8, None)
+/// block_end("/* never", 2, REGULAR_COMMENT)  → (REGULAR_COMMENT, 8, Some("コメント（/* … */）が閉じていません"))
+/// ```
 fn block_end(s: &str, open: usize, kind: SyntaxKind) -> (SyntaxKind, usize, Option<&'static str>) {
     match s[open..].find("*/") {
         Some(i) => (kind, open + i + 2, None),
@@ -90,6 +147,27 @@ fn block_end(s: &str, open: usize, kind: SyntaxKind) -> (SyntaxKind, usize, Opti
 }
 
 /// 引用符で囲む字句。`\` の後の 1 文字は閉じの引用符として扱わない。
+///
+/// 引用名・文字列は行をまたがないので、閉じが無ければ改行の手前で止める。
+///
+/// # 引数
+///
+/// - `s`：開きの引用符で始まる残りのテキスト
+/// - `quote`：引用符のバイト（`b'\''` か `b'"'`）
+/// - `kind`：返すトークンの種類（`QUOTED_NAME` か `STRING`）
+/// - `unclosed`：閉じていないときに返すエラーの文言
+///
+/// # 戻り値
+///
+/// `(kind, 長さ（バイト）, エラーの文言)`。閉じていれば閉じの引用符まで含めた長さと `None`。
+/// 閉じていなければ改行の手前（改行が無ければテキストの末尾）までの長さと `Some(unclosed)`。
+///
+/// # 例
+///
+/// ```text
+/// quoted(r"'it\'s' x", b'\'', QUOTED_NAME, …) → (QUOTED_NAME, 7, None)
+/// quoted("'a\npart b;", b'\'', QUOTED_NAME, …) → (QUOTED_NAME, 2, Some(unclosed))   // 行末で止める
+/// ```
 fn quoted(
     s: &str,
     quote: u8,
@@ -111,6 +189,26 @@ fn quoted(
 }
 
 /// 数値（`12`・`1.5`・`.5`・`1e-3`）の長さ。`1..*` の `1` は `1.` まで読まない。
+///
+/// `.` は後ろに数字が続くときだけ小数点として読み、`e`・`E` は後ろに（符号と）数字が続くときだけ指数として読む。
+///
+/// # 引数
+///
+/// - `bytes`：数字か `.` で始まる残りのテキストのバイト列
+///
+/// # 戻り値
+///
+/// 数値の長さ（バイト）。
+///
+/// # 例
+///
+/// ```text
+/// number_len(b"1.5 ")  → 3
+/// number_len(b"1..*")  → 1     // 範囲の .. は読まない
+/// number_len(b"2e-3")  → 4
+/// number_len(b"2e")    → 1     // 指数の数字が無い
+/// number_len(b".5")    → 2
+/// ```
 fn number_len(bytes: &[u8]) -> usize {
     let digits = |from: usize| {
         from + bytes[from..]
@@ -132,6 +230,24 @@ fn number_len(bytes: &[u8]) -> usize {
 }
 
 /// 記号。長いものから順に当てる。
+///
+/// # 引数
+///
+/// - `s`：記号かもしれない文字で始まる残りのテキスト
+///
+/// # 戻り値
+///
+/// `(種類, 長さ（バイト）, エラーの文言)`。表に無い文字なら、その 1 文字を `ERROR_TOKEN` にし、
+/// 「使えない文字があります」を返す。
+///
+/// # 例
+///
+/// ```text
+/// punct(":>> b") → (COLON_GT2, 3, None)
+/// punct(":: b")  → (COLON2, 2, None)
+/// punct("* ")    → (STAR, 1, None)
+/// punct("部品")  → (ERROR_TOKEN, 3, Some("使えない文字があります"))
+/// ```
 fn punct(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
     use SyntaxKind::*;
     const TABLE: &[(&str, SyntaxKind)] = &[

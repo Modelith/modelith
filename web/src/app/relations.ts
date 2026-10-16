@@ -13,7 +13,18 @@ export const KW_FOR: Record<string, string> = {
   "attribute def": "attribute", "concern def": "concern", "calc def": "calc", "interface def": "interface",
 };
 
-/** a と b を部品として持つ共通の定義（flow を書く場所）。 */
+/**
+ * a と b の両方を部品（`part`）として持つ定義を探す。flow を書く場所になる。
+ * 解析結果 S.P の定義を先頭から調べ、最初に見つかったものを返す。
+ *
+ * @param a 一方の端の定義（その名前を型に持つ部品を探す）
+ * @param b もう一方の端の定義
+ * @returns 共通の定義と、その中の a・b の部品。無ければ null
+ * @example
+ * // S.P に「part def K { part h : Heater; part s : Sensor; }」があるとき
+ * commonParent(Heater, Sensor) // → { parent: K, ua: h, ub: s }
+ * commonParent(Heater, Other)  // → null（両方を持つ定義が無い）
+ */
 export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: Entry; ub: Entry } | null {
   for (const e of S.P.entries) {
     if (!e.isDef) continue;
@@ -24,7 +35,18 @@ export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: E
   return null;
 }
 
-/** a から b へ追加できる関係の一覧。 */
+/**
+ * a から b へ追加できる関係の一覧を作る。接続の案内（インスペクタ）で選べる候補になる。
+ * 使用（usage）どうしなら flow だけ、ライフラインを含むなら無し。定義どうしなら持つ・満たす・検証する・扱う・導出する・flow から合うものを並べる。
+ *
+ * @param a 関係の元の要素（未選択なら null）
+ * @param b 関係の先の要素（未選択なら null）
+ * @returns 関係の種類と画面の言葉の組の配列。追加できる関係が無い・どちらかが null なら空の配列
+ * @example
+ * // a が part def、b が requirement def のとき
+ * relOptions(a, b) // → [{ rel: "comp", label: "要求として持つ" }, { rel: "satisfy", label: "要求を満たす «satisfy»" }]
+ * relOptions(a, null) // → []
+ */
 export function relOptions(a: ModelNode | null, b: ModelNode | null): { rel: RelKind; label: string }[] {
   const o: { rel: RelKind; label: string }[] = [];
   if (!a || !b) return o;

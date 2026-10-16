@@ -388,3 +388,26 @@ fn random_bytes_never_panic() {
         let _ = run(&text);
     }
 }
+
+#[test]
+fn exposed_package_becomes_frame_with_its_nested_elements() {
+    // Arrange（F-VIEW-9：package そのものを出すと枠になり、入れ子の要素も図に出る）
+    let text = "package P { part def A; package Q { part def B; package R { part def C; } } view v { expose P::Q; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let v = &m.views[0];
+    assert_eq!(v.node_keys, ["B", "C"]);
+    let frames: Vec<(&str, &str, Vec<&str>)> = v
+        .frames
+        .iter()
+        .map(|f| {
+            (
+                f.name.as_str(),
+                p.entries[f.entry].name.as_str(),
+                f.node_keys.iter().map(String::as_str).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(frames, [("Q", "Q", vec!["B", "C"])]);
+}

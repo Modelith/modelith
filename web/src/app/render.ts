@@ -9,7 +9,11 @@ import { S, type EndSpec } from "./state";
 import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "./svg";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
 
-/** 図を描き直す。 */
+/**
+ * 表示中のビューの図を描き直す。空のときの案内を出し分け、シーケンス図ならライフラインとメッセージを、
+ * それ以外なら線と要素を SVG に書く（接続モード中は、つなげる相手の候補を示す）。続けてミニマップと表示の移動・拡大を反映し、
+ * 光らせる要素（S.pulse）を空にする。
+ */
 export function render(): void {
   const content = viewContent(S.M, curView());
   const empty = $("#empty");
@@ -34,12 +38,33 @@ export function render(): void {
   applyTf();
 }
 
-/** 要素の矩形（現在のビューの配置）。 */
+/**
+ * 要素の矩形を、表示中のビューの配置から求める。
+ *
+ * @param n 図の要素
+ * @returns 左上の座標・幅（W = 224）・高さ（nodeH）。配置に座標が無ければ左上は (0, 0)
+ * @example
+ * // 表示中のビューで A が (100, 40) に置かれ、属性などの行が無いとき
+ * boxOf(A) // → { x: 100, y: 40, w: 224, h: 44 }
+ * // 座標が無いとき
+ * boxOf(B) // → { x: 0, y: 0, w: 224, h: 44 }
+ */
 export function boxOf(n: ModelNode): Box {
   const p = curLayout().pos[n.key] ?? [0, 0];
   return { x: p[0], y: p[1], w: W, h: nodeH(n) };
 }
 
+/**
+ * 線を引き始めるための＋ハンドル 1 つを SVG の文字列にする（要素の縁の位置に丸と＋を描く）。
+ *
+ * @param h ハンドルを置く縁の位置（要素のキー・縁の向き・縁に沿った割合 0〜1・接続点 ID）
+ * @param R ハンドルの半径（図の座標。拡大率で割って画面上の大きさをそろえる）
+ * @returns `<g class="handle" …>` の SVG の文字列。要素が見つからなければ空文字列
+ * @example
+ * // A が表示中のビューにあるとき
+ * handleMarkup({ node: "A", side: "r", t: 0.5, pin: null }, 8) // → '<g class="handle" data-node="A" data-side="r" data-t="0.5" data-pin="">…</g>'
+ * handleMarkup({ node: "Gone", side: "r", t: 0.5, pin: null }, 8) // → ""（要素が無い）
+ */
 function handleMarkup(h: EndSpec, R: number): string {
   const n = nodeByKey(h.node);
   if (!n) return "";
@@ -52,7 +77,10 @@ function handleMarkup(h: EndSpec, R: number): string {
   );
 }
 
-/** 線を引くための＋ハンドルと、描きかけの線を重ねて描く。 */
+/**
+ * 線を引くための＋ハンドルと、描きかけの線を、図の上の重ね描きの層（#gOver）に描き直す。
+ * 選択中の要素の上下左右（既に接続点がある向きを除く）と、ポインタが乗っている縁にハンドルを出す。シーケンス図では描きかけのメッセージだけを描く。
+ */
 export function renderOverlay(): void {
   const g = $("#gOver");
   const R = 8 / S.tf.s;
@@ -104,7 +132,9 @@ export function renderOverlay(): void {
   g.innerHTML = s;
 }
 
-/** 表示の移動・拡大を反映する。 */
+/**
+ * 表示の移動・拡大（S.tf）を図・方眼の背景・ミニマップの表示範囲に反映し、重ね描きの層を描き直す。
+ */
 export function applyTf(): void {
   updateMiniVp();
   const { x, y, s } = S.tf;
@@ -119,7 +149,16 @@ export function applyTf(): void {
 const KW_HL =
   /\b(package|part|def|requirement|constraint|port|item|attribute|concern|verification|analysis|state|action|interface|calc|connection|subject|stakeholder|satisfy|verify|frame|flow|of|from|to|by|connect|perform|exhibit|transition|first|accept|then|entry|objective|require|return|in|out|inout|end|private|public|import|doc|and|or|not|use|case)\b/;
 
-/** テキストの一部を構文の色付きの HTML にする。 */
+/**
+ * テキストの一部を、構文の色付きの HTML にする。コメント・文字列（`'…'`）・数・キーワードを `<span class="tk-…">` で囲み、ほかは HTML のエスケープだけをする。
+ *
+ * @param s 色付けするテキスト（行の途中で切れていてもよい）
+ * @returns HTML の文字列。空文字列なら空文字列
+ * @example
+ * hlSeg("part def A; // x") // → '<span class="tk-kw">part</span> <span class="tk-kw">def</span> A; <span class="tk-cm">// x</span>'
+ * hlSeg("a<b")              // → "a&lt;b"（キーワードでない語はエスケープだけ）
+ * hlSeg("")                 // → ""
+ */
 export function hlSeg(s: string): string {
   const re = /(\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*)|('[^'\n]*')|(\b\d+(?:\.\d+)?\b)|\b([A-Za-z_]\w*)\b/g;
   let out = "", last = 0;
@@ -138,7 +177,10 @@ export function hlSeg(s: string): string {
   return out + esc(s.slice(last));
 }
 
-/** テキストの色付けと、選択中の要素・直前の変更の強調を描く。 */
+/**
+ * テキストの色付けと、選択中の要素・線・テキストの印（S.textMark）・直前の変更（S.flash。行の頭から行末まで）の強調を、
+ * テキスト欄の下の層（#hl）に描き直し、スクロールをそろえる。
+ */
 export function highlight(): void {
   const t = S.text;
   const marks: { a: number; b: number; cls: "selr" | "flash" }[] = [];
@@ -170,13 +212,20 @@ export function highlight(): void {
   syncScroll();
 }
 
+/**
+ * 色付けの層（#hl）のスクロール位置を、テキスト欄（#ed）に合わせる。
+ */
 export function syncScroll(): void {
   const ed = $<HTMLTextAreaElement>("#ed"), hl = $("#hl");
   hl.scrollTop = ed.scrollTop;
   hl.scrollLeft = ed.scrollLeft;
 }
 
-/** テキストの位置が見えるようにスクロールする。 */
+/**
+ * テキストの位置がある行が、テキスト欄の上の方（3 行ほど下げた所）に見えるようにスクロールする。
+ *
+ * @param pos テキストの位置（UTF-16 の位置）
+ */
 export function scrollEditorTo(pos: number): void {
   const ed = $<HTMLTextAreaElement>("#ed");
   const line = S.text.slice(0, pos).split("\n").length - 1;
@@ -184,7 +233,13 @@ export function scrollEditorTo(pos: number): void {
   syncScroll();
 }
 
-/** 要素を図の中央に表示する（onlyIfHidden なら見えているときは動かさない）。 */
+/**
+ * 要素を図の中央に表示するよう、表示の移動（S.tf）を変えて反映する。拡大率は変えない。
+ * 要素か座標が見つからなければ何もしない。
+ *
+ * @param key 要素のキー
+ * @param onlyIfHidden true なら、要素の中心が既に見えている（縁から 40px より内側）ときは動かさない
+ */
 export function centerOn(key: string, onlyIfHidden = false): void {
   const p = curLayout().pos[key];
   const n = nodeByKey(key);
@@ -208,6 +263,17 @@ interface MiniGeom {
   edges: [number, number, number, number][];
 }
 
+/**
+ * ミニマップに描く範囲・要素の矩形・線を、表示中のビューから求める。範囲は要素の外側に 40 の余白を足す。
+ * シーケンス図ではライフラインを横に並べた矩形にする。
+ *
+ * @returns 図の座標での範囲・矩形・線（両端の要素の中心どうし）。座標を持つ要素が 1 つも無ければ null
+ * @example
+ * // A だけが (0, 0) に置かれ、行の無い要素のとき
+ * miniGeom() // → { x0: -40, y0: -40, x1: 264, y1: 84, boxes: [{ x: 0, y: 0, w: 224, h: 44, fam: …, key: "A" }], edges: [] }
+ * // 要素が無いとき
+ * miniGeom() // → null
+ */
 function miniGeom(): MiniGeom | null {
   const c = CC();
   const L = curLayout().pos;
@@ -231,6 +297,10 @@ function miniGeom(): MiniGeom | null {
   };
 }
 
+/**
+ * ミニマップ（全体図）を描き直す。非表示に設定されていれば隠して S.mini を空にし、
+ * 描くものが無ければ中身と表示範囲の枠を消す。描いたら縮尺を S.mini に記録し、表示範囲の枠を更新する（F-VIEW-4）。
+ */
 export function renderMinimap(): void {
   const el = $("#mini");
   el.hidden = !S.ui.mini;
@@ -264,7 +334,9 @@ export function renderMinimap(): void {
   updateMiniVp();
 }
 
-/** ミニマップ上の表示範囲の枠を更新する。 */
+/**
+ * ミニマップ上の表示範囲の枠（#miniVp）を、今の表示の移動・拡大に合わせて動かす。ミニマップが無い・非表示なら枠を隠す。
+ */
 export function updateMiniVp(): void {
   const m = S.mini, vp = $("#miniVp");
   if (!m || !S.ui.mini) {

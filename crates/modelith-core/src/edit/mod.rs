@@ -2,6 +2,7 @@
 //! コアは今のテキストを解析し直して要素を探し、テキストの編集（UTF-16 の位置）を返す。
 //! ダイアログ・確認・トースト・配置は UI（TS）に残す。暫定コアの `web/src/app/ops.ts` と同じ書き方をする。
 
+mod more;
 mod ops;
 #[cfg(test)]
 mod tests;
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{self, Model};
 use crate::project::{self, Entry, ParseResult};
+pub use more::{FlowEnd, sysml_name};
 use text::{Utf16, diff, utf16_of};
 
 /// 図の操作の意図。要素は図の要素のキー、関係は ID で指す。
@@ -63,6 +65,71 @@ pub enum Intent {
         #[serde(default)]
         ctx: Option<String>,
     },
+    /// シーケンス図にメッセージを足す（from・to はライフラインのキー）。
+    AddMessage {
+        ctx: String,
+        from: String,
+        to: String,
+    },
+    /// メッセージの名前とアイテムの型を書き換える（空なら書かない）。
+    UpdateMessage {
+        ctx: String,
+        id: String,
+        name: String,
+        #[serde(rename = "type")]
+        ty: String,
+    },
+    /// メッセージの順番を入れ替える（dir は -1 か 1）。
+    MoveMessage { ctx: String, id: String, dir: i8 },
+    /// フェーズを設定する。value が空なら、1 つの要素に書いた指定を外す。
+    SetPhase {
+        keys: Vec<String>,
+        value: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// フェーズの定義を足す。`new_package` は package が無いときに作る package の名前。
+    InitPhases {
+        #[serde(default)]
+        new_package: Option<String>,
+    },
+    /// 接続点をポートにする。`flows` は、その接続点につながっていて「部品.ポート」に書き換える線。
+    MakePort {
+        key: String,
+        name: String,
+        dir: String,
+        #[serde(rename = "type", default)]
+        ty: String,
+        #[serde(default)]
+        flows: Vec<FlowEnd>,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// ポートの向き（in・out・inout）を変える。
+    SetPortDir {
+        key: String,
+        port: String,
+        dir: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// ポートを削除する。
+    DeletePort {
+        key: String,
+        port: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// 表示中の図を、名前を付けて保存する。`kind` は描き方（general など）、`targets` は図に出す要素のキー。
+    SaveView {
+        name: String,
+        kind: String,
+        targets: Vec<String>,
+    },
+    /// 保存された図に要素を入れる。
+    AddToView { view: String, key: String },
+    /// 保存された図から要素を外す（モデルの要素は残す）。
+    RemoveFromView { view: String, key: String },
 }
 
 /// テキストの編集 1 つ（UTF-16 の位置。古いテキストの [start, end) を text に置き換える）。
@@ -86,7 +153,29 @@ pub struct Outcome {
 /// 操作できなかった理由（画面にそのまま出す文。ADR-0014）。
 pub type Refusal = String;
 
-/// 今のテキストに意図を当てて、テキストの編集を返す。
+/// 今のテキストに意図を当てて、テキストの編集を返す。暫定コアの `web/src/app/ops.ts` の操作と同じ振る舞い。
+/// テキストを解析し直して要素をキーで探すので、意図を作った後にテキストが変わっていても、無くなった要素は断る。
+///
+/// # 引数
+///
+/// - `text`：今のテキスト（全体）
+/// - `intent`：図の操作の意図（要素は図の要素のキー、関係は ID で指す。ADR-0016）
+///
+/// # 戻り値
+///
+/// テキストの編集（UTF-16 の位置）と、選ぶ要素・光らせる範囲。操作できなければ、画面にそのまま出す理由の文（`Err`）。
+/// テキストが変わらない操作なら、編集は空。
+///
+/// # 例
+///
+/// ```text
+/// edit("package P { part def A; }", Rename { key: "A", name: "B" })
+///   → Ok(edits = [{ start: 21, end: 22, text: "B" }])
+/// edit("package P { part def A; part def B; }", Rename { key: "A", name: "A" })
+///   → Ok(edits = [])                                   // 同じ名前
+/// edit("package P { part def A; }", Rename { key: "Gone", name: "X" })
+///   → Err("…Gone…")                                    // 要素が無い
+/// ```
 pub fn edit(text: &str, intent: &Intent) -> Result<Outcome, Refusal> {
     let doc = Doc::new(text);
     let change = ops::run(&doc, intent)?;
@@ -102,6 +191,22 @@ pub(crate) struct Doc<'a> {
 }
 
 impl<'a> Doc<'a> {
+    /// テキストを解析し、モデルを作って、操作の対象にする。
+    ///
+    /// # 引数
+    ///
+    /// - `text`：今のテキスト（全体）
+    ///
+    /// # 戻り値
+    ///
+    /// テキスト・解析結果・モデルと、UTF-16 の位置からバイトへの対応をまとめたもの。解析できない部分があっても失敗しない（問題はモデルの `problems` に入る）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// Doc::new("package P { part def A; }") → m.nodes のキーは ["A"]
+    /// Doc::new("")                          → m.nodes は空
+    /// ```
     pub fn new(text: &'a str) -> Self {
         let p = project::project(text, &crate::syntax::parse(text));
         let m = model::build(&p);
@@ -114,15 +219,62 @@ impl<'a> Doc<'a> {
     }
 
     /// 解析結果の位置（UTF-16）のバイトオフセット。
+    ///
+    /// # 引数
+    ///
+    /// - `pos`：解析結果の位置（UTF-16 のオフセット）
+    ///
+    /// # 戻り値
+    ///
+    /// `text` の中のバイトオフセット。範囲外ならテキストの末尾。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // text = "あa" のとき
+    /// b(1) → 3
+    /// b(9) → 4   // 範囲外は末尾
+    /// ```
     pub fn b(&self, pos: usize) -> usize {
         self.utf16.byte(pos)
     }
 
+    /// 宣言の番号から宣言を取り出す。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号（`ParseResult.entries` の添字。範囲外なら panic するので、解析結果から得た番号だけを渡す）
+    ///
+    /// # 戻り値
+    ///
+    /// その番号の宣言（位置は UTF-16）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // text = "package P { part def A; }" で、A の番号を i とすると
+    /// e(i) → name が "A"、kind が "part def" の宣言
+    /// ```
     pub fn e(&self, i: usize) -> &Entry {
         &self.p.entries[i]
     }
 
     /// 宣言を、子を挿入できる位置にする（バイトオフセット）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// 宣言の始まり・頭の終わり（`;` か `{` の位置）・閉じ括弧の位置（ブロックでなければ None）を、バイトオフセットにしたもの。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // text = "package P { part def A; }" のとき
+    /// target(A の番号) → Target { start: 12, head_end: 22, close: None }   // ; で終わる宣言
+    /// ```
     pub fn target(&self, i: usize) -> text::Target {
         let e = self.e(i);
         text::Target {
@@ -142,6 +294,24 @@ pub(crate) struct Change {
 }
 
 impl Change {
+    /// 操作でできたテキストを、古いテキストに対する編集（UTF-16 の位置）にする。
+    ///
+    /// # 引数
+    ///
+    /// - `old`：操作の前のテキスト
+    ///
+    /// # 戻り値
+    ///
+    /// `diff` で求めた 1 つの編集（違いが無ければ空）と、選ぶ要素、光らせる範囲（新しいテキストの UTF-16 の位置）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // old = "package P { part def A; }"、text = "package P { part def B; }"、flash = Some((12, 22)) のとき
+    /// outcome(old) → edits = [{ start: 21, end: 22, text: "B" }]、flash = Some([12, 22])
+    /// // text が old と同じとき
+    /// outcome(old) → edits = []
+    /// ```
     fn outcome(self, old: &str) -> Outcome {
         let edits = diff(old, &self.text)
             .map(|(start, end, text)| TextEdit { start, end, text })

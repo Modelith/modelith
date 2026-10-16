@@ -178,9 +178,6 @@ package ModelithRequirements {
         requirement def <'F-FILE-11'> UntitledDraftReq {
             doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す */
         }
-        requirement def <'F-FILE-13'> ResumeSessionReq {
-            doc /* 起動すると、前回の続き（開いていたフォルダとファイル、表示していたファイル、図のタブ）から始める。フォルダを読み直すのにブラウザの許可が要るときは、サンプルの代わりに「前回の続きを開く」を示し、1 回の操作で戻れる。設定で、起動時にサンプルを開くようにもできる */
-        }
         requirement def <'F-FILE-12'> CloudReq {
             doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
         }
@@ -284,7 +281,6 @@ package ModelithRequirements {
         #derivation dependency from ConflictReq to SafetyNeed;
         #derivation dependency from ExternalChangeReq to FilesNeed;
         #derivation dependency from RecentFolderReq to FilesNeed;
-        #derivation dependency from ResumeSessionReq to FilesNeed;
         #derivation dependency from FallbackReq to AnywhereNeed;
         #derivation dependency from UntitledDraftReq to SafetyNeed;
         #derivation dependency from CloudReq to FilesNeed;
@@ -319,7 +315,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         part def Core {
-            doc /* パーサとモデル構築（Rust の crates/modelith-core を wasm にして使う。ADR-0015・ADR-0016）・図の操作のテキスト編集（Rust に移している途中。残りは web/src/app と web/src/core の暫定の TS 版。ADR-0009・ADR-0016） */
+            doc /* パーサ・モデル構築・図の操作のテキスト編集（Rust の crates/modelith-core を wasm にして、Web Worker の中で動かす。ADR-0003・ADR-0015・ADR-0016） */
         }
         part def DiagramUI {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
@@ -395,7 +391,6 @@ package ModelithRequirements {
         satisfy ConflictReq by Workspace;
         satisfy ExternalChangeReq by Workspace;
         satisfy RecentFolderReq by LocalFolderProvider;
-        satisfy ResumeSessionReq by LocalFolderProvider;
         satisfy FallbackReq by BrowserFileProvider;
         satisfy UntitledDraftReq by Workspace;
         satisfy CloudReq by CloudProvider;
@@ -443,16 +438,11 @@ package ModelithRequirements {
                 verify NoSilentWriteReq;
             }
         }
-        verification def ViewTextTest {
-            doc /* web/src/app/view-text.test.ts：画面で作る図のテキスト（引用名・修飾名・view の宣言と読み直し・図から外す expose の見つけ方） */
-            objective {
-                verify CreateViewReq;
-            }
-        }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016） */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む） */
             objective {
                 verify StandardViewReq;
+                verify PackageFrameReq;
                 verify NoSilentDropReq;
             }
         }
@@ -476,16 +466,25 @@ package ModelithRequirements {
             }
         }
         verification def RustEditTest {
-            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
+            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
             objective {
                 verify DiagramToTextReq;
                 verify RenameReq;
                 verify NewPackageGuideReq;
+                verify CreateViewReq;
+                verify PhaseReq;
+                verify RobustReq;
+            }
+        }
+        verification def CoreWorkerTest {
+            doc /* web/src/core/client.test.ts：画面とコア（Worker）のやり取り。テキストに版を付けて送り、古い版の解析結果は捨て、返事を待つ間にテキストが変わった編集は使わない。コアが壊れた返事をしても例外を投げない。e2e：Worker で動くコアのまま、画面からの操作が反映される。ADR-0016 */
+            objective {
+                verify ResponsiveReq;
                 verify RobustReq;
             }
         }
         verification def NewPackageTest {
-            doc /* web/src/app/new-package.test.ts：ファイル名からの package 名の候補・名前の検査・package を足す位置 */
+            doc /* web/src/app/new-package.test.ts：ファイル名からの package 名の候補・名前の検査 */
             objective {
                 verify NewPackageGuideReq;
             }

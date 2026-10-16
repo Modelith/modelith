@@ -90,6 +90,20 @@ async function openSampleFolder(page: Page, text: string): Promise<void> {
 
 const scenes: Scene[] = [
   {
+    title: "F-VIEW-9: package を枠として描いた保存された図",
+    shot: "package-frame",
+    act: async (page) => {
+      await page.locator("#ed").fill(
+        "package P {\n    package Drive {\n        part def Motor;\n        part def Gear;\n        package Sensors { part def Encoder; }\n    }\n    view drive { expose P::Drive; expose P::Drive::Sensors; }\n}\n",
+      );
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="drive"]').click();
+      await expect(page.locator('#canvas .pkg[data-pkg="Sensors"]')).toBeVisible();
+      return [page.locator("#wrap")];
+    },
+  },
+  {
     title: "F-VIEW-4: 要素を選んだときのインスペクタ",
     shot: "inspector-node",
     act: async (page) => {

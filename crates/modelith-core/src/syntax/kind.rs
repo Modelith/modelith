@@ -208,11 +208,39 @@ syntax_kinds! {
 
 impl SyntaxKind {
     /// 構文の意味を持たないトークン（空白・注記）か。
+    ///
+    /// コメント（`/* */`、`REGULAR_COMMENT`）は要素になりうるので含めない（KerML 8.2.2.1）。
+    ///
+    /// # 戻り値
+    ///
+    /// `WHITESPACE`・`LINE_NOTE`・`BLOCK_NOTE` なら `true`、それ以外は `false`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// SyntaxKind::LINE_NOTE.is_trivia()       → true
+    /// SyntaxKind::REGULAR_COMMENT.is_trivia() → false
+    /// ```
     pub fn is_trivia(self) -> bool {
         matches!(self, Self::WHITESPACE | Self::LINE_NOTE | Self::BLOCK_NOTE)
     }
 
     /// `rowan` の数値から戻す。範囲外なら `ERROR`。
+    ///
+    /// # 引数
+    ///
+    /// - `raw`：`SyntaxKind as u16` で得た数値（宣言の順の番号）
+    ///
+    /// # 戻り値
+    ///
+    /// その番号の種類。種類の数以上なら `SyntaxKind::ERROR`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// SyntaxKind::from_raw(SyntaxKind::WHITESPACE as u16) → WHITESPACE
+    /// SyntaxKind::from_raw(u16::MAX)                      → ERROR
+    /// ```
     pub(crate) fn from_raw(raw: u16) -> Self {
         ALL.get(usize::from(raw)).copied().unwrap_or(Self::ERROR)
     }
@@ -351,7 +379,23 @@ pub const KEYWORDS: &[&str] = &[
     "xor",
 ];
 
-/// SysML の予約語か。
+/// SysML の予約語か（SysML-textual-bnf の RESERVED_KEYWORD）。大文字と小文字を区別する。
+///
+/// # 引数
+///
+/// - `word`：調べる語
+///
+/// # 戻り値
+///
+/// `KEYWORDS` にあれば `true`。
+///
+/// # 例
+///
+/// ```text
+/// is_keyword("part")  → true
+/// is_keyword("stage") → false
+/// is_keyword("Part")  → false   // 大文字違い
+/// ```
 pub fn is_keyword(word: &str) -> bool {
     KEYWORDS.binary_search(&word).is_ok()
 }

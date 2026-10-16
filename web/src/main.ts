@@ -21,23 +21,34 @@ import { applyPanes, initPanels, initTabs, loadUi, saveUi } from "./app/panels";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
-import { relayout, toast } from "./app/sync";
+import { attachCore, onAnalyzed, relayout, settled, toast } from "./app/sync";
 import { CC } from "./app/views";
-import { initCore } from "./core";
+import { startCore } from "./core";
+import CoreWorker from "./core/worker?worker";
 import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
 const EDGE_KEY = "modelith-edgestyle";
 
+/**
+ * 線の描き方を切り替え、ボタンの文言を合わせ、選んだ描き方を覚える（次に開いたときも使う）。図の描き直しはしない。
+ *
+ * @param s 線の描き方（"ortho" は直角、"curve" は曲線）
+ */
 function setEdgeStyle(s: "ortho" | "curve"): void {
   S.edgeStyle = s;
   $("#btnEdge").textContent = s === "curve" ? "線：曲線" : "線：直角";
   store.set(EDGE_KEY, s);
 }
 
+/** 開いているメニュー（details.menu）をすべて閉じる。 */
 function closeMenus(): void {
   document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => (d.open = false));
 }
 
+/**
+ * メニューを組み立てる。メニューの外をクリックしたら閉じ、SVG の保存・draw.io への書き出しのボタンをつなぎ、
+ * 版・著作権・動いている版のソースとライセンスへのリンク（AGPL §13）を入れる。
+ */
 function initMenus(): void {
   document.addEventListener("click", (ev) => {
     document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => {
@@ -60,6 +71,10 @@ function initMenus(): void {
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#licenseLink").href = `https://github.com/modelith/modelith/blob/${__APP_COMMIT__}/README.md#license`;
 }
 
+/**
+ * ツールバーのボタン（ビューとして保存・線の描き方・並べ直し・ミニマップ）と、
+ * キーボードの近道（Ctrl/⌘+A ですべて選ぶ、Ctrl/⌘+Z で元に戻す、Ctrl/⌘+Shift+Z・Ctrl/⌘+Y でやり直す）をつなぐ。
+ */
 function initToolbar(): void {
   $("#btnSaveView").onclick = () => void saveAsView();
   $("#btnEdge").onclick = () => {
@@ -103,17 +118,23 @@ function initToolbar(): void {
   });
 }
 
-// 解析に使う Rust のコア（wasm）を読み込んでから、画面を組み立てる（ADR-0015）。
+// 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
 // 待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
 try {
-  await Promise.all([initCore(CORE_WASM), document.fonts.ready]);
+  const [core] = await Promise.all([startCore(new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed), document.fonts.ready]);
+  attachCore(core);
 } catch (e) {
   showStartupError(e);
   // 続きの組み立てはしない（解析できないまま画面を組み立てると、壊れた状態で操作できてしまう）
   await new Promise<never>(() => {});
 }
 
-/** 起動できなかったことを、画面の真ん中に出す（通信の失敗や、WebAssembly を使えない古いブラウザ）。 */
+/**
+ * 起動できなかったことを、画面の真ん中に出す（通信の失敗や、WebAssembly を使えない古いブラウザ）。
+ * 案内の文と、失敗の詳しい内容（例外のメッセージ）を body の最後に加える。
+ *
+ * @param e 起動のときに投げられた値（Error ならそのメッセージを出す）
+ */
 function showStartupError(e: unknown): void {
   const box = document.createElement("div");
   box.id = "startupError";
@@ -140,5 +161,7 @@ initExport();
 initMenus();
 initToolbar();
 initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT });
+// タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
+await settled();
 applyPanes();
 initTabs();

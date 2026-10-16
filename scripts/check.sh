@@ -20,9 +20,11 @@ ensure_dependencies() {
 }
 
 stage_static() {
-  step "[static] 禁止ファイル・ShellCheck・リリースノートの形"
+  step "[static] 禁止ファイル・ShellCheck・リリースノートの形・関数の doc コメント"
   scripts/check-forbidden-files.sh
   node web/tools/release-notes-cli.ts check
+  # 関数の doc コメント（programming-principles §4、ADR-0008）。書き足し終えた領域から順に対象に加える
+  node web/tools/doc-comments-cli.ts web/tools web/src crates
   shellcheck -x scripts/*.sh scripts/lib/*.sh .claude/hooks/*.sh
   step "[static] rust: fmt / $([[ $MODE == fast ]] && echo check || echo clippy)"
   cargo fmt --all -- --check
