@@ -23,10 +23,28 @@ const STD_LABEL: Record<string, string> = {
   GeneralView: "一般の図", InterconnectionView: "内部ブロック図", ActionFlowView: "アクションの流れ図", StateTransitionView: "状態遷移の図",
   SequenceView: "シーケンス図", GeometryView: "形状の図", GridView: "表の図", BrowserView: "一覧の図",
 };
-/** 図の種類の、画面での名前（型の無い図は一般の図）。 */
+/**
+ * 図の種類の、画面での名前（ADR-0014）。
+ *
+ * @param std 標準ビュー定義の名前（`GeneralView` など）。型の無い図は null
+ * @returns 画面での名前。null なら「一般の図」、知らない名前ならその名前のまま
+ * @example
+ * stdViewLabel("SequenceView") // → "シーケンス図"
+ * stdViewLabel(null)           // → "一般の図"
+ * stdViewLabel("MyView")       // → "MyView"（知らない名前）
+ */
 export const stdViewLabel = (std: string | null): string => (std ? (STD_LABEL[std] ?? std) : "一般の図");
 
-/** 標準ビュー定義の名前か（型が見つからないことを問題にしない）。 */
+/**
+ * 標準ビュー定義の名前か（型が見つからないことを問題にしない）。短い名前（`gv` など）も含む。
+ *
+ * @param t 型の名前（修飾なし）
+ * @returns 標準ビュー定義の名前か短い名前なら true
+ * @example
+ * isStandardView("GeneralView") // → true
+ * isStandardView("iv")          // → true（短い名前）
+ * isStandardView("MyView")      // → false
+ */
 export const isStandardView = (t: string): boolean => t in STANDARD_VIEWS;
 
 /** 標準のレンダリング（Views）と描き方。null は図にできない。 */
@@ -45,7 +63,17 @@ const METACLASS_KIND: Record<string, string> = {
   Occurrence: "occurrence", Metadata: "metadata", View: "view",
 };
 
-/** `@X`（X はメタクラスかメタデータ）の絞り込みを、要素の判定にする。扱えない式なら null。 */
+/**
+ * `@X`（X はメタクラスかメタデータ）の絞り込みを、要素の判定にする（ElementFilterMember、8.2.2.26）。
+ *
+ * @param expr filter や expose の `[ ]` に書かれた式（`@SysML::PartDefinition`・`@Safety` など）
+ * @param isMetadata 名前がメタデータの定義かを答える関数
+ * @returns 要素が絞り込みに合うかの判定。扱えない式（`@A and @B` など）や知らない名前なら null
+ * @example
+ * filterTest("@SysML::PartDefinition", isMetadata) // → (e) => e.kind === "part def"
+ * filterTest("@Safety", isMetadata)                // → (e) => !!e.meta?.["Safety"]（Safety がメタデータの定義のとき）
+ * filterTest("@A and @B", isMetadata)              // → null（扱えない式）
+ */
 function filterTest(expr: string, isMetadata: (name: string) => boolean): ((e: Entry) => boolean) | null {
   const m = expr.match(/^@\s*([A-Za-z_][\w:]*)$/);
   if (!m) return null;
@@ -59,7 +87,16 @@ function filterTest(expr: string, isMetadata: (name: string) => boolean): ((e: E
   return null;
 }
 
-/** 修飾名（A::B::C）の要素。後ろから順に、親の名前が合うものを探す。 */
+/**
+ * 修飾名（A::B::C）の要素を探す。後ろから順に、親の名前が合うものを探す。
+ *
+ * @param qn 修飾名（引用符は外してあるもの）
+ * @param byName 名前から、その名前の宣言の一覧への対応
+ * @returns 見つかった宣言。無ければ null
+ * @example
+ * resolveQualified("P::Q::D", byName) // → package Q の中の part def D
+ * resolveQualified("P::Nope", byName) // → null
+ */
 function resolveQualified(qn: string, byName: Map<string, Entry[]>): Entry | null {
   const segs = qn.split("::");
   const last = segs.pop() ?? "";
@@ -72,10 +109,28 @@ function resolveQualified(qn: string, byName: Map<string, Entry[]>): Entry | nul
   );
 }
 
-/** 入れ子の中身すべて。 */
+/**
+ * 入れ子の中身すべてを、深さ優先（親の次にその子）の順で集める。
+ *
+ * @param e 宣言
+ * @returns 子・孫…の宣言（e 自身は含まない）。子が無ければ空
+ * @example
+ * descendants(Q) // → [D, Deep, E]（package Q { part def D; package Deep { part def E; } } のとき）
+ * descendants(D) // → []
+ */
 const descendants = (e: Entry): Entry[] => e.children.flatMap((c) => [c, ...descendants(c)]);
 
-/** expose 1 つで出る要素（8.2.2.26.2。MembershipExpose は対象そのもの、NamespaceExpose は中身）。 */
+/**
+ * expose 1 つで出る要素（8.2.2.26.2。MembershipExpose は対象そのもの、NamespaceExpose は中身）。
+ *
+ * @param x expose の中身（`members` は `::*`、`recursive` は `::**`）
+ * @param target expose の対象の宣言
+ * @returns 出る宣言の一覧
+ * @example
+ * exposed({ members: false, recursive: false, … }, Q) // → [Q]（expose P::Q）
+ * exposed({ members: true, recursive: false, … }, Q)  // → [D, Deep]（expose P::Q::*）
+ * exposed({ members: true, recursive: true, … }, Q)   // → [D, Deep, E]（expose P::Q::**）
+ */
 function exposed(x: Expose, target: Entry): Entry[] {
   if (x.members) return x.recursive ? descendants(target) : target.children;
   return x.recursive ? [target, ...descendants(target)] : [target];
@@ -84,6 +139,18 @@ function exposed(x: Expose, target: Entry): Entry[] {
 /**
  * view の型をたどり、標準ビュー定義と、型の側に書かれた filter・render を集める
  * （利用者の view def は、標準ビュー定義を特殊化して作る）。
+ *
+ * @param v view の宣言
+ * @param byName 名前から、その名前の宣言の一覧への対応（view def を探す）
+ * @returns 標準ビュー定義の名前と描き方、集めた filter、render。標準ビュー定義にたどり着かなければ
+ *   `{ std: null, kind: "general" }`（一般の図として描く）。専用の描き方が無い標準ビュー定義は kind が null
+ * @example
+ * // v が「view v : iv;」のとき
+ * viewType(v, byName) // → { std: "InterconnectionView", kind: "interconnection", filters: [] }
+ * // v が「view v : MyStates;」で、「view def MyStates :> StateTransitionView;」があるとき
+ * viewType(v, byName) // → { std: "StateTransitionView", kind: "stateTransition", filters: [] }
+ * // v が「view v;」（型なし）のとき
+ * viewType(v, byName) // → { std: null, kind: "general", filters: [] }
  */
 function viewType(v: Entry, byName: Map<string, Entry[]>): { std: string | null; kind: ViewKind | null; filters: string[]; render?: string } {
   const filters = [...(v.filters ?? [])];
@@ -103,7 +170,20 @@ function viewType(v: Entry, byName: Map<string, Entry[]>): { std: string | null;
   return { std: null, kind: "general", filters, ...(render ? { render } : {}) };
 }
 
-/** 解析した view を、描く要素と描き方に解決する。扱えない部分は問題として知らせる（ADR-0013）。 */
+/**
+ * 解析した view を、描く要素と描き方に解決する（F-VIEW-7・F-VIEW-9）。
+ * 扱えない図の種類・render・filter は problems に kind: "unsupported" で、見つからない expose の対象はエラーで足す（ADR-0013）。
+ *
+ * @param entries 解析した宣言すべて（名前のある view を探す）
+ * @param nodeOf 宣言から図の要素への対応（図に出る要素のキーを引く）
+ * @param byName 名前から、その名前の宣言の一覧への対応
+ * @param problems 問題を書き足す先（書き換える）
+ * @returns view ごとの描く要素のキー・描き方・枠（package）。view が無ければ空
+ * @example
+ * // package P { part def A; requirement def R; … view v : GeneralView { expose P::A; expose P::R; } } のとき
+ * buildViews(entries, nodeOf, byName, problems)[0] // → { name: "v", kind: "general", std: "GeneralView", nodeKeys: ["A", "R"], … }
+ * // view v { expose P::Nope; } のとき → nodeKeys は []、problems に「図「v」に出す要素「P::Nope」が見つかりません（expose）」
+ */
 export function buildViews(
   entries: Entry[],
   nodeOf: Map<Entry, ModelNode>,

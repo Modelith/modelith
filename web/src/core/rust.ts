@@ -11,15 +11,24 @@ import initWasm, { analyze as analyzeJson, edit as editJson } from "./wasm/model
 
 /**
  * Rust のコア（wasm）を読み込む。アプリは起動時に一度だけ待つ（ADR-0015：alpha.3 では画面と同じスレッドで同期で呼ぶ）。
- * テストは testing/setup.ts が先に読み込んでおく。
+ * テストは testing/setup.ts が先に読み込んでおく。読み込めなければ例外で拒否する。
+ *
+ * @param wasmUrl コアの wasm（modelith_core_bg.wasm）の URL
  */
 export async function initCore(wasmUrl: string): Promise<void> {
   await initWasm({ module_or_path: wasmUrl });
 }
 
 /**
- * テキストを解析して宣言・関係・構文エラー・配置情報を返す（Rust のパーサ）。例外は投げない。
+ * テキストを解析して宣言・関係・構文エラー・配置情報を返す（Rust のパーサ）。例外は投げない（Q-5）。
  * コアの中で予期しない失敗が起きたときは、要素の無い結果と、そのことを伝える構文エラーを返す（テキストには触れない）。
+ * Rust が作ったモデルも覚えておき、`build` で取り出せるようにする。
+ *
+ * @param text SysML v2 のテキスト全文
+ * @returns 解析結果（位置は UTF-16）
+ * @example
+ * parse("package P { part def A; }").entries.map((e) => e.name) // → ["P", "A"]
+ * parse("package P {".repeat(20_000)).errors.some((e) => e.msg.startsWith("入れ子が深すぎる")) // → true（例外にしない）
  */
 export function parse(text: string): ParseResult {
   return safeParse(text, analyzeJson);
@@ -28,7 +37,19 @@ export function parse(text: string): ParseResult {
 /** 解析結果ごとの、Rust が作ったモデル（番号のまま）。`build` で取り出す。 */
 const models = new WeakMap<ParseResult, RawModel>();
 
-/** `analyzeJson` が失敗しても例外を投げずに結果を返す（`analyzeJson` を差し替えてテストできるように分けている）。 */
+/**
+ * `analyzeJson` が失敗しても例外を投げずに結果を返す（`analyzeJson` を差し替えてテストできるように分けている）。
+ * 結果ごとに Rust のモデルを覚えておく。
+ *
+ * @param text SysML v2 のテキスト全文
+ * @param analyzeJson テキストを解析し、`{ parse, model }` の JSON の文字列を返す関数（wasm の `analyze`）
+ * @returns 解析結果。analyzeJson が例外を投げたり壊れた JSON を返したりしたら、要素の無い結果と、
+ *   「テキストを読み取れませんでした…」の構文エラー 1 件
+ * @example
+ * safeParse("package P;", () => { throw new Error("unreachable"); }).errors
+ * // → [{ pos: 0, msg: "テキストを読み取れませんでした。テキストはそのまま残っています（unreachable）" }]
+ * safeParse("", () => "{").errors.length // → 1
+ */
 export function safeParse(text: string, analyzeJson: (text: string) => string): ParseResult {
   try {
     const raw = JSON.parse(analyzeJson(text)) as { parse: RawParseResult; model: RawModel };
@@ -67,17 +88,42 @@ export interface RawParseResult {
 
 /**
  * Worker のコアが返した解析とモデル（`analyze` の JSON）を、解析結果とモデルのオブジェクトに戻す（ADR-0016）。例外は投げない。
+ *
+ * @param json wasm の `analyze` が返した JSON の文字列
+ * @param text その JSON を作ったときのテキスト全文（`@layout` コメントを読むのに使う）
+ * @returns 解析結果 P とモデル M。JSON が壊れていれば、要素の無い結果と構文エラー 1 件
+ * @example
+ * fromAnalysis(analyze("package P { part def A; }"), "package P { part def A; }").M.nodes.map((n) => n.key) // → ["A"]
+ * fromAnalysis("{", "package P;").P.errors[0].msg // → "テキストを読み取れませんでした。…"
  */
 export function fromAnalysis(json: string, text: string): { P: ParseResult; M: Model } {
   const P = safeParse(text, () => json);
   return { P, M: build(P) };
 }
 
-/** Rust の解析結果（JSON の文字列）を、暫定コアと同じ `ParseResult` にする。 */
+/**
+ * Rust の解析結果（JSON の文字列）を、暫定コアと同じ `ParseResult` にする。
+ *
+ * @param json Rust の `ParseResult` の JSON の文字列
+ * @param text その JSON を作ったときのテキスト全文（`@layout` コメントを読むのに使う）
+ * @returns 番号をオブジェクトの参照につなぎ直した解析結果。JSON が読めなければ例外（SyntaxError）を投げる
+ * @example
+ * fromRust('{"entries":[],"blocks":[],"rels":[],"errors":[],"unsupported":[]}', "") // → { entries: [], rels: [], errors: [], layout: {}, unsupported: [] }
+ * fromRust("{", "") // → SyntaxError を投げる
+ */
 export function fromRust(json: string, text: string): ParseResult {
   return fromRaw(JSON.parse(json) as RawParseResult, text);
 }
 
+/**
+ * Rust の解析結果（番号で参照する形）を、オブジェクトの参照につなぎ直す。
+ *
+ * @param raw JSON から読んだ Rust の解析結果
+ * @param text その解析結果を作ったときのテキスト全文（`@layout` コメントを読むのに使う）
+ * @returns 暫定コアと同じ形の解析結果。指す先の無い番号は null（子の一覧からは除く）
+ * @example
+ * fromRaw({ entries: [], blocks: [], rels: [], errors: [], unsupported: [] }, "") // → { entries: [], rels: [], errors: [], layout: {}, unsupported: [] }
+ */
 function fromRaw(raw: RawParseResult, text: string): ParseResult {
   const entries: Entry[] = raw.entries.map((e) => ({ ...e, owner: null, pe: null, children: [], phaseBlock: undefined }));
   const blocks: Block[] = raw.blocks.map((b) => ({ ...b, anon: true, owner: null }));
@@ -129,6 +175,12 @@ export interface RawModel {
  * 解析結果からモデル（図の要素・関係・問題・フェーズ）を作る（Rust のモデル構築、ADR-0016）。
  * 中身は `parse` のときに Rust が作っている。ここでは番号をオブジェクトの参照に戻すだけ。
  * `parse`（Rust）が返したものでない解析結果は受け付けない。
+ *
+ * @param P このモジュールの `parse`（または `safeParse`）が返した解析結果
+ * @returns モデル。P が `parse` の返したものでなければ例外（Error）を投げる
+ * @example
+ * build(parse("package P { part def A; }")).nodes.map((n) => n.key) // → ["A"]
+ * build({ entries: [], rels: [], errors: [], layout: {}, unsupported: [] }) // → Error を投げる（parse が返したものでない）
  */
 export function build(P: ParseResult): Model {
   const raw = models.get(P);
@@ -136,6 +188,15 @@ export function build(P: ParseResult): Model {
   return toModel(raw, P);
 }
 
+/**
+ * Rust のモデル（番号で参照する形）を、解析結果の宣言・関係を指すオブジェクトの参照に戻す。
+ *
+ * @param raw Rust が作ったモデル
+ * @param P そのモデルと一緒に作った解析結果
+ * @returns モデル。モデルが指す宣言の番号が P に無ければ例外（Error）を投げる
+ * @example
+ * toModel({ nodes: [], views: [], edges: [], problems: [], phases: null, phaseEnum: null }, P).nodes // → []
+ */
 function toModel(raw: RawModel, P: ParseResult): Model {
   const entry = (i: number): Entry => {
     const e = P.entries[i];
@@ -215,12 +276,33 @@ export interface Refused {
   refused: string;
 }
 
-/** 今のテキストに意図を当てて、テキストの編集を返す（Rust のコア）。例外は投げない。 */
+/**
+ * 今のテキストに意図を当てて、テキストの編集を返す（Rust のコア、ADR-0016）。例外は投げない（Q-5）。
+ *
+ * @param text 今のテキスト全文
+ * @param intent 図の操作の意図
+ * @returns テキストの編集（位置は UTF-16）。操作できなければ理由（`{ refused }`）
+ * @example
+ * edit("package P { part def A; }", { op: "rename", key: "A", name: "Motor" })
+ * // → { edits: [...], select: "Motor" }（当てると "package P { part def Motor; }"）
+ * edit("package P { part def A; }", { op: "rename", key: "Gone", name: "B" }) // → { refused: "…Gone…" }
+ */
 export function edit(text: string, intent: Intent): EditResult | Refused {
   return safeEdit(text, intent, editJson);
 }
 
-/** `editJson` が失敗しても例外を投げずに結果を返す（`editJson` を差し替えてテストできるように分けている）。 */
+/**
+ * `editJson` が失敗しても例外を投げずに結果を返す（`editJson` を差し替えてテストできるように分けている）。
+ *
+ * @param text 今のテキスト全文
+ * @param intent 図の操作の意図（JSON にして editJson に渡す）
+ * @param editJson テキストと意図の JSON を受け取り、結果の JSON の文字列を返す関数（wasm の `edit`）
+ * @returns テキストの編集か、操作できない理由。editJson が例外を投げたり壊れた JSON を返したりしたら、
+ *   「操作できませんでした…」の理由
+ * @example
+ * safeEdit("", { op: "delete", keys: [] }, () => { throw new Error("unreachable"); })
+ * // → { refused: "操作できませんでした。テキストはそのまま残っています（unreachable）" }
+ */
 export function safeEdit(text: string, intent: Intent, editJson: (text: string, intent: string) => string): EditResult | Refused {
   try {
     return JSON.parse(editJson(text, JSON.stringify(intent))) as EditResult | Refused;

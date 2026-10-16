@@ -37,8 +37,25 @@ const RESERVED = new Set(
     "requirement return satisfy send snapshot specializes stakeholder standard state subject subsets succession terminate then timeslice to " +
     "transition true until use variant variation verification verify via view viewpoint when while xor").split(" "),
 );
-/** SysML の予約語か（名前に使うときは引用名にする）。 */
+/**
+ * SysML の予約語か（名前に使うときは引用名にする）。
+ *
+ * @param w 調べる語（引用符なし）
+ * @returns SysML-textual-bnf の RESERVED_KEYWORD に入っていれば true
+ * @example
+ * isReservedWord("part")   // → true
+ * isReservedWord("Engine") // → false
+ */
 export const isReservedWord = (w: string): boolean => RESERVED.has(w);
+/**
+ * 引用名（`'…'`）の引用符を外す。
+ *
+ * @param s 基本名か引用名
+ * @returns 引用符を外した名前。引用名でなければ s のまま
+ * @example
+ * unquote("'my part'") // → "my part"
+ * unquote("A")         // → "A"
+ */
 const unquote = (s: string): string => (s.startsWith("'") && s.endsWith("'") ? s.slice(1, -1) : s);
 const MOD_RE = /^(?:(?:private|public|protected|abstract|in|out|inout|derived|readonly|end|ref|variation|individual)\s+)+/;
 const SKIP_RE =
@@ -50,11 +67,27 @@ const EXPOSE_RE = new RegExp(`^expose\\s+(${QNAME})(::\\*(?!\\*))?(::\\*\\*)?\\s
 /** 配置情報を埋め込むコメント（ADR-0005 の移行期の形式）。 */
 export const LAYOUT_RE = /\/\*\s*@layout\s*([\s\S]*?)\*\//;
 
+/**
+ * 修飾名の最後の区切り（`::` の後ろ）を取り出す。
+ *
+ * @param s 修飾名（`P::Q::A` など）
+ * @returns 最後の区切り。`::` が無ければ s のまま
+ * @example
+ * lastSeg("PhaseKind::X") // → "X"
+ * lastSeg("A")            // → "A"
+ */
 const lastSeg = (s: string): string => s.split("::").pop() ?? "";
 
 /**
- * コメントと doc 本文を空白で塗りつぶす（位置は変えない）。
+ * コメントと doc 本文を空白で塗りつぶす（位置は変えない。改行は残す）。
  * doc の本文は、doc キーワードの位置をキーにして返す。
+ *
+ * @param text 元のテキスト
+ * @returns 塗りつぶしたテキスト m（長さは text と同じ。doc・comment の本文の最後は「;」にして文として区切る）と、
+ *   doc キーワードの位置（UTF-16）から、空白を詰めた本文への対応
+ * @example
+ * mask("a // x\nb").m                              // → "a     \nb"
+ * mask("part def A { doc /* hi  there *\/ }").docs // → Map { 13 => "hi there" }
  */
 export function mask(text: string): { m: string; docs: Map<number, string> } {
   const docs = new Map<number, string>();
@@ -69,7 +102,17 @@ export function mask(text: string): { m: string; docs: Map<number, string> } {
   return { m: t, docs };
 }
 
-/** テキストを解析して宣言・関係・構文エラー・配置情報を返す。 */
+/**
+ * テキストを解析して宣言・関係・構文エラー・配置情報・まだ扱えない構文を返す。
+ * 構文の誤りは例外にせず、errors に入れる（位置は UTF-16）。
+ *
+ * @param text SysML v2 のテキスト全文
+ * @returns 解析結果
+ * @example
+ * parse("package P { part def A; }").entries.map((e) => [e.kind, e.name])
+ * // → [["package", "P"], ["part def", "A"]]
+ * parse("package P { part def A;").errors // → [{ pos: 0, msg: "「P」のブロックが閉じていません" }]
+ */
 export function parse(text: string): ParseResult {
   const { m, docs } = mask(text);
   const entries: Entry[] = [];
@@ -83,6 +126,19 @@ export function parse(text: string): ParseResult {
     return b ?? null;
   };
 
+  /**
+   * 区切った文 1 つを読み、宣言なら entries に、関係なら rels に、扱えない構文なら unsupported に足す。
+   * メタデータ・列挙値・式は、外側の宣言（pe）に書き足す。
+   *
+   * @param rawHead 文の頭（区切り文字の手前まで。空白は詰めてある）
+   * @param hs 文の始まりの位置（UTF-16）
+   * @param endPos 区切り文字（`;`・`{`・`}`）の位置（UTF-16）
+   * @param term 区切り文字（";"・"{"・"}"）
+   * @returns 宣言なら作った Entry。宣言でない文（関係・メタデータ・doc・空など）は null
+   * @example
+   * stmt("part def A", 12, 22, ";") // → { kind: "part def", name: "A", … }
+   * stmt("import ISQ::*", 0, 13, ";") // → null（読み飛ばす文）
+   */
   function stmt(rawHead: string, hs: number, endPos: number, term: string): Entry | null {
     const owner = top();
     const pe = named(owner);
@@ -240,7 +296,17 @@ export function parse(text: string): ParseResult {
   return { entries, rels, errors, layout: readLayout(text, errors), unsupported };
 }
 
-/** `/* @layout {…} *\/` コメントの中身（ADR-0005 の移行期の形式）。読めなければ errors に足して空を返す。 */
+/**
+ * `/* @layout {…} *\/` コメントの中身を読む（ADR-0005 の移行期の形式）。
+ *
+ * @param text SysML v2 のテキスト全文
+ * @param errors 読めなかったときに誤りを書き足す先（書き換える）
+ * @returns 配置情報の JSON。コメントが無ければ空のオブジェクト。JSON が読めなければ errors に足して空のオブジェクト
+ * @example
+ * readLayout('/* @layout {"A":{"x":1}} *\/', errors) // → { A: { x: 1 } }
+ * readLayout("/* @layout {x *\/", errors)            // → {}（errors に「@layout コメントが読み取れません」）
+ * readLayout("package P;", errors)                  // → {}
+ */
 export function readLayout(text: string, errors: ParseError[]): Record<string, unknown> {
   const lm = text.match(LAYOUT_RE);
   if (!lm) return {};

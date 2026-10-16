@@ -7,6 +7,11 @@ import { handle, type CoreRequest, type CoreResponse, type CoreState } from "./p
 declare const self: DedicatedWorkerGlobalScope;
 
 const state: CoreState = { text: "" };
+/**
+ * 画面のスレッドに返事を送る（`postMessage`）。
+ *
+ * @param r コアからの返事
+ */
 const reply = (r: CoreResponse): void => self.postMessage(r);
 
 self.onmessage = (ev: MessageEvent<CoreRequest>): void => {
