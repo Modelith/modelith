@@ -1,6 +1,6 @@
 // テキストを更新し、解析し直して画面全体を同期する。図の操作も最後は setText を通る（ADR-0001）。
 
-import { build, lineOf, parse, type Problem } from "../core";
+import { lineOf, type CoreClient, type Model, type ParseResult, type Problem } from "../core";
 import { $, esc } from "./dom";
 import { autoPlace, nodeH } from "./geometry";
 import { scheduleRecord } from "./history";
@@ -50,10 +50,55 @@ export function setText(t: string, opts: SetTextOpts = {}): void {
   }
 }
 
-/** テキストからモデルと配置を作り直し、画面全体を描き直す。 */
+// ---- コア（Worker）との同期（ADR-0016 §4） ----
+let core: CoreClient | null = null;
+/** 画面に反映した解析結果の版。 */
+let applied = 0;
+/** 反映を待っている間に、テキストの直接編集があったか（変わった要素を図で光らせる）。 */
+let pendingFromText = false;
+let waiters: (() => void)[] = [];
+
+/** 起動時に、Worker で動くコアをつなぐ。 */
+export function attachCore(c: CoreClient): void {
+  core = c;
+}
+
+/** コアの受け口。 */
+export function coreClient(): CoreClient {
+  if (!core) throw new Error("コアがまだつながっていません");
+  return core;
+}
+
+/** コアが返した解析結果のうち、今のテキストの版のものを画面に反映する（`startCore` に渡す）。 */
+export function onAnalyzed(version: number, P: ParseResult, M: Model): void {
+  S.P = P;
+  S.M = M;
+  applied = version;
+  const fromText = pendingFromText;
+  pendingFromText = false;
+  refresh(fromText);
+  const ws = waiters;
+  waiters = [];
+  for (const w of ws) w();
+}
+
+/** 今のテキストの解析結果が画面に反映されるまで待つ（操作の直後に、追加した要素を選ぶときなど）。 */
+export function settled(): Promise<void> {
+  if (!core || applied === core.current) return Promise.resolve();
+  return new Promise((resolve) => waiters.push(resolve));
+}
+
+/** テキストをコアに送って解析を頼む。結果は届いたときに描き直す。テキストが変わっていなければ、今の結果で描き直す。 */
 export function reparse(fromText: boolean): void {
-  S.P = parse(S.text);
-  S.M = build(S.P);
+  pendingFromText ||= fromText;
+  const version = coreClient().sync(S.text);
+  if (version !== applied) return;
+  pendingFromText = false;
+  refresh(fromText);
+}
+
+/** 今の解析結果から、画面全体を描き直す。 */
+function refresh(fromText: boolean): void {
   syncModelViewKind();
   prunePins();
   const sig = new Map<string, string>();

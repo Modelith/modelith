@@ -6,7 +6,7 @@ import { ask } from "./dialog";
 import { perform } from "./intent";
 import { openModelView } from "./panels";
 import { S } from "./state";
-import { commitLayout, setText, toast } from "./sync";
+import { commitLayout, setText, settled, toast } from "./sync";
 import { CC, curLayout, curView, modelView } from "./views";
 
 /** 自動の図から、保存する図の描き方を決める。 */
@@ -47,18 +47,19 @@ export async function saveAsView(): Promise<void> {
   ], { value: suggestName(`${curView().label}の図`), label: "図の名前" });
   if (r?.id !== "ok") return;
   const name = r.value.trim();
-  const ins = perform({ op: "saveView", name, kind, targets });
+  const ins = await perform({ op: "saveView", name, kind, targets });
   if (!ins) return;
   // 見えている配置のまま保存する（内部ブロック図・シーケンス図は、対象ごとの配置をそのまま使う）
   if (kind === "general" || kind === "stateTransition") S.layout[`view:${name}`] = structuredClone(curLayout());
   setText(ins.text, { changeAt: ins.at, flash: ins.flash });
   commitLayout();
+  await settled();
   openModelView(name);
   toast(`図「${name}」を保存しました。＋メニューの「保存された図」からいつでも開けます`);
 }
 
 /** 保存された図に要素を入れる（expose を足す）。pos があればそこに置く。入れたら true。 */
-export function addToView(e: Entry, pos?: [number, number], opts: { quiet?: boolean } = {}): boolean {
+export async function addToView(e: Entry, pos?: [number, number], opts: { quiet?: boolean } = {}): Promise<boolean> {
   const mv = modelView();
   const n = S.M.nodeOf.get(e);
   if (!mv || !editableView()) return false;
@@ -70,7 +71,7 @@ export function addToView(e: Entry, pos?: [number, number], opts: { quiet?: bool
     if (!opts.quiet) toast(`「${e.name}」は既にこの図にあります`);
     return false;
   }
-  const r = perform({ op: "addToView", view: mv.name, key: n.key });
+  const r = await perform({ op: "addToView", view: mv.name, key: n.key });
   if (!r) return false;
   if (pos) curLayout().pos[n.key] = pos;
   setText(r.text, { changeAt: r.at, flash: r.flash });
@@ -80,10 +81,10 @@ export function addToView(e: Entry, pos?: [number, number], opts: { quiet?: bool
 }
 
 /** 保存された図から要素を外す（その要素だけを出している expose を消す）。モデルの要素は残す。 */
-export function removeFromView(n: ModelNode): void {
+export async function removeFromView(n: ModelNode): Promise<void> {
   const mv = modelView();
   if (!mv || !editableView()) return;
-  const r = perform({ op: "removeFromView", view: mv.name, key: n.key });
+  const r = await perform({ op: "removeFromView", view: mv.name, key: n.key });
   if (!r) return;
   delete curLayout().pos[n.key];
   S.sel = null;

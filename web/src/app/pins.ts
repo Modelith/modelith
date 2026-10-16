@@ -68,7 +68,7 @@ export function attachEnds(edgeId: string, wire: { from: EndSpec; to: EndSpec | 
 
 export const PINOPS = {
   /** 接続点をポートにする。その接続点につながる flow は「部品.ポート」に書き換える。 */
-  makePort(n: ModelNode, pin: Pin, name: string, dir: PortDir, type: string): void {
+  async makePort(n: ModelNode, pin: Pin, name: string, dir: PortDir, type: string): Promise<void> {
     // この接続点につながる線（「部品.ポート」に書き換える端）
     const flows = new Map<string, { id: string; from?: boolean; to?: boolean }>();
     forEachEnds((_v, k, val) => {
@@ -79,7 +79,7 @@ export const PINOPS = {
       if (t === n.key && val[1] === pin.id) fe.to = true;
       if (fe.from || fe.to) flows.set(k, fe);
     });
-    const r = perform({ op: "makePort", key: n.key, name, dir, type, flows: [...flows.values()], ctx: CC().ctx?.key });
+    const r = await perform({ op: "makePort", key: n.key, name, dir, type, flows: [...flows.values()], ctx: CC().ctx?.key });
     if (!r) return;
     const newId = "port:" + name;
     for (const v of Object.values(S.layout)) {
@@ -104,17 +104,17 @@ export const PINOPS = {
   },
 
   /** ポートの向き（in / out / inout）を書き換える。 */
-  setDir(n: ModelNode, port: Port, dir: PortDir): void {
-    const r = perform({ op: "setPortDir", key: n.key, port: port.name, dir, ctx: CC().ctx?.key });
+  async setDir(n: ModelNode, port: Port, dir: PortDir): Promise<void> {
+    const r = await perform({ op: "setPortDir", key: n.key, port: port.name, dir, ctx: CC().ctx?.key });
     if (!r) return;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     toast(`ポート「${port.name}」を${DIR_LABEL[dir]}にしました`);
   },
 
-  deletePort(n: ModelNode, pin: Pin): void {
+  async deletePort(n: ModelNode, pin: Pin): Promise<void> {
     const port = pin.port;
     if (!port) return;
-    const r = perform({ op: "deletePort", key: n.key, port: port.name, ctx: CC().ctx?.key });
+    const r = await perform({ op: "deletePort", key: n.key, port: port.name, ctx: CC().ctx?.key });
     if (!r) return;
     for (const v of Object.values(S.layout)) delete v.pins[n.key]?.[pin.id];
     S.selPin = null;

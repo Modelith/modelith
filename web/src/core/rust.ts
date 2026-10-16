@@ -65,6 +65,14 @@ export interface RawParseResult {
   unsupported: Unsupported[];
 }
 
+/**
+ * Worker のコアが返した解析とモデル（`analyze` の JSON）を、解析結果とモデルのオブジェクトに戻す（ADR-0016）。例外は投げない。
+ */
+export function fromAnalysis(json: string, text: string): { P: ParseResult; M: Model } {
+  const P = safeParse(text, () => json);
+  return { P, M: build(P) };
+}
+
 /** Rust の解析結果（JSON の文字列）を、暫定コアと同じ `ParseResult` にする。 */
 export function fromRust(json: string, text: string): ParseResult {
   return fromRaw(JSON.parse(json) as RawParseResult, text);

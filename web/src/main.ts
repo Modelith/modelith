@@ -21,9 +21,10 @@ import { applyPanes, initPanels, initTabs, loadUi, saveUi } from "./app/panels";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
-import { relayout, toast } from "./app/sync";
+import { attachCore, onAnalyzed, relayout, settled, toast } from "./app/sync";
 import { CC } from "./app/views";
-import { initCore } from "./core";
+import { startCore } from "./core";
+import CoreWorker from "./core/worker?worker";
 import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
 const EDGE_KEY = "modelith-edgestyle";
@@ -103,10 +104,11 @@ function initToolbar(): void {
   });
 }
 
-// 解析に使う Rust のコア（wasm）を読み込んでから、画面を組み立てる（ADR-0015）。
+// 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
 // 待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
 try {
-  await Promise.all([initCore(CORE_WASM), document.fonts.ready]);
+  const [core] = await Promise.all([startCore(new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed), document.fonts.ready]);
+  attachCore(core);
 } catch (e) {
   showStartupError(e);
   // 続きの組み立てはしない（解析できないまま画面を組み立てると、壊れた状態で操作できてしまう）
@@ -140,5 +142,7 @@ initExport();
 initMenus();
 initToolbar();
 initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT });
+// タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
+await settled();
 applyPanes();
 initTabs();

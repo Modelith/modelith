@@ -4,6 +4,8 @@ export { isReservedWord, mask, LAYOUT_RE } from "./parser";
 // 解析とモデル構築は Rust のコア（wasm）で行う。暫定の TS コアは、比べるテストのために beta.1 まで残す（ADR-0015・ADR-0016）
 export { build, edit, initCore, parse } from "./rust";
 export type { EditResult, Intent, Refused, TextEdit } from "./rust";
+export { CoreClient, STALE_EDIT, startCore } from "./client";
+export { readLayout } from "./parser";
 export { family, isLib } from "./model";
 export { stdViewLabel } from "./views";
 export { applyEdits, applyTextEdits, diffRange, indentAt, insertEdit, insertInto, lineOf, lineStart, removeLayoutComment, removeRange } from "./text-ops";

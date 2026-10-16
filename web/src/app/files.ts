@@ -1,7 +1,7 @@
 // ファイル操作の UI（ADR-0010）：エクスプローラー・ファイルメニュー・ショートカット・未保存の警告・外部での変更の読み直し。
 // 判断はワークスペース（web/src/workspace）に任せ、ここは操作を受けて結果を画面に出すだけ。
 
-import { parse, removeLayoutComment } from "../core";
+import { readLayout, removeLayoutComment } from "../core";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, type FsApi } from "../files/local-folder";
@@ -18,7 +18,8 @@ import { dropHistory, recordHistory, useHistory } from "./history";
 import { layoutFromJson, type Layout } from "./layout";
 import { isEmptyLayout, parseLayoutFile, serializeLayout } from "./layout-file";
 import { clearSel, S } from "./state";
-import { loadLayout, onLayoutChange, onTextChange, setText, toast } from "./sync";
+import { loadLayout, onLayoutChange, onTextChange, setText, settled, toast } from "./sync";
+import { opsIdle } from "./intent";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
@@ -62,7 +63,7 @@ function layoutOf(doc: Doc): { layout: Layout; legacy: boolean } {
     if (error) toast(`${doc.name}：${error}`);
     return { layout, legacy: false };
   }
-  const layout = layoutFromJson(parse(doc.text).layout);
+  const layout = layoutFromJson(readLayout(doc.text, []));
   const legacy = !isEmptyLayout(layout);
   if (legacy) ws.initLayout(doc.key, serializeLayout(layout));
   return { layout, legacy };
@@ -82,7 +83,10 @@ function showDoc(key: string): void {
   loadLayout(layout);
   setText(doc.text, { noHistory: true });
   recordHistory();
-  fit();
+  // 図を画面に合わせるのは、その文書の解析結果が届いてから（ADR-0016）
+  void settled().then(() => {
+    if (shownKey === key) fit();
+  });
   // 配置ファイルに移せるときだけ尋ねる（保存先の無い文書では移せない）
   if (legacy && doc.layoutHome === "sibling" && !legacyAsked.has(key)) void offerLegacyMove(key);
 }
@@ -163,6 +167,8 @@ async function newFileInFolder(): Promise<void> {
  * 配置の保存先が無いときは、保存先を選んでもらう（ADR-0005、F-VIEW-6）。
  */
 async function save(key: string, as = false): Promise<void> {
+  // 直前の図の操作（コアの返事待ち）と、反映待ちの入力を、保存する内容に入れる
+  await opsIdle();
   flushEdit();
   const doc = ws.get(key);
   if (!doc) return;

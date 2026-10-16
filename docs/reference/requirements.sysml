@@ -286,7 +286,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         part def Core {
-            doc /* パーサ・モデル構築・図の操作のテキスト編集（Rust の crates/modelith-core を wasm にして使う。ADR-0015・ADR-0016） */
+            doc /* パーサ・モデル構築・図の操作のテキスト編集（Rust の crates/modelith-core を wasm にして、Web Worker の中で動かす。ADR-0003・ADR-0015・ADR-0016） */
         }
         part def DiagramUI {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
@@ -433,6 +433,13 @@ package ModelithRequirements {
                 verify NewPackageGuideReq;
                 verify CreateViewReq;
                 verify PhaseReq;
+                verify RobustReq;
+            }
+        }
+        verification def CoreWorkerTest {
+            doc /* web/src/core/client.test.ts：画面とコア（Worker）のやり取り。テキストに版を付けて送り、古い版の解析結果は捨て、返事を待つ間にテキストが変わった編集は使わない。コアが壊れた返事をしても例外を投げない。e2e：Worker で動くコアのまま、画面からの操作が反映される。ADR-0016 */
+            objective {
+                verify ResponsiveReq;
                 verify RobustReq;
             }
         }
