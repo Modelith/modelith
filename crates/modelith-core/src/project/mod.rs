@@ -25,7 +25,32 @@ pub fn project(source: &str, parse: &Parse) -> ParseResult {
             msg: e.message.clone(),
         })
         .collect();
+    if let Some(at) = broken_layout_comment(source) {
+        c.out.errors.push(ParseError {
+            pos: c.utf16(at),
+            msg: "@layout コメントが読み取れません".to_owned(),
+        });
+    }
     c.out
+}
+
+/// 配置情報を埋め込んだ移行期のコメント（`/* @layout {…} */`、ADR-0005）が JSON として読めなければ、その位置。
+/// 中身は TS の境界で読む。暫定コアの LAYOUT_RE と同じく、最初の 1 つだけを見る。
+fn broken_layout_comment(source: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(i) = source[from..].find("/*") {
+        let start = from + i;
+        let body = &source[start + 2..];
+        let rest = body.trim_start();
+        if let Some(json) = rest.strip_prefix("@layout") {
+            let end = json.find("*/")?;
+            return serde_json::from_str::<serde_json::Value>(json[..end].trim())
+                .is_err()
+                .then_some(start);
+        }
+        from = start + 2;
+    }
+    None
 }
 
 /// 暫定コアの宣言の種類（DEF_KINDS・"package"・USAGE_KINDS の順。長いものを先に当てる）。

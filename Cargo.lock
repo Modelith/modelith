@@ -76,6 +76,7 @@ name = "modelith-wasm"
 version = "0.1.0-alpha.3"
 dependencies = [
  "modelith-core",
+ "serde",
  "serde_json",
  "wasm-bindgen",
 ]

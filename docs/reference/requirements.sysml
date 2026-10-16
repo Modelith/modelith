@@ -286,7 +286,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         part def Core {
-            doc /* パーサ（Rust の crates/modelith-core を wasm にして使う。ADR-0015）・モデル構築・テキスト編集（web/src/core の暫定の TS 版。ADR-0009。alpha.4 で Rust に差し替える） */
+            doc /* パーサとモデル構築（Rust の crates/modelith-core を wasm にして使う。ADR-0015・ADR-0016）・テキスト編集（web/src/core の暫定の TS 版。ADR-0009。alpha.4 で Rust に差し替える） */
         }
         part def DiagramUI {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
@@ -384,7 +384,7 @@ package ModelithRequirements {
         private import SystemRequirements::*;
 
         verification def CoreGoldenTest {
-            doc /* web/src/core/golden.test.ts：解析とモデル構築がゴールデンと一致する（暫定の TS パーサと Rust のパーサの両方で。ADR-0015） */
+            doc /* web/src/core/golden.test.ts：解析とモデル構築がゴールデンと一致する（暫定の TS コアと Rust のコアの両方で。ADR-0015・ADR-0016） */
             objective {
                 verify ParseParityReq;
                 verify ProblemsReq;
@@ -406,7 +406,7 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサで動かす（ADR-0015） */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016） */
             objective {
                 verify StandardViewReq;
                 verify NoSilentDropReq;
@@ -417,6 +417,17 @@ package ModelithRequirements {
             objective {
                 verify NoSilentDropReq;
                 verify ProblemsReq;
+                verify RobustReq;
+            }
+        }
+        verification def RustModelTest {
+            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け・view の expose と filter・番号での参照）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で）。ADR-0016 */
+            objective {
+                verify ParseParityReq;
+                verify ProblemsReq;
+                verify PhaseReq;
+                verify TraceGapReq;
+                verify StandardViewReq;
                 verify RobustReq;
             }
         }

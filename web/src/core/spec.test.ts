@@ -1,12 +1,11 @@
 // SysML v2 仕様に合わせるケース（ADR-0013）。期待値はモックではなく仕様から手で書き、根拠の BNF 規則と章を添える。
-// TS と Rust の両方のパーサで同じケースを満たす（ADR-0015）。
+// TS と Rust の両方のパーサとモデル構築で同じケースを満たす（ADR-0015）。
 // 章番号は SysML 2.1 Beta 2（SysML-v2-Release 2026-08）のもの。docs/reference/sysml-conformance.md も参照。
 import { describe, expect, it } from "vitest";
 import SAMPLE from "../samples/electric-kettle.sysml?raw";
-import { build } from "./model";
 import { PARSERS } from "./testing/parsers";
 
-for (const [impl, parse] of PARSERS) {
+for (const [impl, parse, build] of PARSERS) {
   describe(impl, () => {
     const entry = (text: string, name: string) => parse(text).entries.find((e) => e.name === name);
     const problems = (text: string): string[] => build(parse(text)).problems.map((p) => p.msg);

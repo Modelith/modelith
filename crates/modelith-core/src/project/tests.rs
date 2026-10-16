@@ -160,3 +160,40 @@ fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() 
     assert!(r.entries.iter().all(|e| e.name != "Tail"));
     assert_eq!(r.errors.len(), 1);
 }
+
+#[test]
+fn broken_layout_comment_is_an_error_at_its_utf16_position() {
+    // Arrange（異常系：JSON として読めない。前に多バイト文字を置く）
+    let text = "// 日本語\n/* note */ /* @layout {\"A\": */\npart def A;";
+    // Act
+    let r = run(text);
+    // Assert
+    let at = text
+        .find("/* @layout")
+        .map(|b| text[..b].encode_utf16().count());
+    assert_eq!(
+        r.errors
+            .iter()
+            .map(|e| (e.pos, e.msg.as_str()))
+            .collect::<Vec<_>>(),
+        [(at.unwrap_or_default(), "@layout コメントが読み取れません")]
+    );
+}
+
+#[test]
+fn readable_or_missing_layout_comment_is_not_an_error() {
+    // 同値分割：読める・閉じていない・無い
+    for text in [
+        "/* @layout {\"A\":{\"x\":1}} */ part def A;",
+        "/* @layout {",
+        "part def A;",
+    ] {
+        // Act
+        let r = run(text);
+        // Assert
+        assert!(
+            r.errors.iter().all(|e| !e.msg.contains("@layout")),
+            "{text}"
+        );
+    }
+}

@@ -1,7 +1,7 @@
 # SysML v2 仕様との対応表
 
 Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示す。
-対象は、アプリが使う Rust のパーサ（`crates/modelith-core/src/syntax`・`project`、段階 A。ADR-0015）と、暫定の TypeScript コアのモデル構築（`web/src/core/`）と図（`web/src/app/views.ts`）。暫定の TS パーサは、Rust のパーサと同じテストで比べるために残している。
+対象は、アプリが使う Rust のパーサ（`crates/modelith-core/src/syntax`・`project`、段階 A。ADR-0015）とモデル構築（`crates/modelith-core/src/model`。ADR-0016）と図（`web/src/app/views.ts`）。暫定の TS コア（`web/src/core/`）は、Rust のコアと同じテストで比べるために残している。
 
 - 照合日: 2026-10-13（2026-10-14 に、ADR-0013 で直した項目を更新）
 - 照合したコミット: `88d7525`（dev）
