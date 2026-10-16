@@ -51,20 +51,20 @@ export function splitTopLevel(inner: string): string[] {
  *
  * @param text 宣言の行から後ろのテキスト（複数行にまたがってよい）
  * @param open 引数の開き括弧 `(` の位置
- * @returns 括弧の中身と、閉じ括弧から本体の始まり（`{`・`=>`・`;`）までの文字列。括弧が閉じなければ null
+ * @returns 括弧の中身・閉じ括弧から本体の始まり（`{`・`=>`・`;`）までの文字列・本体の始まり以降の文字列。括弧が閉じなければ null
  * @example
- * signatureParts("f(a: A, b: B): R {", 1) // → { inner: "a: A, b: B", after: ": R " }
+ * signatureParts("f(a: A, b: B): R {", 1) // → { inner: "a: A, b: B", after: ": R ", rest: "{" }
  * signatureParts("f(a", 1)                // → null（閉じていない）
  */
-export function signatureParts(text: string, open: number): { inner: string; after: string } | null {
+export function signatureParts(text: string, open: number): { inner: string; after: string; rest: string } | null {
   let depth = 0;
   for (let i = open; i < text.length; i++) {
     const ch = text[i];
     if (ch === "(") depth++;
     else if (ch === ")" && --depth === 0) {
-      const rest = text.slice(i + 1);
-      const end = rest.search(/\{|=>|;/);
-      return { inner: text.slice(open + 1, i), after: end < 0 ? rest : rest.slice(0, end) };
+      const tail = text.slice(i + 1);
+      const end = tail.search(/\{|=>|;/);
+      return { inner: text.slice(open + 1, i), after: end < 0 ? tail : tail.slice(0, end), rest: end < 0 ? "" : tail.slice(end) };
     }
   }
   return null;
@@ -125,11 +125,12 @@ export function findTsFunctions(source: string): { sig: Signature; at: number }[
     const open = text.indexOf("(", text.indexOf(name) + name.length);
     const parts = signatureParts(text, open);
     if (!parts) return;
-    const rest = text.slice(text.indexOf(parts.after, open) + parts.after.length).trimStart();
+    const rest = parts.rest;
     const isArrowConst = decl[0].trimStart().replace(/^export\s+/, "").startsWith("const");
     if (isArrowConst && !rest.startsWith("=>")) return;
-    // メソッドは本体（{）が続くものだけ（呼び出しの文を除く）
-    if (!isArrowConst && !/^function|\s+function/.test(decl[0]) && !rest.startsWith("{")) return;
+    // メソッドは、閉じ括弧の後ろが戻り値の型の注記だけで、本体（{）が続くものだけ（`$(…).x = …` のような呼び出しの文を除く）
+    const isMethod = !isArrowConst && !/(^|\s)function\b/.test(decl[0]);
+    if (isMethod && (!rest.startsWith("{") || !/^\s*(:[^=]*)?$/.test(parts.after))) return;
     const expressionBody = isArrowConst && !/^=>\s*\{/.test(rest);
     const annotated = /^\s*:/.test(parts.after);
     const returns = name === "constructor" ? false : annotated ? !isVoidType(parts.after) : expressionBody;
