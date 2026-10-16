@@ -34,7 +34,24 @@ pub struct Expr {
 pub struct OrderedMap<V>(pub Vec<(String, V)>);
 
 impl<V> OrderedMap<V> {
-    /// `key` の値。無ければ `make` で作って足す。
+    /// `key` の値。無ければ `make` で作って足す（末尾に足すので、書いた順が保たれる）。
+    ///
+    /// # 引数
+    ///
+    /// - `key`：探すキー（大文字と小文字を区別する）
+    /// - `make`：キーが無いときに値を作る関数（キーがあれば呼ばない）
+    ///
+    /// # 戻り値
+    ///
+    /// その値への可変参照。失敗しない。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 表 [("a", 1)]
+    /// entry("a", || 9) → &mut 1        （表は変わらない）
+    /// entry("b", || 9) → &mut 9        （表は [("a", 1), ("b", 9)]）
+    /// ```
     pub fn entry(&mut self, key: &str, make: impl FnOnce() -> V) -> &mut V {
         let i = match self.0.iter().position(|(k, _)| k == key) {
             Some(i) => i,
