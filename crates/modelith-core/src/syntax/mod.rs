@@ -10,7 +10,7 @@ mod parser;
 
 pub use kind::{KEYWORDS, SyntaxKind, is_keyword};
 
-use lexer::Token;
+pub use lexer::{Token, tokenize};
 use parser::{ErrorAt, Event, Input, Parser};
 use rowan::{GreenNode, GreenNodeBuilder};
 

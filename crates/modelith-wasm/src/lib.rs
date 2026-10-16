@@ -15,6 +15,29 @@ pub fn analyze(text: &str) -> String {
     analyze_json(text)
 }
 
+/// 図の操作の意図（JSON）を今のテキストに当て、テキストの編集を JSON で返す（ADR-0016）。
+/// 返すのは `{ edits, select?, flash? }`、操作できなければ `{ refused }`（画面に出す文）。
+#[wasm_bindgen]
+pub fn edit(text: &str, intent: &str) -> String {
+    edit_json(text, intent)
+}
+
+#[derive(serde::Serialize)]
+struct Refused {
+    refused: String,
+}
+
+fn edit_json(text: &str, intent: &str) -> String {
+    let result = serde_json::from_str::<modelith_core::edit::Intent>(intent)
+        .map_err(|e| format!("操作を読み取れませんでした（{e}）"))
+        .and_then(|i| modelith_core::edit::edit(text, &i));
+    let json = match result {
+        Ok(out) => serde_json::to_string(&out),
+        Err(refused) => serde_json::to_string(&Refused { refused }),
+    };
+    json.unwrap_or_else(|e| format!(r#"{{"refused":"{e}"}}"#))
+}
+
 #[derive(serde::Serialize)]
 struct Analysis {
     parse: modelith_core::project::ParseResult,
@@ -42,5 +65,23 @@ mod tests {
         // Assert
         assert!(json.contains(r#""kind":"part def""#), "{json}");
         assert!(json.contains(r#""start":7"#), "{json}");
+    }
+
+    #[test]
+    fn edit_json_returns_utf16_edits_or_refusal() {
+        // Arrange
+        let text = "// 日本語\npackage P { part def A; }";
+        // Act
+        let ok = edit_json(text, r#"{"op":"rename","key":"A","name":"B"}"#);
+        let bad = edit_json(text, r#"{"op":"rename"}"#);
+        // Assert（正常系と、読み取れない意図の異常系）
+        assert!(
+            ok.contains(r#""edits":[{"start":28,"end":29,"text":"B"}]"#),
+            "{ok}"
+        );
+        assert!(
+            bad.starts_with(r#"{"refused":"操作を読み取れませんでした"#),
+            "{bad}"
+        );
     }
 }

@@ -3,6 +3,7 @@
 //! 設計方針は `docs/adr/` を参照。特に ADR-0001（テキストが唯一の正本）に従い、
 //! 図の操作を含むすべての変更はテキスト編集として表現する。
 
+pub mod edit;
 mod line_index;
 pub mod model;
 pub mod project;
