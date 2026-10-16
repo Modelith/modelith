@@ -61,6 +61,30 @@ impl Utf16 {
     }
 }
 
+/// p 以下で最も近い文字の境目（範囲外はテキストの長さ）。`str::floor_char_boundary` と同じ（MSRV 1.85 で使えないため）。
+///
+/// # 引数
+///
+/// - `t`：テキスト
+/// - `p`：位置（バイトオフセット）
+///
+/// # 戻り値
+///
+/// 文字の境目のバイトオフセット（`t[..戻り値]` は必ず切り出せる）。
+///
+/// # 例
+///
+/// ```text
+/// floor_boundary("a🚀b", 2) → 1   // 🚀（1..5）の途中は、その先頭
+/// floor_boundary("a🚀b", 9) → 6   // 範囲外は長さ
+/// ```
+fn floor_boundary(t: &str, p: usize) -> usize {
+    (0..=p.min(t.len()))
+        .rev()
+        .find(|&i| t.is_char_boundary(i))
+        .unwrap_or(0)
+}
+
 /// バイトオフセットの UTF-16 の位置。
 ///
 /// # 引数
@@ -70,17 +94,17 @@ impl Utf16 {
 ///
 /// # 戻り値
 ///
-/// `byte` より前の UTF-16 の単位の数。`byte` が範囲外か文字の途中なら、テキスト全体の UTF-16 の長さ。
+/// `byte` より前の UTF-16 の単位の数。`byte` が文字の途中なら、その文字の先頭の位置。範囲外ならテキスト全体の UTF-16 の長さ。
 ///
 /// # 例
 ///
 /// ```text
 /// utf16_of("a🚀b", 5) → 3
-/// utf16_of("a🚀b", 2) → 4   // 文字の途中は全体の長さ
+/// utf16_of("a🚀b", 2) → 1   // 文字の途中は、その文字の先頭
+/// utf16_of("a🚀b", 9) → 4   // 範囲外は全体の長さ
 /// ```
 pub fn utf16_of(text: &str, byte: usize) -> usize {
-    text.get(..byte)
-        .map_or_else(|| text.encode_utf16().count(), |s| s.encode_utf16().count())
+    text[..floor_boundary(text, byte)].encode_utf16().count()
 }
 
 /// p を含む行の先頭。暫定コアの `lineStart`（`web/src/core/text-ops.ts`）と同じ。
@@ -92,16 +116,17 @@ pub fn utf16_of(text: &str, byte: usize) -> usize {
 ///
 /// # 戻り値
 ///
-/// 行の先頭のバイトオフセット。1 行目なら 0。`p` が範囲外か文字の途中なら 0。
+/// 行の先頭のバイトオフセット。1 行目なら 0。`p` が文字の途中ならその文字を含む行、範囲外なら最後の行の先頭。
 ///
 /// # 例
 ///
 /// ```text
 /// line_start("ab\ncd", 4) → 3
 /// line_start("ab\ncd", 0) → 0   // 先頭行
+/// line_start("ab\ncd", 9) → 3   // 範囲外は最後の行（暫定コアと同じ）
 /// ```
 pub fn line_start(t: &str, p: usize) -> usize {
-    t.get(..p).and_then(|s| s.rfind('\n')).map_or(0, |i| i + 1)
+    t[..floor_boundary(t, p)].rfind('\n').map_or(0, |i| i + 1)
 }
 
 /// p を含む行の字下げ（行頭の空白とタブ）。暫定コアの `indentAt` と同じ。
