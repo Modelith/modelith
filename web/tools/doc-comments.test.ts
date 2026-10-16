@@ -51,6 +51,20 @@ describe("checkTs（TypeScript）", () => {
     expect(findTsFunctions(src).map((f) => f.sig.name)).toEqual(["outer"]);
   });
 
+  it("引数の型に、戻り値の型と同じ文字列があっても、宣言を読み違えない（境界値）", () => {
+    // Arrange（引数の中に「: string 」と空白がある）
+    const src = "const portName = (pin: string | null): string => pin ?? \"\";\nexport const viewOf = (layout: Layout, vk: string) => layout[vk];";
+    // Act・Assert
+    expect(findTsFunctions(src).map((f) => [f.sig.name, f.sig.returns])).toEqual([["portName", true], ["viewOf", true]]);
+  });
+
+  it("関数の中の、テンプレート文字列を含む呼び出しの文はメソッドとみなさない（異常系）", () => {
+    // Arrange
+    const src = "function f(): void {\n  $(\"#a\").textContent = `${n} 件`;\n  $(\"#vp\").setAttribute(\"t\", `translate(${x})`);\n}";
+    // Act・Assert
+    expect(findTsFunctions(src).map((f) => f.sig.name)).toEqual(["f"]);
+  });
+
   it("オブジェクトのメソッドも対象にする", () => {
     // Arrange
     const src = "export const OPS = {\n  async addNode(kind: string): Promise<void> {\n  },\n};";
