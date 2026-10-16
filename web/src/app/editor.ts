@@ -43,6 +43,11 @@ function caretToNode(): void {
   else centerOn(key, true);
 }
 
+/**
+ * テキストエディタに操作をつなぐ。起動時に 1 回呼ぶ。入力は色付けをすぐ直し、入力が 280 ミリ秒止まったら
+ * 解析して図などに反映し（F-EDIT-1）、履歴に記録する。クリックや矢印キーでカーソルを動かしたら、
+ * カーソル位置の要素を図で選ぶ。問題一覧の項目を押したら、その位置にカーソルを移す（F-EDIT-5）。
+ */
 export function initEditor(): void {
   const ed = $<HTMLTextAreaElement>("#ed");
   ed.addEventListener("input", () => {

@@ -8,11 +8,40 @@ export const W = 224;
 export const HEAD = 44;
 export const LH = 15;
 
+/**
+ * 1 文字の幅の目安（11px の文字）。全角（CJK・全角記号）は 11、それ以外は 6.3。
+ *
+ * @param ch 1 文字
+ * @returns 幅（図の座標の単位）
+ * @example
+ * cw("a")  // → 6.3
+ * cw("部") // → 11
+ */
 const cw = (ch: string): number => (/[　-鿿＀-￯]/.test(ch) ? 11 : 6.3);
-/** 文字列の幅の目安（11px の文字）。 */
+/**
+ * 文字列の幅の目安（11px の文字）。1 文字ずつの幅（全角 11・半角 6.3）を足す。
+ *
+ * @param s 測る文字列
+ * @returns 幅（図の座標の単位）。空文字列なら 0
+ * @example
+ * textWidth("ab")   // → 12.6
+ * textWidth("部品") // → 22
+ * textWidth("")     // → 0（境界）
+ */
 export const textWidth = (s: string): number => [...s].reduce((w, ch) => w + cw(ch), 0);
 
-/** 幅に収まるように折り返す。行数を超えたら最後を「…」で切る。 */
+/**
+ * 幅に収まるように折り返す。行数を超えたら最後の行の末尾を「…」に置き換えて切る。
+ *
+ * @param s 折り返す文字列
+ * @param maxW 1 行の幅の上限（図の座標の単位。既定はノードの幅 W から余白を引いた 206）
+ * @param maxLines 行数の上限（既定 3）
+ * @returns 折り返した各行。空文字列なら空の配列
+ * @example
+ * wrap("abc", 13, 3)      // → ["ab", "c"]
+ * wrap("abcdefgh", 13, 2) // → ["ab", "c…"]（行数を超えたので切る）
+ * wrap("")                // → []（境界）
+ */
 export function wrap(s: string, maxW = W - 18, maxLines = 3): string[] {
   const out: string[] = [];
   let cur = "";
@@ -41,7 +70,20 @@ export interface Line {
   cls: "doc" | "expr" | "attr" | "more";
 }
 
-/** ノードの区画（説明・式・属性など）に書く行。 */
+/**
+ * ノードの区画（説明・式・属性など）に書く行を作る。要求などの説明（doc）、要求の require 式・制約の式、
+ * part の属性、状態の一覧と遷移、アクションの手順を並べ、8 行を超えたら最後を「… ほか N 行」にまとめる。
+ *
+ * @param n 図のノード
+ * @returns 区画の行（文字列と種類）。書くことが無ければ空の配列
+ * @example
+ * // part def で、属性 mass : Real を 1 つ持つ
+ * compartment(n) // → [{ t: "mass : Real", cls: "attr" }]
+ * // 要求で、説明「速く走る」と require 式 v > 10 を持つ
+ * compartment(n) // → [{ t: "速く走る", cls: "doc" }, { t: "{ v > 10 }", cls: "expr" }]
+ * // 中身の無い part def
+ * compartment(n) // → []（境界）
+ */
 export function compartment(n: ModelNode): Line[] {
   const e = n.entry;
   const L: Line[] = [];
@@ -72,7 +114,16 @@ export function compartment(n: ModelNode): Line[] {
 }
 
 const linesCache = new WeakMap<ModelNode, Line[]>();
-/** 区画の行（ノードごとにキャッシュ）。 */
+/**
+ * 区画の行を返す。compartment の結果をノードごとにキャッシュする（同じノードには同じ配列を返す）。
+ *
+ * @param n 図のノード
+ * @returns 区画の行（compartment と同じ）
+ * @example
+ * // 中身の無い part def
+ * linesOf(n)                 // → []
+ * linesOf(n) === linesOf(n)  // → true（キャッシュ）
+ */
 export function linesOf(n: ModelNode): Line[] {
   let L = linesCache.get(n);
   if (!L) {
@@ -82,6 +133,17 @@ export function linesOf(n: ModelNode): Line[] {
   return L;
 }
 
+/**
+ * ノードの高さ。見出しの高さ HEAD（44）に、区画があれば行数 × LH（15）と余白 12 を足す。
+ *
+ * @param n 図のノード
+ * @returns 高さ（図の座標の単位）
+ * @example
+ * // 属性を 1 行だけ持つ part def
+ * nodeH(n) // → 71
+ * // 区画の行が無い
+ * nodeH(n) // → 44（境界）
+ */
 export function nodeH(n: ModelNode): number {
   const L = linesOf(n);
   return HEAD + (L.length ? L.length * LH + 12 : 0);
@@ -108,7 +170,22 @@ export interface NodeBox extends Box {
 
 const DEF_SIDE: Record<PortDir, Side> = { in: "l", out: "r", inout: "b" };
 
-/** ブロック縁上の接続点。ポート由来（port:名前）と自由な接続点（a1, a2…）がある。 */
+/**
+ * ブロック縁上の接続点を集める。ポート由来（port:名前）と自由な接続点（a1, a2…）がある。
+ * ポートは配置に位置が無ければ向きで辺を決め（in は左・out は右・inout は下）、同じ向きの中で等間隔に並べる。
+ * トレース・振る舞いのビューでは、配置に位置の無いポートは出さない。
+ *
+ * @param n 図のノード
+ * @param L ビューの配置（無ければ undefined）
+ * @param view ビューの ID（"trace"・"behavior" ならポートを位置のあるものだけにする）
+ * @returns 接続点の一覧（ポート由来を in・out・inout の順に、続けて自由な接続点）
+ * @example
+ * // ノード A が in のポート p・q と out のポート o を持ち、配置が無い
+ * pinsOf(n, undefined, "bdd")
+ * // → [{ id: "port:p", side: "l", t: 1/3, port }, { id: "port:q", side: "l", t: 2/3, port }, { id: "port:o", side: "r", t: 0.5, port }]
+ * // 同じノードで、配置に自由な接続点 a1 だけがある
+ * pinsOf(n, { pins: { A: { a1: ["t", 0.3] } }, … }, "trace") // → [{ id: "a1", side: "t", t: 0.3 }]（ポートは出さない）
+ */
 export function pinsOf(n: ModelNode, L: ViewLayout | undefined, view: string): Pin[] {
   const stored = L?.pins[n.key] ?? {};
   const res: Pin[] = [];
@@ -133,7 +210,17 @@ export interface BorderPoint {
   ny: number;
 }
 
-/** 縁上の位置（辺と 0〜1 の割合）を座標と外向きの法線にする。 */
+/**
+ * 縁上の位置（辺と 0〜1 の割合）を座標と外向きの法線にする。
+ *
+ * @param b ブロックの矩形
+ * @param side 辺（t：上・b：下・l：左・r：右）
+ * @param t 辺に沿った位置の割合（0〜1。上下の辺は左から、左右の辺は上から）
+ * @returns 縁上の座標（x, y）と外向きの単位法線（nx, ny）
+ * @example
+ * pinPoint({ x: 0, y: 0, w: 100, h: 50 }, "r", 0.5) // → { x: 100, y: 25, nx: 1, ny: 0 }
+ * pinPoint({ x: 0, y: 0, w: 100, h: 50 }, "t", 0)   // → { x: 0, y: 0, nx: 0, ny: -1 }（角）
+ */
 export function pinPoint(b: Box, side: Side, t: number): BorderPoint {
   if (side === "t") return { x: b.x + t * b.w, y: b.y, nx: 0, ny: -1 };
   if (side === "b") return { x: b.x + t * b.w, y: b.y + b.h, nx: 0, ny: 1 };
@@ -141,9 +228,30 @@ export function pinPoint(b: Box, side: Side, t: number): BorderPoint {
   return { x: b.x + b.w, y: b.y + t * b.h, nx: 1, ny: 0 };
 }
 
+/**
+ * 値を範囲に収める。
+ *
+ * @param v 値
+ * @param a 下限
+ * @param c 上限
+ * @returns a 以上 c 以下に収めた値
+ * @example
+ * clamp(5, 0, 10)  // → 5
+ * clamp(-3, 0, 10) // → 0（下限）
+ */
 const clamp = (v: number, a: number, c: number): number => Math.max(a, Math.min(c, v));
 
-/** 点に最も近い縁の位置（10 単位に丸め、角から 8 以上離す）。 */
+/**
+ * 点に最も近い縁の位置を求める（10 単位に丸め、角から 8 以上離す）。
+ *
+ * @param b ブロックの矩形
+ * @param px 点の x（図の座標）
+ * @param py 点の y（図の座標）
+ * @returns 辺・辺に沿った割合 t（小数 3 桁）・点から縁までの距離 d
+ * @example
+ * nearestBorder({ x: 0, y: 0, w: 100, h: 50 }, 53, -5) // → { side: "t", t: 0.5, d: 5 }
+ * nearestBorder({ x: 0, y: 0, w: 100, h: 50 }, -3, 1)  // → { side: "l", t: 0.16, d: 3 }（角の近くは 8 離す）
+ */
 export function nearestBorder(b: Box, px: number, py: number): { side: Side; t: number; d: number } {
   const sides: { side: Side; along: number; len: number; d: number }[] = [
     { side: "t", along: clamp(px, b.x, b.x + b.w) - b.x, len: b.w, d: Math.hypot(px - clamp(px, b.x, b.x + b.w), py - b.y) },
@@ -156,7 +264,16 @@ export function nearestBorder(b: Box, px: number, py: number): { side: Side; t: 
   return { side: s.side, t: +(along / s.len).toFixed(3), d: s.d };
 }
 
-/** 線の両端の接続点 ID（配置で指定がなければポート）。 */
+/**
+ * 線の両端の接続点 ID を返す。配置で指定があればそれを、なければモデルのポートを使う。
+ *
+ * @param e 線
+ * @param L ビューの配置（無ければ undefined）
+ * @returns 始点 f と終点 t の接続点 ID。どちらも決まっていなければ null
+ * @example
+ * edgeEnds({ id: "e1", fromPort: "port:out", … }, undefined)  // → { f: "port:out", t: null }
+ * edgeEnds({ id: "e1", … }, { ends: { e1: ["a1", "a2"] }, … }) // → { f: "a1", t: "a2" }（配置の指定が優先）
+ */
 export function edgeEnds(e: ModelEdge, L: ViewLayout | undefined): { f: string | null; t: string | null } {
   const o = L?.ends[e.id];
   return o ? { f: o[0], t: o[1] } : { f: e.fromPort ?? null, t: e.toPort ?? null };
@@ -171,7 +288,17 @@ interface Rect {
   y1: number;
 }
 
-/** 相手の位置から、線を出す辺を選ぶ。 */
+/**
+ * 相手の位置から、線を出す辺を選ぶ。縦のすき間が横のすき間以上なら上下、そうでなければ左右の辺にする。
+ *
+ * @param b 線を出すブロックの矩形
+ * @param o 相手の矩形（点なら幅・高さ 0）
+ * @returns 辺（t・b・l・r）
+ * @example
+ * chooseSide({ x: 0, y: 0, w: 100, h: 50 }, { x: 300, y: 0, w: 100, h: 50 }) // → "r"
+ * chooseSide({ x: 0, y: 0, w: 100, h: 50 }, { x: 0, y: 200, w: 100, h: 50 }) // → "b"
+ * chooseSide({ x: 0, y: 0, w: 100, h: 50 }, { x: 0, y: 0, w: 100, h: 50 })   // → "t"（重なっているとき）
+ */
 export function chooseSide(b: Box, o: Box): Side {
   const cx = b.x + b.w / 2, cy = b.y + b.h / 2, ox = o.x + o.w / 2, oy = o.y + o.h / 2;
   const dx = ox - cx, dy = oy - cy;
@@ -180,6 +307,17 @@ export function chooseSide(b: Box, o: Box): Side {
   return dx > 0 ? "r" : "l";
 }
 
+/**
+ * 水平・垂直の線分が矩形の内側を横切るか。縁に沿うだけなら横切らない。斜めの線分は常に false。
+ *
+ * @param a 線分の一端
+ * @param b 線分の他端
+ * @param r 矩形（x0, y0 が左上、x1, y1 が右下）
+ * @returns 横切るなら true
+ * @example
+ * segHits([0, 5], [20, 5], { x0: 5, y0: 0, x1: 10, y1: 10 }) // → true
+ * segHits([0, 0], [20, 0], { x0: 5, y0: 0, x1: 10, y1: 10 }) // → false（縁に沿うだけ）
+ */
 function segHits(a: Pt, b: Pt, r: Rect): boolean {
   if (a[1] === b[1]) {
     const y = a[1];
@@ -196,7 +334,16 @@ function segHits(a: Pt, b: Pt, r: Rect): boolean {
   return false;
 }
 
-/** 折れ線から重複点と一直線上の中間点を除く。 */
+/**
+ * 折れ線から重複点と一直線上（水平・垂直）の中間点を除く。座標は小数 1 桁に丸める。
+ *
+ * @param pts 折れ線の点
+ * @returns 簡単にした点の列。空なら空
+ * @example
+ * simplifyPath([[0, 0], [0, 0], [10, 0], [20, 0], [20, 5]]) // → [[0, 0], [20, 0], [20, 5]]
+ * simplifyPath([[0.04, 0]])                                 // → [[0, 0]]（丸め）
+ * simplifyPath([])                                          // → []（境界）
+ */
 export function simplifyPath(pts: Pt[]): Pt[] {
   const out: Pt[] = [];
   for (const p of pts) {
@@ -213,7 +360,20 @@ export function simplifyPath(pts: Pt[]): Pt[] {
   return out;
 }
 
-/** 直角の経路の候補から、短く・曲がりが少なく・ブロックを横切らないものを選ぶ。 */
+/**
+ * 直角の経路の候補から、短く・曲がりが少なく・ブロックを横切らず・出口と入口で折り返さないものを選ぶ。
+ * 端点から法線の向きに 18 だけ出た点を経由する候補を作り、長さ・曲がりの数・横切りの数で費用を比べる。
+ *
+ * @param P1 始点（図の座標）
+ * @param N1 始点の外向きの法線（[1, 0] など）
+ * @param P2 終点（図の座標）
+ * @param N2 終点の外向きの法線
+ * @param obs 避けるブロックの矩形
+ * @returns 経路の点の列（simplifyPath 済み。始点と終点を含む）
+ * @example
+ * orthoRoute([0, 0], [1, 0], [100, 0], [-1, 0], [])  // → [[0, 0], [100, 0]]（一直線）
+ * orthoRoute([0, 0], [1, 0], [100, 50], [-1, 0], []) // → [[0, 0], [82, 0], [82, 50], [100, 50]]
+ */
 export function orthoRoute(P1: Pt, N1: Pt, P2: Pt, N2: Pt, obs: Rect[]): Pt[] {
   const s = 18;
   const S1: Pt = [P1[0] + N1[0] * s, P1[1] + N1[1] * s], S2: Pt = [P2[0] + N2[0] * s, P2[1] + N2[1] * s];
@@ -254,7 +414,17 @@ export function orthoRoute(P1: Pt, N1: Pt, P2: Pt, N2: Pt, obs: Rect[]): Pt[] {
   return best;
 }
 
-/** 折れ線の角を丸めた SVG パス。 */
+/**
+ * 折れ線の角を丸めた SVG パスを作る。角の丸めの半径は、前後の区間の半分を超えない。
+ *
+ * @param pts 折れ線の点（2 点以上）
+ * @param r 角の丸めの半径（図の座標の単位。既定 9）
+ * @returns SVG の path の d 属性の文字列
+ * @example
+ * roundedPath([[0, 0], [100, 0], [100, 100]]) // → "M0,0 L91,0 Q100,0 100,9 L100,100"
+ * roundedPath([[0, 0], [4, 0], [4, 4]])       // → "M0,0 L2,0 Q4,0 4,2 L4,4"（短い区間では半径を縮める）
+ * roundedPath([[0, 0], [10, 0]])              // → "M0,0 L10,0"（角が無い）
+ */
 export function roundedPath(pts: Pt[], r = 9): string {
   const f = (p: Pt): string => `${p[0]},${p[1]}`;
   let d = `M${f(pts[0] as Pt)}`;
@@ -296,7 +466,21 @@ interface RouteRec {
   tt: number;
 }
 
-/** すべての線について、出口・入口の位置と経路を決める。 */
+/**
+ * すべての線について、出口・入口の位置と経路を決める。接続点の決まっていない端は、
+ * 同じ辺から出る線を相手の位置の順に等間隔に並べ、固定の接続点を避ける。ラベルの位置も決める。
+ *
+ * @param box ノードのキーから、ノードの矩形と接続点への対応
+ * @param edges 描く線
+ * @param L ビューの配置（無ければ undefined）
+ * @param style 線の形（"ortho"：直角に折れる・"curve"：曲線）
+ * @returns 線の ID から経路（SVG パス・ラベルの位置・両端）への対応。両端のノードが box に無い線は含めない
+ * @example
+ * // A が (0, 0, 100×50)、B が (300, 0, 100×50) にあり、接続点は無い
+ * computeRoutes(box, [{ id: "e1", from: "A", to: "B", … }], undefined, "ortho").get("e1")
+ * // → { d: "M100,25 L300,25", lab: { x: 200, y: 38, a: "middle" }, from: { P: [100, 25], side: "r", … }, to: { P: [300, 25], side: "l", … } }
+ * computeRoutes(box, [{ id: "e1", from: "A", to: "X", … }], undefined, "ortho").size // → 0（相手が図に無い）
+ */
 export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: ViewLayout | undefined, style: "ortho" | "curve"): Map<string, Route> {
   const recs: RouteRec[] = [];
   const groups = new Map<string, { rec: RouteRec; end: "f" | "t"; o: Pt }[]>();
@@ -399,7 +583,18 @@ const RANK: Record<string, number> = {
   "interface def": 6, "item def": 7,
 };
 
-/** 配置済みの要素の下に、未配置の要素を段ごとに並べる。 */
+/**
+ * 配置済みの要素の下に、未配置の要素を段ごとに並べ、座標を pos に書き込む（pos を変更する）。
+ * 段は、ビューが深さで並べるなら線の向きの深さ、そうでなければ種類の順位（RANK）で決める。
+ * 段の中は前の段とのつながりの重心で並べ替えて線の交差を減らし、1 段は 7 個までで折り返す。
+ *
+ * @param list 並べる（未配置の）ノード
+ * @param edges 図の線（段と並び順の計算に使う）
+ * @param pos ノードのキーから座標への対応。並べた座標を書き込む
+ * @param v ビューの定義（depth が真なら線の深さで段を決める。control・ibd では信号の上流を左に置く）
+ * @param firstPhase 最初の段階の名前。その段階の requirement def を requirement の上の段に置く。無ければ null
+ * @param oy 最初の段の y 座標（既定 0。配置済みの要素の下端を渡す）
+ */
 export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<string, Pos>, v: ViewDef, firstPhase: string | null, oy = 0): void {
   const keys = new Set(list.map((n) => n.key));
   const layer = new Map<string, number>();
@@ -472,7 +667,16 @@ export const PKG_TAB = 30;
 
 /**
  * package の枠の位置と大きさ（F-VIEW-9）。枠は、中の要素と、中の枠をすべて囲む。
+ * 左右・下に PKG_PAD（18）、上に名前の札の分 PKG_TAB（30）の余白をとる。
  * 中に描く要素が 1 つも無い枠は null（描かない）。`inner` に輪があっても止まる。
+ *
+ * @param frames 枠ごとの、中の要素のキー（keys）と、中の枠の番号（inner。frames の添字）
+ * @param boxOf 要素のキーから矩形を返す関数。図に無ければ undefined
+ * @returns 枠ごとの矩形（frames と同じ順）。描かない枠は null
+ * @example
+ * // A が (0, 0, 100×50)、B が (200, 100, 100×50)
+ * packageRects([{ keys: ["A", "B"], inner: [] }], boxOf) // → [{ x: -18, y: -30, w: 336, h: 198 }]
+ * packageRects([{ keys: ["Gone"], inner: [] }], boxOf)   // → [null]（中に描く要素が無い）
  */
 export function packageRects(frames: readonly { keys: readonly string[]; inner: readonly number[] }[], boxOf: (key: string) => Box | undefined): (Box | null)[] {
   const memo = new Map<number, Box | null>();

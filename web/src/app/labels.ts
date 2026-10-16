@@ -12,5 +12,14 @@ const KIND_LABEL: Record<string, string> = {
   package: "モデルの入れ物",
 };
 
-/** 要素の種類の、画面での名前（知らない種類は SysML v2 のキーワードのまま）。 */
+/**
+ * 要素の種類の、画面での名前を返す（ADR-0014）。知らない種類は SysML v2 のキーワードのまま返す。
+ *
+ * @param kind 要素の種類（SysML v2 のキーワード。`part def`・`requirement`・`package` など）
+ * @returns 画面に出す名前。表に無い種類なら kind そのもの
+ * @example
+ * kindLabel("part def")  // → "部品定義"
+ * kindLabel("view")      // → "保存された図"
+ * kindLabel("flow def")  // → "flow def"（表に無い種類）
+ */
 export const kindLabel = (kind: string): string => KIND_LABEL[kind] ?? kind;

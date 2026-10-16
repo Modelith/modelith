@@ -8,6 +8,15 @@ import { phaseLabel, type ViewContent } from "./views";
 
 /** 色の名前（CSS 変数名から `--` を除いたもの）を値にする。 */
 export type ColorFn = (name: string) => string;
+/**
+ * 画面表示用の色の関数。色の名前を CSS 変数の参照にする（テーマの切り替えに追従する）。
+ *
+ * @param v 色の名前（CSS 変数名から `--` を除いたもの）
+ * @returns `var(--名前)` の文字列
+ * @example
+ * CV("k-part") // → "var(--k-part)"
+ * CV("")       // → "var(--)"（名前が空でもそのままつなぐ）
+ */
 export const CV: ColorFn = (v) => `var(--${v})`;
 
 export interface MarkupOpts {
@@ -27,6 +36,25 @@ export interface MarkupOpts {
   phases?: boolean;
 }
 
+/**
+ * ポートの記号（縁の上の小さな四角と、向きを表す矢印）を SVG の文字列にする。
+ * in は内向き、out は外向きの矢印 1 つ、inout は両向きの矢印を描く。
+ *
+ * @param cx 記号の中心の x（図の座標）
+ * @param cy 記号の中心の y（図の座標）
+ * @param nx 縁の外向きの単位法線の x 成分（-1・0・1）
+ * @param ny 縁の外向きの単位法線の y 成分（-1・0・1）
+ * @param dir ポートの向き（`in`・`out`・`inout`）
+ * @param col 矢印の色
+ * @param panel 四角の塗りの色
+ * @param stroke 四角の枠の色（選択中は選択の色）
+ * @param sw 四角の枠の太さ
+ * @returns `<rect …/>` と矢印の `<path …/>` をつないだ SVG の文字列
+ * @example
+ * portGlyph(0, 0, 1, 0, "out", "c", "p", "s", 1.3)
+ * // → '<rect x="-6.5" y="-6.5" width="13" height="13" fill="p" stroke="s" stroke-width="1.3"/><path …/><path … fill="c"/>'（右向きの矢印 1 つ）
+ * portGlyph(0, 0, 1, 0, "inout", "c", "p", "s", 1.3) // → 四角と、線 1 本と、両向きの矢印 2 つ
+ */
 function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, col: string, panel: string, stroke: string, sw: number): string {
   const ar = (dx: number, dy: number, hx: number, hy: number): string => {
     const px = -dy, py = dx;
@@ -42,7 +70,17 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
 
 const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req" };
 
-/** 図に出した package の枠の位置（外側の枠から順。F-VIEW-9）。 */
+/**
+ * 図に出した package の枠の位置を求める（F-VIEW-9）。外側の枠から順に並べ、内側の枠が上に重なるようにする。
+ *
+ * @param content 表示するビューの中身（`packages` に枠ごとの中の要素と中の枠を持つ）
+ * @param boxOf 要素のキーから矩形を返す関数。図に無ければ undefined
+ * @returns 枠ごとの package の名前と矩形（外側から順）。中に描く要素が無い枠は除く。枠が無ければ空の配列
+ * @example
+ * // A が (0, 0, 100×50)、B が (200, 100, 100×50)
+ * packageBoxes({ …, packages: [{ name: "P", keys: ["A", "B"], inner: [] }] }, boxOf) // → [{ name: "P", r: { x: -18, y: -30, w: 336, h: 198 } }]
+ * packageBoxes({ …, packages: [{ name: "P", keys: ["Gone"], inner: [] }] }, boxOf)   // → []（中に描く要素が無い）
+ */
 export function packageBoxes(content: ViewContent, boxOf: (key: string) => Box | undefined): { name: string; r: Box }[] {
   const frames = content.packages ?? [];
   const rects = packageRects(frames, boxOf);
@@ -54,7 +92,18 @@ export function packageBoxes(content: ViewContent, boxOf: (key: string) => Box |
     .map(({ name, r }) => ({ name, r }));
 }
 
-/** package の枠（フォルダの形。名前は左上の札に書く、8.2.3.5）。操作の邪魔をしないよう、ポインタは通す。 */
+/**
+ * package の枠を SVG の文字列にする（フォルダの形。名前は左上の札に書く、8.2.3.5）。操作の邪魔をしないよう、ポインタは通す。
+ *
+ * @param C 色の関数（画面は CV、書き出しは実際の色を返す関数）
+ * @param name package の名前（札に書く）
+ * @param r 枠の矩形（図の座標。札を含む）
+ * @param F 文字のフォント（font-family の値）
+ * @returns `<g class="pkg" data-pkg="名前" pointer-events="none">…</g>` の文字列。札の幅は名前の幅 + 20（最小 48）
+ * @example
+ * packageMarkup(CV, "P", { x: 0, y: 0, w: 300, h: 200 }, "inherit")
+ * // → '<g class="pkg" data-pkg="P" pointer-events="none"><rect x="0" y="0" width="48" height="18" …/><rect x="0" y="18" width="300" height="182" …/><text …>P</text></g>'
+ */
 function packageMarkup(C: ColorFn, name: string, r: Box, F: string): string {
   const tw = Math.max(48, textWidth(name) + 20), th = 18;
   return (
@@ -65,7 +114,21 @@ function packageMarkup(C: ColorFn, name: string, r: Box, F: string): string {
   );
 }
 
-/** ブロック図（ノードと線）のマークアップ。`es` は線、`ns` はノードと接続点。 */
+/**
+ * ブロック図（ノードと線）の SVG マークアップを作る。画面表示と SVG 書き出しで共用する。
+ * package の枠・対象の枠（内部ブロック図など）・線を `es` に、要素と接続点を `ns` に書く。座標の無い要素は (0, 0) に置く。
+ *
+ * @param C 色の関数（画面は CV）
+ * @param content 表示するビューの中身（要素・線・枠）
+ * @param L ビューの配置（座標・接続点・線の端）
+ * @param opts 描き方（フォント・操作できるか・選択・光らせる要素・接続の候補・線の形・薄くする要素・工程を出すか・接続点を決めるビュー）
+ * @returns 線のマークアップ（es）、要素と接続点のマークアップ（ns）、要素のキー → 矩形と接続点（box）
+ * @example
+ * // 要素 A だけが (0, 0) にあるビュー
+ * svgMarkup(CV, content, L, { view: "trace" }) // → { es: "", ns: '<g class="node" data-key="A" transform="translate(0,0)">…</g>', box: Map { "A" → { x: 0, y: 0, w: 224, h: 44, … } } }
+ * // 要素の無いビュー
+ * svgMarkup(CV, { nodes: [], edges: [] }, L, { view: "trace" }) // → { es: "", ns: "", box: Map {} }
+ */
 export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts: MarkupOpts): { es: string; ns: string; box: Map<string, NodeBox> } {
   const { nodes, edges } = content;
   const F = opts.font || "inherit", MONO = opts.mono || "var(--mono)";
@@ -107,6 +170,21 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
   return { es, ns: ns + ps, box };
 }
 
+/**
+ * 要素 1 つ（ブロック）を SVG の文字列にする。種類の «キーワード»・名前（長ければ縮めて 34 文字で切る）・属性などの行・工程を描き、
+ * 選択・光らせる・接続の候補・薄くする、の状態を見た目に反映する。定義は角の四角、使用は角の丸い四角にする。
+ *
+ * @param C 色の関数
+ * @param b 要素の矩形と、その要素
+ * @param opts 描き方（選択・光らせる要素・接続の候補・薄くする要素・工程を出すか）
+ * @param F 文字のフォント
+ * @param MONO 式・属性の行のフォント
+ * @returns `<g class="node" data-key="キー" transform="translate(x,y)">…</g>` の文字列
+ * @example
+ * // (10, 20) にある part def A（行なし）、選択なし
+ * nodeMarkup(CV, b, { view: "trace" }, "inherit", "var(--mono)")
+ * // → '<g class="node" data-key="A" transform="translate(10,20)"><rect class="body" width="224" height="44" rx="0" …/>…«part def»…A…</g>'
+ */
 function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
   const n = b.n, fam = n.fam, L2 = linesOf(n);
   const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
@@ -134,6 +212,21 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   return s + "</g>";
 }
 
+/**
+ * 要素の接続点を SVG の文字列にする。ポート由来の接続点は記号と名前、自由な接続点は小さな丸で描く。
+ * 操作できる図では、つかみやすいよう透明な当たり判定を重ねる。
+ *
+ * @param C 色の関数
+ * @param b 要素の矩形と、その接続点
+ * @param opts 描き方（選択中の接続点・操作できるか）
+ * @param MONO ポートの名前のフォント
+ * @returns `<g class="pin" data-node="キー" data-pin="ID">…</g>` を接続点の数だけつないだ文字列。接続点が無ければ空文字列
+ * @example
+ * // A の上の縁の中央に自由な接続点 a1 があるとき（操作できない図）
+ * pinsMarkup(CV, b, { view: "trace" }, "var(--mono)") // → '<g class="pin" data-node="A" data-pin="a1"><circle … r="3.6" …/></g>'
+ * // 接続点が無いとき
+ * pinsMarkup(CV, b, { view: "trace" }, "var(--mono)") // → ""
+ */
 function pinsMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, MONO: string): string {
   const n = b.n;
   let ps = "";
@@ -160,13 +253,35 @@ function pinsMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, MONO: string): str
 /** シーケンス図の寸法。 */
 export const SEQ = { dx: 200, w: 170, h: 46, first: 40, gap: 54 };
 
+/**
+ * シーケンス図の外枠の位置と大きさを、ライフラインとメッセージの数から求める（SEQ の寸法を使う）。
+ *
+ * @param c シーケンス図の中身（nodes がライフライン、edges がメッセージ）
+ * @returns 外枠の左上（x0, y0）・幅（w）・高さ（h）と、ライフラインの下端（H）。数が 0 でも 1 つ分の大きさにする
+ * @example
+ * seqGeom({ nodes: [a, b], edges: [m], … }) // → { x0: -24, y0: -60, w: 418, h: 244, H: 160 }
+ * seqGeom({ nodes: [], edges: [], … })      // → { x0: -24, y0: -60, w: 218, h: 244, H: 160 }（境界値）
+ */
 export function seqGeom(c: ViewContent): { x0: number; y0: number; w: number; h: number; H: number } {
   const n = c.nodes.length, m = c.edges.length;
   const H = SEQ.h + SEQ.first + Math.max(1, m) * SEQ.gap + 20;
   return { x0: -24, y0: -60, w: Math.max(1, n) * SEQ.dx - (SEQ.dx - SEQ.w) + 48, h: H + 84, H };
 }
 
-/** シーケンス図のマークアップ。 */
+/**
+ * シーケンス図の SVG マークアップを作る。外枠と `sd 名前` の札、ライフライン（頭の箱と点線）、上から順に番号付きのメッセージを描く。
+ * 自分自身へのメッセージは折り返しの線にする。両端のライフラインが見つからないメッセージは描かない。
+ *
+ * @param C 色の関数（画面は CV）
+ * @param c シーケンス図の中身（対象・ライフライン・メッセージ）
+ * @param opts 描き方（フォント・操作できるか・選択）。省くと既定の描き方
+ * @returns マークアップ（s）と、外枠の寸法（g。seqGeom の結果）
+ * @example
+ * // 対象 K に、ライフライン a・b と、a から b へのメッセージ ping があるとき
+ * seqMarkup(CV, c) // → { s: '<rect …/>…sd K…<g class="lifeline" data-key="a">…</g>…1. ping…', g: { x0: -24, y0: -60, w: 418, h: 244, H: 160 } }
+ * // ライフラインもメッセージも無いとき
+ * seqMarkup(CV, c) // → { s: 外枠と札だけ, g: { x0: -24, y0: -60, w: 218, h: 244, H: 160 } }
+ */
 export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "view"> = {}): { s: string; g: ReturnType<typeof seqGeom> } {
   const F = opts.font || "inherit", MONO = opts.mono || "var(--mono)";
   const g = seqGeom(c);
@@ -224,7 +339,17 @@ const ICON_L: Record<string, string> = {
   "perform action": "Ac", "exhibit state": "S", param: "·", message: "M", metadata: "Md",
 };
 
-/** 種類を表す小さなアイコン（ツリー・パレット・タブ）。 */
+/**
+ * 種類を表す小さなアイコン（ツリー・パレット・タブ）を SVG の文字列にする。package はフォルダ、ほかは種類の色の四角に略号（`P`・`R` など）を書く。
+ * 定義は角の四角、使用は角の丸い四角にする。
+ *
+ * @param kind 要素の種類（SysML v2 のキーワード。`part def`・`requirement` など。`message` も受け付ける）
+ * @returns `<svg class="ki" …>…</svg>` の文字列。略号の表に無い種類は、頭文字を大文字にして書く
+ * @example
+ * kindIcon("part def") // → '<svg class="ki" …><rect … rx="0" fill="var(--k-part-bg)" stroke="var(--k-part)"/><text …>P</text></svg>'
+ * kindIcon("package")  // → フォルダの形の '<svg class="ki" …><path …/></svg>'
+ * kindIcon("flow")     // → '…fill="var(--k-other-bg)"…>F</text></svg>'（表に無い種類は頭文字）
+ */
 export function kindIcon(kind: string): string {
   if (kind === "package")
     return `<svg class="ki" width="18" height="16" viewBox="0 0 18 16" aria-hidden="true"><path d="M1.5 3.5h5l1.6 1.6h8.4v8.9H1.5Z" fill="var(--k-req-bg)" stroke="var(--k-req)"/></svg>`;
@@ -244,6 +369,15 @@ export const SELECT_ICON = `<svg class="ki" width="16" height="16" viewBox="0 0 
 const VIEW_ICON_KIND: Record<string, string> = {
   trace: "requirement def", structure: "part def", control: "constraint def", ibd: "part", behavior: "state def", seq: "occurrence def", all: "package",
 };
+/**
+ * 自動の図（ビュー）を表すアイコンを、そのビューの代表の種類のアイコン（kindIcon）で返す。
+ *
+ * @param view 自動の図の id（`trace`・`structure`・`control`・`ibd`・`behavior`・`seq`・`all`）
+ * @returns `<svg class="ki" …>…</svg>` の文字列。知らない id なら空文字列
+ * @example
+ * viewIcon("trace")   // → kindIcon("requirement def") と同じ文字列
+ * viewIcon("unknown") // → ""
+ */
 export const viewIcon = (view: string): string => {
   const k = VIEW_ICON_KIND[view];
   return k ? kindIcon(k) : "";

@@ -14,7 +14,23 @@ export interface AskResult {
   value: string;
 }
 
-/** ダイアログを出し、押されたボタンの id（と入力値）を返す。 */
+/**
+ * ダイアログを出し、押されたボタンの id（と入力値）を返す。入力欄を出すときはそこに、無ければ
+ * primary のボタン（無ければ最初のボタン）にフォーカスを置く。Esc・枠外のクリックでは null で閉じる。
+ * 入力欄があるときの Enter は primary のボタンを押したことにする。
+ *
+ * @param title ダイアログの見出し
+ * @param text 本文（HTML としてではなく文字として出す）
+ * @param choices ボタンの一覧（id・表示名・見た目の種類 primary／danger）
+ * @param input 入力欄を出すなら、その初期値と読み上げ用の名前。出さなければ省く
+ * @returns 押されたボタンの id と入力欄の値（入力欄が無ければ ""）を返す Promise。Esc・枠外なら null
+ * @example
+ * // 入力欄に "a.sysml" と入れて「作成」（id "ok"）を押した
+ * await ask("新しいファイル", "…", [{ id: "ok", label: "作成", kind: "primary" }], { value: "", label: "ファイル名" })
+ * // → { id: "ok", value: "a.sysml" }
+ * // Esc を押した
+ * await ask("…", "…", choices) // → null
+ */
 export function ask(title: string, text: string, choices: Choice[], input?: { value: string; label: string }): Promise<AskResult | null> {
   const box = $("#dialog");
   $("#dialogTitle").textContent = title;
