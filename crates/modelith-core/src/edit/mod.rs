@@ -2,6 +2,7 @@
 //! コアは今のテキストを解析し直して要素を探し、テキストの編集（UTF-16 の位置）を返す。
 //! ダイアログ・確認・トースト・配置は UI（TS）に残す。暫定コアの `web/src/app/ops.ts` と同じ書き方をする。
 
+mod more;
 mod ops;
 #[cfg(test)]
 mod tests;
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{self, Model};
 use crate::project::{self, Entry, ParseResult};
+pub use more::{FlowEnd, sysml_name};
 use text::{Utf16, diff, utf16_of};
 
 /// 図の操作の意図。要素は図の要素のキー、関係は ID で指す。
@@ -63,6 +65,71 @@ pub enum Intent {
         #[serde(default)]
         ctx: Option<String>,
     },
+    /// シーケンス図にメッセージを足す（from・to はライフラインのキー）。
+    AddMessage {
+        ctx: String,
+        from: String,
+        to: String,
+    },
+    /// メッセージの名前とアイテムの型を書き換える（空なら書かない）。
+    UpdateMessage {
+        ctx: String,
+        id: String,
+        name: String,
+        #[serde(rename = "type")]
+        ty: String,
+    },
+    /// メッセージの順番を入れ替える（dir は -1 か 1）。
+    MoveMessage { ctx: String, id: String, dir: i8 },
+    /// フェーズを設定する。value が空なら、1 つの要素に書いた指定を外す。
+    SetPhase {
+        keys: Vec<String>,
+        value: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// フェーズの定義を足す。`new_package` は package が無いときに作る package の名前。
+    InitPhases {
+        #[serde(default)]
+        new_package: Option<String>,
+    },
+    /// 接続点をポートにする。`flows` は、その接続点につながっていて「部品.ポート」に書き換える線。
+    MakePort {
+        key: String,
+        name: String,
+        dir: String,
+        #[serde(rename = "type", default)]
+        ty: String,
+        #[serde(default)]
+        flows: Vec<FlowEnd>,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// ポートの向き（in・out・inout）を変える。
+    SetPortDir {
+        key: String,
+        port: String,
+        dir: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// ポートを削除する。
+    DeletePort {
+        key: String,
+        port: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// 表示中の図を、名前を付けて保存する。`kind` は描き方（general など）、`targets` は図に出す要素のキー。
+    SaveView {
+        name: String,
+        kind: String,
+        targets: Vec<String>,
+    },
+    /// 保存された図に要素を入れる。
+    AddToView { view: String, key: String },
+    /// 保存された図から要素を外す（モデルの要素は残す）。
+    RemoveFromView { view: String, key: String },
 }
 
 /// テキストの編集 1 つ（UTF-16 の位置。古いテキストの [start, end) を text に置き換える）。

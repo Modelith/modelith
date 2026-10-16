@@ -166,7 +166,18 @@ export type Intent =
   | { op: "rename"; key: string; name: string; ctx?: string }
   | { op: "delete"; keys: string[]; ctx?: string }
   | { op: "deleteEdge"; id: string; ctx?: string }
-  | { op: "connect"; rel: string; from: string; to: string; fromPort?: string | null; toPort?: string | null; ctx?: string };
+  | { op: "connect"; rel: string; from: string; to: string; fromPort?: string | null; toPort?: string | null; ctx?: string }
+  | { op: "addMessage"; ctx: string; from: string; to: string }
+  | { op: "updateMessage"; ctx: string; id: string; name: string; type: string }
+  | { op: "moveMessage"; ctx: string; id: string; dir: -1 | 1 }
+  | { op: "setPhase"; keys: string[]; value: string; ctx?: string }
+  | { op: "initPhases"; newPackage?: string }
+  | { op: "makePort"; key: string; name: string; dir: string; type: string; flows: { id: string; from?: boolean; to?: boolean }[]; ctx?: string }
+  | { op: "setPortDir"; key: string; port: string; dir: string; ctx?: string }
+  | { op: "deletePort"; key: string; port: string; ctx?: string }
+  | { op: "saveView"; name: string; kind: string; targets: string[] }
+  | { op: "addToView"; view: string; key: string }
+  | { op: "removeFromView"; view: string; key: string };
 
 /** テキストの編集（古いテキストの [start, end) を text に置き換える。位置は UTF-16）。 */
 export interface TextEdit {

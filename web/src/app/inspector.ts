@@ -335,7 +335,7 @@ export function initInspector(): void {
     }
     if (dir) {
       const pi = selPinInfo();
-      if (pi?.pin.port) PINOPS.setDir(pi.pin.port, dir as PortDir);
+      if (pi?.pin.port) PINOPS.setDir(pi.n, pi.pin.port, dir as PortDir);
       return;
     }
     if (fdir) {

@@ -1,12 +1,12 @@
 // 接続点とポートの操作。接続点は配置情報、ポートはテキストの宣言として持つ。
 
-import { applyEdits, insertEdit, removeRange, type ModelNode, type Port, type PortDir } from "../core";
-import type { Edit } from "../core";
+import type { ModelNode, Port, PortDir } from "../core";
+import { perform } from "./intent";
 import { pinsOf, type Pin } from "./geometry";
 import type { Ends, ViewLayout } from "./layout";
 import { S, type EndSpec } from "./state";
 import { commitLayout, setText, toast } from "./sync";
-import { curLayout, edgeById, nodeByKey } from "./views";
+import { CC, curLayout, nodeByKey } from "./views";
 
 export const DIR_LABEL: Record<PortDir, string> = { in: "入力", out: "出力", inout: "双方向" };
 
@@ -66,41 +66,22 @@ export function attachEnds(edgeId: string, wire: { from: EndSpec; to: EndSpec | 
   L.ends[edgeId] = [endId(wire.from), endId(wire.to)];
 }
 
-const reEsc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 export const PINOPS = {
   /** 接続点をポートにする。その接続点につながる flow は「部品.ポート」に書き換える。 */
   makePort(n: ModelNode, pin: Pin, name: string, dir: PortDir, type: string): void {
-    if (!/^[A-Za-z_]\w*$/.test(name)) {
-      toast("ポート名は英字か _ で始め、英字・数字・_ だけで付けてください");
-      return;
-    }
-    const host = n.portHost ?? n.entry;
-    if (host.children.some((c) => c.name === name)) {
-      toast(`「${name}」は ${host.name} の中で既に使われています`);
-      return;
-    }
-    const newId = "port:" + name;
-    const decl = `${dir} port ${name}${type ? " : " + type : ""};`;
-    const portEdit = insertEdit(S.text, host, decl);
-    const edits: Edit[] = [portEdit];
-    let upgraded = 0;
+    // この接続点につながる線（「部品.ポート」に書き換える端）
+    const flows = new Map<string, { id: string; from?: boolean; to?: boolean }>();
     forEachEnds((_v, k, val) => {
       const [kind, f, t] = endNodes(k);
       if (kind !== "flow") return;
-      const ed = edgeById(k);
-      const r = ed?.rel;
-      if (!ed || !r || (r.rel !== "flow" && r.rel !== "connect")) return;
-      const st = ed.src.start, en = ed.src.end;
-      const stmt = S.text.slice(st, en);
-      let out = stmt;
-      if (f === n.key && val[0] === pin.id) out = out.replace(new RegExp(`(\\b(?:from|connect)\\s+)${reEsc(r.a)}(?![\\w.])`), `$1${r.a.split(".")[0] ?? ""}.${name}`);
-      if (t === n.key && val[1] === pin.id) out = out.replace(new RegExp(`(\\bto\\s+)${reEsc(r.b)}(?![\\w.])`), `$1${r.b.split(".")[0] ?? ""}.${name}`);
-      if (out !== stmt && !edits.some((e) => e.at === st)) {
-        edits.push({ at: st, del: en - st, ins: out });
-        upgraded++;
-      }
+      const fe = flows.get(k) ?? { id: k };
+      if (f === n.key && val[0] === pin.id) fe.from = true;
+      if (t === n.key && val[1] === pin.id) fe.to = true;
+      if (fe.from || fe.to) flows.set(k, fe);
     });
+    const r = perform({ op: "makePort", key: n.key, name, dir, type, flows: [...flows.values()], ctx: CC().ctx?.key });
+    if (!r) return;
+    const newId = "port:" + name;
     for (const v of Object.values(S.layout)) {
       const pv = v.pins[n.key];
       const p = pv?.[pin.id];
@@ -115,32 +96,29 @@ export const PINOPS = {
       if (f === n.key && val[0] === pin.id) val[0] = newId;
       if (t === n.key && val[1] === pin.id) val[1] = newId;
     });
-    const first = edits.reduce((a, e) => Math.min(a, e.at), Infinity);
-    const t = applyEdits(S.text, edits);
-    const at = t.indexOf(`port ${name}`, Math.max(0, first - 5));
     S.selPin = { node: n.key, pin: newId };
     S.portForm = false;
-    setText(t, { changeAt: first, flash: at >= 0 ? [at, at + portEdit.ins.length] : null });
+    setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(`${n.name} にポート「${name}」を追加しました` + (upgraded ? `（つながっていた線 ${upgraded} 本を、このポートにつなぎ直しました）` : ""));
+    toast(`${n.name} にポート「${name}」を追加しました` + (flows.size ? "（つながっていた線を、このポートにつなぎ直しました）" : ""));
   },
 
   /** ポートの向き（in / out / inout）を書き換える。 */
-  setDir(port: Port, dir: PortDir): void {
-    const e = port.entry;
-    const head = S.text.slice(e.start, e.headEnd);
-    const nh = head.replace(/^((?:(?:private|public|protected)\s+)?)(?:(?:in|out|inout)\s+)?/, `$1${dir} `);
-    setText(S.text.slice(0, e.start) + nh + S.text.slice(e.headEnd), { changeAt: e.start, flash: [e.start, e.start + nh.length] });
+  setDir(n: ModelNode, port: Port, dir: PortDir): void {
+    const r = perform({ op: "setPortDir", key: n.key, port: port.name, dir, ctx: CC().ctx?.key });
+    if (!r) return;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
     toast(`ポート「${port.name}」を${DIR_LABEL[dir]}にしました`);
   },
 
   deletePort(n: ModelNode, pin: Pin): void {
     const port = pin.port;
     if (!port) return;
-    const r = removeRange(S.text, port.entry.start, port.entry.end);
+    const r = perform({ op: "deletePort", key: n.key, port: port.name, ctx: CC().ctx?.key });
+    if (!r) return;
     for (const v of Object.values(S.layout)) delete v.pins[n.key]?.[pin.id];
     S.selPin = null;
-    setText(r.text, { changeAt: r.at, flash: [r.at, r.at + 1] });
+    setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
     toast(`ポート「${port.name}」を削除しました`);
   },
