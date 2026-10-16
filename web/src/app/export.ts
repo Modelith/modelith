@@ -3,7 +3,7 @@
 import { $, esc } from "./dom";
 import { computeRoutes, linesOf, nodeH, pinPoint, pinsOf, W, type NodeBox } from "./geometry";
 import { S } from "./state";
-import { DEFS, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
+import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
 import { curLayout, curView, viewContent } from "./views";
 
 /** 書き出し用の明るい配色（CSS 変数を使えない環境向け）。 */
@@ -108,10 +108,15 @@ export function svgExport(): string {
   const nodes = content.nodes;
   if (!nodes.length) return svg(0, 0, 100, 100, "");
   const fpad = content.frame ? 60 : 0;
-  const x0 = Math.min(...nodes.map((n) => at(n.key)[0])) - 40 - fpad;
-  const y0 = Math.min(...nodes.map((n) => at(n.key)[1])) - 40 - fpad - (fpad ? 20 : 0);
-  const x1 = Math.max(...nodes.map((n) => at(n.key)[0])) + W + 40 + fpad;
-  const y1 = Math.max(...nodes.map((n) => at(n.key)[1] + nodeH(n))) + 40 + fpad;
+  // package の枠（F-VIEW-9）も切れないように含める
+  const pk = packageBoxes(content, (k) => {
+    const n = nodes.find((x) => x.key === k);
+    return n ? { x: at(k)[0], y: at(k)[1], w: W, h: nodeH(n) } : undefined;
+  }).map((p) => p.r);
+  const x0 = Math.min(...nodes.map((n) => at(n.key)[0]), ...pk.map((r) => r.x)) - 40 - fpad;
+  const y0 = Math.min(...nodes.map((n) => at(n.key)[1]), ...pk.map((r) => r.y)) - 40 - fpad - (fpad ? 20 : 0);
+  const x1 = Math.max(...nodes.map((n) => at(n.key)[0] + W), ...pk.map((r) => r.x + r.w)) + 40 + fpad;
+  const y1 = Math.max(...nodes.map((n) => at(n.key)[1] + nodeH(n)), ...pk.map((r) => r.y + r.h)) + 40 + fpad;
   return svg(x0, y0, x1 - x0, y1 - y0, es + ns);
 }
 

@@ -198,9 +198,41 @@ for (const [impl, parse, build] of PARSERS) {
         // Act
         const m = view(members);
         const r = view(recursive);
-        // Assert
-        expect(m?.nodeKeys).toEqual(["D"]);
+        // Assert（Q::* の中身の package Deep は、枠として中身ごと描く。F-VIEW-9）
+        expect(m?.nodeKeys).toEqual(["D", "E"]);
+        expect(m?.frames.map((f) => [f.name, f.nodeKeys])).toEqual([["Deep", ["E"]]]);
         expect(r?.nodeKeys).toEqual(["D", "E"]);
+      });
+
+      it("F-VIEW-9: expose P::Q は package そのもの。枠として描き、中の要素（入れ子も）を枠に入れる（MembershipExpose、8.2.3.5）", () => {
+        // Arrange
+        const body = "view v { expose P::Q; }";
+        // Act
+        const v = view(body);
+        // Assert
+        expect(v?.nodeKeys).toEqual(["D", "E"]);
+        expect(v?.frames.map((f) => [f.name, f.entry.name, f.nodeKeys])).toEqual([["Q", "Q", ["D", "E"]]]);
+      });
+
+      it("F-VIEW-9: 入れ子の package を両方出すと、外側から順に枠になる", () => {
+        // Arrange
+        const body = "view v { expose P::Q; expose P::Q::Deep; }";
+        // Act
+        const v = view(body);
+        // Assert
+        expect(v?.frames.map((f) => [f.name, f.nodeKeys])).toEqual([["Q", ["D", "E"]], ["Deep", ["E"]]]);
+      });
+
+      it("F-VIEW-9: package が filter に合わなければ枠にせず、中の要素も出さない（境界値）", () => {
+        // Arrange（Q の中身は部品定義 D と package Deep。@PartDefinition は D だけに合う）
+        const members = "view v { expose P::Q::*; filter @PartDefinition; }";
+        const whole = "view v { expose P::Q; filter @PartDefinition; }";
+        // Act
+        const m = view(members);
+        const w = view(whole);
+        // Assert
+        expect([m?.nodeKeys, m?.frames]).toEqual([["D"], []]);
+        expect([w?.nodeKeys, w?.frames]).toEqual([[], []]);
       });
 
       it("filter @SysML::PartDefinition はメタクラスで、filter @Safety はメタデータで絞り込む（ElementFilterMember）", () => {

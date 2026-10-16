@@ -188,6 +188,14 @@ export interface PhaseInfo {
 /** Modelith の描き方（標準のビュー定義に対応させる、ADR-0005）。 */
 export type ViewKind = "general" | "interconnection" | "stateTransition" | "sequence";
 
+/** 図に出した package（package そのものを expose したもの）。枠として描き、中の要素を枠の中に示す（F-VIEW-9）。 */
+export interface ModelFrame {
+  name: string;
+  entry: Entry;
+  /** 枠の中に示す要素（package の中の、図に描く要素）のキー。 */
+  nodeKeys: string[];
+}
+
 /** テキストに書かれた view（図として表示する）。 */
 export interface ModelView {
   name: string;
@@ -200,6 +208,8 @@ export interface ModelView {
   nodeKeys: string[];
   /** expose の対象そのもの（内部ブロック図・シーケンス図の対象を決めるのに使う）。 */
   targets: Entry[];
+  /** 枠として描く package（外側から順）。 */
+  frames: ModelFrame[];
 }
 
 export interface Model {

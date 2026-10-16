@@ -2,7 +2,7 @@
 
 import { family } from "../core";
 import { esc } from "./dom";
-import { computeRoutes, HEAD, LH, linesOf, nodeH, pinPoint, pinsOf, W, type NodeBox } from "./geometry";
+import { computeRoutes, HEAD, LH, linesOf, nodeH, packageRects, pinPoint, pinsOf, textWidth, W, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
 import { phaseLabel, type ViewContent } from "./views";
 
@@ -42,6 +42,29 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
 
 const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req" };
 
+/** 図に出した package の枠の位置（外側の枠から順。F-VIEW-9）。 */
+export function packageBoxes(content: ViewContent, boxOf: (key: string) => Box | undefined): { name: string; r: Box }[] {
+  const frames = content.packages ?? [];
+  const rects = packageRects(frames, boxOf);
+  const depth = (i: number): number => frames.filter((f) => f.inner.includes(i)).length;
+  return frames
+    .map((f, i) => ({ name: f.name, r: rects[i], d: depth(i) }))
+    .filter((x): x is { name: string; r: Box; d: number } => !!x.r)
+    .sort((a, b) => a.d - b.d)
+    .map(({ name, r }) => ({ name, r }));
+}
+
+/** package の枠（フォルダの形。名前は左上の札に書く、8.2.3.5）。操作の邪魔をしないよう、ポインタは通す。 */
+function packageMarkup(C: ColorFn, name: string, r: Box, F: string): string {
+  const tw = Math.max(48, textWidth(name) + 20), th = 18;
+  return (
+    `<g class="pkg" data-pkg="${esc(name)}" pointer-events="none">` +
+    `<rect x="${r.x}" y="${r.y}" width="${tw}" height="${th}" fill="${C("panel")}" stroke="${C("ink2")}" stroke-width="1.2"/>` +
+    `<rect x="${r.x}" y="${r.y + th}" width="${r.w}" height="${r.h - th}" fill="${C("panel")}" fill-opacity=".35" stroke="${C("ink2")}" stroke-width="1.2"/>` +
+    `<text x="${r.x + 10}" y="${r.y + 13}" font-size="11" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(name)}</text></g>`
+  );
+}
+
 /** ブロック図（ノードと線）のマークアップ。`es` は線、`ns` はノードと接続点。 */
 export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts: MarkupOpts): { es: string; ns: string; box: Map<string, NodeBox> } {
   const { nodes, edges } = content;
@@ -54,6 +77,7 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
     }),
   );
   let es = "";
+  for (const p of packageBoxes(content, (k) => box.get(k))) es += packageMarkup(C, p.name, p.r, F);
   if (content.frame && box.size) {
     const bs = [...box.values()];
     const x0 = Math.min(...bs.map((b) => b.x)) - 60, y0 = Math.min(...bs.map((b) => b.y)) - 80;

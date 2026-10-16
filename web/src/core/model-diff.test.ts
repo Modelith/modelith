@@ -33,6 +33,7 @@ const EXTRA_LINES = [
   "view v3 { expose Q::P3; filter @Phase; }",
   "view v4 : GridView { expose Nope::X; render asElementTable; }",
   "view v5 : SequenceView { expose Q::*[@PartUsage]; filter @Foo; }",
+  "view v6 { expose Q; expose Q::H; }",
   "connect h.a to h.b;",
   "flow from h.a.y to h.b.x;",
   "satisfy R by P1;",
@@ -60,7 +61,7 @@ function snapshot(P: ParseResult, M: Model): unknown {
   return {
     nodes: M.nodes.map((n) => ({ ...n, entry: ref(n.entry), ports: n.ports.map((p) => ({ ...p, entry: ref(p.entry) })) })),
     edges: M.edges.map((e) => ({ ...e, rel: e.rel ? P.rels.indexOf(e.rel) : null })),
-    views: M.views.map((v) => ({ ...v, entry: ref(v.entry), targets: v.targets.map(ref) })),
+    views: M.views.map((v) => ({ ...v, entry: ref(v.entry), targets: v.targets.map(ref), frames: v.frames.map((f) => ({ ...f, entry: ref(f.entry) })) })),
     problems: M.problems,
     phases: M.phases,
     phaseEnum: M.phaseEnum,

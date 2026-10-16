@@ -9,6 +9,8 @@ export const HEAD = 44;
 export const LH = 15;
 
 const cw = (ch: string): number => (/[　-鿿＀-￯]/.test(ch) ? 11 : 6.3);
+/** 文字列の幅の目安（11px の文字）。 */
+export const textWidth = (s: string): number => [...s].reduce((w, ch) => w + cw(ch), 0);
 
 /** 幅に収まるように折り返す。行数を超えたら最後を「…」で切る。 */
 export function wrap(s: string, maxW = W - 18, maxLines = 3): string[] {
@@ -462,4 +464,36 @@ export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<str
       y += Math.max(...chunk.map(nodeH)) + 110;
     }
   }
+}
+
+/** package の枠の余白（左右・下）と、名前の札の分を含む上の余白。 */
+export const PKG_PAD = 18;
+export const PKG_TAB = 30;
+
+/**
+ * package の枠の位置と大きさ（F-VIEW-9）。枠は、中の要素と、中の枠をすべて囲む。
+ * 中に描く要素が 1 つも無い枠は null（描かない）。`inner` に輪があっても止まる。
+ */
+export function packageRects(frames: readonly { keys: readonly string[]; inner: readonly number[] }[], boxOf: (key: string) => Box | undefined): (Box | null)[] {
+  const memo = new Map<number, Box | null>();
+  const rect = (i: number, seen: Set<number>): Box | null => {
+    const hit = memo.get(i);
+    if (hit !== undefined) return hit;
+    const f = frames[i];
+    if (!f || seen.has(i)) return null;
+    const next = new Set(seen).add(i);
+    const parts = [...f.keys.flatMap((k) => boxOf(k) ?? []), ...f.inner.flatMap((j) => rect(j, next) ?? [])];
+    if (!parts.length) {
+      memo.set(i, null);
+      return null;
+    }
+    const x0 = Math.min(...parts.map((b) => b.x)) - PKG_PAD;
+    const y0 = Math.min(...parts.map((b) => b.y)) - PKG_TAB;
+    const x1 = Math.max(...parts.map((b) => b.x + b.w)) + PKG_PAD;
+    const y1 = Math.max(...parts.map((b) => b.y + b.h)) + PKG_PAD;
+    const r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    memo.set(i, r);
+    return r;
+  };
+  return frames.map((_, i) => rect(i, new Set()));
 }

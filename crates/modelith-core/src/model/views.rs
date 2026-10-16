@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use super::{Builder, View};
+use super::{Builder, Frame, View};
 use crate::project::{Entry, Expose};
 
 /// 標準ビュー定義（名前・短い名前）と、Modelith の描き方。None は専用の描き方が無い（ノードと線の図で代わりに描く）。
@@ -309,11 +309,32 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
                 }
             }
         }
-        let node_keys = shown
-            .into_iter()
-            .filter(|&e| tests.iter().all(|t| t.test(&b.entries[e])))
-            .filter_map(|e| b.node_of.get(&e).map(|&n| b.model.nodes[n].key.clone()))
-            .collect();
+        let passes = |e: usize| tests.iter().all(|t| t.test(&entries[e]));
+        let key =
+            |b: &Builder<'_>, e: usize| b.node_of.get(&e).map(|&n| b.model.nodes[n].key.clone());
+        let shown: Vec<usize> = shown.into_iter().filter(|&e| passes(e)).collect();
+        let mut node_keys: Vec<String> = shown.iter().filter_map(|&e| key(b, e)).collect();
+        // package そのものを出したら、枠として描き、中の要素も図に出す（F-VIEW-9、8.2.3.5）
+        let mut frames = Vec::new();
+        for &p in shown.iter().filter(|&&e| entries[e].kind == "package") {
+            let mut inner = Vec::new();
+            b.descendants(p, &mut inner);
+            let keys: Vec<String> = inner
+                .into_iter()
+                .filter(|&e| passes(e))
+                .filter_map(|e| key(b, e))
+                .collect();
+            for k in &keys {
+                if !node_keys.contains(k) {
+                    node_keys.push(k.clone());
+                }
+            }
+            frames.push(Frame {
+                name: entries[p].name.clone(),
+                entry: p,
+                node_keys: keys,
+            });
+        }
         b.model.views.push(View {
             name: v.name.clone(),
             entry: vi,
@@ -321,6 +342,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
             std,
             node_keys,
             targets,
+            frames,
         });
     }
 }

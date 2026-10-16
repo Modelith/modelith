@@ -109,7 +109,11 @@ function fromRaw(raw: RawParseResult, text: string): ParseResult {
 type RawPort = Omit<Port, "entry"> & { entry: number };
 type RawNode = Omit<ModelNode, "entry" | "ports"> & { entry: number; ports: RawPort[] };
 type RawEdge = Omit<ModelEdge, "rel"> & { rel?: number };
-type RawView = Omit<ModelView, "entry" | "targets"> & { entry: number; targets: number[] };
+type RawView = Omit<ModelView, "entry" | "targets" | "frames"> & {
+  entry: number;
+  targets: number[];
+  frames: { name: string; entry: number; nodeKeys: string[] }[];
+};
 
 /** Rust の `Model`（JSON）。宣言は `entries`、関係は `rels` の番号で指す。 */
 export interface RawModel {
@@ -151,7 +155,12 @@ function toModel(raw: RawModel, P: ParseResult): Model {
     const r = rel == null ? undefined : P.rels[rel];
     return r ? { ...e, rel: r } : e;
   });
-  const views: ModelView[] = raw.views.map((v) => ({ ...v, entry: entry(v.entry), targets: v.targets.map(entry) }));
+  const views: ModelView[] = raw.views.map((v) => ({
+    ...v,
+    entry: entry(v.entry),
+    targets: v.targets.map(entry),
+    frames: v.frames.map((f) => ({ ...f, entry: entry(f.entry) })),
+  }));
   const phaseOf = (e: Entry): PhaseInfo | null => {
     for (let a: Entry | null = e; a; a = a.pe) {
       const stage = a.meta?.["Phase"]?.["stage"];
