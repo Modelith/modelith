@@ -14,6 +14,12 @@ use std::collections::{HashMap, HashSet};
 
 use crate::project::{Entry, ParseResult, RelKind, Span};
 
+/// 図に描かない定義の種類（ほかの定義はすべて図に描く要素になる）。
+pub(crate) const UNDRAWN_DEF_KINDS: &[&str] = &["metadata def", "view def"];
+
+/// package の直下にあるときだけ図に描く要素になる、使用の種類。
+pub(crate) const TOP_USAGE_KINDS: &[&str] = &["part", "requirement"];
+
 /// 部品として持つ（comp の線を引く）使用の種類。
 const COMP_KINDS: &[&str] = &[
     "part",
@@ -243,8 +249,8 @@ impl<'a> Builder<'a> {
                 continue;
             }
             // メタデータとビューの定義は、図に描く要素ではない
-            let def = e.is_def && e.kind != "metadata def" && e.kind != "view def";
-            let top = matches!(e.kind.as_str(), "part" | "requirement")
+            let def = e.is_def && !UNDRAWN_DEF_KINDS.contains(&e.kind.as_str());
+            let top = TOP_USAGE_KINDS.contains(&e.kind.as_str())
                 && e.pe.is_some_and(|pe| self.entries[pe].kind == "package");
             if !(def || top) {
                 continue;
