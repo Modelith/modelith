@@ -1,6 +1,6 @@
 // テキストを更新し、解析し直して画面全体を同期する。図の操作も最後は setText を通る（ADR-0001）。
 
-import { lineOf, type CoreClient, type Model, type ParseResult, type Problem } from "../core";
+import { lineOf, type CoreClient, type Model, type ParseResult, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
 import { autoPlace, nodeH } from "./geometry";
 import { scheduleRecord } from "./history";
@@ -8,6 +8,7 @@ import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
 import { serializeLayout } from "./layout-file";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
+import { findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
 import { highlight, render } from "./render";
 import { S } from "./state";
@@ -91,15 +92,17 @@ export function coreClient(): CoreClient {
 
 /**
  * コアが返した解析結果のうち、今のテキストの版のものを画面に反映する（`startCore` に渡す）。
- * S.P・S.M を置き換えて画面全体を描き直し、settled で待っている処理を進める。
+ * S.P・S.M・S.findings を置き換えて画面全体を描き直し、settled で待っている処理を進める。
  *
  * @param version 解析したテキストの版（コアの受け口が数える番号）
  * @param P 解析結果
  * @param M 解析結果から組み立てたモデル
+ * @param findings 検査ルールの結果（プラグインが無ければ空。ADR-0018 §2）
  */
-export function onAnalyzed(version: number, P: ParseResult, M: Model): void {
+export function onAnalyzed(version: number, P: ParseResult, M: Model, findings: RuleFinding[]): void {
   S.P = P;
   S.M = M;
+  S.findings = findings;
   applied = version;
   const fromText = pendingFromText;
   pendingFromText = false;
@@ -285,24 +288,35 @@ export function setSync(cls: "" | "busy" | "bad", txt: string): void {
 
 /**
  * 今のモデルから、同期の状態（問題の件数）と、テキスト欄の見出しの要素と関係の数を書き換える。
- * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数。
+ * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数に、検査ルールの誤りと注意、プラグインについての行を足したもの。
  */
-function updateSync(): void {
-  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => !x.kind).length;
+export function updateSync(): void {
+  const rules = S.findings.filter((f) => f.severity === "error" || f.severity === "warning").length;
+  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => !x.kind).length + rules + S.pluginNotes.length;
   setSync(p ? "bad" : "", p ? `同期済み（問題 ${p} 件）` : "同期済み");
   $("#textInfo").textContent = `SysML v2 テキスト：要素 ${n}、関係 ${e}`;
 }
 
 /**
- * 問題（構文エラー・参照切れ・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5）。
- * エラー → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件を行番号付きのボタンにする。
+ * 問題（構文エラー・参照切れ・検査ルールの結果・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
+ * エラー → 検査ルールの結果 → プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
+ * テキストの中の位置があるもの（モデルの問題・検査ルールの結果）は行番号を付け、押すとその行に移る。
+ * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
  */
 export function renderProblems(): void {
   // エラー → まだ扱えない構文 → トレースの抜け、の順に並べる
   const order = (k: Problem["kind"]): number => (k === undefined ? 0 : k === "unsupported" ? 1 : 2);
-  const pr = [...S.M.problems].sort((a, b) => order(a.kind) - order(b.kind)).slice(0, 40);
+  const sorted = [...S.M.problems].sort((a, b) => order(a.kind) - order(b.kind));
   const mark = { gap: "△", unsupported: "ℹ" } as const;
-  $("#problems").innerHTML = pr
-    .map((p) => `<button data-pos="${p.pos}" class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`)
-    .join("");
+  const model = (p: Problem): string => `<button data-pos="${p.pos}" class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`;
+  const rule = (f: RuleFinding): string =>
+    `<button data-pos="${f.pos}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(findingText(f, S.pluginNames))}</button>`;
+  const notes = S.pluginNotes.map((n) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""}>⚠ ${esc(n.msg)}</button>`);
+  const items = [
+    ...sorted.filter((p) => !p.kind).map(model),
+    ...S.findings.map(rule),
+    ...notes,
+    ...sorted.filter((p) => p.kind).map(model),
+  ];
+  $("#problems").innerHTML = items.slice(0, 40).join("");
 }

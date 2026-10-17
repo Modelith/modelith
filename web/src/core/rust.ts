@@ -36,6 +36,8 @@ export function parse(text: string): ParseResult {
 
 /** 解析結果ごとの、Rust が作ったモデル（番号のまま）。`build` で取り出す。 */
 const models = new WeakMap<ParseResult, RawModel>();
+/** 解析結果ごとの、検査ルールの結果（ADR-0018 §2）。`fromAnalysis` で取り出す。 */
+const ruleFindings = new WeakMap<ParseResult, RuleFinding[]>();
 
 /**
  * `analyzeJson` が失敗しても例外を投げずに結果を返す（`analyzeJson` を差し替えてテストできるように分けている）。
@@ -52,9 +54,10 @@ const models = new WeakMap<ParseResult, RawModel>();
  */
 export function safeParse(text: string, analyzeJson: (text: string) => string): ParseResult {
   try {
-    const raw = JSON.parse(analyzeJson(text)) as { parse: RawParseResult; model: RawModel };
+    const raw = JSON.parse(analyzeJson(text)) as { parse: RawParseResult; model: RawModel; findings?: RuleFinding[] };
     const P = fromRaw(raw.parse, text);
     models.set(P, raw.model);
+    ruleFindings.set(P, Array.isArray(raw.findings) ? raw.findings : []);
     return P;
   } catch (e) {
     const errors = [{ pos: 0, msg: `テキストを読み取れませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` }];
@@ -88,17 +91,19 @@ export interface RawParseResult {
 
 /**
  * Worker のコアが返した解析とモデル（`analyze` の JSON）を、解析結果とモデルのオブジェクトに戻す（ADR-0016）。例外は投げない。
+ * 検査ルールのプラグインを読み込んでいれば、その結果（findings）も取り出す（ADR-0018 §2）。
  *
- * @param json wasm の `analyze` が返した JSON の文字列
+ * @param json wasm の `analyze`（または `RulePlugins.analyze`）が返した JSON の文字列
  * @param text その JSON を作ったときのテキスト全文（`@layout` コメントを読むのに使う）
- * @returns 解析結果 P とモデル M。JSON が壊れていれば、要素の無い結果と構文エラー 1 件
+ * @returns 解析結果 P・モデル M・検査ルールの結果 findings（無ければ空）。JSON が壊れていれば、要素の無い結果と構文エラー 1 件
  * @example
  * fromAnalysis(analyze("package P { part def A; }"), "package P { part def A; }").M.nodes.map((n) => n.key) // → ["A"]
+ * fromAnalysis(plugins.analyze("package P { requirement def R; }"), …).findings // → [{ plugin: "jp.x", rule: "r1", pos: 12, … }]
  * fromAnalysis("{", "package P;").P.errors[0].msg // → "テキストを読み取れませんでした。…"
  */
-export function fromAnalysis(json: string, text: string): { P: ParseResult; M: Model } {
+export function fromAnalysis(json: string, text: string): { P: ParseResult; M: Model; findings: RuleFinding[] } {
   const P = safeParse(text, () => json);
-  return { P, M: build(P) };
+  return { P, M: build(P), findings: ruleFindings.get(P) ?? [] };
 }
 
 /**
@@ -307,9 +312,78 @@ export interface ProjectFileResult {
   problems: ProjectProblem[];
 }
 
-/** 新しく作った設定ファイルのテキスト。 */
+/** 新しく作った（または書き換えた）設定ファイルのテキスト。 */
 export interface CreatedProjectFile {
   text: string;
+}
+
+/** 検査ルールの結果の重さ（plugin-sdk の DiagnosticSeverity）。 */
+export type RuleSeverity = "error" | "warning" | "information" | "hint";
+
+/** 検査ルールの結果 1 件（ADR-0018 §2）。pos は要素の宣言の始まり（UTF-16）。 */
+export interface RuleFinding {
+  /** プラグインの ID。 */
+  plugin: string;
+  /** ルールの ID。 */
+  rule: string;
+  severity: RuleSeverity;
+  /** 画面にそのまま出す文（名前と種類を差し込み済み）。 */
+  message: string;
+  /** 要素のキー。 */
+  element: string;
+  pos: number;
+}
+
+/** コアに渡すプラグイン 1 つ（ID・使うか・プラグインのフォルダからの相対パス → テキスト）。 */
+export interface PluginFiles {
+  id: string;
+  enabled: boolean;
+  files: Record<string, string>;
+}
+
+/** プラグインの種類（マニフェストの runtime）。rules は検査ルール、browser は TypeScript、wasm-component は WebAssembly。 */
+export type PluginRuntime = "rules" | "browser" | "wasm-component";
+
+/** マニフェスト（modelith-plugin.json）から読んだ、プラグインを画面に示すための情報。 */
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  runtime: PluginRuntime;
+  description?: string;
+}
+
+/** プラグインを読み込むときの問題 1 件。path はプロジェクトのフォルダからの相対パス、place は 1 始まりの行・列（無ければ null）。 */
+export interface PluginLoadProblem {
+  path: string;
+  place: { line: number; column: number } | null;
+  message: string;
+}
+
+/** 読み込んだプラグイン 1 つのまとめ。installed が false なら、プロジェクトに入っていない（マニフェストが無い）。 */
+export interface PluginSummary {
+  id: string;
+  enabled: boolean;
+  installed: boolean;
+  /** マニフェストの情報。無い・読めなければ null。 */
+  manifest: PluginInfo | null;
+  /** 使えるルールの数。 */
+  rules: number;
+  problems: PluginLoadProblem[];
+}
+
+/** プラグインを読み込んだ結果。コアが失敗したときは plugins を空にし、error に理由を入れる。 */
+export interface PluginsResult {
+  plugins: PluginSummary[];
+  error?: string;
+}
+
+/** 設定ファイルの使うプラグインの変更（加える・使う／止める・外す。形は crates/modelith-core/src/project_file の PluginChange）。 */
+export type PluginChange = { op: "add"; version: string } | { op: "setEnabled"; enabled: boolean } | { op: "remove" };
+
+/** マニフェストを読んだ結果。 */
+export interface DescribedPlugin {
+  plugin: PluginInfo;
 }
 
 /**

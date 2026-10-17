@@ -297,6 +297,8 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     await saveView(page, "v");
     // Act
     await ctxItem(page, "A", "この図から外す");
+    // 図の操作はコア（Worker）が返したテキストの編集を当てるので、反映を待ってから読む
+    await expect.poll(() => editorText(page)).not.toContain("expose P::A;");
     const removed = await editorText(page);
     await page.locator("#sideModel").click();
     const row = page.locator("#tree .ti", { has: page.locator(".nm", { hasText: /^A$/ }) });

@@ -32,6 +32,7 @@
         <button id="btnNew">新しいファイル</button>
         <button id="btnOpen">ファイルを開く…<span class="kbd">Ctrl+O</span></button>
         <button id="btnOpenFolder">フォルダを開く…</button>
+        <button id="btnPlugins">プラグイン…</button>
         <div class="sep"></div>
         <button id="btnSave">保存<span class="kbd">Ctrl+S</span></button>
         <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
@@ -113,6 +114,13 @@
   </main>
 </div>
 <div class="ctx" id="ctx" role="menu" hidden></div>
+<div class="modal" id="plugins" hidden role="dialog" aria-modal="true" aria-labelledby="pluginsTitle">
+  <div class="box">
+    <b id="pluginsTitle">プラグイン</b>
+    <div class="plugins" id="pluginsBody"></div>
+    <div class="row"><button id="pluginsAdd" class="primary">追加…</button><button id="pluginsClose">閉じる</button></div>
+  </div>
+</div>
 <div class="modal" id="dialog" hidden role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle">
   <div class="box">
     <b id="dialogTitle"></b>

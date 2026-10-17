@@ -1,7 +1,12 @@
 //! プラグインの読み込みの単体テスト（F-PLUG-3：読めないマニフェストやルールを黙って無視せず、どのファイルの何が悪いかを示す）。
 
+use std::collections::BTreeMap;
+
 use super::super::load::{describe_serde_error, inside_plugin, rule_places};
-use super::super::{Place, ReadError, element_kinds, load_plugin};
+use super::super::{
+    ManifestInfo, Place, ReadError, Runtime, describe_manifest, element_kinds, load_plugin,
+    load_plugin_files,
+};
 use super::{DIR, ID, load_files, load_yaml, manifest, one_rule};
 
 /// 読み込みの問題を「パス:行:列 文」の形にする（位置が無ければ「パス 文」）。
@@ -619,4 +624,107 @@ fn rule_places_falls_back_to_no_place_when_counts_differ() {
     // Assert
     assert_eq!(plugin.problems.len(), 1);
     assert_eq!(plugin.problems[0].place, None);
+}
+
+// ---- 画面から渡されたファイルで読む・マニフェストの情報 -----------------------------------
+
+#[test]
+fn load_plugin_files_reads_paths_relative_to_the_plugin_folder() {
+    // Arrange（画面は、プラグインのフォルダからの相対パスで渡す）
+    let files: BTreeMap<String, String> = [
+        (
+            "modelith-plugin.json".to_owned(),
+            manifest(&["rules/a.yaml"]),
+        ),
+        ("rules/a.yaml".to_owned(), one_rule("kind: part def", "{}")),
+    ]
+    .into();
+    // Act
+    let plugin = load_plugin_files(ID, &files);
+    // Assert
+    let ids: Vec<&str> = plugin.rules.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!((ids, problems(&plugin)), (vec!["r1"], vec![]));
+    assert!(plugin.installed);
+    assert_eq!(
+        plugin.manifest,
+        Some(ManifestInfo {
+            id: ID.to_owned(),
+            name: "例".to_owned(),
+            version: "0.1.0".to_owned(),
+            runtime: Runtime::Rules,
+            description: None,
+        })
+    );
+}
+
+#[test]
+fn load_plugin_files_without_files_is_not_installed() {
+    // Arrange（境界値: 空のフォルダ。F-PLUG-9）
+    let files = BTreeMap::new();
+    // Act
+    let plugin = load_plugin_files(ID, &files);
+    // Assert
+    assert_eq!(
+        (plugin.installed, plugin.manifest, plugin.problems.len()),
+        (false, None, 1)
+    );
+}
+
+#[test]
+fn unreadable_manifest_counts_as_installed() {
+    // Arrange（異常系: ファイルはあるが読めない）
+    let read = |_: &str| Err(ReadError::Other("権限がありません".to_owned()));
+    // Act
+    let plugin = load_plugin(ID, read);
+    // Assert
+    assert!(plugin.installed);
+}
+
+#[test]
+fn manifest_info_is_kept_even_when_the_plugin_cannot_be_used() {
+    // Arrange（対応しない apiVersion でも、名前と版は画面に示す）
+    let m = manifest(&[]).replace("\"apiVersion\": \"0\"", "\"apiVersion\": \"9\"");
+    // Act
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &m)]);
+    // Assert
+    assert_eq!(plugin.manifest.map(|m| m.name), Some("例".to_owned()));
+    assert_eq!(plugin.problems.len(), 1);
+}
+
+#[test]
+fn describe_manifest_returns_name_version_and_runtime() {
+    // Arrange（TypeScript のプラグイン。追加の前に種類を示す）
+    let text = r#"{"id":"jp.ts","name":"図の書き出し","version":"1.2.0","apiVersion":"0","runtime":"browser","description":"説明","license":"MIT","main":"main.js"}"#;
+    // Act
+    let info = describe_manifest("modelith-plugin.json", text);
+    // Assert
+    assert_eq!(
+        info,
+        Ok(ManifestInfo {
+            id: "jp.ts".to_owned(),
+            name: "図の書き出し".to_owned(),
+            version: "1.2.0".to_owned(),
+            runtime: Runtime::Browser,
+            description: Some("説明".to_owned()),
+        })
+    );
+}
+
+#[test]
+fn describe_manifest_reports_broken_json_and_bad_ids_with_place() {
+    // Arrange（異常系: JSON の誤り・ID の形の誤り）
+    let broken = "{\n  \"id\": ";
+    let bad_id = r#"{"id":"../x","name":"n","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#;
+    // Act
+    let a = describe_manifest("m.json", broken).map_err(|p| (p.place.is_some(), p.message));
+    let b = describe_manifest("m.json", bad_id).map_err(|p| p.message);
+    // Assert
+    assert!(
+        matches!(a, Err((true, ref m)) if m.starts_with("書き方に誤りがあるため読み取れません（JSON：")),
+        "{a:?}"
+    );
+    assert!(
+        matches!(b, Err(ref m) if m.starts_with("プラグインの ID は")),
+        "{b:?}"
+    );
 }

@@ -69,7 +69,8 @@ export function initEditor(): void {
   });
   $("#problems").addEventListener("click", (ev) => {
     const b = closest(ev, "button");
-    if (!b) return;
+    // テキストの中の位置の無い行（プラグインについての行）は、ここでは扱わない
+    if (b?.dataset["pos"] === undefined) return;
     const p = Number(b.dataset["pos"]);
     ed.focus();
     ed.setSelectionRange(p, p);

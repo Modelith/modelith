@@ -4,16 +4,25 @@ import { describe, expect, it } from "vitest";
 import { CoreClient, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text-ops";
-import { analyze, createProjectFile, edit, parseProjectFile } from "./wasm/modelith_core.js";
+import { analyze, createProjectFile, describePlugin, edit, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
+import type { PluginFiles, RuleFinding } from "./rust";
 import type { Model, ParseResult } from "./types";
 
 /** 返事をためておき、deliver() で届ける偽の Worker。 */
-const wasm: CoreFns = { analyze, edit, parseProjectFile, createProjectFile };
+const wasm: CoreFns = { analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json) };
 /** コアがどの依頼にも壊れた JSON を返す（Q-5 の異常系）。 */
-const broken: CoreFns = { analyze: () => "{", edit: () => "{", parseProjectFile: () => "{", createProjectFile: () => "{" };
+const broken: CoreFns = {
+  analyze: () => "{",
+  edit: () => "{",
+  parseProjectFile: () => "{",
+  createProjectFile: () => "{",
+  updateProjectPlugin: () => "{",
+  describePlugin: () => "{",
+  loadPlugins: () => ({ summary: () => "{", analyze: () => "{", free: () => {} }),
+};
 
 function fakeWorker(fns: CoreFns = wasm) {
-  const state: CoreState = { text: "" };
+  const state: CoreState = { text: "", plugins: null };
   const queue: CoreResponse[] = [];
   let listener: (r: CoreResponse) => void = () => {};
   const port: CorePort = {
@@ -32,8 +41,8 @@ function fakeWorker(fns: CoreFns = wasm) {
 
 function client(fns?: CoreFns) {
   const w = fakeWorker(fns);
-  const got: { version: number; P: ParseResult; M: Model }[] = [];
-  const c = new CoreClient(w.port, (version, P, M) => got.push({ version, P, M }));
+  const got: { version: number; P: ParseResult; M: Model; findings: RuleFinding[] }[] = [];
+  const c = new CoreClient(w.port, (version, P, M, findings) => got.push({ version, P, M, findings }));
   return { c, got, deliver: w.deliver };
 }
 
@@ -189,6 +198,9 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
     [{ type: "edit", version: 1, id: 2, intent: { op: "delete", keys: [] } }, "edited"],
     [{ type: "parseProject", id: 3, text: "{}" }, "projectParsed"],
     [{ type: "createProject", id: 4, name: "A" }, "projectCreated"],
+    [{ type: "updateProject", id: 5, text: "{}", plugin: "jp.x", change: { op: "remove" } }, "projectUpdated"],
+    [{ type: "setPlugins", id: 6, plugins: [] }, "pluginsSet"],
+    [{ type: "describePlugin", id: 7, text: "{}" }, "pluginDescribed"],
   ])("%o には %s で返す", (req, type) => {
     // Arrange・Act
     const r = failedReply(req, "boom");
@@ -201,7 +213,7 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
     const fail = (): string => {
       throw new Error("boom");
     };
-    const state: CoreState = { text: "" };
+    const state: CoreState = { text: "", plugins: null };
     let listener: (r: CoreResponse) => void = () => {};
     const c = new CoreClient(
       {
@@ -225,5 +237,148 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
     // Assert
     expect(parsed.problems[0]?.message).toBe("設定ファイルを読み取れませんでした（boom）");
     expect(created).toEqual({ refused: "プロジェクトの設定ファイルを作れませんでした（boom）" });
+  });
+});
+
+/** 検査ルールのプラグイン（要求に「満たす」関係が無ければ注意を出す）。 */
+const MANIFEST = JSON.stringify({ id: "jp.x", name: "トレースの検査", version: "0.1.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } });
+const RULES = 'rules:\n  - id: req-sat\n    severity: warning\n    message: "要求「{name}」を満たす要素がありません"\n    match: { kind: requirement def }\n    require: { incoming: satisfy }\n';
+const plugin = (files: Record<string, string> = { "modelith-plugin.json": MANIFEST, "rules.yaml": RULES }, enabled = true): PluginFiles => ({ id: "jp.x", enabled, files });
+
+describe("CoreClient（検査ルールのプラグイン、F-PLUG-1・F-PLUG-3）", () => {
+  it("F-PLUG-1: 読み込んだプラグインのルールの結果を、今のテキストの解析結果に付けて渡す（正常系）", async () => {
+    // Arrange（先にテキストを送っておく）
+    const { c, got, deliver } = client();
+    c.sync("package P {\n    requirement def R;\n}\n");
+    deliver();
+    // Act
+    const pending = c.setPlugins([plugin()]);
+    deliver();
+    const r = await pending;
+    // Assert（送り直したテキストの結果に、ルールの結果が付く）
+    expect(r.plugins.map((p) => [p.id, p.installed, p.manifest?.name, p.rules, p.problems.length])).toEqual([["jp.x", true, "トレースの検査", 1, 0]]);
+    expect(got.at(-1)?.findings).toEqual([{ plugin: "jp.x", rule: "req-sat", severity: "warning", message: "要求「R」を満たす要素がありません", element: "R", pos: 16 }]);
+    expect(got.at(-1)?.version).toBe(c.current);
+  });
+
+  it("F-PLUG-1: 編集で直すと、ルールの結果も消える", async () => {
+    // Arrange
+    const { c, got, deliver } = client();
+    void c.setPlugins([plugin()]);
+    c.sync("package P { requirement def R; }");
+    deliver();
+    // Act
+    c.sync("package P { requirement def R; part def A; satisfy R by A; }");
+    deliver();
+    // Assert
+    expect(got.map((g) => g.findings.length)).toEqual([1, 0]);
+  });
+
+  it("止めたプラグインのルールは当てない（まとめには出す）", async () => {
+    // Arrange
+    const { c, got, deliver } = client();
+    c.sync("package P { requirement def R; }");
+    // Act
+    const pending = c.setPlugins([plugin(undefined, false)]);
+    deliver();
+    // Assert
+    expect((await pending).plugins[0]?.enabled).toBe(false);
+    expect(got.at(-1)?.findings).toEqual([]);
+  });
+
+  it("F-PLUG-3: 読めないルールのファイルは、ファイルと行を添えてまとめに出す（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const pending = c.setPlugins([plugin({ "modelith-plugin.json": MANIFEST, "rules.yaml": "rules:\n  - id: a\n    oops: 1\n" })]);
+    deliver();
+    const r = await pending;
+    // Assert
+    expect(r.plugins[0]?.problems[0]).toMatchObject({ path: ".modelith/plugins/jp.x/rules.yaml", place: { line: 3 } });
+  });
+
+  it("F-PLUG-9: ファイルの無いプラグインは、入っていないとまとめに出す（境界値: 空のファイル）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const pending = c.setPlugins([plugin({})]);
+    deliver();
+    // Assert
+    expect((await pending).plugins[0]).toMatchObject({ installed: false, manifest: null, rules: 0 });
+  });
+
+  it("プラグインを空にすると、ルールを当てなくなる（境界値: 0 個）", async () => {
+    // Arrange
+    const { c, got, deliver } = client();
+    void c.setPlugins([plugin()]);
+    c.sync("package P { requirement def R; }");
+    // Act
+    const pending = c.setPlugins([]);
+    deliver();
+    // Assert
+    expect(await pending).toEqual({ plugins: [] });
+    expect(got.at(-1)?.findings).toEqual([]);
+  });
+
+  it("設定ファイルの使うプラグインを書き換え、マニフェストの名前と種類を読む（正常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const updated = c.updateProjectPlugin("{}", "jp.x", { op: "add", version: "0.1.0" });
+    const described = c.describePlugin(MANIFEST);
+    deliver();
+    // Assert
+    expect(await updated).toEqual({ text: '{\n  "plugins": {\n    "jp.x": {\n      "version": "0.1.0",\n      "enabled": true\n    }\n  }\n}\n' });
+    expect(await described).toEqual({ plugin: { id: "jp.x", name: "トレースの検査", version: "0.1.0", runtime: "rules" } });
+  });
+
+  it("書き換えられない・読めないときは、理由の断りを返す（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const updated = c.updateProjectPlugin("{}", "jp.x", { op: "remove" });
+    const described = c.describePlugin("{");
+    deliver();
+    // Assert
+    expect(await updated).toEqual({ refused: "プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません" });
+    expect(await described).toEqual({ refused: expect.stringMatching(/^modelith-plugin\.json の 1 行目：/) as unknown });
+  });
+
+  it("Q-5: コアが壊れた返事をしても、プラグインの依頼は例外を投げない（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client(broken);
+    // Act
+    const set = c.setPlugins([plugin()]);
+    const updated = c.updateProjectPlugin("{}", "jp.x", { op: "remove" });
+    const described = c.describePlugin("{}");
+    deliver();
+    // Assert
+    expect((await set).error).toMatch(/^プラグインを読み込めませんでした/);
+    expect(await updated).toEqual({ refused: expect.stringMatching(/^プロジェクトの設定を書き換えられませんでした/) as unknown });
+    expect(await described).toEqual({ refused: expect.stringMatching(/^プラグインを読み取れませんでした/) as unknown });
+  });
+
+  it("コアが返事の形の違う JSON を返しても、誤りとして返す（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client({ ...wasm, loadPlugins: () => ({ summary: () => '{"error":"x"}', analyze, free: () => {} }), describePlugin: () => "{}" });
+    // Act
+    const set = c.setPlugins([plugin()]);
+    const described = c.describePlugin("{}");
+    deliver();
+    // Assert
+    expect(await set).toEqual({ plugins: [], error: "x" });
+    expect(await described).toEqual({ refused: "プラグインを読み取れませんでした（コアの返事の形が違います）" });
+  });
+
+  it("プラグインを置き換えると、前に読み込んだものを返す（free）", () => {
+    // Arrange
+    let freed = 0;
+    const fns: CoreFns = { ...wasm, loadPlugins: () => ({ summary: () => '{"plugins":[]}', analyze, free: () => void freed++ }) };
+    const state: CoreState = { text: "", plugins: null };
+    handle(state, { type: "setPlugins", id: 1, plugins: [plugin()] }, fns);
+    // Act
+    handle(state, { type: "setPlugins", id: 2, plugins: [] }, fns);
+    // Assert
+    expect([freed, state.plugins]).toEqual([1, null]);
   });
 });

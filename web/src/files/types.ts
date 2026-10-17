@@ -134,8 +134,48 @@ export interface FolderFiles extends ProviderInfo {
   writeInFolder(folder: FolderRef, path: string, text: string): Promise<void>;
 }
 
+/**
+ * フォルダをまるごと読む・消す。開いているフォルダとは別のフォルダを選んで読める（プラグインのフォルダを、
+ * プロジェクトの `.modelith/plugins/<ID>/` に写す。ADR-0018 §1）。
+ */
+export interface FolderTrees extends ProviderInfo {
+  /**
+   * 読むためのフォルダを選ばせる。開いているフォルダは変えず、前回のフォルダとしても覚えない。
+   *
+   * @returns 選んだフォルダ。選ばなければ null
+   * @example
+   * await p.pickOtherFolder() // → { provider: "local", id: "dir:2", name: "trace-rules" }
+   * await p.pickOtherFolder() // → null（キャンセル）
+   */
+  pickOtherFolder(): Promise<FolderRef | null>;
+  /**
+   * フォルダの中のフォルダにあるファイルを、下のフォルダまですべてテキストで読む（隠しファイル・隠しフォルダ・node_modules は除く）。
+   *
+   * @param folder このプロバイダで開いた（選んだ）フォルダ
+   * @param path フォルダからの相対パス（`/` 区切り。"" ならフォルダそのもの）
+   * @returns path からの相対パス → テキスト。フォルダが無ければ null。ファイルが多すぎるときは例外（Error）を投げる
+   * @example
+   * await p.readTree(folder, ".modelith/plugins/jp.x") // → { "modelith-plugin.json": "{…}", "rules/a.yaml": "rules: …" }
+   * await p.readTree(folder, ".modelith/plugins/none") // → null
+   */
+  readTree(folder: FolderRef, path: string): Promise<Record<string, string> | null>;
+  /**
+   * フォルダの中のファイルかフォルダを、中身ごと消す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path フォルダからの相対パス（`/` 区切り。空にはできない）
+   * @returns 消したら true。無ければ false
+   * @example
+   * await p.removeInFolder(folder, ".modelith/plugins/jp.x") // → true
+   * await p.removeInFolder(folder, ".modelith/plugins/none") // → false
+   */
+  removeInFolder(folder: FolderRef, path: string): Promise<boolean>;
+}
+
 export type FileProvider = ProviderInfo &
-  Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator & FolderFiles, keyof ProviderInfo>>;
+  Partial<
+    Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator & FolderFiles & FolderTrees, keyof ProviderInfo>
+  >;
 
 /**
  * ファイルを読めるプロバイダか（`read` があるか）。
@@ -232,6 +272,17 @@ export const hasRecentFolders = (p: FileProvider): p is RecentFolders =>
  */
 export const hasFolderFiles = (p: FileProvider): p is FolderFiles =>
   typeof p.readInFolder === "function" && typeof p.writeInFolder === "function";
+/**
+ * フォルダをまるごと読み・消し、別のフォルダを選べるプロバイダか（`pickOtherFolder`・`readTree`・`removeInFolder` がそろっているか）。
+ *
+ * @param p プロバイダ
+ * @returns 3 つともあれば true（型を FolderTrees に絞る）
+ * @example
+ * hasFolderTrees(new LocalFolderProvider(…)) // → true
+ * hasFolderTrees(new BrowserFileProvider(io)) // → false
+ */
+export const hasFolderTrees = (p: FileProvider): p is FolderTrees =>
+  typeof p.pickOtherFolder === "function" && typeof p.readTree === "function" && typeof p.removeInFolder === "function";
 /**
  * モデルとして扱うファイルか（拡張子が .sysml か .kerml。大文字・小文字は区別しない）。
  *

@@ -3,13 +3,21 @@
 // File System Access API のピッカーを、ダイアログを出さずに決まったフォルダ・ファイルを返すものに置き換える。
 import { test as base, expect, type Page } from "@playwright/test";
 
-/** ピッカーの置き換え（ブラウザ側で動く）。 */
+/**
+ * ピッカーの置き換え（ブラウザ側で動く）。フォルダのピッカーは、ふだんは project フォルダを返す。
+ * `__e2e.pickDir` にフォルダ名を入れておくと、次の 1 回だけ、OPFS の一番上のそのフォルダを返す（プラグインのフォルダを選ぶときなど）。
+ */
 function installPickers(): void {
-  const w = window as unknown as Record<string, unknown> & { __e2e: { openFile?: string } };
+  const w = window as unknown as Record<string, unknown> & { __e2e: { openFile?: string; pickDir?: string } };
   w.__e2e = {};
   const project = async (): Promise<FileSystemDirectoryHandle> =>
     (await navigator.storage.getDirectory()).getDirectoryHandle("project", { create: true });
-  w["showDirectoryPicker"] = async () => project();
+  w["showDirectoryPicker"] = async () => {
+    const name = w.__e2e.pickDir;
+    if (!name) return project();
+    w.__e2e.pickDir = undefined;
+    return (await navigator.storage.getDirectory()).getDirectoryHandle(name, { create: true });
+  };
   w["showOpenFilePicker"] = async () => {
     const name = w.__e2e.openFile;
     if (!name) throw new DOMException("cancelled", "AbortError");
@@ -43,10 +51,10 @@ export async function openApp(page: Page): Promise<void> {
   await page.locator("#gNodes .node").first().waitFor();
 }
 
-/** project フォルダ（OPFS）にファイルを置く。パスは a/b.sysml の形。 */
-export async function putFiles(page: Page, files: Record<string, string>): Promise<void> {
-  await page.evaluate(async (files) => {
-    const root = await (await navigator.storage.getDirectory()).getDirectoryHandle("project", { create: true });
+/** project フォルダ（OPFS。folder を渡せば OPFS の一番上のそのフォルダ）にファイルを置く。パスは a/b.sysml の形。 */
+export async function putFiles(page: Page, files: Record<string, string>, folder = "project"): Promise<void> {
+  await page.evaluate(async ([files, folder]) => {
+    const root = await (await navigator.storage.getDirectory()).getDirectoryHandle(folder, { create: true });
     for (const [path, text] of Object.entries(files)) {
       const segs = path.split("/");
       const name = segs.pop() as string;
@@ -56,7 +64,14 @@ export async function putFiles(page: Page, files: Record<string, string>): Promi
       await w.write(text);
       await w.close();
     }
-  }, files);
+  }, [files, folder] as const);
+}
+
+/** 次にフォルダのピッカーを開いたとき、1 回だけ OPFS の一番上のフォルダ name を返すようにする（プラグインのフォルダを選ぶ）。 */
+export async function pickDirNext(page: Page, name: string): Promise<void> {
+  await page.evaluate((name) => {
+    (window as unknown as { __e2e: { pickDir?: string } }).__e2e.pickDir = name;
+  }, name);
 }
 
 /**

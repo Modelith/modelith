@@ -12,6 +12,7 @@ import {
   type FolderFiles,
   type FolderRef,
   type FolderSource,
+  type FolderTrees,
   type Readable,
   type RecentFolders,
   type SiblingFiles,
@@ -44,12 +45,14 @@ export interface DirHandleLike extends HandleBase {
   values(): AsyncIterable<FileHandleLike | DirHandleLike>;
   getFileHandle(name: string, opts?: { create?: boolean }): Promise<FileHandleLike>;
   getDirectoryHandle(name: string, opts?: { create?: boolean }): Promise<DirHandleLike>;
+  /** 直下のファイルかフォルダを消す（recursive なら中身ごと）。無ければ NotFoundError。 */
+  removeEntry(name: string, opts?: { recursive?: boolean }): Promise<void>;
   /** h がこのフォルダの中にあれば、フォルダからのパスの各部分（無ければ null）。 */
   resolve(h: FileHandleLike): Promise<string[] | null>;
 }
 const PICKER_TYPES = [{ description: "SysML v2 / KerML", accept: { "text/plain": [".sysml", ".kerml"] } }];
 export interface FsApi {
-  showDirectoryPicker(opts: { mode: "readwrite"; id?: string; startIn?: FileHandleLike }): Promise<DirHandleLike>;
+  showDirectoryPicker(opts: { mode: "read" | "readwrite"; id?: string; startIn?: FileHandleLike }): Promise<DirHandleLike>;
   showOpenFilePicker(opts: { types: typeof PICKER_TYPES; multiple: false }): Promise<FileHandleLike[]>;
 }
 
@@ -93,8 +96,26 @@ const versionOf = (f: FileLike): string => `${f.lastModified}:${f.size}`;
 /** 一覧に出さないフォルダ。 */
 const SKIP_DIR = /^(\.|node_modules$)/;
 const RECENT_KEY = "recent-folder";
+/** readTree で読むファイルの数の上限（プラグインではない大きなフォルダを選んだときに、読み続けないため）。 */
+export const MAX_TREE_FILES = 200;
 
-export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles {
+/**
+ * フォルダからの相対パスを、区切りの列にする。フォルダの外を指すパスは受け付けない。
+ *
+ * @param path `/` 区切りの相対パス（空の区切りは無視する）
+ * @returns 区切りの列（"" なら空の配列）。`.`・`..` の区切りや `\` を含むときは例外（Error）を投げる
+ * @example
+ * segmentsOf("a//b/c.json") // → ["a", "b", "c.json"]
+ * segmentsOf("")            // → []
+ * segmentsOf("a/../b")      // → Error「パス「a/../b」は、フォルダの外を指しています」を投げる
+ */
+export function segmentsOf(path: string): string[] {
+  const segs = path.split("/").filter(Boolean);
+  if (segs.some((s) => s === "." || s === ".." || s.includes("\\"))) throw new Error(`パス「${path}」は、フォルダの外を指しています`);
+  return segs;
+}
+
+export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles, FolderTrees {
   readonly id = "local";
   readonly label = "このコンピュータ";
   private readonly files = new Map<string, FileHandleLike>();
@@ -315,40 +336,95 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    *
    * @param folder このプロバイダで開いたフォルダ
    * @param path フォルダからの相対パス（`/` 区切り）
-   * @returns 内容。ファイル（か途中のフォルダ）が無ければ null。開いていないフォルダなら例外（Error）を投げる
+   * @returns 内容。ファイル（か途中のフォルダ）が無ければ null。開いていないフォルダ・フォルダの外を指すパスなら例外（Error）を投げる
    * @example
    * await p.readInFolder(folder, "modelith.json")  // → '{ "name": "給水" }'
    * await p.readInFolder(folder, "none/a.json")    // → null（途中のフォルダが無い）
+   * await p.readInFolder(folder, "../a.json")      // → Error「パス「../a.json」は、フォルダの外を指しています」を投げる
    */
   async readInFolder(folder: FolderRef, path: string): Promise<string | null> {
-    const segs = path.split("/").filter(Boolean);
+    const segs = segmentsOf(path);
     const name = segs.pop();
     if (!name) return null;
-    let dir = this.folderHandle(folder);
-    for (const s of segs) {
-      const sub = await childDir(dir, s);
-      if (!sub) return null;
-      dir = sub;
-    }
-    if (!(await exists(dir, name))) return null;
+    const dir = await descend(this.folderHandle(folder), segs);
+    if (!dir || !(await exists(dir, name))) return null;
     return (await (await dir.getFileHandle(name)).getFile()).text();
   }
 
   /**
    * 開いたフォルダの中のファイルに書く。無ければ作る（途中のフォルダも作る）。
-   * 名前が空・開いていないフォルダなら例外（Error）を投げる。
+   * 名前が空・開いていないフォルダ・フォルダの外を指すパスなら例外（Error）を投げる。
    *
    * @param folder このプロバイダで開いたフォルダ
    * @param path フォルダからの相対パス（`/` 区切り）
    * @param text 書く内容
    */
   async writeInFolder(folder: FolderRef, path: string, text: string): Promise<void> {
-    const segs = path.split("/").filter(Boolean);
+    const segs = segmentsOf(path);
     const name = segs.pop();
     if (!name) throw new Error("ファイル名がありません");
     let dir = this.folderHandle(folder);
     for (const s of segs) dir = await dir.getDirectoryHandle(s, { create: true });
     await writeText(await dir.getFileHandle(name, { create: true }), text);
+  }
+
+  /**
+   * 読むためのフォルダ（プラグインのフォルダなど）を選ばせる。開いているフォルダは変えず、前回のフォルダとしても覚えない。
+   *
+   * @returns 選んだフォルダの参照（id は `dir:番号`）。キャンセルなら null。ほかの失敗はそのまま投げる
+   * @example
+   * await p.pickOtherFolder() // → { provider: "local", id: "dir:2", name: "trace-rules" }
+   * await p.pickOtherFolder() // → null（キャンセル）
+   */
+  async pickOtherFolder(): Promise<FolderRef | null> {
+    try {
+      return this.addFolder(await this.api.showDirectoryPicker({ mode: "read", id: "modelith-plugin" }));
+    } catch (e) {
+      if (isAbort(e)) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * フォルダの中のフォルダにあるファイルを、下のフォルダまですべてテキストで読む。
+   * 隠しファイル・隠しフォルダ・node_modules は読まない。
+   *
+   * @param folder このプロバイダで開いた（選んだ）フォルダ
+   * @param path フォルダからの相対パス（`/` 区切り。"" ならフォルダそのもの）
+   * @returns path からの相対パス（`/` 区切り）→ テキスト。フォルダが無ければ null。
+   *   ファイルが MAX_TREE_FILES 件を超える・フォルダの外を指すパス・開いていないフォルダなら例外（Error）を投げる
+   * @example
+   * await p.readTree(folder, ".modelith/plugins/jp.x") // → { "modelith-plugin.json": "{…}", "rules/a.yaml": "rules: …" }
+   * await p.readTree(folder, ".modelith/plugins/none") // → null
+   * await p.readTree(home, "")                          // → Error「ファイルが多すぎます（200 件まで）…」を投げる
+   */
+  async readTree(folder: FolderRef, path: string): Promise<Record<string, string> | null> {
+    const dir = await descend(this.folderHandle(folder), segmentsOf(path));
+    if (!dir) return null;
+    const out: Record<string, string> = {};
+    await readAll(dir, "", out);
+    return out;
+  }
+
+  /**
+   * フォルダの中のファイルかフォルダを、中身ごと消す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path フォルダからの相対パス（`/` 区切り）
+   * @returns 消したら true。無ければ false。パスが空・フォルダの外を指す・開いていないフォルダなら例外（Error）を投げる
+   * @example
+   * await p.removeInFolder(folder, ".modelith/plugins/jp.x") // → true
+   * await p.removeInFolder(folder, ".modelith/plugins/none") // → false
+   * await p.removeInFolder(folder, "")                       // → Error「消す場所がありません」を投げる
+   */
+  async removeInFolder(folder: FolderRef, path: string): Promise<boolean> {
+    const segs = segmentsOf(path);
+    const name = segs.pop();
+    if (!name) throw new Error("消す場所がありません");
+    const dir = await descend(this.folderHandle(folder), segs);
+    if (!dir || !((await exists(dir, name)) || (await childDir(dir, name)))) return false;
+    await dir.removeEntry(name, { recursive: true });
+    return true;
   }
 
   /**
@@ -520,6 +596,50 @@ async function childDir(dir: DirHandleLike, name: string): Promise<DirHandleLike
     return await dir.getDirectoryHandle(name);
   } catch {
     return null;
+  }
+}
+
+/**
+ * フォルダから、区切りの列をたどって下のフォルダを引く。
+ *
+ * @param dir たどり始めるフォルダ
+ * @param segs たどる区切りの列（空ならそのフォルダ）
+ * @returns たどり着いたフォルダ。途中が無い（ファイルである）なら null
+ * @example
+ * await descend(root, ["a", "b"]) // → a/b のハンドル
+ * await descend(root, [])         // → root
+ * await descend(root, ["none"])   // → null
+ */
+async function descend(dir: DirHandleLike, segs: string[]): Promise<DirHandleLike | null> {
+  let d = dir;
+  for (const s of segs) {
+    const sub = await childDir(d, s);
+    if (!sub) return null;
+    d = sub;
+  }
+  return d;
+}
+
+/**
+ * フォルダの中のファイルを、下のフォルダまでテキストで読み、out に足す。隠しファイル・隠しフォルダ・node_modules は読まない。
+ *
+ * @param dir 読むフォルダ
+ * @param prefix dir までのパス（読み始めたフォルダの直下なら ""）
+ * @param out パス → テキスト（読んだファイルを足す）
+ * @example
+ * await readAll(plugin, "", out) // out → { "modelith-plugin.json": "…", "rules/a.yaml": "…" }
+ * // ファイルが MAX_TREE_FILES 件を超えたら Error「ファイルが多すぎます（200 件まで）…」を投げる
+ */
+async function readAll(dir: DirHandleLike, prefix: string, out: Record<string, string>): Promise<void> {
+  for await (const h of dir.values()) {
+    if (SKIP_DIR.test(h.name)) continue;
+    const path = prefix ? `${prefix}/${h.name}` : h.name;
+    if (h.kind === "directory") {
+      await readAll(h, path, out);
+      continue;
+    }
+    if (Object.keys(out).length >= MAX_TREE_FILES) throw new Error(`ファイルが多すぎます（${MAX_TREE_FILES} 件まで）。プラグインのフォルダを選んでください`);
+    out[path] = await (await h.getFile()).text();
   }
 }
 

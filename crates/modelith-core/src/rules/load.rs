@@ -1,6 +1,6 @@
 //! プラグインのマニフェストとルールのファイルを読み、使える形にする。問題は黙って捨てず、位置つきで返す（F-PLUG-3）。
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use modelith_plugin_protocol::{
     API_VERSION, ElementMatch, OneOrMany, PluginId, PluginManifest, Requirement, Rule, RuleSet,
@@ -9,8 +9,8 @@ use modelith_plugin_protocol::{
 use regex_lite::Regex;
 
 use super::{
-    CheckRule, Condition, LoadProblem, LoadedPlugin, MANIFEST_FILE, PLUGINS_DIR, Place, RELATIONS,
-    ReadError, Target, element_kinds,
+    CheckRule, Condition, LoadProblem, LoadedPlugin, MANIFEST_FILE, ManifestInfo, PLUGINS_DIR,
+    Place, RELATIONS, ReadError, Target, element_kinds,
 };
 use crate::LineIndex;
 
@@ -41,6 +41,8 @@ pub fn load_plugin(
 ) -> LoadedPlugin {
     let mut plugin = LoadedPlugin {
         id: id.to_owned(),
+        installed: false,
+        manifest: None,
         rules: Vec::new(),
         problems: Vec::new(),
     };
@@ -60,12 +62,15 @@ pub fn load_plugin(
     let text = match read(&manifest_path) {
         Ok(text) => text,
         Err(e) => {
+            plugin.installed = e != ReadError::NotFound;
             plugin
                 .problems
                 .push(manifest_read_problem(id, &manifest_path, &e));
             return plugin;
         }
     };
+    plugin.installed = true;
+    plugin.manifest = describe_manifest(&manifest_path, &text).ok();
     let (rule_paths, problems) = read_manifest(id, &manifest_path, &text);
     plugin.problems.extend(problems);
     let mut seen = HashSet::new();
@@ -81,6 +86,73 @@ pub fn load_plugin(
         }
     }
     plugin
+}
+
+/// 画面から渡された、プラグインのフォルダの中のファイルから、プラグイン 1 つを読み込む（ブラウザで使う。ADR-0018 §1）。
+///
+/// [`load_plugin`] と同じ手順で読む。`load_plugin` が読もうとするパス（`.modelith/plugins/<id>/…`）を、
+/// プラグインのフォルダからの相対パスに直して `files` から引く。
+///
+/// # 引数
+///
+/// - `id`：プラグインの ID（`modelith.json` の `plugins` のキー）
+/// - `files`：プラグインのフォルダからの相対パス（`/` 区切り）→ ファイルのテキスト。入っていなければ空
+///
+/// # 戻り値
+///
+/// 読み込んだプラグイン。`files` に無いファイルは「見つからない」として扱う。
+///
+/// # 例
+///
+/// ```text
+/// load_plugin_files("jp.x", { "modelith-plugin.json": …, "rules.yaml": … }) → rules: [rules.yaml のルール]、installed: true
+/// load_plugin_files("jp.x", {})                                            → rules: []、installed: false、problems: [「…入っていません…」]
+/// ```
+pub fn load_plugin_files(id: &str, files: &BTreeMap<String, String>) -> LoadedPlugin {
+    let prefix = format!("{PLUGINS_DIR}/{id}/");
+    load_plugin(id, |path| {
+        path.strip_prefix(&prefix)
+            .and_then(|rel| files.get(rel))
+            .cloned()
+            .ok_or(ReadError::NotFound)
+    })
+}
+
+/// マニフェストのテキストを読み、プラグインを画面に示すための情報（名前・版・実行方式）を返す（「追加」で使う）。
+///
+/// 使えるかどうか（`apiVersion`・`runtime`・ルールのファイル）は確かめない。それは読み込み（[`load_plugin`]）が行う。
+///
+/// # 引数
+///
+/// - `path`：マニフェストのパス（問題に書く）
+/// - `text`：マニフェストのテキスト（JSON）
+///
+/// # 戻り値
+///
+/// マニフェストの情報。JSON として読めない・項目が足りない・知らない項目があるときは、位置つきの問題 1 件を `Err` で返す。
+///
+/// # 例
+///
+/// ```text
+/// describe_manifest(p, r#"{"id":"jp.x","name":"例","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#)
+///   → Ok(ManifestInfo { id: "jp.x", name: "例", version: "0.1.0", runtime: Rules, description: None })
+/// describe_manifest(p, "{") → Err(誤り 1:2「書き方に誤りがあるため読み取れません（JSON：…）」)
+/// ```
+pub fn describe_manifest(path: &str, text: &str) -> Result<ManifestInfo, LoadProblem> {
+    match serde_json::from_str::<PluginManifest>(text) {
+        Ok(m) => Ok(ManifestInfo {
+            id: m.id.to_string(),
+            name: m.name,
+            version: m.version,
+            runtime: m.runtime,
+            description: m.description,
+        }),
+        Err(e) => Err(problem(
+            path,
+            json_error_place(text, &e),
+            describe_serde_error(&e.to_string(), "JSON"),
+        )),
+    }
 }
 
 /// 問題を作る。
