@@ -32,7 +32,7 @@ function rustCrateParts(): BundledPart[] {
     const licenses = chooseLicenses(p.license ?? "");
     const texts = licenses.map((l) => {
       // 配布物にライセンス文の無いクレートは、そのリポジトリから写しておいたもの（tools/third-party-licenses/<名前>/）を使う。
-      // ts-rs：https://github.com/Aleph-Alpha/ts-rs の LICENSE（plugin-sdk の依存。配布物に入ったら消す）
+      // 今は該当なし（写したら、どこから写したかをここに書く）
       const copied = fileURLToPath(new URL(`./tools/third-party-licenses/${p.name}`, import.meta.url));
       const file = [...licenseDirs(p.manifest_path.replace(/\\/g, "/"), p.source), copied]
         .flatMap((dir) => (LICENSE_FILES[l] ?? []).map((f) => join(dir, f)))
