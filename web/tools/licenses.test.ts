@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appLicense, chooseLicenses, thirdPartyNotices, viteCoreLicense, wasmRuntimeCrates, type CargoMetadata, type CargoPackage } from "./licenses";
+import { appLicense, chooseLicenses, licenseDirs, thirdPartyNotices, viteCoreLicense, wasmRuntimeCrates, type CargoMetadata, type CargoPackage } from "./licenses";
 
 describe("viteCoreLicense", () => {
   it("Vite 本体の MIT の部分だけを取り出し、同梱依存の一覧は除く", () => {
@@ -88,5 +88,50 @@ describe("chooseLicenses", () => {
   ])("%s → %j", (spdx, expected) => {
     // Act・Assert
     expect(chooseLicenses(spdx)).toEqual(expected);
+  });
+});
+
+describe("licenseDirs", () => {
+  it("crates.io のクレートは、クレートのフォルダだけを探す", () => {
+    // Arrange
+    const manifest = "/c/registry/src/index/x-1.0.0/Cargo.toml";
+    // Act
+    const dirs = licenseDirs(manifest, "registry+https://github.com/rust-lang/crates.io-index");
+    // Assert
+    expect(dirs).toEqual(["/c/registry/src/index/x-1.0.0"]);
+  });
+
+  it("Git のクレートは、取り出したリポジトリの一番上まで探す（ライセンス文がリポジトリの一番上にある）", () => {
+    // Arrange
+    const manifest = "/c/git/checkouts/plugin-sdk-8f21/b4d38e0/crates/modelith-plugin-protocol/Cargo.toml";
+    // Act
+    const dirs = licenseDirs(manifest, "git+https://github.com/modelith/plugin-sdk?rev=b4d38e0#b4d38e0");
+    // Assert
+    expect(dirs).toEqual([
+      "/c/git/checkouts/plugin-sdk-8f21/b4d38e0/crates/modelith-plugin-protocol",
+      "/c/git/checkouts/plugin-sdk-8f21/b4d38e0/crates",
+      "/c/git/checkouts/plugin-sdk-8f21/b4d38e0",
+    ]);
+  });
+
+  it("Git のクレートでも、リポジトリの一番上にあるクレートは、そのフォルダだけ（境界値）", () => {
+    // Arrange
+    const manifest = "/c/git/checkouts/sdk-1a/b4d/Cargo.toml";
+    // Act
+    const dirs = licenseDirs(manifest, "git+https://example.com/sdk");
+    // Assert
+    expect(dirs).toEqual(["/c/git/checkouts/sdk-1a/b4d"]);
+  });
+
+  it("取り出した場所が分からない Git のクレートと、リポジトリの中のクレートは、そのフォルダだけ（異常系）", () => {
+    // Arrange
+    const cases: [string, string | null][] = [
+      ["/vendor/p/Cargo.toml", "git+https://example.com/sdk"],
+      ["/repo/crates/core/Cargo.toml", null],
+    ];
+    // Act
+    const dirs = cases.map(([m, s]) => licenseDirs(m, s));
+    // Assert
+    expect(dirs).toEqual([["/vendor/p"], ["/repo/crates/core"]]);
   });
 });

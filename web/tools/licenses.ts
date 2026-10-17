@@ -132,3 +132,28 @@ export const LICENSE_FILES: Record<string, string[]> = {
   "Apache-2.0": ["LICENSE-APACHE", "LICENSE"],
   "Unicode-3.0": ["LICENSE-UNICODE"],
 };
+
+/**
+ * クレートのライセンス文を探すフォルダを、探す順に並べる。ふつうはクレートのフォルダだけ。
+ * Git から取ったクレート（`source` が `git+…`）は、ライセンス文をリポジトリの一番上だけに置くことが多いので、
+ * Cargo が取り出したリポジトリの一番上（`…/git/checkouts/<リポジトリ>/<版>`）までの上のフォルダも探す。
+ *
+ * @param manifestPath クレートの Cargo.toml のパス（`/` 区切り）
+ * @param source クレートの取得元（`cargo metadata` の `source`。リポジトリの中のクレートは null）
+ * @returns 探すフォルダ（近い順）
+ * @example
+ * licenseDirs("/r/x-1.0/Cargo.toml", "registry+https://…")                 // → ["/r/x-1.0"]
+ * licenseDirs("/h/git/checkouts/sdk-1a/b4d/crates/p/Cargo.toml", "git+https://…") // → ["/h/git/checkouts/sdk-1a/b4d/crates/p", "/h/git/checkouts/sdk-1a/b4d/crates", "/h/git/checkouts/sdk-1a/b4d"]
+ * licenseDirs("/vendor/p/Cargo.toml", "git+https://…")                     // → ["/vendor/p"]（取り出した場所が分からない）
+ */
+export function licenseDirs(manifestPath: string, source: string | null): string[] {
+  const dir = manifestPath.slice(0, manifestPath.lastIndexOf("/"));
+  const root = source?.startsWith("git+") ? /^.*\/git\/checkouts\/[^/]+\/[^/]+/.exec(dir)?.[0] : undefined;
+  if (!root) return [dir];
+  const dirs = [dir];
+  for (let d = dir; d.length > root.length; ) {
+    d = d.slice(0, d.lastIndexOf("/"));
+    dirs.push(d);
+  }
+  return dirs;
+}

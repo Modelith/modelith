@@ -93,7 +93,7 @@ fn broken_layout_comment(source: &str) -> Option<usize> {
 }
 
 /// 暫定コアの宣言の種類（DEF_KINDS・"package"・USAGE_KINDS の順。長いものを先に当てる）。
-const DECL_KINDS: &[&str] = &[
+pub(crate) const DECL_KINDS: &[&str] = &[
     "metadata def",
     "occurrence def",
     "part def",

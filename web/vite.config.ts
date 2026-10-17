@@ -1,9 +1,10 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
-import { appLicense, chooseLicenses, LICENSE_FILES, thirdPartyNotices, viteCoreLicense, wasmRuntimeCrates, type BundledPart, type CargoMetadata } from "./tools/licenses";
+import { appLicense, chooseLicenses, LICENSE_FILES, licenseDirs, thirdPartyNotices, viteCoreLicense, wasmRuntimeCrates, type BundledPart, type CargoMetadata } from "./tools/licenses";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
 
@@ -30,7 +31,12 @@ function rustCrateParts(): BundledPart[] {
   return wasmRuntimeCrates(JSON.parse(json) as CargoMetadata, "modelith-wasm").map((p) => {
     const licenses = chooseLicenses(p.license ?? "");
     const texts = licenses.map((l) => {
-      const file = (LICENSE_FILES[l] ?? []).map((f) => join(dirname(p.manifest_path), f)).find((f) => existsSync(f));
+      // 配布物にライセンス文の無いクレートは、そのリポジトリから写しておいたもの（tools/third-party-licenses/<名前>/）を使う。
+      // ts-rs：https://github.com/Aleph-Alpha/ts-rs の LICENSE（plugin-sdk の依存。配布物に入ったら消す）
+      const copied = fileURLToPath(new URL(`./tools/third-party-licenses/${p.name}`, import.meta.url));
+      const file = [...licenseDirs(p.manifest_path.replace(/\\/g, "/"), p.source), copied]
+        .flatMap((dir) => (LICENSE_FILES[l] ?? []).map((f) => join(dir, f)))
+        .find((f) => existsSync(f));
       if (!file) throw new Error(`${p.name} ${p.version} の ${l} のライセンス文が見つかりません`);
       return readFileSync(file, "utf8");
     });

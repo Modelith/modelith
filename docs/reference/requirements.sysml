@@ -671,5 +671,18 @@ package ModelithRequirements {
                 verify ProjectReq;
             }
         }
+        verification def RuleEngineTest {
+            doc /* crates/modelith-core/src/rules：v0 の検査ルール（YAML）の読み込みと検査。読み込み：マニフェスト（JSON の誤り・知らない項目・対応しない apiVersion・runtime が rules でない・ID の食い違い・入っていないプラグイン）とルールのファイル（YAML の誤り・知らない項目・欠けた項目・知らない重さ・ルールの ID の形と重複・正規表現の誤り・ポートの数の下限と上限・空の種類・知らない要素や関係の種類・プラグインのフォルダの外を指すパス）を、ファイルと行・列つきで知らせ、誤りの無いルールは使う。検査：要素の種類・工程・名前で当て、受ける関係・出す関係・名前・工程・ポートの数・否定（not）・空の条件を確かめ、満たさない要素ごとに、プラグインとルールの ID・重さ・名前と種類を差し込んだ文・行と列（UTF-16）を返す */
+            objective {
+                verify RuleCheckReq;
+                verify PluginErrorReq;
+            }
+        }
+        verification def CliCheckTest {
+            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json は誤りとして知らせる。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方 */
+            objective {
+                verify RuleParityReq;
+            }
+        }
     }
 }
