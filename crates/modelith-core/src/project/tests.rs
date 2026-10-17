@@ -176,7 +176,7 @@ fn broken_layout_comment_is_an_error_at_its_utf16_position() {
             .iter()
             .map(|e| (e.pos, e.msg.as_str()))
             .collect::<Vec<_>>(),
-        [(at.unwrap_or_default(), "@layout コメントが読み取れません")]
+        [(at.unwrap_or_default(), "@layout コメントを読み込めません")]
     );
 }
 

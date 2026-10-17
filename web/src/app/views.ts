@@ -372,7 +372,7 @@ function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
   const keys = new Set(mv.nodeKeys);
   const nodes = M.nodes.filter((n) => keys.has(n.key));
   if (!nodes.length) {
-    const where = mv.frames.length ? `モデルの入れ物（${mv.frames.map((f) => f.name).join("・")}）の中に、` : "";
+    const where = mv.frames.length ? `パッケージ（${mv.frames.map((f) => f.name).join("・")}）の中に、` : "";
     return { nodes, edges: [], empty: `図「${mv.name}」に、${where}図に出せる要素がありません。` };
   }
   const content = phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });

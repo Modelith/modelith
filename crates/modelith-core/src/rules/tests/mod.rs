@@ -1,4 +1,4 @@
-//! v0 の検査ルール（ADR-0018 §2）の単体テスト。読み込み（F-PLUG-3）は `load.rs`、検査（F-PLUG-1）は `check.rs`。
+//! v0 のチェックルール（ADR-0018 §2）の単体テスト。読み込み（F-PLUG-3）は `load.rs`、検査（F-PLUG-1）は `check.rs`。
 
 mod check;
 mod load;
@@ -13,7 +13,7 @@ const ID: &str = "jp.example.rules";
 /// プラグインのフォルダ（プロジェクトのフォルダからの相対パス）。
 const DIR: &str = ".modelith/plugins/jp.example.rules";
 
-/// 検査ルールのプラグインのマニフェスト（ルールのファイルは `rules`）。
+/// チェックルールのプラグインのマニフェスト（ルールのファイルは `rules`）。
 fn manifest(rules: &[&str]) -> String {
     let list: Vec<String> = rules.iter().map(|r| format!("\"{r}\"")).collect();
     format!(

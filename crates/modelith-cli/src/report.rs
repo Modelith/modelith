@@ -24,7 +24,7 @@ pub struct Entry {
 ///
 /// # 戻り値
 ///
-/// パスが `modelith.json` の 1 件（誤りは「誤り」、注意は「注意」）。
+/// パスが `modelith.json` の 1 件（誤りは「エラー」、注意は「警告」）。
 ///
 /// # 例
 ///
@@ -109,18 +109,18 @@ pub fn from_finding(path: &str, l: &Located) -> Entry {
 ///
 /// # 戻り値
 ///
-/// 「誤り」「注意」「情報」「ヒント」のいずれか。
+/// 「エラー」「警告」「情報」「ヒント」のいずれか。
 ///
 /// # 例
 ///
 /// ```text
-/// label(Error)       → "誤り"
+/// label(Error)       → "エラー"
 /// label(Information) → "情報"
 /// ```
 pub fn label(s: DiagnosticSeverity) -> &'static str {
     match s {
-        DiagnosticSeverity::Error => "誤り",
-        DiagnosticSeverity::Warning => "注意",
+        DiagnosticSeverity::Error => "エラー",
+        DiagnosticSeverity::Warning => "警告",
         DiagnosticSeverity::Information => "情報",
         DiagnosticSeverity::Hint => "ヒント",
     }
@@ -139,8 +139,8 @@ pub fn label(s: DiagnosticSeverity) -> &'static str {
 /// # 例
 ///
 /// ```text
-/// line(model.sysml 2:3 注意「a」jp.x/r1) → "model.sysml:2:3: 注意: a [jp.x/r1]"
-/// line(rules.yaml 位置なし 誤り「b」jp.x) → "rules.yaml: 誤り: b [jp.x]"
+/// line(model.sysml 2:3 注意「a」jp.x/r1) → "model.sysml:2:3: 警告: a [jp.x/r1]"
+/// line(rules.yaml 位置なし 誤り「b」jp.x) → "rules.yaml: エラー: b [jp.x]"
 /// ```
 pub fn line(e: &Entry) -> String {
     let at = e
@@ -173,8 +173,8 @@ pub fn line(e: &Entry) -> String {
 ///
 /// ```text
 /// render([b.sysml 1:1 注意, a.sysml 3:1 誤り], 2)
-///   → ("a.sysml:3:1: 誤り: …\nb.sysml:1:1: 注意: …\nファイル 2 件を検査しました：誤り 1 件・注意 1 件・情報 0 件・ヒント 0 件\n", true)
-/// render([], 0) → ("ファイル 0 件を検査しました：誤り 0 件・注意 0 件・情報 0 件・ヒント 0 件\n", false)
+///   → ("a.sysml:3:1: エラー: …\nb.sysml:1:1: 警告: …\nファイル 2 件をチェックしました：エラー 1 件・警告 1 件・情報 0 件・ヒント 0 件\n", true)
+/// render([], 0) → ("ファイル 0 件をチェックしました：エラー 0 件・警告 0 件・情報 0 件・ヒント 0 件\n", false)
 /// ```
 pub fn render(mut entries: Vec<Entry>, files: usize) -> (String, bool) {
     entries.sort_by(|a, b| {
@@ -185,7 +185,7 @@ pub fn render(mut entries: Vec<Entry>, files: usize) -> (String, bool) {
     let errors = count(DiagnosticSeverity::Error);
     let mut out: String = entries.iter().map(|e| line(e) + "\n").collect();
     out.push_str(&format!(
-        "ファイル {files} 件を検査しました：誤り {errors} 件・注意 {} 件・情報 {} 件・ヒント {} 件\n",
+        "ファイル {files} 件をチェックしました：エラー {errors} 件・警告 {} 件・情報 {} 件・ヒント {} 件\n",
         count(DiagnosticSeverity::Warning),
         count(DiagnosticSeverity::Information),
         count(DiagnosticSeverity::Hint),
@@ -214,7 +214,7 @@ mod tests {
         // Act
         let got = line(&e);
         // Assert
-        assert_eq!(got, "model.sysml:2:3: 注意: m [jp.x/r]");
+        assert_eq!(got, "model.sysml:2:3: 警告: m [jp.x/r]");
     }
 
     #[test]
@@ -225,7 +225,7 @@ mod tests {
         // Act
         let got = line(&e);
         // Assert
-        assert_eq!(got, "modelith.json: 誤り: m");
+        assert_eq!(got, "modelith.json: エラー: m");
     }
 
     #[test]
@@ -240,7 +240,7 @@ mod tests {
         // Act
         let got: Vec<&str> = all.into_iter().map(label).collect();
         // Assert
-        assert_eq!(got, ["誤り", "注意", "情報", "ヒント"]);
+        assert_eq!(got, ["エラー", "警告", "情報", "ヒント"]);
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
                 "a.sysml:9:5",
                 "a.sysml:10:1",
                 "b.sysml:1:1",
-                "ファイル 2 件を検査しました：誤り 0 件・注意 3 件・情報 1 件・ヒント 1 件"
+                "ファイル 2 件をチェックしました：エラー 0 件・警告 3 件・情報 1 件・ヒント 1 件"
             ]
         );
     }
@@ -294,7 +294,7 @@ mod tests {
         assert_eq!(
             got,
             (
-                "ファイル 0 件を検査しました：誤り 0 件・注意 0 件・情報 0 件・ヒント 0 件\n"
+                "ファイル 0 件をチェックしました：エラー 0 件・警告 0 件・情報 0 件・ヒント 0 件\n"
                     .to_owned(),
                 false
             )
@@ -308,11 +308,11 @@ mod tests {
             severity: project_file::Severity::Warning,
             line: 1,
             column: 3,
-            message: "知らない項目".to_owned(),
+            message: "不明な項目".to_owned(),
         };
         // Act
         let got = line(&from_project_problem(&p));
         // Assert
-        assert_eq!(got, "modelith.json:1:3: 注意: 知らない項目");
+        assert_eq!(got, "modelith.json:1:3: 警告: 不明な項目");
     }
 }

@@ -1,4 +1,4 @@
-//! `modelith check <フォルダ>` の結合テスト（F-PLUG-2：プロジェクトに入れた検査ルールを CLI で実行し、誤りがあれば 0 以外で終わる）。
+//! `modelith check <フォルダ>` の結合テスト（F-PLUG-2：プロジェクトに入れたチェックルールを CLI で実行し、誤りがあれば 0 以外で終わる）。
 //! ビルドした `modelith` を、一時的なフォルダに作ったプロジェクトに対して動かし、終了コードと出力を確かめる。
 
 // テストの準備（一時的なフォルダ・プロセスの起動）に失敗したら、その場で落とす
@@ -51,7 +51,7 @@ const MODELITH_JSON: &str = r#"{
 
 const MANIFEST: &str = r#"{
   "id": "jp.example.trace",
-  "name": "トレースの検査",
+  "name": "トレーサビリティのチェック",
   "version": "0.1.0",
   "apiVersion": "0",
   "runtime": "rules",
@@ -131,9 +131,9 @@ fn error_findings_are_printed_and_exit_with_1() {
     // Assert
     assert_eq!(
         stdout(&out),
-        "model.sysml:3:3: 誤り: 要求「KeepPressure」を満たす要素がありません [jp.example.trace/req-has-satisfier]\n\
-         model.sysml:5:3: 注意: part def「Tank」にポートがありません [jp.example.trace/part-has-ports]\n\
-         ファイル 1 件を検査しました：誤り 1 件・注意 1 件・情報 0 件・ヒント 0 件\n"
+        "model.sysml:3:3: エラー: 要求「KeepPressure」を満たす要素がありません [jp.example.trace/req-has-satisfier]\n\
+         model.sysml:5:3: 警告: part def「Tank」にポートがありません [jp.example.trace/part-has-ports]\n\
+         ファイル 1 件をチェックしました：エラー 1 件・警告 1 件・情報 0 件・ヒント 0 件\n"
     );
     assert_eq!(out.status.code(), Some(1));
 }
@@ -150,7 +150,7 @@ fn warnings_only_exit_with_0() {
     let out = check(&dir);
     // Assert
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
-    assert!(stdout(&out).ends_with("誤り 0 件・注意 1 件・情報 0 件・ヒント 0 件\n"));
+    assert!(stdout(&out).ends_with("エラー 0 件・警告 1 件・情報 0 件・ヒント 0 件\n"));
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn findings_are_sorted_by_path_line_and_column_across_files() {
             "a/y.sysml:1:13",
             "a/z.kerml:3:3",
             "b.sysml:2:3",
-            "ファイル 3 件を検査しました：誤り 0 件・注意 3 件・情報 0 件・ヒント 0 件"
+            "ファイル 3 件をチェックしました：エラー 0 件・警告 3 件・情報 0 件・ヒント 0 件"
         ]
     );
     assert_eq!(out.status.code(), Some(0));
@@ -191,7 +191,7 @@ fn hidden_build_and_dependency_folders_are_not_checked() {
     // Assert
     assert_eq!(
         stdout(&out),
-        "ファイル 0 件を検査しました：誤り 0 件・注意 0 件・情報 0 件・ヒント 0 件\n"
+        "ファイル 0 件をチェックしました：エラー 0 件・警告 0 件・情報 0 件・ヒント 0 件\n"
     );
     assert_eq!(out.status.code(), Some(0));
 }
@@ -209,7 +209,7 @@ fn disabled_plugins_are_not_loaded() {
     let out = check(&dir);
     // Assert
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
-    assert!(stdout(&out).starts_with("ファイル 1 件を検査しました：誤り 0 件"));
+    assert!(stdout(&out).starts_with("ファイル 1 件をチェックしました：エラー 0 件"));
 }
 
 #[test]
@@ -240,13 +240,13 @@ fn broken_rule_file_is_reported_with_its_place_and_exits_with_1() {
     let text = stdout(&out);
     assert!(
         text.starts_with(&format!(
-            ".modelith/plugins/{PLUGIN}/rules.yaml:8:7: 誤り: 知らない項目「incomin」があります（rules[0].require: unknown field `incomin`"
+            ".modelith/plugins/{PLUGIN}/rules.yaml:8:7: エラー: 不明な項目「incomin」があります（rules[0].require: unknown field `incomin`"
         )),
         "{text}"
     );
     assert!(
         text.trim_end().ends_with(&format!(
-            "[{PLUGIN}]\nファイル 1 件を検査しました：誤り 1 件・注意 0 件・情報 0 件・ヒント 0 件"
+            "[{PLUGIN}]\nファイル 1 件をチェックしました：エラー 1 件・警告 0 件・情報 0 件・ヒント 0 件"
         )),
         "{text}"
     );
@@ -264,8 +264,8 @@ fn missing_plugin_is_named_and_exits_with_1() {
     assert_eq!(
         stdout(&out),
         format!(
-            ".modelith/plugins/{PLUGIN}/modelith-plugin.json: 誤り: このプロジェクトはプラグイン「{PLUGIN}」を使っていますが、入っていません。プラグインを .modelith/plugins/{PLUGIN}/ に追加してください（modelith-plugin.json が見つかりません） [{PLUGIN}]\n\
-             ファイル 0 件を検査しました：誤り 1 件・注意 0 件・情報 0 件・ヒント 0 件\n"
+            ".modelith/plugins/{PLUGIN}/modelith-plugin.json: エラー: このプロジェクトで使うプラグイン「{PLUGIN}」が追加されていません。プラグインを .modelith/plugins/{PLUGIN}/ に追加してください（modelith-plugin.json が見つかりません） [{PLUGIN}]\n\
+             ファイル 0 件をチェックしました：エラー 1 件・警告 0 件・情報 0 件・ヒント 0 件\n"
         )
     );
     assert_eq!(out.status.code(), Some(1));
@@ -302,12 +302,12 @@ fn broken_project_file_is_reported_and_nothing_is_checked() {
     // Assert
     let text = stdout(&out);
     assert!(
-        text.starts_with("modelith.json:1:1: 誤り: 書き方に誤りがあるため読み取れません"),
+        text.starts_with("modelith.json:1:1: エラー: 書式にエラーがあるため読み込めません"),
         "{text}"
     );
     assert!(
         text.ends_with(
-            "ファイル 0 件を検査しました：誤り 1 件・注意 0 件・情報 0 件・ヒント 0 件\n"
+            "ファイル 0 件をチェックしました：エラー 1 件・警告 0 件・情報 0 件・ヒント 0 件\n"
         ),
         "{text}"
     );
@@ -316,14 +316,14 @@ fn broken_project_file_is_reported_and_nothing_is_checked() {
 
 #[test]
 fn unknown_project_keys_are_warnings_only() {
-    // Arrange（知らない項目は注意。結果は変わらない）
+    // Arrange（不明な項目は注意。結果は変わらない）
     let dir = TempDir::new();
     dir.write("modelith.json", "{ \"color\": \"red\" }");
     // Act
     let out = check(&dir);
     // Assert
     assert!(
-        stdout(&out).starts_with("modelith.json:1:3: 注意: 知らない項目「color」があります"),
+        stdout(&out).starts_with("modelith.json:1:3: 警告: 不明な項目「color」があります"),
         "{}",
         stdout(&out)
     );

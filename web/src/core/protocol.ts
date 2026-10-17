@@ -30,7 +30,7 @@ export type CoreResponse =
   | { type: "pluginsSet"; id: number; json: string }
   | { type: "pluginDescribed"; id: number; json: string };
 
-/** 読み込んだ検査ルールのプラグイン（wasm の `RulePlugins`）。Worker が持ち続ける。 */
+/** 読み込んだチェックルールのプラグイン（wasm の `RulePlugins`）。Worker が持ち続ける。 */
 export interface LoadedRules {
   /** プラグインごとのまとめの JSON。 */
   summary(): string;
@@ -55,7 +55,7 @@ export interface CoreFns {
 /** コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）。 */
 export interface CoreState {
   text: string;
-  /** 読み込んだ検査ルールのプラグイン。無ければ null（ルールを当てない）。 */
+  /** 読み込んだチェックルールのプラグイン。無ければ null（ルールを当てない）。 */
   plugins: LoadedRules | null;
 }
 
@@ -127,7 +127,7 @@ function setPlugins(state: CoreState, plugins: PluginFiles[], fns: CoreFns): str
  * failedReply({ type: "didChange", version: 2, text: "" }, "boom")
  * // → { type: "analyzed", version: 2, json: '{"error":"boom"}' }
  * failedReply({ type: "parseProject", id: 3, text: "{}" }, "boom")
- * // → { type: "projectParsed", id: 3, json: '{"project":null,"problems":[{"severity":"error","line":1,"column":1,"message":"設定ファイルを読み取れませんでした（boom）"}]}' }
+ * // → { type: "projectParsed", id: 3, json: '{"project":null,"problems":[{"severity":"error","line":1,"column":1,"message":"設定ファイルを読み込めませんでした（boom）"}]}' }
  * failedReply({ type: "setPlugins", id: 4, plugins: [] }, "boom")
  * // → { type: "pluginsSet", id: 4, json: '{"error":"プラグインを読み込めませんでした（boom）"}' }
  */
@@ -140,22 +140,22 @@ export function failedReply(req: Exclude<CoreRequest, { type: "init" }>, message
     case "parseProject":
       return { type: "projectParsed", id: req.id, json: JSON.stringify({ project: null, problems: [projectReadProblem(message)] }) };
     case "createProject":
-      return { type: "projectCreated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定ファイルを作れませんでした（${message}）` }) };
+      return { type: "projectCreated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定ファイルを作成できませんでした（${message}）` }) };
     case "updateProject":
-      return { type: "projectUpdated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定を書き換えられませんでした（${message}）` }) };
+      return { type: "projectUpdated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定を変更できませんでした（${message}）` }) };
     case "setPlugins":
       return { type: "pluginsSet", id: req.id, json: JSON.stringify({ error: `プラグインを読み込めませんでした（${message}）` }) };
     case "describePlugin":
-      return { type: "pluginDescribed", id: req.id, json: JSON.stringify({ refused: `プラグインを読み取れませんでした（${message}）` }) };
+      return { type: "pluginDescribed", id: req.id, json: JSON.stringify({ refused: `プラグインを読み込めませんでした（${message}）` }) };
   }
 }
 
 /**
- * 設定ファイル（modelith.json）を読み取れなかったことを、1 行目 1 文字目の誤りにする（コアが失敗したとき）。
+ * 設定ファイル（modelith.json）を読み込めなかったことを、1 行目 1 文字目のエラーにする（コアが失敗したとき）。
  *
  * @param reason 理由（例外のメッセージなど。文の最後の括弧に入れる）
- * @returns 誤り 1 件
+ * @returns エラー 1 件
  * @example
- * projectReadProblem("boom") // → { severity: "error", line: 1, column: 1, message: "設定ファイルを読み取れませんでした（boom）" }
+ * projectReadProblem("boom") // → { severity: "error", line: 1, column: 1, message: "設定ファイルを読み込めませんでした（boom）" }
  */
-export const projectReadProblem = (reason: string): ProjectProblem => ({ severity: "error", line: 1, column: 1, message: `設定ファイルを読み取れませんでした（${reason}）` });
+export const projectReadProblem = (reason: string): ProjectProblem => ({ severity: "error", line: 1, column: 1, message: `設定ファイルを読み込めませんでした（${reason}）` });

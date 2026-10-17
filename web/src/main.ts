@@ -141,8 +141,8 @@ function showStartupError(e: unknown): void {
   box.setAttribute("role", "alert");
   box.innerHTML =
     "<b>Modelith を起動できませんでした</b>" +
-    "<p>テキストを読み取る部品を読み込めませんでした。ページを読み込み直してください。" +
-    "直らないときは、新しいブラウザ（Chrome・Edge・Firefox・Safari の最新版）で開いてください。</p>";
+    "<p>テキストの解析に必要なモジュール（WebAssembly）を読み込めませんでした。ページを再読み込みしてください。" +
+    "解決しないときは、新しいブラウザ（Chrome・Edge・Firefox・Safari の最新版）で開いてください。</p>";
   const detail = document.createElement("small");
   detail.textContent = e instanceof Error ? e.message : String(e);
   box.append(detail);

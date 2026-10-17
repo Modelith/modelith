@@ -1,4 +1,4 @@
-//! `modelith` CLI。`check`（プロジェクトの検査ルールでの検査、ADR-0018）を持つ。`export` / MCP(stdio) は P3 で足す。
+//! `modelith` CLI。`check`（プロジェクトのチェックルールでの検査、ADR-0018）を持つ。`export` / MCP(stdio) は P3 で足す。
 
 mod check;
 mod report;
@@ -21,7 +21,7 @@ const USAGE: &str = "使い方: modelith check <フォルダ> | modelith --versi
 ///
 /// ```text
 /// modelith --version      → 標準出力 "modelith 0.1.0-alpha.4"（Cargo.toml の版）、終了コード 0
-/// modelith check proj     → 標準出力 "model.sysml:2:3: 注意: … [jp.x/r1]\nファイル 1 件を検査しました：…"、終了コード 0
+/// modelith check proj     → 標準出力 "model.sysml:2:3: 警告: … [jp.x/r1]\nファイル 1 件をチェックしました：…"、終了コード 0
 /// modelith check missing  → 標準エラー "modelith: フォルダ「missing」が見つかりません"、終了コード 1
 /// modelith                → 標準エラー "使い方: modelith check <フォルダ> | modelith --version"、終了コード 2
 /// modelith check a b      → 同上

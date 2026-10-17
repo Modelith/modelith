@@ -64,7 +64,7 @@ const ctxKey = (): string | undefined => CC().ctx?.key;
  *
  * @returns 作る package の名前（前後の空白を除く）。やめたとき・名前として使えないときは null
  * @example
- * // 表示中が untitled-1.sysml で、候補のまま「作って置く」を押したとき
+ * // 表示中が untitled-1.sysml で、候補のまま「作成して配置」を押したとき
  * await askPackageName() // → "Untitled1"
  * // 名前を「2k」にしたとき
  * await askPackageName() // → null（名前の付け方をトーストで知らせる）
@@ -73,18 +73,18 @@ const ctxKey = (): string | undefined => CC().ctx?.key;
  */
 async function askPackageName(): Promise<string | null> {
   const r = await ask(
-    "モデルの入れ物を作ります",
-    "要素は、モデルの入れ物（package）の中に置きます。このファイルにはまだ入れ物が無いので、名前を付けて作り、その中に置きます。",
+    "パッケージを作成します",
+    "要素はパッケージ（package）の中に配置します。このファイルにはまだパッケージが無いため、名前を付けて作成し、その中に配置します。",
     [
       { id: "cancel", label: "やめる" },
-      { id: "ok", label: "作って置く", kind: "primary" },
+      { id: "ok", label: "作成して配置", kind: "primary" },
     ],
-    { value: packageNameFor(shownDocName()), label: "入れ物の名前" },
+    { value: packageNameFor(shownDocName()), label: "パッケージ名" },
   );
   if (r?.id !== "ok") return null;
   const name = r.value.trim();
   if (!isPackageName(name)) {
-    toast("入れ物の名前は、英字か _ で始め、英字・数字・_ だけで付けてください");
+    toast("パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください");
     return null;
   }
   return name;

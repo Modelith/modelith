@@ -407,7 +407,7 @@ pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Chan
             (text, t.start, open)
         }
         (None, None) => {
-            return Err("フェーズを書く、モデルの入れ物（package）がありません".to_owned());
+            return Err("フェーズを書き込むパッケージがありません".to_owned());
         }
     };
     let i1 = format!("{}    ", indent_at(&text, start));

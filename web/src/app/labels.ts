@@ -9,7 +9,7 @@ const KIND_LABEL: Record<string, string> = {
   "exhibit state": "状態", "perform action": "アクション",
   "occurrence def": "シナリオ", occurrence: "出来事", "interface def": "インタフェース定義", "connection def": "接続定義",
   "use case def": "ユースケース定義", "enum def": "列挙定義", "metadata def": "メタデータ定義", "view def": "図の定義", view: "保存された図",
-  package: "モデルの入れ物",
+  package: "パッケージ",
 };
 
 /**

@@ -157,7 +157,7 @@ fn missing_plugin_tells_which_plugin_to_add() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json このプロジェクトはプラグイン「{ID}」を使っていますが、入っていません。プラグインを {DIR}/ に追加してください（modelith-plugin.json が見つかりません）"
+            "{DIR}/modelith-plugin.json このプロジェクトで使うプラグイン「{ID}」が追加されていません。プラグインを {DIR}/ に追加してください（modelith-plugin.json が見つかりません）"
         )]
     );
 }
@@ -172,7 +172,7 @@ fn unreadable_manifest_is_reported_with_the_reason() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json プラグイン「{ID}」のマニフェストを読み取れません（UTF-8 ではありません）"
+            "{DIR}/modelith-plugin.json プラグイン「{ID}」のマニフェストを読み込めません（UTF-8 ではありません）"
         )]
     );
 }
@@ -188,7 +188,7 @@ fn manifest_json_syntax_error_has_line_and_column() {
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
         all[0].starts_with(&format!(
-            "{DIR}/modelith-plugin.json:3:1 書き方に誤りがあるため読み取れません（JSON："
+            "{DIR}/modelith-plugin.json:3:1 書式にエラーがあるため読み込めません（JSON："
         )),
         "{all:?}"
     );
@@ -204,7 +204,7 @@ fn unknown_key_in_manifest_is_named() {
     let all = problems(&plugin);
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
-        all[0].contains("知らない項目「licence」があります（unknown field `licence`"),
+        all[0].contains("不明な項目「licence」があります（unknown field `licence`"),
         "{all:?}"
     );
 }
@@ -228,7 +228,7 @@ fn unsupported_api_version_is_reported_at_the_key_and_rules_are_not_read() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json:5:3 対応していない版（apiVersion「1」）のプラグインです。この Modelith が読めるのは「0」です"
+            "{DIR}/modelith-plugin.json:5:3 対応していないバージョン（apiVersion「1」）のプラグインです。この Modelith が対応しているのは「0」です"
         )]
     );
 }
@@ -243,7 +243,7 @@ fn runtime_other_than_rules_is_reported() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json:6:3 検査ルールのプラグイン（runtime: rules）ではないため、ここでは使えません"
+            "{DIR}/modelith-plugin.json:6:3 チェックルールのプラグイン（runtime: rules）ではないため、ここでは使用できません"
         )]
     );
 }
@@ -354,7 +354,7 @@ fn yaml_syntax_error_has_line_and_column() {
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
         all[0].starts_with(&format!(
-            "{DIR}/rules.yaml:4:1 書き方に誤りがあるため読み取れません（YAML："
+            "{DIR}/rules.yaml:4:1 書式にエラーがあるため読み込めません（YAML："
         )),
         "{all:?}"
     );
@@ -380,7 +380,7 @@ fn unknown_key_in_require_is_named_at_its_line() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/rules.yaml:8:7 知らない項目「incomin」があります（rules[0].require: unknown field `incomin`, expected one of `incoming`, `outgoing`, `name`, `phase`, `ports`, `not`）"
+            "{DIR}/rules.yaml:8:7 不明な項目「incomin」があります（rules[0].require: unknown field `incomin`, expected one of `incoming`, `outgoing`, `name`, `phase`, `ports`, `not`）"
         )]
     );
 }
@@ -406,7 +406,7 @@ fn unknown_key_at_each_level_is_reported() {
     assert!(
         messages
             .iter()
-            .all(|m| m.starts_with("知らない項目「extra」があります")),
+            .all(|m| m.starts_with("不明な項目「extra」があります")),
         "{messages:?}"
     );
 }
@@ -428,7 +428,7 @@ fn missing_field_and_unknown_severity_are_explained() {
         got[0].starts_with("必要な項目「severity」がありません"),
         "{got:?}"
     );
-    assert!(got[1].starts_with("使えない値「fatal」です"), "{got:?}");
+    assert!(got[1].starts_with("指定できない値「fatal」です"), "{got:?}");
 }
 
 #[test]
@@ -466,7 +466,7 @@ fn regex_errors_are_reported_for_match_and_nested_require() {
     assert_eq!(all.len(), 2, "{all:?}");
     assert!(
         all[0].starts_with(&format!(
-            "{DIR}/rules.yaml:2:5 ルール「r1」：名前の正規表現に誤りがあります（match.name「[a」："
+            "{DIR}/rules.yaml:2:5 ルール「r1」：名前の正規表現にエラーがあります（match.name「[a」："
         )),
         "{all:?}"
     );
@@ -508,7 +508,7 @@ fn unknown_element_kind_is_reported() {
     // Assert
     assert_eq!(got.len(), 2, "{got:?}");
     assert!(
-        got[0].starts_with("ルール「r1」：知らない要素の種類「view def」です（match.kind）。書ける種類：occurrence def・part def"),
+        got[0].starts_with("ルール「r1」：不明な要素の種類「view def」です（match.kind）。指定できる種類：occurrence def・part def"),
         "{got:?}"
     );
 }
@@ -523,7 +523,7 @@ fn unknown_and_empty_relation_lists_are_reported() {
     assert_eq!(
         got,
         [
-            "ルール「r1」：知らない関係の種類「derive」です（require.incoming）。書ける種類：satisfy・verify・frame・derivation・flow",
+            "ルール「r1」：不明な関係の種類「derive」です（require.incoming）。指定できる種類：satisfy・verify・frame・derivation・flow",
             "ルール「r1」：関係の種類（require.outgoing）が空です。1 つ以上書いてください",
         ]
     );
@@ -577,7 +577,7 @@ fn a_broken_rule_does_not_hide_the_good_ones() {
 
 #[test]
 fn describe_serde_error_puts_the_meaning_first() {
-    // Arrange（同値クラス：知らない項目・欠けた項目・知らない値・その他）
+    // Arrange（同値クラス：不明な項目・欠けた項目・知らない値・その他）
     let raws = [
         "a: unknown field `x`, expected `y` at line 2 column 3",
         "missing field `rules`",
@@ -593,10 +593,10 @@ fn describe_serde_error_puts_the_meaning_first() {
     assert_eq!(
         got,
         [
-            "知らない項目「x」があります（a: unknown field `x`, expected `y`）",
+            "不明な項目「x」があります（a: unknown field `x`, expected `y`）",
             "必要な項目「rules」がありません（missing field `rules`）",
-            "使えない値「fatal」です（unknown variant `fatal`, expected one of `error`）",
-            "書き方に誤りがあるため読み取れません（JSON：EOF while parsing a value）",
+            "指定できない値「fatal」です（unknown variant `fatal`, expected one of `error`）",
+            "書式にエラーがあるため読み込めません（JSON：EOF while parsing a value）",
         ]
     );
 }
@@ -720,7 +720,7 @@ fn describe_manifest_reports_broken_json_and_bad_ids_with_place() {
     let b = describe_manifest("m.json", bad_id).map_err(|p| p.message);
     // Assert
     assert!(
-        matches!(a, Err((true, ref m)) if m.starts_with("書き方に誤りがあるため読み取れません（JSON：")),
+        matches!(a, Err((true, ref m)) if m.starts_with("書式にエラーがあるため読み込めません（JSON：")),
         "{a:?}"
     );
     assert!(

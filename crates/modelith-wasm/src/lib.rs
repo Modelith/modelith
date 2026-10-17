@@ -66,7 +66,7 @@ pub fn analyze(text: &str) -> String {
 /// ```text
 /// edit("// 日本語\npackage P { part def A; }", r#"{"op":"rename","key":"A","name":"B"}"#)
 ///   → "{\"edits\":[{\"start\":28,\"end\":29,\"text\":\"B\"}],…}"
-/// edit(…, r#"{"op":"rename"}"#) → "{\"refused\":\"操作を読み取れませんでした（…）\"}"
+/// edit(…, r#"{"op":"rename"}"#) → "{\"refused\":\"操作を読み込めませんでした（…）\"}"
 /// ```
 #[wasm_bindgen]
 pub fn edit(text: &str, intent: &str) -> String {
@@ -121,7 +121,7 @@ pub fn create_project_file(name: &str) -> String {
 }
 
 /// 設定ファイルの使うプラグインの項目を書き換え、`{ text }` か `{ refused }` を JSON で返す
-/// （画面の「追加」・使う／止める・「削除」。ADR-0018 §1）。知らない項目は残す。
+/// （画面の「追加」・使う／止める・「削除」。ADR-0018 §1）。不明な項目は残す。
 ///
 /// 中身は `update_project_plugin_json` に任せる。
 ///
@@ -163,14 +163,14 @@ pub fn update_project_plugin(text: &str, id: &str, change: &str) -> String {
 /// ```text
 /// describePlugin(r#"{"id":"jp.x","name":"例","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#)
 ///   → r#"{"plugin":{"id":"jp.x","name":"例","version":"0.1.0","runtime":"rules"}}"#
-/// describePlugin("{") → r#"{"refused":"modelith-plugin.json の 1 行目：書き方に誤りがあるため読み取れません（JSON：…）"}"#
+/// describePlugin("{") → r#"{"refused":"modelith-plugin.json の 1 行目：書式にエラーがあるため読み込めません（JSON：…）"}"#
 /// ```
 #[wasm_bindgen(js_name = describePlugin)]
 pub fn describe_plugin(text: &str) -> String {
     describe_plugin_json(text)
 }
 
-/// 読み込んだ検査ルールのプラグイン（ADR-0018 §2）。Worker が持ち続け、解析のたびにルールを当てる。
+/// 読み込んだチェックルールのプラグイン（ADR-0018 §2）。Worker が持ち続け、解析のたびにルールを当てる。
 #[wasm_bindgen]
 pub struct RulePlugins {
     set: PluginSet,
@@ -346,11 +346,11 @@ fn load_plugin_set(json: &str) -> PluginSet {
 ///
 /// ```text
 /// update_project_plugin_json("{}", "jp.x", r#"{"op":"add","version":"0.1.0"}"#) → r#"{"text":"{…}"}"#
-/// update_project_plugin_json("{}", "jp.x", r#"{"op":"x"}"#) → r#"{"refused":"変更を読み取れませんでした（…）"}"#
+/// update_project_plugin_json("{}", "jp.x", r#"{"op":"x"}"#) → r#"{"refused":"変更を読み込めませんでした（…）"}"#
 /// ```
 fn update_project_plugin_json(text: &str, id: &str, change: &str) -> String {
     let result = serde_json::from_str::<modelith_core::project_file::PluginChange>(change)
-        .map_err(|e| format!("変更を読み取れませんでした（{e}）"))
+        .map_err(|e| format!("変更を読み込めませんでした（{e}）"))
         .and_then(|c| modelith_core::project_file::update_plugin(text, id, &c));
     match result {
         Ok(text) => serde_json::json!({ "text": text }),
@@ -373,7 +373,7 @@ fn update_project_plugin_json(text: &str, id: &str, change: &str) -> String {
 ///
 /// ```text
 /// describe_plugin_json(マニフェスト) → r#"{"plugin":{"id":"jp.x",…,"runtime":"rules"}}"#
-/// describe_plugin_json("{")         → r#"{"refused":"modelith-plugin.json の 1 行目：書き方に誤りがあるため読み取れません（JSON：…）"}"#
+/// describe_plugin_json("{")         → r#"{"refused":"modelith-plugin.json の 1 行目：書式にエラーがあるため読み込めません（JSON：…）"}"#
 /// ```
 fn describe_plugin_json(text: &str) -> String {
     let file = rules::MANIFEST_FILE;
@@ -445,7 +445,7 @@ struct Refused {
 ///
 /// # 戻り値
 ///
-/// 編集の結果の JSON 文字列。意図が JSON として読めなければ `{"refused":"操作を読み取れませんでした（理由）"}`、
+/// 編集の結果の JSON 文字列。意図が JSON として読めなければ `{"refused":"操作を読み込めませんでした（理由）"}`、
 /// 操作できなければ `{"refused":"画面に出す文"}`。
 ///
 /// # 例
@@ -453,11 +453,11 @@ struct Refused {
 /// ```text
 /// edit_json("// 日本語\npackage P { part def A; }", r#"{"op":"rename","key":"A","name":"B"}"#)
 ///   → "{\"edits\":[{\"start\":28,\"end\":29,\"text\":\"B\"}],…}"
-/// edit_json(…, r#"{"op":"rename"}"#) → "{\"refused\":\"操作を読み取れませんでした（…）\"}"
+/// edit_json(…, r#"{"op":"rename"}"#) → "{\"refused\":\"操作を読み込めませんでした（…）\"}"
 /// ```
 fn edit_json(text: &str, intent: &str) -> String {
     let result = serde_json::from_str::<modelith_core::edit::Intent>(intent)
-        .map_err(|e| format!("操作を読み取れませんでした（{e}）"))
+        .map_err(|e| format!("操作を読み込めませんでした（{e}）"))
         .and_then(|i| modelith_core::edit::edit(text, &i));
     let json = match result {
         Ok(out) => serde_json::to_string(&out),
@@ -554,7 +554,7 @@ mod tests {
             "{ok}"
         );
         assert!(
-            bad.starts_with(r#"{"refused":"操作を読み取れませんでした"#),
+            bad.starts_with(r#"{"refused":"操作を読み込めませんでした"#),
             "{bad}"
         );
     }
@@ -592,9 +592,9 @@ mod tests {
         );
     }
 
-    /// 検査ルールのプラグイン 1 つ（要求に「満たす」関係が無ければ注意）の入力の JSON。
+    /// チェックルールのプラグイン 1 つ（要求に「満たす」関係が無ければ注意）の入力の JSON。
     fn plugin_input(enabled: bool) -> String {
-        let manifest = r#"{"id":"jp.x","name":"トレース","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT","contributes":{"rules":["rules.yaml"]}}"#;
+        let manifest = r#"{"id":"jp.x","name":"トレーサビリティのチェック","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT","contributes":{"rules":["rules.yaml"]}}"#;
         let rules = "rules:\n  - id: req-sat\n    severity: warning\n    message: \"「{name}」を満たす要素がありません\"\n    match: { kind: requirement def }\n    require: { incoming: satisfy }\n";
         serde_json::json!([{ "id": "jp.x", "enabled": enabled, "files": { "modelith-plugin.json": manifest, "rules.yaml": rules } }]).to_string()
     }
@@ -608,7 +608,7 @@ mod tests {
         // Assert
         assert_eq!(
             set.summary,
-            r#"{"plugins":[{"enabled":true,"id":"jp.x","installed":true,"manifest":{"id":"jp.x","name":"トレース","runtime":"rules","version":"0.1.0"},"problems":[],"rules":1}]}"#
+            r#"{"plugins":[{"enabled":true,"id":"jp.x","installed":true,"manifest":{"id":"jp.x","name":"トレーサビリティのチェック","runtime":"rules","version":"0.1.0"},"problems":[],"rules":1}]}"#
         );
         assert!(
             json.ends_with(r#""findings":[{"plugin":"jp.x","rule":"req-sat","severity":"warning","message":"「R」を満たす要素がありません","element":"R","pos":19}]}"#),
@@ -680,7 +680,7 @@ mod tests {
             r#"{"refused":"プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません"}"#
         );
         assert!(
-            unreadable.starts_with(r#"{"refused":"変更を読み取れませんでした"#),
+            unreadable.starts_with(r#"{"refused":"変更を読み込めませんでした"#),
             "{unreadable}"
         );
     }

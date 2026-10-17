@@ -97,7 +97,7 @@ export function coreClient(): CoreClient {
  * @param version 解析したテキストの版（コアの受け口が数える番号）
  * @param P 解析結果
  * @param M 解析結果から組み立てたモデル
- * @param findings 検査ルールの結果（プラグインが無ければ空。ADR-0018 §2）
+ * @param findings チェックルールの結果（プラグインが無ければ空。ADR-0018 §2）
  */
 export function onAnalyzed(version: number, P: ParseResult, M: Model, findings: RuleFinding[]): void {
   S.P = P;
@@ -288,7 +288,7 @@ export function setSync(cls: "" | "busy" | "bad", txt: string): void {
 
 /**
  * 今のモデルから、同期の状態（問題の件数）と、テキスト欄の見出しの要素と関係の数を書き換える。
- * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数に、検査ルールの誤りと注意、プラグインについての行を足したもの。
+ * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数に、チェックルールの誤りと注意、プラグインについての行を足したもの。
  */
 export function updateSync(): void {
   const rules = S.findings.filter((f) => f.severity === "error" || f.severity === "warning").length;
@@ -298,9 +298,9 @@ export function updateSync(): void {
 }
 
 /**
- * 問題（構文エラー・参照切れ・検査ルールの結果・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
- * エラー → 検査ルールの結果 → プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
- * テキストの中の位置があるもの（モデルの問題・検査ルールの結果）は行番号を付け、押すとその行に移る。
+ * 問題（構文エラー・参照切れ・チェックルールの結果・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
+ * エラー → チェックルールの結果 → プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
+ * テキストの中の位置があるもの（モデルの問題・チェックルールの結果）は行番号を付け、押すとその行に移る。
  * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
  */
 export function renderProblems(): void {
