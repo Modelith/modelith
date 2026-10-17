@@ -263,3 +263,60 @@ describe("LocalFolderProvider: 1 つだけ開いたファイルをフォルダ�
     expect(found).toBeNull();
   });
 });
+
+describe("LocalFolderProvider: フォルダの中の決まった場所のファイル（ADR-0019、F-PROJ-1）", () => {
+  it("フォルダの一番上のファイルを読める（一覧に出ないファイルも）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("modelith.json", '{ "name": "給水" }');
+    const folder = (await p.pickFolder())!;
+    // Act
+    const text = await p.readInFolder(folder, "modelith.json");
+    // Assert
+    expect(text).toBe('{ "name": "給水" }');
+    expect(await p.list(folder)).toEqual([]); // 一覧はモデルのファイルだけのまま
+  });
+
+  it("無いファイルは null（境界値: ファイルが無い・途中のフォルダが無い・名前が空）", async () => {
+    // Arrange
+    const { p } = setup();
+    const folder = (await p.pickFolder())!;
+    // Act
+    const texts = await Promise.all(["modelith.json", "none/a.json", ""].map((path) => p.readInFolder(folder, path)));
+    // Assert
+    expect(texts).toEqual([null, null, null]);
+  });
+
+  it("フォルダの中のファイルを、途中のフォルダごと作って書ける", async () => {
+    // Arrange
+    const { p, root } = setup();
+    const folder = (await p.pickFolder())!;
+    // Act
+    await p.writeInFolder(folder, "modelith.json", "{}\n");
+    await p.writeInFolder(folder, ".modelith/x.json", "X");
+    // Assert
+    expect((root.entries.get("modelith.json") as FakeFile).content).toBe("{}\n");
+    expect(await p.readInFolder(folder, ".modelith/x.json")).toBe("X");
+  });
+
+  it("あるファイルに書くと、内容を置き換える", async () => {
+    // Arrange
+    const { p, root } = setup();
+    const file = root.put("modelith.json", "old");
+    const folder = (await p.pickFolder())!;
+    // Act
+    await p.writeInFolder(folder, "modelith.json", "new");
+    // Assert
+    expect(file.content).toBe("new");
+  });
+
+  it("名前が空・開いていないフォルダには書けない（異常系）", async () => {
+    // Arrange
+    const { p } = setup();
+    const folder = (await p.pickFolder())!;
+    const other = { provider: "local", id: "dir:99", name: "x" };
+    // Act & Assert
+    await expect(p.writeInFolder(folder, "", "x")).rejects.toThrow("ファイル名がありません");
+    await expect(p.writeInFolder(other, "modelith.json", "x")).rejects.toThrow("フォルダ「x」は開かれていません");
+  });
+});

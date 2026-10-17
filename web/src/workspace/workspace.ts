@@ -3,6 +3,7 @@
 
 import {
   ConflictError,
+  hasFolderFiles,
   hasSiblingFiles,
   isReadable,
   isWritable,
@@ -60,6 +61,25 @@ export interface OpenFolder {
   source: FolderSource;
   ref: FolderRef;
   entries: DirEntry[];
+  /** フォルダの一番上のプロジェクトの設定ファイル（modelith.json）のテキスト。無ければ null（ADR-0019）。 */
+  projectText: string | null;
+}
+
+/** プロジェクトの設定ファイルの名前（フォルダの一番上に置く、ADR-0019 §1）。 */
+export const PROJECT_FILE = "modelith.json";
+
+/**
+ * フォルダの一番上のプロジェクトの設定ファイルを読む。
+ *
+ * @param source フォルダのプロバイダ
+ * @param ref 開いたフォルダ
+ * @returns 設定ファイルのテキスト。無い・フォルダの中のファイルを読めないプロバイダなら null。読む途中の失敗はそのまま投げる
+ * @example
+ * await readProjectText(local, folder) // → '{ "name": "給水" }'
+ * await readProjectText(local, empty)  // → null（modelith.json が無い）
+ */
+async function readProjectText(source: FolderSource, ref: FolderRef): Promise<string | null> {
+  return hasFolderFiles(source) ? source.readInFolder(ref, PROJECT_FILE) : null;
 }
 
 /**
@@ -536,12 +556,35 @@ export class Workspace {
     return this.setFolder(source, await source.reopenRecent());
   }
 
-  /** 開いているフォルダの中身を一覧し直し、変更を知らせる。フォルダが開かれていなければ何もしない。 */
+  /** 開いているフォルダの中身とプロジェクトの設定ファイルを読み直し、変更を知らせる。フォルダが開かれていなければ何もしない。 */
   async refreshFolder(): Promise<void> {
     const f = this.folderState;
     if (!f) return;
     f.entries = await f.source.list(f.ref);
+    f.projectText = await readProjectText(f.source, f.ref);
     this.changed();
+  }
+
+  /**
+   * 開いているフォルダをプロジェクトにする（ADR-0019、F-PROJ-1）。一番上に設定ファイル（modelith.json）を書き、読み直して変更を知らせる。
+   * 利用者が「プロジェクトにする」を選んだときだけ呼ぶ（C-6）。既にある設定ファイルは上書きしない。
+   *
+   * @param text 設定ファイルに書くテキスト（コアの createProjectFile で作ったもの）
+   * @returns 書き終えたら解決する Promise。フォルダが開かれていない・フォルダの中に書けない・既に設定ファイルがあるときは、
+   *   書かずに例外（Error）で拒否する
+   * @example
+   * await ws.makeProject('{\n  "name": "給水",\n  "plugins": {}\n}\n') // → ws.folder()?.projectText がそのテキストになる
+   * await ws.makeProject("{}") // → Error「このフォルダは既にプロジェクトです（modelith.json があります）」（あるとき）
+   */
+  async makeProject(text: string): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    const source = f.source;
+    if (!hasFolderFiles(source)) throw new Error("このフォルダには設定ファイルを書けません");
+    // 開いた後に他のアプリで作られていても、上書きしない
+    if ((await source.readInFolder(f.ref, PROJECT_FILE)) !== null) throw new Error(`このフォルダは既にプロジェクトです（${PROJECT_FILE} があります）`);
+    await source.writeInFolder(f.ref, PROJECT_FILE, text);
+    await this.refreshFolder();
   }
 
   /**
@@ -563,7 +606,7 @@ export class Workspace {
   }
 
   /**
-   * フォルダを開いているフォルダにし、中身を一覧して変更を知らせる。
+   * フォルダを開いているフォルダにし、中身を一覧し、プロジェクトの設定ファイルを読んで変更を知らせる。
    *
    * @param source フォルダのプロバイダ
    * @param ref 開くフォルダ。null（選ばなかった）なら何も変えない
@@ -574,7 +617,7 @@ export class Workspace {
    */
   private async setFolder(source: FolderSource, ref: FolderRef | null): Promise<boolean> {
     if (!ref) return false;
-    this.folderState = { source, ref, entries: await source.list(ref) };
+    this.folderState = { source, ref, entries: await source.list(ref), projectText: await readProjectText(source, ref) };
     this.changed();
     return true;
   }

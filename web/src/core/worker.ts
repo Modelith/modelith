@@ -1,8 +1,8 @@
 // コアを動かす Web Worker（ADR-0003・ADR-0016）。テキストと解析を Worker の中で持ち、画面のスレッドを止めない。
 
 /// <reference lib="webworker" />
-import initWasm, { analyze, edit } from "./wasm/modelith_core.js";
-import { handle, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
+import initWasm, { analyze, createProjectFile, edit, parseProjectFile } from "./wasm/modelith_core.js";
+import { failedReply, handle, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -24,10 +24,9 @@ self.onmessage = (ev: MessageEvent<CoreRequest>): void => {
     return;
   }
   try {
-    reply(handle(state, req, { analyze, edit }));
+    reply(handle(state, req, { analyze, edit, parseProjectFile, createProjectFile }));
   } catch (e) {
     // wasm の中で予期しない失敗が起きても、画面が待ち続けないように返事をする（画面の側で、要素の無い結果や断りにする）
-    const message = e instanceof Error ? e.message : String(e);
-    reply(req.type === "didChange" ? { type: "analyzed", version: req.version, json: `{"error":${JSON.stringify(message)}}` } : { type: "edited", version: req.version, id: req.id, json: JSON.stringify({ refused: `操作できませんでした（${message}）` }) });
+    reply(failedReply(req, e instanceof Error ? e.message : String(e)));
   }
 };

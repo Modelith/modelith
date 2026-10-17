@@ -1,8 +1,8 @@
 // 画面の側から見たコア（ADR-0016 §4）。テキストを変えるたびに版を 1 つ上げてコアに送り、
 // 返ってきた結果の版が今の版と同じときだけ使う。違えば捨てる（解析なら次の結果を待ち、編集なら適用しない）。
 
-import type { CoreRequest, CoreResponse } from "./protocol";
-import { fromAnalysis, type EditResult, type Intent, type Refused } from "./rust";
+import { projectReadProblem, type CoreRequest, type CoreResponse } from "./protocol";
+import { fromAnalysis, type CreatedProjectFile, type EditResult, type Intent, type ProjectFileResult, type Refused } from "./rust";
 import type { Model, ParseResult } from "./types";
 
 /** コアとの通り道（Worker、またはテストでは同じスレッドの関数）。 */
@@ -24,6 +24,8 @@ export class CoreClient {
   private readonly texts = new Map<number, string>();
   private nextId = 1;
   private readonly waiting = new Map<number, (r: EditResult | Refused) => void>();
+  /** 設定ファイル（modelith.json）の依頼のうち、返事を待っているもの（返事の JSON を受け取る）。 */
+  private readonly projectWaiting = new Map<number, (json: string) => void>();
 
   /**
    * コアの受け口を作り、コアからの返事を聞き始める。
@@ -91,7 +93,52 @@ export class CoreClient {
   }
 
   /**
-   * コアからの返事を 1 つ受け取る。今の版の解析結果なら onAnalyzed を呼び、編集の返事なら待っている edit を解決する。
+   * プロジェクトの設定ファイル（modelith.json）のテキストを、コアに読み取ってもらう（ADR-0019、F-PROJ-1）。
+   * モデルのテキストの版とは関係しない（テキストが変わっても断らない）。
+   *
+   * @param text modelith.json のテキスト全体
+   * @returns 読み取れた設定（誤りがあれば null）と問題の一覧。コアの返事が読めなければ、
+   *   設定は null で「設定ファイルを読み取れませんでした…」の誤り 1 件。例外は投げない
+   * @example
+   * await c.parseProjectFile('{ "name": "給水" }') // → { project: { name: "給水", plugins: {} }, problems: [] }
+   * await c.parseProjectFile("{")                   // → { project: null, problems: [{ severity: "error", line: 1, column: 1, … }] }
+   */
+  async parseProjectFile(text: string): Promise<ProjectFileResult> {
+    return parseProjectResult(await this.request((id) => ({ type: "parseProject", id, text })));
+  }
+
+  /**
+   * 新しいプロジェクトの設定ファイル（modelith.json）のテキストを、コアに作ってもらう（「プロジェクトにする」）。
+   *
+   * @param name プロジェクト名（前後の空白は除く。空なら名前を書かない）
+   * @returns 作ったテキスト。コアの返事が読めなければ、作れなかった旨の断り。例外は投げない
+   * @example
+   * await c.createProjectFile("給水") // → { text: '{\n  "name": "給水",\n  "plugins": {}\n}\n' }
+   * // コアが壊れた返事をしたとき → { refused: "プロジェクトの設定ファイルを作れませんでした（…）" }
+   */
+  async createProjectFile(name: string): Promise<CreatedProjectFile | Refused> {
+    return parseCreated(await this.request((id) => ({ type: "createProject", id, name })));
+  }
+
+  /**
+   * 設定ファイルの依頼をコアに送り、返事の JSON を待つ。
+   *
+   * @param make 依頼の id から依頼を作る関数
+   * @returns 同じ id の返事の JSON の文字列で解決する Promise
+   * @example
+   * await this.request((id) => ({ type: "parseProject", id, text: "{}" })) // → '{"project":{"plugins":{}},"problems":[]}'
+   */
+  private request(make: (id: number) => CoreRequest): Promise<string> {
+    const id = this.nextId++;
+    return new Promise((resolve) => {
+      this.projectWaiting.set(id, resolve);
+      this.port.post(make(id));
+    });
+  }
+
+  /**
+   * コアからの返事を 1 つ受け取る。今の版の解析結果なら onAnalyzed を呼び、編集の返事なら待っている edit を、
+   * 設定ファイルの返事なら待っている parseProjectFile・createProjectFile を解決する。
    * 古い版の解析結果は捨て、古い版の編集の返事は断り（STALE_EDIT）にする。
    *
    * @param res コアからの返事
@@ -108,6 +155,10 @@ export class CoreClient {
       const resolve = this.waiting.get(res.id);
       this.waiting.delete(res.id);
       resolve?.(res.version === this.version ? parseEdited(res.json) : { refused: STALE_EDIT });
+    } else if (res.type === "projectParsed" || res.type === "projectCreated") {
+      const resolve = this.projectWaiting.get(res.id);
+      this.projectWaiting.delete(res.id);
+      resolve?.(res.json);
     }
   }
 }
@@ -126,6 +177,47 @@ function parseEdited(json: string): EditResult | Refused {
     return JSON.parse(json) as EditResult | Refused;
   } catch (e) {
     return { refused: `操作できませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` };
+  }
+}
+
+/**
+ * コアが返した設定ファイルの読み取りの結果（JSON）を読む。
+ *
+ * @param json wasm の `parseProjectFile` が返した JSON の文字列
+ * @returns 読み取りの結果。JSON が壊れている・形が違うときは、設定は null で「設定ファイルを読み取れませんでした…」の誤り 1 件（例外は投げない）
+ * @example
+ * parseProjectResult('{"project":null,"problems":[]}') // → { project: null, problems: [] }
+ * parseProjectResult('{"error":"x"}')                  // → { project: null, problems: [{ …, message: "設定ファイルを読み取れませんでした（x）" }] }
+ * parseProjectResult("{")                              // → { project: null, problems: [{ …, message: "設定ファイルを読み取れませんでした（…）" }] }
+ */
+function parseProjectResult(json: string): ProjectFileResult {
+  try {
+    const r = JSON.parse(json) as Partial<ProjectFileResult> & { error?: string };
+    if (Array.isArray(r.problems) && r.project !== undefined) return { project: r.project, problems: r.problems };
+    return { project: null, problems: [projectReadProblem(r.error ?? "コアの返事の形が違います")] };
+  } catch (e) {
+    return { project: null, problems: [projectReadProblem(e instanceof Error ? e.message : String(e))] };
+  }
+}
+
+/**
+ * コアが返した、新しい設定ファイルのテキスト（JSON）を読む。
+ *
+ * @param json wasm の `createProjectFile` が返した JSON の文字列
+ * @returns テキストか断り。JSON が壊れている・形が違うときは「プロジェクトの設定ファイルを作れませんでした…」の断り（例外は投げない）
+ * @example
+ * parseCreated('{"text":"{}\\n"}') // → { text: "{}\n" }
+ * parseCreated('{"refused":"x"}')    // → { refused: "x" }
+ * parseCreated("{")                  // → { refused: "プロジェクトの設定ファイルを作れませんでした（…）" }
+ */
+function parseCreated(json: string): CreatedProjectFile | Refused {
+  try {
+    const r = JSON.parse(json) as Partial<CreatedProjectFile & Refused>;
+    if (typeof r.text === "string") return { text: r.text };
+    if (typeof r.refused === "string") return { refused: r.refused };
+    return { refused: "プロジェクトの設定ファイルを作れませんでした（コアの返事の形が違います）" };
+  } catch (e) {
+    return { refused: `プロジェクトの設定ファイルを作れませんでした（${e instanceof Error ? e.message : String(e)}）` };
   }
 }
 

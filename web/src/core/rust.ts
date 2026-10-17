@@ -276,6 +276,42 @@ export interface Refused {
   refused: string;
 }
 
+/** プロジェクトが使うプラグイン 1 つの設定（modelith.json の `plugins` の値、ADR-0019）。知らない項目もそのまま持つ。 */
+export interface PluginUse {
+  version?: string;
+  enabled: boolean;
+  /** プラグインごとの設定（中身はプラグインが決める）。 */
+  settings?: unknown;
+  [key: string]: unknown;
+}
+
+/** プロジェクトの設定ファイル（modelith.json）の中身（形は crates/modelith-core/src/project_file）。知らない項目もそのまま持つ。 */
+export interface ProjectFile {
+  /** 画面に出すプロジェクト名。無ければフォルダ名を出す。 */
+  name?: string;
+  plugins: Record<string, PluginUse>;
+  [key: string]: unknown;
+}
+
+/** 設定ファイルの問題 1 件。行・列は 1 始まり（列は UTF-16 の単位）、message は画面にそのまま出す文。 */
+export interface ProjectProblem {
+  severity: "error" | "warning";
+  line: number;
+  column: number;
+  message: string;
+}
+
+/** 設定ファイルを読み取った結果。誤り（error）があれば project は null。 */
+export interface ProjectFileResult {
+  project: ProjectFile | null;
+  problems: ProjectProblem[];
+}
+
+/** 新しく作った設定ファイルのテキスト。 */
+export interface CreatedProjectFile {
+  text: string;
+}
+
 /**
  * 今のテキストに意図を当てて、テキストの編集を返す（Rust のコア、ADR-0016）。例外は投げない（Q-5）。
  *

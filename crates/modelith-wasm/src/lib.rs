@@ -69,6 +69,95 @@ pub fn edit(text: &str, intent: &str) -> String {
     edit_json(text, intent)
 }
 
+/// プロジェクトの設定ファイル（`modelith.json`）のテキストを読み取り、`{ project, problems }` を JSON で返す（ADR-0019、F-PROJ-1）。
+///
+/// 中身は `parse_project_file_json` に任せる。
+///
+/// # 引数
+///
+/// - `text`：`modelith.json` のテキスト全体
+///
+/// # 戻り値
+///
+/// `{ "project": … | null, "problems": [{ "severity", "line", "column", "message" }] }` の JSON 文字列。
+/// 行・列は 1 始まり（列は UTF-16 コード単位）。読み取れなくても失敗せず、理由は `problems` に入る。
+///
+/// # 例
+///
+/// ```text
+/// parseProjectFile(r#"{"name":"A"}"#) → "{\"project\":{\"name\":\"A\",\"plugins\":{}},\"problems\":[]}"
+/// parseProjectFile("{")              → "{\"project\":null,\"problems\":[{\"severity\":\"error\",\"line\":1,\"column\":1,…}]}"
+/// ```
+#[wasm_bindgen(js_name = parseProjectFile)]
+pub fn parse_project_file(text: &str) -> String {
+    parse_project_file_json(text)
+}
+
+/// 新しいプロジェクトの設定ファイルのテキストを作り、`{ text }` を JSON で返す（「プロジェクトにする」、F-PROJ-1）。
+///
+/// 中身は `create_project_file_json` に任せる。
+///
+/// # 引数
+///
+/// - `name`：プロジェクト名（前後の空白は除く。空なら名前を書かない）
+///
+/// # 戻り値
+///
+/// `{ "text": "modelith.json のテキスト" }` の JSON 文字列。
+///
+/// # 例
+///
+/// ```text
+/// createProjectFile("A")  → r#"{"text":"{\n  \"name\": \"A\",\n  \"plugins\": {}\n}\n"}"#
+/// createProjectFile("  ") → r#"{"text":"{\n  \"plugins\": {}\n}\n"}"#   // 空の名前は書かない
+/// ```
+#[wasm_bindgen(js_name = createProjectFile)]
+pub fn create_project_file(name: &str) -> String {
+    create_project_file_json(name)
+}
+
+/// 設定ファイルを読み取り、結果を JSON にする（`parse_project_file` の中身）。
+///
+/// # 引数
+///
+/// - `text`：`modelith.json` のテキスト全体
+///
+/// # 戻り値
+///
+/// `{ "project": …, "problems": … }` の JSON 文字列。JSON への変換に失敗したときは `{"error":"理由"}`
+/// （文字列のキーと JSON の値だけの構造なので、実際には起きない）。
+///
+/// # 例
+///
+/// ```text
+/// parse_project_file_json("{}") → "{\"project\":{\"plugins\":{}},\"problems\":[]}"
+/// parse_project_file_json("")   → "{\"project\":null,\"problems\":[{\"severity\":\"error\",…}]}"
+/// ```
+fn parse_project_file_json(text: &str) -> String {
+    serde_json::to_string(&modelith_core::project_file::parse(text))
+        .unwrap_or_else(|e| format!(r#"{{"error":"{e}"}}"#))
+}
+
+/// 新しい設定ファイルのテキストを作り、`{ text }` の JSON にする（`create_project_file` の中身）。
+///
+/// # 引数
+///
+/// - `name`：プロジェクト名
+///
+/// # 戻り値
+///
+/// `{ "text": … }` の JSON 文字列（文字列 1 つだけなので、変換は失敗しない）。
+///
+/// # 例
+///
+/// ```text
+/// create_project_file_json("A") → r#"{"text":"{\n  \"name\": \"A\",\n  \"plugins\": {}\n}\n"}"#
+/// create_project_file_json("")  → r#"{"text":"{\n  \"plugins\": {}\n}\n"}"#
+/// ```
+fn create_project_file_json(name: &str) -> String {
+    serde_json::json!({ "text": modelith_core::project_file::create(name) }).to_string()
+}
+
 #[derive(serde::Serialize)]
 struct Refused {
     refused: String,
@@ -165,6 +254,39 @@ mod tests {
         assert!(
             bad.starts_with(r#"{"refused":"操作を読み取れませんでした"#),
             "{bad}"
+        );
+    }
+
+    #[test]
+    fn parse_project_file_json_returns_project_and_problems() {
+        // Arrange
+        let ok = r#"{"name":"A","x":1}"#;
+        // Act
+        let good = parse_project_file_json(ok);
+        let bad = parse_project_file_json("{");
+        // Assert（正常系と、読み取れないテキストの異常系）
+        assert!(
+            good.starts_with(r#"{"project":{"name":"A","plugins":{},"x":1},"problems":[{"severity":"warning","line":1,"column":13,"#),
+            "{good}"
+        );
+        assert!(
+            bad.starts_with(
+                r#"{"project":null,"problems":[{"severity":"error","line":1,"column":1,"#
+            ),
+            "{bad}"
+        );
+    }
+
+    #[test]
+    fn create_project_file_json_wraps_the_text() {
+        // Arrange
+        let name = "A";
+        // Act
+        let json = create_project_file_json(name);
+        // Assert
+        assert_eq!(
+            json,
+            r#"{"text":"{\n  \"name\": \"A\",\n  \"plugins\": {}\n}\n"}"#
         );
     }
 }

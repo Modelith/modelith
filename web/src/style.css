@@ -230,6 +230,8 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .explorer .sec{display:flex;align-items:center;gap:4px;padding:6px 10px 4px;font-size:11px;font-weight:700;color:var(--ink2);letter-spacing:.04em}
 .explorer .sec .grow{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .explorer .sec button{padding:1px 7px;font-size:11px;font-weight:400}
+.explorer .mkproj{padding:0 10px 6px}
+.explorer .mkproj button{padding:1px 7px;font-size:11px;font-weight:400}
 .explorer .msg{padding:4px 12px 8px;color:var(--ink2);font-size:12px;line-height:1.6}
 .explorer .msg button{margin-top:6px}
 .fi{display:flex;align-items:center;gap:5px;padding:3px 8px 3px calc(10px + var(--d) * 14px);cursor:pointer;white-space:nowrap;min-height:26px;user-select:none}
