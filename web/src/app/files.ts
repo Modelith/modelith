@@ -18,6 +18,7 @@ import { dropHistory, recordHistory, useHistory } from "./history";
 import { layoutFromJson, type Layout } from "./layout";
 import { isEmptyLayout, parseLayoutFile, serializeLayout } from "./layout-file";
 import { clearSel, S } from "./state";
+import { addPlugin, initPlugins, openPlugins, pluginExplorerHtml, reloadPlugins } from "./plugin-panel";
 import { projectNotice, projectTitle } from "./project";
 import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast } from "./sync";
 import { opsIdle } from "./intent";
@@ -352,6 +353,7 @@ async function closeDoc(key: string): Promise<void> {
 /**
  * 開いているフォルダのプロジェクトの設定ファイル（modelith.json）が変わったら、コアに読み取ってもらう（ADR-0019、F-PROJ-1）。
  * ワークスペースの変更のたびに呼ぶ。読み取れたらエクスプローラーを描き直し、問題があればトーストで知らせる（黙って捨てない）。
+ * 読み取った設定で、プロジェクトのプラグインを読み込み直す（ADR-0018）。プロジェクトでなくなったら、プラグインを外す。
  * 同じフォルダの同じテキストなら、読み直さない。
  */
 function syncProject(): void {
@@ -361,7 +363,10 @@ function syncProject(): void {
   if (key === projectKey) return;
   projectKey = key;
   project = null;
-  if (key === null || text === null) return;
+  if (key === null || text === null) {
+    void reloadPlugins();
+    return;
+  }
   void coreClient()
     .parseProjectFile(text)
     .then((result) => {
@@ -371,7 +376,18 @@ function syncProject(): void {
       const notice = projectNotice(result.problems);
       if (notice) toast(notice);
       renderFiles();
+      void reloadPlugins();
     });
+}
+
+/**
+ * 開いているフォルダの一覧と設定ファイルを読み直し、プロジェクトのプラグインも読み込み直す（「一覧を更新」・プラグインの追加や削除の後）。
+ * 設定ファイルが変われば、その読み取りの後に読み込み直されるので、ここでは変わらなかったときだけ読み込み直す。
+ */
+async function refreshFolder(): Promise<void> {
+  const before = ws.folder()?.projectText ?? null;
+  await ws.refreshFolder();
+  if ((ws.folder()?.projectText ?? null) === before) await reloadPlugins();
 }
 
 /**
@@ -472,6 +488,7 @@ function renderFiles(): void {
 /**
  * エクスプローラーの、開いているフォルダの見出しの HTML を作る（F-FILE-1・F-PROJ-1）。
  * プロジェクトならプロジェクト名、そうでなければフォルダ名を出す。設定ファイルの無いフォルダには、見出しの下に「プロジェクトにする」を出す。
+ * プロジェクトには、見出しの下に「プラグイン」と、足りないプラグインの案内を出す（F-PLUG-9）。
  *
  * @returns 見出し（と「プロジェクトにする」の行）の HTML。フォルダを開いていなければ ""
  * @example
@@ -489,7 +506,7 @@ function folderHeader(): string {
   const make = f.projectText === null && hasFolderFiles(f.source)
     ? `<div class="mkproj"><button data-cmd="makeProject" title="名前と、使うプラグインなどの設定を、チームで共有できるようにします（設定ファイル ${PROJECT_FILE} を作ります）">プロジェクトにする</button></div>`
     : "";
-  return `<div class="sec"><span class="grow" data-folder title="${esc(title)}">${esc((named ?? f.ref.name).toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}`;
+  return `<div class="sec"><span class="grow" data-folder title="${esc(title)}">${esc((named ?? f.ref.name).toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}${pluginExplorerHtml()}`;
 }
 
 /**
@@ -623,7 +640,7 @@ function initMenu(): void {
 
 /**
  * エクスプローラーに操作をつなぐ。文書を押して表示・閉じる、フォルダの開閉、フォルダのファイルを開く、
- * 新しいファイル・一覧の更新・プロジェクトにする・フォルダを開くのボタン。前回選んだ横のパネルを戻す。
+ * 新しいファイル・一覧の更新・プロジェクトにする・プラグイン・プラグインの追加・フォルダを開くのボタン。前回選んだ横のパネルを戻す。
  */
 function initExplorer(): void {
   $("#sideFiles").onclick = () => showSide("files");
@@ -639,8 +656,10 @@ function initExplorer(): void {
     const c = closest(ev, "[data-cmd]")?.dataset["cmd"];
     if (c === "new") return newUntitled();
     if (c === "newInFolder") return void newFileInFolder();
-    if (c === "refresh") return void ws.refreshFolder();
+    if (c === "refresh") return void refreshFolder();
     if (c === "makeProject") return void makeProject();
+    if (c === "plugins") return openPlugins();
+    if (c === "addPlugin") return void addPlugin();
     if (c === "openFolder") return void openFolder();
     if (c === "reopen") return void openFolder(true);
     const doc = closest(ev, "[data-doc]")?.dataset["doc"];
@@ -716,6 +735,13 @@ export function initFiles(sample: { name: string; text: string; layout: string }
   ws.subscribe(renderFiles);
   initMenu();
   initExplorer();
+  initPlugins({
+    canOpenFolders: !!local,
+    folder: () => ws.folder(),
+    project: () => project,
+    refreshFolder,
+    rerender: renderFiles,
+  });
   $("#btnSample").onclick = () => {
     closeMenus();
     showDoc(ws.newUntitled(sample.name, sample.text, sample.layout).key);

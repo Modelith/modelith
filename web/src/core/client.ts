@@ -2,7 +2,10 @@
 // 返ってきた結果の版が今の版と同じときだけ使う。違えば捨てる（解析なら次の結果を待ち、編集なら適用しない）。
 
 import { projectReadProblem, type CoreRequest, type CoreResponse } from "./protocol";
-import { fromAnalysis, type CreatedProjectFile, type EditResult, type Intent, type ProjectFileResult, type Refused } from "./rust";
+import {
+  fromAnalysis, type CreatedProjectFile, type DescribedPlugin, type EditResult, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
+  type Refused, type RuleFinding,
+} from "./rust";
 import type { Model, ParseResult } from "./types";
 
 /** コアとの通り道（Worker、またはテストでは同じスレッドの関数）。 */
@@ -14,8 +17,8 @@ export interface CorePort {
 /** 編集の返事が古かったときの断り（ADR-0014 の言葉）。 */
 export const STALE_EDIT = "テキストが変わったため、この操作はやめました。もう一度操作してください";
 
-/** 解析結果を受け取ったときの処理。 */
-export type AnalyzedListener = (version: number, P: ParseResult, M: Model) => void;
+/** 解析結果を受け取ったときの処理。findings は検査ルールの結果（プラグインが無ければ空）。 */
+export type AnalyzedListener = (version: number, P: ParseResult, M: Model, findings: RuleFinding[]) => void;
 
 export class CoreClient {
   private version = 0;
@@ -24,8 +27,8 @@ export class CoreClient {
   private readonly texts = new Map<number, string>();
   private nextId = 1;
   private readonly waiting = new Map<number, (r: EditResult | Refused) => void>();
-  /** 設定ファイル（modelith.json）の依頼のうち、返事を待っているもの（返事の JSON を受け取る）。 */
-  private readonly projectWaiting = new Map<number, (json: string) => void>();
+  /** 設定ファイル（modelith.json）とプラグインの依頼のうち、返事を待っているもの（返事の JSON を受け取る）。 */
+  private readonly jsonWaiting = new Map<number, (json: string) => void>();
 
   /**
    * コアの受け口を作り、コアからの返事を聞き始める。
@@ -64,6 +67,19 @@ export class CoreClient {
    */
   sync(text: string): number {
     if (text === this.sent) return this.version;
+    return this.send(text);
+  }
+
+  /**
+   * テキストに新しい版を付けてコアに送る（`didChange`）。同じテキストでも送る。
+   *
+   * @param text 今のテキストの全文
+   * @returns 送ったテキストの版
+   * @example
+   * this.send("x") // → 1
+   * this.send("x") // → 2（同じテキストでも版を上げて送る）
+   */
+  private send(text: string): number {
     this.version += 1;
     this.sent = text;
     this.texts.set(this.version, text);
@@ -121,7 +137,52 @@ export class CoreClient {
   }
 
   /**
-   * 設定ファイルの依頼をコアに送り、返事の JSON を待つ。
+   * 設定ファイルの使うプラグインの項目を、コアに書き換えてもらう（「追加」・使う／止める・「削除」。ADR-0018 §1）。知らない項目は残る。
+   *
+   * @param text 今の modelith.json のテキスト全体
+   * @param plugin プラグインの ID
+   * @param change 変更（加える・使う／止める・外す）
+   * @returns 書き換えた後のテキスト。書き換えられなければ理由の断り。例外は投げない
+   * @example
+   * await c.updateProjectPlugin("{}", "jp.x", { op: "add", version: "0.1.0" }) // → { text: '{\n  "plugins": {\n    "jp.x": {…}\n  }\n}\n' }
+   * await c.updateProjectPlugin("{}", "jp.x", { op: "remove" })                // → { refused: "プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません" }
+   */
+  async updateProjectPlugin(text: string, plugin: string, change: PluginChange): Promise<CreatedProjectFile | Refused> {
+    return parseText(await this.request((id) => ({ type: "updateProject", id, text, plugin, change })), "プロジェクトの設定を書き換えられませんでした");
+  }
+
+  /**
+   * 検査ルールのプラグインをコアに読み込ませる（前のものは置き換える。ADR-0018 §2）。
+   * 前にテキストを送っていれば、同じテキストを新しい版で送り直し、ルールの結果を付けた解析結果を受け取れるようにする。
+   *
+   * @param plugins プラグインごとの ID・使うか・ファイル（空なら、ルールを当てない）
+   * @returns プラグインごとのまとめ。コアの返事が読めなければ、まとめは空で error に理由。例外は投げない
+   * @example
+   * await c.setPlugins([{ id: "jp.x", enabled: true, files: { "modelith-plugin.json": "…", "rules.yaml": "…" } }])
+   * // → { plugins: [{ id: "jp.x", installed: true, rules: 1, problems: [], … }] }（続けて onAnalyzed に findings が届く）
+   * await c.setPlugins([]) // → { plugins: [] }
+   */
+  async setPlugins(plugins: PluginFiles[]): Promise<PluginsResult> {
+    const pending = this.request((id) => ({ type: "setPlugins", id, plugins }));
+    if (this.sent !== null) this.send(this.sent);
+    return parsePlugins(await pending);
+  }
+
+  /**
+   * プラグインのマニフェスト（modelith-plugin.json）を、コアに読んでもらう（「追加」の確認に使う）。
+   *
+   * @param text マニフェストのテキスト
+   * @returns 名前・版・種類。読めなければ、どこが悪いかの断り。例外は投げない
+   * @example
+   * await c.describePlugin('{"id":"jp.x","name":"例",…,"runtime":"rules",…}') // → { plugin: { id: "jp.x", name: "例", version: "0.1.0", runtime: "rules" } }
+   * await c.describePlugin("{")                                               // → { refused: "modelith-plugin.json の 1 行目：…" }
+   */
+  async describePlugin(text: string): Promise<DescribedPlugin | Refused> {
+    return parseDescribed(await this.request((id) => ({ type: "describePlugin", id, text })));
+  }
+
+  /**
+   * 設定ファイル・プラグインの依頼をコアに送り、返事の JSON を待つ。
    *
    * @param make 依頼の id から依頼を作る関数
    * @returns 同じ id の返事の JSON の文字列で解決する Promise
@@ -131,14 +192,14 @@ export class CoreClient {
   private request(make: (id: number) => CoreRequest): Promise<string> {
     const id = this.nextId++;
     return new Promise((resolve) => {
-      this.projectWaiting.set(id, resolve);
+      this.jsonWaiting.set(id, resolve);
       this.port.post(make(id));
     });
   }
 
   /**
    * コアからの返事を 1 つ受け取る。今の版の解析結果なら onAnalyzed を呼び、編集の返事なら待っている edit を、
-   * 設定ファイルの返事なら待っている parseProjectFile・createProjectFile を解決する。
+   * 設定ファイル・プラグインの返事なら、待っている依頼（parseProjectFile・setPlugins など）を解決する。
    * 古い版の解析結果は捨て、古い版の編集の返事は断り（STALE_EDIT）にする。
    *
    * @param res コアからの返事
@@ -149,15 +210,15 @@ export class CoreClient {
       for (const v of this.texts.keys()) if (v <= res.version) this.texts.delete(v);
       // 古い版の結果は捨てて、次の結果を待つ
       if (res.version !== this.version || text === undefined) return;
-      const { P, M } = fromAnalysis(res.json, text);
-      this.onAnalyzed(res.version, P, M);
+      const { P, M, findings } = fromAnalysis(res.json, text);
+      this.onAnalyzed(res.version, P, M, findings);
     } else if (res.type === "edited") {
       const resolve = this.waiting.get(res.id);
       this.waiting.delete(res.id);
       resolve?.(res.version === this.version ? parseEdited(res.json) : { refused: STALE_EDIT });
-    } else if (res.type === "projectParsed" || res.type === "projectCreated") {
-      const resolve = this.projectWaiting.get(res.id);
-      this.projectWaiting.delete(res.id);
+    } else if (res.type !== "ready" && res.type !== "failed") {
+      const resolve = this.jsonWaiting.get(res.id);
+      this.jsonWaiting.delete(res.id);
       resolve?.(res.json);
     }
   }
@@ -211,13 +272,69 @@ function parseProjectResult(json: string): ProjectFileResult {
  * parseCreated("{")                  // → { refused: "プロジェクトの設定ファイルを作れませんでした（…）" }
  */
 function parseCreated(json: string): CreatedProjectFile | Refused {
+  return parseText(json, "プロジェクトの設定ファイルを作れませんでした");
+}
+
+/**
+ * コアが返した、設定ファイルのテキストか断りの JSON（`{ text }`・`{ refused }`）を読む。
+ *
+ * @param json wasm が返した JSON の文字列
+ * @param failure 読めなかったときの断りの文の頭（理由は括弧に入れて足す）
+ * @returns テキストか断り。JSON が壊れている・形が違うときは「failure（理由）」の断り（例外は投げない）
+ * @example
+ * parseText('{"text":"{}"}', "作れませんでした")    // → { text: "{}" }
+ * parseText('{"refused":"x"}', "作れませんでした")  // → { refused: "x" }
+ * parseText("{}", "作れませんでした")               // → { refused: "作れませんでした（コアの返事の形が違います）" }
+ */
+function parseText(json: string, failure: string): CreatedProjectFile | Refused {
   try {
     const r = JSON.parse(json) as Partial<CreatedProjectFile & Refused>;
     if (typeof r.text === "string") return { text: r.text };
     if (typeof r.refused === "string") return { refused: r.refused };
-    return { refused: "プロジェクトの設定ファイルを作れませんでした（コアの返事の形が違います）" };
+    return { refused: `${failure}（コアの返事の形が違います）` };
   } catch (e) {
-    return { refused: `プロジェクトの設定ファイルを作れませんでした（${e instanceof Error ? e.message : String(e)}）` };
+    return { refused: `${failure}（${e instanceof Error ? e.message : String(e)}）` };
+  }
+}
+
+/**
+ * コアが返した、プラグインのまとめ（JSON）を読む。
+ *
+ * @param json `RulePlugins.summary` が返した JSON の文字列（失敗したときは `{ error }`）
+ * @returns まとめ。JSON が壊れている・形が違う・コアが失敗したときは、まとめは空で error に理由（例外は投げない）
+ * @example
+ * parsePlugins('{"plugins":[]}')  // → { plugins: [] }
+ * parsePlugins('{"error":"x"}')   // → { plugins: [], error: "x" }
+ * parsePlugins("{")               // → { plugins: [], error: "プラグインを読み込めませんでした（…）" }
+ */
+function parsePlugins(json: string): PluginsResult {
+  try {
+    const r = JSON.parse(json) as Partial<PluginsResult>;
+    if (Array.isArray(r.plugins)) return { plugins: r.plugins };
+    return { plugins: [], error: r.error ?? "プラグインを読み込めませんでした（コアの返事の形が違います）" };
+  } catch (e) {
+    return { plugins: [], error: `プラグインを読み込めませんでした（${e instanceof Error ? e.message : String(e)}）` };
+  }
+}
+
+/**
+ * コアが返した、マニフェストを読んだ結果（JSON）を読む。
+ *
+ * @param json wasm の `describePlugin` が返した JSON の文字列
+ * @returns プラグインの情報か断り。JSON が壊れている・形が違うときは「プラグインを読み取れませんでした…」の断り（例外は投げない）
+ * @example
+ * parseDescribed('{"plugin":{"id":"jp.x",…}}') // → { plugin: { id: "jp.x", … } }
+ * parseDescribed('{"refused":"x"}')           // → { refused: "x" }
+ * parseDescribed("{")                         // → { refused: "プラグインを読み取れませんでした（…）" }
+ */
+function parseDescribed(json: string): DescribedPlugin | Refused {
+  try {
+    const r = JSON.parse(json) as Partial<DescribedPlugin & Refused>;
+    if (r.plugin && typeof r.plugin.id === "string") return { plugin: r.plugin };
+    if (typeof r.refused === "string") return { refused: r.refused };
+    return { refused: "プラグインを読み取れませんでした（コアの返事の形が違います）" };
+  } catch (e) {
+    return { refused: `プラグインを読み取れませんでした（${e instanceof Error ? e.message : String(e)}）` };
   }
 }
 

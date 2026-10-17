@@ -174,6 +174,85 @@ pub fn create(name: &str) -> String {
     })
 }
 
+/// プロジェクトが使うプラグインの変更（画面の「追加」・使う／止めるの切り替え・「削除」。ADR-0018 §1）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum PluginChange {
+    /// 使うプラグインに加える（既にあれば版を書き換えて有効にする。プラグインごとの設定と知らない項目は残す）。
+    Add {
+        /// 入れたプラグインの版。
+        version: String,
+    },
+    /// 使うか止めるかを書く。
+    SetEnabled {
+        /// 使うなら true。
+        enabled: bool,
+    },
+    /// 使うプラグインから外す。
+    Remove,
+}
+
+/// 設定ファイルのテキストの、使うプラグインの項目を書き換える（知らない項目は残す）。
+///
+/// # 引数
+///
+/// - `text`：今の `modelith.json` のテキスト全体
+/// - `id`：プラグインの ID（`plugins` のキー）
+/// - `change`：変更（加える・使う／止める・外す）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキスト（[`to_text`] の形）。設定ファイルに誤りがある・変える項目が無い・
+/// 加える ID の形が正しくないときは、画面に出す理由の文を `Err` で返す。
+///
+/// # 例
+///
+/// ```text
+/// update_plugin("{}", "jp.x", Add { version: "0.1.0" })
+///   → Ok("{\n  \"plugins\": {\n    \"jp.x\": {\n      \"version\": \"0.1.0\",\n      \"enabled\": true\n    }\n  }\n}\n")
+/// update_plugin(r#"{"plugins":{"jp.x":{}}}"#, "jp.x", SetEnabled { enabled: false }) → Ok(… "enabled": false …)
+/// update_plugin("{}", "jp.x", Remove) → Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません")
+/// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）に誤りがあるため、書き換えられません。1 行目：…")
+/// ```
+pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, String> {
+    let parsed = parse(text);
+    let Some(mut project) = parsed.project else {
+        let reason = parsed
+            .problems
+            .iter()
+            .find(|p| p.severity == Severity::Error)
+            .map(|p| format!("{} 行目：{}", p.line, p.message))
+            .unwrap_or_default();
+        return Err(format!(
+            "プロジェクトの設定（modelith.json）に誤りがあるため、書き換えられません。{reason}"
+        ));
+    };
+    let missing =
+        || format!("プロジェクトの設定（modelith.json）に、プラグイン「{id}」がありません");
+    match change {
+        PluginChange::Add { version } => {
+            if id.parse::<modelith_plugin_protocol::PluginId>().is_err() {
+                return Err(format!("プラグインの ID「{id}」の形が正しくありません"));
+            }
+            let entry = project.plugins.entry(id.to_owned()).or_insert(PluginUse {
+                version: None,
+                enabled: true,
+                settings: Value::Null,
+                extra: Map::new(),
+            });
+            entry.version = Some(version.clone());
+            entry.enabled = true;
+        }
+        PluginChange::SetEnabled { enabled } => {
+            project.plugins.get_mut(id).ok_or_else(missing)?.enabled = *enabled;
+        }
+        PluginChange::Remove => {
+            project.plugins.remove(id).ok_or_else(missing)?;
+        }
+    }
+    Ok(to_text(&project))
+}
+
 /// 設定をファイルのテキストにする（知らない項目も書く）。
 ///
 /// # 引数

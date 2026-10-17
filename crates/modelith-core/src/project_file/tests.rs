@@ -268,3 +268,151 @@ fn key_offsets_of_empty_text_is_empty() {
     // Assert
     assert!(keys.is_empty());
 }
+
+// --- update_plugin（画面からプラグインを加える・使う／止める・外す。F-PLUG-8・F-PLUG-9） ---
+
+/// 変更を当てて、読み取り直した設定を返す（書き換えに失敗すれば失敗にする）。
+fn updated(text: &str, id: &str, change: PluginChange) -> ProjectFile {
+    let out = update_plugin(text, id, &change).unwrap_or_else(|e| panic!("書き換えられない: {e}"));
+    project_of(&out)
+}
+
+#[test]
+fn update_plugin_adds_an_enabled_entry_with_the_version() {
+    // Arrange（境界値: plugins の無い設定）
+    let text = r#"{ "name": "給水" }"#;
+    // Act
+    let out = update_plugin(
+        text,
+        "jp.x",
+        &PluginChange::Add {
+            version: "0.1.0".to_owned(),
+        },
+    );
+    // Assert
+    assert_eq!(
+        out.as_deref(),
+        Ok(
+            "{\n  \"name\": \"給水\",\n  \"plugins\": {\n    \"jp.x\": {\n      \"version\": \"0.1.0\",\n      \"enabled\": true\n    }\n  }\n}\n"
+        )
+    );
+}
+
+#[test]
+fn update_plugin_add_keeps_settings_and_unknown_keys_of_an_existing_entry() {
+    // Arrange（止めてあり、版の違う既存の項目。知らない項目は外側にもある）
+    let text = r#"{ "plugins": { "jp.x": { "version": "0.0.9", "enabled": false, "settings": { "a": 1 }, "note": "keep" } }, "color": "red" }"#;
+    // Act
+    let project = updated(
+        text,
+        "jp.x",
+        PluginChange::Add {
+            version: "0.1.0".to_owned(),
+        },
+    );
+    // Assert
+    let plugin = &project.plugins["jp.x"];
+    assert_eq!(plugin.version.as_deref(), Some("0.1.0"));
+    assert!(plugin.enabled);
+    assert_eq!(plugin.settings, json!({ "a": 1 }));
+    assert_eq!(plugin.extra.get("note"), Some(&json!("keep")));
+    assert_eq!(project.extra.get("color"), Some(&json!("red")));
+}
+
+#[test]
+fn update_plugin_sets_enabled_off_and_on() {
+    // Arrange
+    let text = r#"{ "plugins": { "jp.x": { "version": "0.1.0" } } }"#;
+    // Act
+    let off = updated(text, "jp.x", PluginChange::SetEnabled { enabled: false });
+    let on = updated(text, "jp.x", PluginChange::SetEnabled { enabled: true });
+    // Assert
+    assert_eq!(
+        (off.plugins["jp.x"].enabled, on.plugins["jp.x"].enabled),
+        (false, true)
+    );
+}
+
+#[test]
+fn update_plugin_removes_only_that_entry() {
+    // Arrange
+    let text = r#"{ "plugins": { "jp.x": {}, "jp.y": {} } }"#;
+    // Act
+    let project = updated(text, "jp.x", PluginChange::Remove);
+    // Assert
+    assert_eq!(
+        project.plugins.keys().collect::<Vec<_>>(),
+        vec![&"jp.y".to_owned()]
+    );
+}
+
+#[test]
+fn update_plugin_refuses_to_change_an_entry_that_is_not_there() {
+    // Arrange（異常系: 無い項目を止める・外す）
+    let text = "{}";
+    // Act
+    let off = update_plugin(text, "jp.x", &PluginChange::SetEnabled { enabled: false });
+    let removed = update_plugin(text, "jp.x", &PluginChange::Remove);
+    // Assert
+    let expected =
+        Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません".to_owned());
+    assert_eq!((off, removed), (expected.clone(), expected));
+}
+
+#[test]
+fn update_plugin_refuses_a_broken_file_with_its_line() {
+    // Arrange（異常系: 読み取れない設定ファイルは書き換えない）
+    let text = "{\n  \"name\": 3\n}";
+    // Act
+    let out = update_plugin(text, "jp.x", &PluginChange::Remove);
+    // Assert
+    assert_eq!(
+        out,
+        Err("プロジェクトの設定（modelith.json）に誤りがあるため、書き換えられません。2 行目：プロジェクト名（name）は、文字を \" \" で囲んで書いてください".to_owned())
+    );
+}
+
+#[test]
+fn update_plugin_refuses_to_add_a_malformed_id() {
+    // Arrange（異常系: フォルダの名前にできない ID）
+    let text = "{}";
+    // Act
+    let out = update_plugin(
+        text,
+        "../x",
+        &PluginChange::Add {
+            version: "0.1.0".to_owned(),
+        },
+    );
+    // Assert
+    assert_eq!(
+        out,
+        Err("プラグインの ID「../x」の形が正しくありません".to_owned())
+    );
+}
+
+#[test]
+fn plugin_change_reads_the_op_tag() {
+    // Arrange（画面から JSON で届く形）
+    let texts = [
+        r#"{"op":"add","version":"1.0.0"}"#,
+        r#"{"op":"setEnabled","enabled":false}"#,
+        r#"{"op":"remove"}"#,
+    ];
+    // Act
+    let changes: Vec<PluginChange> = texts
+        .iter()
+        .map(|t| serde_json::from_str(t).unwrap())
+        .collect();
+    // Assert
+    assert_eq!(
+        changes,
+        [
+            PluginChange::Add {
+                version: "1.0.0".to_owned()
+            },
+            PluginChange::SetEnabled { enabled: false },
+            PluginChange::Remove
+        ]
+    );
+}

@@ -678,6 +678,22 @@ package ModelithRequirements {
                 verify PluginErrorReq;
             }
         }
+        verification def PluginHostTest {
+            doc /* crates/modelith-core/src/rules：画面から渡されたプラグインのファイルからの読み込み（入っているか・マニフェストの名前と版と種類）。crates/modelith-core/src/project_file：使うプラグインの項目の書き換え（加える・使う／止める・外す。知らない項目と設定を残す・無い項目・読めない設定ファイル・形の正しくない ID）。crates/modelith-wasm：Worker が持つプラグイン（まとめ・有効なものだけを当てる・入っていないプラグイン・読めない入力）と、解析結果に付けた検査の結果の JSON。web/src/core/client.test.ts：コア（Worker）へのプラグインの受け渡しと、編集に追従する検査の結果（コアが壊れた返事をしても例外を投げない）。web/src/app/plugins.test.ts：一覧の状態・問題一覧の文（プラグインとルールを添える・ファイルと行を添える・足りないプラグインの案内）・追加の確認と写す計画。web/src/files/local-folder.test.ts：プラグインのフォルダを読む・消す・フォルダの外を指すパスを断る（偽のファイルシステムで） */
+            objective {
+                verify RuleCheckReq;
+                verify PluginErrorReq;
+                verify MissingPluginReq;
+            }
+        }
+        verification def PluginE2E {
+            doc /* web/e2e/plugins.spec.ts：プロジェクトに入れた検査ルールの結果を、プラグインとルールを添えて問題一覧に示し、押すとその行に移り、編集で直すと消える・壊れたルールのファイルをファイルと行で知らせる・入っていない／版が違うプラグインの案内から追加する。同じファイルで、プラグインのフォルダの追加・止める・また使う・削除と、プロジェクトが無いときの案内も確かめる（OPFS で） */
+            objective {
+                verify RuleCheckReq;
+                verify PluginErrorReq;
+                verify MissingPluginReq;
+            }
+        }
         verification def CliCheckTest {
             doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json は誤りとして知らせる。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方 */
             objective {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeDir, FakeFile, FakeFsApi, MemoryHandleStore } from "./fake-fs";
-import { LocalFolderProvider } from "./local-folder";
+import { LocalFolderProvider, MAX_TREE_FILES, segmentsOf } from "./local-folder";
 import { ConflictError, type DirEntry, type FileRef } from "./types";
 
 function setup() {
@@ -318,5 +318,113 @@ describe("LocalFolderProvider: フォルダの中の決まった場所のファ�
     // Act & Assert
     await expect(p.writeInFolder(folder, "", "x")).rejects.toThrow("ファイル名がありません");
     await expect(p.writeInFolder(other, "modelith.json", "x")).rejects.toThrow("フォルダ「x」は開かれていません");
+  });
+});
+
+describe("LocalFolderProvider: プラグインのフォルダを写す・消す（F-PLUG-8）", () => {
+  it("別のフォルダを、読むだけで選び、前回のフォルダとしては覚えない", async () => {
+    // Arrange
+    const { api, store, p } = setup();
+    api.folder = new FakeDir("trace-rules");
+    // Act
+    const picked = await p.pickOtherFolder();
+    // Assert
+    expect(picked?.name).toBe("trace-rules");
+    expect(api.mode).toBe("read");
+    expect(store.map.size).toBe(0);
+  });
+
+  it("別のフォルダの選択をやめたら null（異常系: キャンセル）", async () => {
+    // Arrange
+    const { api, p } = setup();
+    api.folder = null;
+    // Act
+    const picked = await p.pickOtherFolder();
+    // Assert
+    expect(picked).toBeNull();
+  });
+
+  it("フォルダの中を、下のフォルダまで相対パスで読む（隠しファイル・node_modules は読まない）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put(".modelith/plugins/jp.x/modelith-plugin.json", "{}");
+    root.put(".modelith/plugins/jp.x/rules/a.yaml", "rules: []");
+    root.put(".modelith/plugins/jp.x/.git/config", "x");
+    root.put(".modelith/plugins/jp.x/.DS_Store", "x");
+    root.put(".modelith/plugins/jp.x/node_modules/y.js", "x");
+    const folder = (await p.pickFolder())!;
+    // Act
+    const tree = await p.readTree(folder, ".modelith/plugins/jp.x");
+    // Assert
+    expect(tree).toEqual({ "modelith-plugin.json": "{}", "rules/a.yaml": "rules: []" });
+  });
+
+  it("無いフォルダは null、空のフォルダは空（境界値）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    await root.getDirectoryHandle("empty", { create: true });
+    const folder = (await p.pickFolder())!;
+    // Act
+    const [none, empty] = await Promise.all([p.readTree(folder, "none"), p.readTree(folder, "empty")]);
+    // Assert
+    expect([none, empty]).toEqual([null, {}]);
+  });
+
+  it("ファイルが上限を超えるフォルダは読まない（境界値: 上限 + 1）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    for (let i = 0; i <= MAX_TREE_FILES; i++) root.put(`big/f${i}.txt`, "");
+    root.put(`ok/f.txt`, "");
+    const folder = (await p.pickFolder())!;
+    // Act & Assert
+    await expect(p.readTree(folder, "big")).rejects.toThrow(`ファイルが多すぎます（${MAX_TREE_FILES} 件まで）`);
+    await expect(p.readTree(folder, "ok")).resolves.toEqual({ "f.txt": "" });
+  });
+
+  it("フォルダを中身ごと消し、無ければ false", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put(".modelith/plugins/jp.x/rules/a.yaml", "x");
+    root.put(".modelith/plugins/jp.y/modelith-plugin.json", "{}");
+    const folder = (await p.pickFolder())!;
+    // Act
+    const removed = await p.removeInFolder(folder, ".modelith/plugins/jp.x");
+    const again = await p.removeInFolder(folder, ".modelith/plugins/jp.x");
+    // Assert
+    expect([removed, again]).toEqual([true, false]);
+    expect(await p.readTree(folder, ".modelith/plugins")).toEqual({ "jp.y/modelith-plugin.json": "{}" });
+  });
+
+  it("フォルダの外を指すパス・空のパスは、読み書きも消しもしない（異常系）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "keep");
+    const folder = (await p.pickFolder())!;
+    // Act & Assert
+    await expect(p.writeInFolder(folder, ".modelith/plugins/x/../../a.sysml", "bad")).rejects.toThrow("フォルダの外を指しています");
+    await expect(p.readInFolder(folder, "../a.sysml")).rejects.toThrow("フォルダの外を指しています");
+    await expect(p.readTree(folder, "./x")).rejects.toThrow("フォルダの外を指しています");
+    await expect(p.removeInFolder(folder, "x/..")).rejects.toThrow("フォルダの外を指しています");
+    await expect(p.removeInFolder(folder, "")).rejects.toThrow("消す場所がありません");
+    expect((root.entries.get("a.sysml") as FakeFile).content).toBe("keep");
+  });
+});
+
+describe("segmentsOf（フォルダからの相対パス）", () => {
+  it.each([
+    ["a/b.json", ["a", "b.json"]],
+    ["a//b/", ["a", "b"]],
+    ["", []],
+    [".modelith/plugins/jp.x", [".modelith", "plugins", "jp.x"]],
+  ])("%j → %j（正常系・境界値）", (path, segs) => {
+    // Arrange・Act
+    const got = segmentsOf(path);
+    // Assert
+    expect(got).toEqual(segs);
+  });
+
+  it.each(["..", "a/../b", "./a", "a\\b"])("%j はフォルダの外を指すとみなす（異常系）", (path) => {
+    // Arrange・Act & Assert
+    expect(() => segmentsOf(path)).toThrow("フォルダの外を指しています");
   });
 });

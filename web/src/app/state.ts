@@ -1,7 +1,8 @@
 // アプリの状態。テキストが唯一の正本で、P（解析結果）・M（モデル）・layout はテキストから作り直す（ADR-0001）。
 
-import type { Model, ParseResult, PortDir } from "../core";
+import type { Model, ParseResult, PortDir, RuleFinding } from "../core";
 import type { Layout, Side } from "./layout";
+import type { PluginNote } from "./plugins";
 
 /** 図の縁上の位置（接続点があればその ID）。 */
 export interface EndSpec {
@@ -97,6 +98,12 @@ export interface AppState {
   treeQ: string;
   treeSel: number | null;
   treeScrollForce: boolean;
+  /** 今のテキストへの、検査ルールの結果（ADR-0018 §2。プラグインが無ければ空）。 */
+  findings: RuleFinding[];
+  /** 問題一覧に出す、プラグインについての行（足りないプラグイン・読み込みの問題）。 */
+  pluginNotes: PluginNote[];
+  /** プラグインの ID → 画面に出す名前。 */
+  pluginNames: Map<string, string>;
 }
 
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
@@ -145,6 +152,9 @@ export const S: AppState = {
   treeQ: "",
   treeSel: null,
   treeScrollForce: false,
+  findings: [],
+  pluginNotes: [],
+  pluginNames: new Map(),
 };
 
 /** 選択と一時的な操作状態をすべて外す。 */

@@ -157,6 +157,23 @@ export class FakeDir implements DirHandleLike {
   }
 
   /**
+   * 直下のファイルかフォルダを消す。
+   *
+   * @param name 消す項目の名前
+   * @param opts `recursive: true` なら、中身のあるフォルダも消す
+   * @example
+   * await root.removeEntry("a.sysml")                  // → a.sysml が無くなる
+   * await root.removeEntry("a", { recursive: true })    // → フォルダ a を中身ごと消す
+   * await root.removeEntry("a")                        // → 中身があれば InvalidModificationError、無ければ NotFoundError を投げる
+   */
+  async removeEntry(name: string, opts?: { recursive?: boolean }): Promise<void> {
+    const e = this.entries.get(name);
+    if (!e) throw new DOMException("not found", "NotFoundError");
+    if (e instanceof FakeDir && e.entries.size && !opts?.recursive) throw new DOMException("not empty", "InvalidModificationError");
+    this.entries.delete(name);
+  }
+
+  /**
    * ファイルがこのフォルダの中のどこにあるかを、入れ子をたどって探す。
    *
    * @param h 探すファイル（同じオブジェクトかで比べる）
@@ -217,18 +234,21 @@ export class FakeFsApi implements FsApi {
   openFile: FakeFile | null = null;
   /** 最後にフォルダを選び始めた場所。 */
   startIn: FileHandleLike | undefined;
+  /** 最後にフォルダを選んだときの読み書きの別。 */
+  mode: "read" | "readwrite" | undefined;
 
   /**
-   * フォルダのピッカーを開いたことにする。選び始めた場所を `startIn` に覚える。
+   * フォルダのピッカーを開いたことにする。選び始めた場所を `startIn` に、読み書きの別を `mode` に覚える。
    *
-   * @param opts `startIn` は選び始める場所（そのファイルのある場所）
+   * @param opts `startIn` は選び始める場所（そのファイルのある場所）、`mode` は読むだけか読み書きか
    * @returns `folder` に決めたフォルダ。`folder` が null ならキャンセルとして AbortError を投げる
    * @example
    * await api.showDirectoryPicker({}) // → api.folder
    * await api.showDirectoryPicker({}) // → AbortError を投げる（api.folder が null のとき）
    */
-  async showDirectoryPicker(opts: { startIn?: FileHandleLike }): Promise<FakeDir> {
+  async showDirectoryPicker(opts: { startIn?: FileHandleLike; mode?: "read" | "readwrite" }): Promise<FakeDir> {
     this.startIn = opts.startIn;
+    this.mode = opts.mode;
     if (!this.folder) throw abort();
     return this.folder;
   }

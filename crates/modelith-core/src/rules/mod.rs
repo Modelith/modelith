@@ -40,10 +40,11 @@ mod load;
 mod tests;
 
 pub use check::{check, check_text};
-pub use load::load_plugin;
-pub use modelith_plugin_protocol::DiagnosticSeverity;
+pub use load::{describe_manifest, load_plugin, load_plugin_files};
+pub use modelith_plugin_protocol::{DiagnosticSeverity, Runtime};
 
 use regex_lite::Regex;
+use serde::Serialize;
 
 /// プロジェクトに入れたプラグインを置くフォルダ（プロジェクトのフォルダからの相対パス。ADR-0019 §1）。
 pub const PLUGINS_DIR: &str = ".modelith/plugins";
@@ -82,14 +83,14 @@ pub fn element_kinds() -> Vec<&'static str> {
 }
 
 /// ファイルの中の位置（1 始まりの行と列。列は UTF-16 コード単位）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct Place {
     pub line: u32,
     pub column: u32,
 }
 
 /// プラグインを読み込むときの問題 1 件（どれも誤り。そのルールやファイルは使わない）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LoadProblem {
     /// 問題のあるファイル（プロジェクトのフォルダからの相対パス、`/` 区切り）。
     pub path: String,
@@ -108,11 +109,31 @@ pub enum ReadError {
     Other(String),
 }
 
+/// マニフェスト（`modelith-plugin.json`）から読んだ、プラグインを画面に示すための情報。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManifestInfo {
+    /// プラグインの ID。
+    pub id: String,
+    /// 表示名。
+    pub name: String,
+    /// プラグイン自身の版（`"0.1.0"` など）。
+    pub version: String,
+    /// 実行方式（`rules`・`browser`・`wasm-component`）。
+    pub runtime: Runtime,
+    /// 説明（書いてあれば）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// 読み込んだプラグイン 1 つ。
 #[derive(Debug, Clone)]
 pub struct LoadedPlugin {
     /// プラグインの ID（`modelith.json` の `plugins` のキー）。
     pub id: String,
+    /// マニフェストが見つかったか（見つからなければ、プロジェクトに入っていない。F-PLUG-9）。
+    pub installed: bool,
+    /// マニフェストの情報。マニフェストが無い・JSON として読めないときは `None`。
+    pub manifest: Option<ManifestInfo>,
     /// 使えるルール（問題のあったルールは入れない）。
     pub rules: Vec<CheckRule>,
     /// 読み込みの問題（読んだ順）。
@@ -151,7 +172,7 @@ pub(crate) struct Condition {
 }
 
 /// 検査の結果 1 件（要素が `match` に当たり、`require` を満たさなかった）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Finding {
     /// プラグインの ID。
     pub plugin: String,
