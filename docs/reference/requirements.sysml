@@ -64,6 +64,9 @@ package ModelithRequirements {
         requirement def <'N-8'> AnywhereNeed {
             doc /* インストールせずに、PC でもスマホでもすぐ使いたい */
         }
+        requirement def <'N-10'> ExtendNeed {
+            doc /* 組織の決まりに沿った検査や、ほかのツールとのやり取りを、自分たちで足したい。足したものを、画面と CI で同じように使いたい */
+        }
     }
 
     // =================================================================
@@ -187,6 +190,53 @@ package ModelithRequirements {
             doc /* 表示中のビューを draw.io で読み込める形式で書き出せる */
         }
 
+        // ---- プラグイン（ADR-0004・ADR-0018） -------------------------
+        requirement def <'F-PLUG-1'> RuleCheckReq {
+            doc /* プロジェクトかブラウザに入れたプラグインの検査ルール（YAML）でモデルを検査し、結果を問題一覧に、どのプラグインのどのルールかを添えて示す */
+        }
+        requirement def <'F-PLUG-2'> RuleParityReq {
+            doc /* プロジェクトに入れた検査ルールを CLI（modelith check <フォルダ>）でも実行でき、画面と同じ結果を返す。error の結果があれば 0 以外で終わり、CI で使える */
+        }
+        requirement def <'F-PLUG-3'> PluginErrorReq {
+            doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
+        }
+        requirement def <'F-PLUG-4'> ScriptPluginReq {
+            doc /* TypeScript のプラグインが足したコマンド・取り込み・書き出しを、画面から使える。取り込んだ結果は新しいファイルとして開き、既存のファイルを黙って書き換えない */
+        }
+        requirement def <'F-PLUG-5'> PluginEditReq {
+            doc /* プラグインからの変更は、テキストの編集案として受け取り、テキストが変わっていたら適用せずに知らせる。適用した変更は 1 回の「元に戻す」で取り消せる（ADR-0001） */
+        }
+        requirement def <'F-PLUG-6'> PluginTrustReq {
+            doc /* コードを含むプラグインは、初めて動かす前に、名前・作者・版・使う権限を示して利用者に許可を求める。外部と通信できるプラグインは、そのことをはっきり示す。権限が増えたとき、または外部と通信できるプラグインの版かファイルが変わったときは、もう一度尋ねる */
+        }
+        requirement def <'F-PLUG-7'> PluginSandboxReq {
+            doc /* プラグインは、宣言していない権限を使えない。外部との通信を宣言していなければ通信できず、アプリの下書き・開いているフォルダ・ブラウザの保存場所に直接触れない */
+        }
+        requirement def <'F-PLUG-8'> PluginListReq {
+            doc /* 画面でプラグインを追加できる。入れる先は「このプロジェクト」（既定。チームと CI で共有）か「このブラウザ」（自分だけ）から選ぶ。
+                   入れたプラグインの一覧・状態・誤り・許可を確かめ、有効・無効の切り替えと削除ができる（ADR-0018・ADR-0019） */
+        }
+        requirement def <'F-PLUG-9'> MissingPluginReq {
+            doc /* プロジェクトが使うと書いてあるプラグインが入っていない・版が違うときは、何が足りないかと、追加する操作を示す */
+        }
+
+        // ---- プロジェクト（ADR-0019） --------------------------------
+        requirement def <'F-PROJ-1'> ProjectReq {
+            doc /* 開いたフォルダを「プロジェクト」として扱い、名前・使うプラグイン・チームで共有する設定を、フォルダの一番上の modelith.json に保存する。画面に今のプロジェクト名を示す。
+                   modelith.json の無いフォルダも今までどおり開いて使え、「プロジェクトにする」を選んだときに初めて作る */
+        }
+        requirement def <'F-PROJ-2'> SettingsLevelReq {
+            doc /* 設定は「このプロジェクトの設定」（チームで共有。結果に効くもの）と「自分の設定」（このブラウザ。見た目と操作の好み）の 2 段だけにし、1 つの項目はどちらか一方にだけ属する */
+        }
+
+        // ---- 文書へのリンク（ADR-0019） --------------------------------
+        requirement def <'F-LINK-1'> DocumentLinkReq {
+            doc /* 要素に文書（プロジェクトの中のファイル・Web の URL）へのリンクを付け、画面から開ける。リンクはテキストにメタデータとして書き、プロジェクトの中のファイルはプロジェクトのフォルダからの相対パスで書く。リンク先を勝手に読みに行かない */
+        }
+        requirement def <'F-LINK-2'> LinkCheckReq {
+            doc /* プロジェクトの中のファイルへのリンクが切れていたら、問題一覧に示す */
+        }
+
         // ---- 品質 --------------------------------------------------
         requirement def <'Q-1'> ResponsiveReq {
             doc /* 解析中も入力や図の操作が止まらない（コアを Worker で動かす。ADR-0003） */
@@ -262,6 +312,20 @@ package ModelithRequirements {
         #derivation dependency from UntitledDraftReq to SafetyNeed;
         #derivation dependency from CloudReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
+        #derivation dependency from RuleCheckReq to ExtendNeed;
+        #derivation dependency from RuleParityReq to ExtendNeed;
+        #derivation dependency from PluginErrorReq to ExtendNeed;
+        #derivation dependency from ScriptPluginReq to ExtendNeed;
+        #derivation dependency from PluginEditReq to EditBothWaysNeed;
+        #derivation dependency from PluginTrustReq to SafetyNeed;
+        #derivation dependency from PluginSandboxReq to SafetyNeed;
+        #derivation dependency from PluginListReq to ExtendNeed;
+        #derivation dependency from MissingPluginReq to ExtendNeed;
+        #derivation dependency from ProjectReq to FilesNeed;
+        #derivation dependency from ProjectReq to ExtendNeed;
+        #derivation dependency from SettingsLevelReq to ExtendNeed;
+        #derivation dependency from DocumentLinkReq to TraceNeed;
+        #derivation dependency from LinkCheckReq to TraceNeed;
         #derivation dependency from DrawioExportReq to ExportNeed;
         #derivation dependency from ResponsiveReq to EditBothWaysNeed;
         #derivation dependency from NarrowScreenReq to AnywhereNeed;
@@ -312,6 +376,18 @@ package ModelithRequirements {
         part def Exporter {
             doc /* SVG・draw.io への書き出し（web/src/app/export.ts） */
         }
+        part def RuleEngine {
+            doc /* 検査ルール（v0、YAML）の解釈（crates/modelith-core。ブラウザと CLI で同じコード。ADR-0018） */
+        }
+        part def PluginHost {
+            doc /* プラグインの読み込み・許可・サンドボックス・やり取り（web/src/plugins。ADR-0018） */
+        }
+        part def Project {
+            doc /* プロジェクトとその設定（modelith.json）の読み書き（crates/modelith-core と web/src/workspace。ADR-0019） */
+        }
+        part def Cli {
+            doc /* コマンドラインの modelith（crates/modelith-cli） */
+        }
         part def AppShell {
             doc /* 起動・メニュー・ヘッダー・配信の設定（web/src/main.ts・vite.config.ts・Pages） */
         }
@@ -326,6 +402,10 @@ package ModelithRequirements {
             part cloud : CloudProvider;
             part exporter : Exporter;
             part shell : AppShell;
+            part rules : RuleEngine;
+            part plugins : PluginHost;
+            part cli : Cli;
+            part project : Project;
         }
 
         satisfy TextToDiagramReq by TextEditor;
@@ -362,6 +442,20 @@ package ModelithRequirements {
         satisfy UntitledDraftReq by Workspace;
         satisfy CloudReq by CloudProvider;
         satisfy SvgExportReq by Exporter;
+        satisfy RuleCheckReq by RuleEngine;
+        satisfy RuleParityReq by Cli;
+        satisfy PluginErrorReq by RuleEngine;
+        satisfy PluginErrorReq by PluginHost;
+        satisfy ScriptPluginReq by PluginHost;
+        satisfy PluginEditReq by PluginHost;
+        satisfy PluginTrustReq by PluginHost;
+        satisfy PluginSandboxReq by PluginHost;
+        satisfy PluginListReq by PluginHost;
+        satisfy MissingPluginReq by PluginHost;
+        satisfy ProjectReq by Project;
+        satisfy SettingsLevelReq by Project;
+        satisfy DocumentLinkReq by DiagramUI;
+        satisfy LinkCheckReq by RuleEngine;
         satisfy DrawioExportReq by Exporter;
         satisfy ResponsiveReq by Core;
         satisfy NarrowScreenReq by AppShell;
