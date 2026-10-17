@@ -268,12 +268,12 @@ describe("LocalFolderProvider: フォルダの中の決まった場所のファ�
   it("フォルダの一番上のファイルを読める（一覧に出ないファイルも）", async () => {
     // Arrange
     const { p, root } = setup();
-    root.put("modelith.json", '{ "name": "給水" }');
+    root.put("modelith.json", '{ "name": "給水システム" }');
     const folder = (await p.pickFolder())!;
     // Act
     const text = await p.readInFolder(folder, "modelith.json");
     // Assert
-    expect(text).toBe('{ "name": "給水" }');
+    expect(text).toBe('{ "name": "給水システム" }');
     expect(await p.list(folder)).toEqual([]); // 一覧はモデルのファイルだけのまま
   });
 

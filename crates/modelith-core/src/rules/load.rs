@@ -32,7 +32,7 @@ use crate::LineIndex;
 ///
 /// ```text
 /// load_plugin("jp.x", マニフェストと rules.yaml を返す read)  → rules: [rules.yaml のルール]、problems: []
-/// load_plugin("jp.x", いつも NotFound を返す read)            → rules: []、problems: [「…プラグイン「jp.x」を使っていますが、入っていません…」]
+/// load_plugin("jp.x", いつも NotFound を返す read)            → rules: []、problems: [「…プラグイン「jp.x」が追加されていません…」]
 /// load_plugin("../x", …)                                      → problems: [「プラグインの ID「../x」の形が正しくありません…」]（read は呼ばない）
 /// ```
 pub fn load_plugin(
@@ -129,14 +129,14 @@ pub fn load_plugin_files(id: &str, files: &BTreeMap<String, String>) -> LoadedPl
 ///
 /// # 戻り値
 ///
-/// マニフェストの情報。JSON として読めない・項目が足りない・知らない項目があるときは、位置つきの問題 1 件を `Err` で返す。
+/// マニフェストの情報。JSON として読めない・項目が足りない・不明な項目があるときは、位置つきの問題 1 件を `Err` で返す。
 ///
 /// # 例
 ///
 /// ```text
 /// describe_manifest(p, r#"{"id":"jp.x","name":"例","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#)
 ///   → Ok(ManifestInfo { id: "jp.x", name: "例", version: "0.1.0", runtime: Rules, description: None })
-/// describe_manifest(p, "{") → Err(誤り 1:2「書き方に誤りがあるため読み取れません（JSON：…）」)
+/// describe_manifest(p, "{") → Err(誤り 1:2「書式にエラーがあるため読み込めません（JSON：…）」)
 /// ```
 pub fn describe_manifest(path: &str, text: &str) -> Result<ManifestInfo, LoadProblem> {
     match serde_json::from_str::<PluginManifest>(text) {
@@ -196,17 +196,17 @@ fn problem(path: &str, place: Option<Place>, message: String) -> LoadProblem {
 ///
 /// ```text
 /// manifest_read_problem("jp.x", "…/modelith-plugin.json", NotFound)
-///   → 「このプロジェクトはプラグイン「jp.x」を使っていますが、入っていません…」
+///   → 「このプロジェクトで使うプラグイン「jp.x」が追加されていません…」
 /// manifest_read_problem("jp.x", "…/modelith-plugin.json", Other("権限がありません"))
-///   → 「プラグイン「jp.x」のマニフェストを読み取れません（権限がありません）」
+///   → 「プラグイン「jp.x」のマニフェストを読み込めません（権限がありません）」
 /// ```
 fn manifest_read_problem(id: &str, path: &str, e: &ReadError) -> LoadProblem {
     let message = match e {
         ReadError::NotFound => format!(
-            "このプロジェクトはプラグイン「{id}」を使っていますが、入っていません。プラグインを {PLUGINS_DIR}/{id}/ に追加してください（{MANIFEST_FILE} が見つかりません）"
+            "このプロジェクトで使うプラグイン「{id}」が追加されていません。プラグインを {PLUGINS_DIR}/{id}/ に追加してください（{MANIFEST_FILE} が見つかりません）"
         ),
         ReadError::Other(reason) => {
-            format!("プラグイン「{id}」のマニフェストを読み取れません（{reason}）")
+            format!("プラグイン「{id}」のマニフェストを読み込めません（{reason}）")
         }
     };
     problem(path, None, message)
@@ -233,7 +233,7 @@ fn rule_file_read_problem(path: &str, e: &ReadError) -> LoadProblem {
         ReadError::NotFound => {
             "マニフェストに書かれたルールのファイルが見つかりません（contributes.rules）".to_owned()
         }
-        ReadError::Other(reason) => format!("ルールのファイルを読み取れません（{reason}）"),
+        ReadError::Other(reason) => format!("ルールのファイルを読み込めません（{reason}）"),
     };
     problem(path, None, message)
 }
@@ -255,8 +255,8 @@ fn rule_file_read_problem(path: &str, e: &ReadError) -> LoadProblem {
 ///
 /// ```text
 /// read_manifest("jp.x", p, r#"{"id":"jp.x",…,"runtime":"rules","contributes":{"rules":["rules.yaml"]}}"#) → (["rules.yaml"], [])
-/// read_manifest("jp.x", p, r#"{… "apiVersion": "1" …}"#) → ([], [「対応していない版（apiVersion「1」）です…」])
-/// read_manifest("jp.x", p, "{") → ([], [誤り 1:2「書き方に誤りがあるため読み取れません（JSON：…）」])
+/// read_manifest("jp.x", p, r#"{… "apiVersion": "1" …}"#) → ([], [「対応していないバージョン（apiVersion「1」）です…」])
+/// read_manifest("jp.x", p, "{") → ([], [誤り 1:2「書式にエラーがあるため読み込めません（JSON：…）」])
 /// ```
 fn read_manifest(id: &str, path: &str, text: &str) -> (Vec<String>, Vec<LoadProblem>) {
     let manifest: PluginManifest = match serde_json::from_str(text) {
@@ -279,7 +279,7 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (Vec<String>, Vec<LoadProb
             path,
             key_place(text, "apiVersion"),
             format!(
-                "対応していない版（apiVersion「{}」）のプラグインです。この Modelith が読めるのは「{API_VERSION}」です",
+                "対応していないバージョン（apiVersion「{}」）のプラグインです。この Modelith が対応しているのは「{API_VERSION}」です",
                 manifest.api_version
             ),
         ));
@@ -288,7 +288,8 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (Vec<String>, Vec<LoadProb
         problems.push(problem(
             path,
             key_place(text, "runtime"),
-            "検査ルールのプラグイン（runtime: rules）ではないため、ここでは使えません".to_owned(),
+            "チェックルールのプラグイン（runtime: rules）ではないため、ここでは使用できません"
+                .to_owned(),
         ));
     }
     if manifest.id.as_str() != id {
@@ -372,7 +373,7 @@ pub(super) fn inside_plugin(path: &str) -> Option<String> {
 /// ```text
 /// load_rule_file(p, "rules:\n  - id: a\n    …", {}) → ([a], [])
 /// load_rule_file(p, "rules:\n  - id: a\n    …", {"a"}) → ([], [誤り 2:5「ルールの ID「a」が重複しています…」])
-/// load_rule_file(p, "rules: [", {}) → ([], [誤り「書き方に誤りがあるため読み取れません（YAML：…）」])
+/// load_rule_file(p, "rules: [", {}) → ([], [誤り「書式にエラーがあるため読み込めません（YAML：…）」])
 /// ```
 fn load_rule_file(
     path: &str,
@@ -468,7 +469,7 @@ fn compile_rule(rule: Rule) -> Result<CheckRule, Vec<String>> {
 ///
 /// ```text
 /// compile_target(kind: "part def")  → Target { kinds: ["part def"], … }、errors は増えない
-/// compile_target(kind: "port")      → errors に「知らない要素の種類「port」です…」
+/// compile_target(kind: "port")      → errors に「不明な要素の種類「port」です…」
 /// compile_target(kind: [])          → errors に「要素の種類（match.kind）が空です…」
 /// ```
 fn compile_target(m: &ElementMatch, errors: &mut Vec<String>) -> Target {
@@ -482,7 +483,7 @@ fn compile_target(m: &ElementMatch, errors: &mut Vec<String>) -> Target {
     for kind in kinds {
         if !known.contains(&kind.as_str()) {
             errors.push(format!(
-                "知らない要素の種類「{kind}」です（match.kind）。書ける種類：{}",
+                "不明な要素の種類「{kind}」です（match.kind）。指定できる種類：{}",
                 known.join("・")
             ));
         }
@@ -564,7 +565,7 @@ fn compile_condition(r: &Requirement, at: &str, errors: &mut Vec<String>) -> Con
 /// ```text
 /// compile_relations("derivation", …)        → ["derive"]
 /// compile_relations(["satisfy", "verify"], …) → ["satisfy", "verify"]
-/// compile_relations("refinement", …)        → []、errors に「知らない関係の種類「refinement」です…」
+/// compile_relations("refinement", …)        → []、errors に「不明な関係の種類「refinement」です…」
 /// compile_relations([], …)                  → []、errors に「関係の種類（require.incoming）が空です…」
 /// ```
 fn compile_relations(kinds: &OneOrMany, at: &str, errors: &mut Vec<String>) -> Vec<&'static str> {
@@ -584,7 +585,7 @@ fn compile_relations(kinds: &OneOrMany, at: &str, errors: &mut Vec<String>) -> V
             if found.is_none() {
                 let names: Vec<&str> = RELATIONS.iter().map(|(n, _)| *n).collect();
                 errors.push(format!(
-                    "知らない関係の種類「{k}」です（{at}）。書ける種類：{}",
+                    "不明な関係の種類「{k}」です（{at}）。指定できる種類：{}",
                     names.join("・")
                 ));
             }
@@ -609,7 +610,7 @@ fn compile_relations(kinds: &OneOrMany, at: &str, errors: &mut Vec<String>) -> V
 ///
 /// ```text
 /// compile_regex("^[A-Z]", "match.name", …) → Some(…)
-/// compile_regex("[a", "match.name", …)     → None、errors に「名前の正規表現に誤りがあります（match.name「[a」：…）」
+/// compile_regex("[a", "match.name", …)     → None、errors に「名前の正規表現にエラーがあります（match.name「[a」：…）」
 /// ```
 fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<String>) -> Option<Regex> {
     match Regex::new(pattern) {
@@ -617,7 +618,7 @@ fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<String>) -> Option<Re
         Err(e) => {
             let reason = e.to_string().replace('\n', " ");
             errors.push(format!(
-                "名前の正規表現に誤りがあります（{at}「{pattern}」：{}）",
+                "名前の正規表現にエラーがあります（{at}「{pattern}」：{}）",
                 reason.trim()
             ));
             None
@@ -640,11 +641,11 @@ fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<String>) -> Option<Re
 ///
 /// ```text
 /// describe_serde_error("rules[0].require: unknown field `x`, expected one of … at line 8 column 7", "YAML")
-///   → "知らない項目「x」があります（rules[0].require: unknown field `x`, expected one of …）"
+///   → "不明な項目「x」があります（rules[0].require: unknown field `x`, expected one of …）"
 /// describe_serde_error("missing field `severity`", "YAML") → "必要な項目「severity」がありません（missing field `severity`）"
-/// describe_serde_error("unknown variant `fatal`, …", "YAML") → "使えない値「fatal」です（unknown variant `fatal`, …）"
+/// describe_serde_error("unknown variant `fatal`, …", "YAML") → "指定できない値「fatal」です（unknown variant `fatal`, …）"
 /// describe_serde_error("EOF while parsing an object at line 1 column 1", "JSON")
-///   → "書き方に誤りがあるため読み取れません（JSON：EOF while parsing an object）"
+///   → "書式にエラーがあるため読み込めません（JSON：EOF while parsing an object）"
 /// ```
 pub(super) fn describe_serde_error(raw: &str, format: &str) -> String {
     let raw = raw.rfind(" at line ").map_or(raw, |i| &raw[..i]);
@@ -653,11 +654,11 @@ pub(super) fn describe_serde_error(raw: &str, format: &str) -> String {
         rest.find('`').map(|end| rest[..end].to_owned())
     };
     if let Some(key) = quoted("unknown field `") {
-        format!("知らない項目「{key}」があります（{raw}）")
+        format!("不明な項目「{key}」があります（{raw}）")
     } else if let Some(key) = quoted("missing field `") {
         format!("必要な項目「{key}」がありません（{raw}）")
     } else if let Some(value) = quoted("unknown variant `") {
-        format!("使えない値「{value}」です（{raw}）")
+        format!("指定できない値「{value}」です（{raw}）")
     } else if raw.contains("invalid rule id") {
         format!(
             "ルールの ID は、英小文字・数字・「-」で書いてください（例：req-has-satisfier。{raw}）"
@@ -667,7 +668,7 @@ pub(super) fn describe_serde_error(raw: &str, format: &str) -> String {
             "プラグインの ID は、英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules。{raw}）"
         )
     } else {
-        format!("書き方に誤りがあるため読み取れません（{format}：{raw}）")
+        format!("書式にエラーがあるため読み込めません（{format}：{raw}）")
     }
 }
 

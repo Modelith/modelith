@@ -416,7 +416,7 @@ pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
 /// add_node(Doc("// メモ\n/* @layout {} */\n"), "part def", None, Some("Model"))
 ///   → Ok(text = "// メモ\n\npackage Model {\n    part def NewPart {\n    }\n}\n\n/* @layout {} */\n")
 /// add_node(Doc("part def A;"), "part def", None, None)
-///   → Err("要素を置く、モデルの入れ物（package）がありません")
+///   → Err("要素を配置するパッケージがありません")
 /// ```
 fn add_node(
     d: &Doc<'_>,
@@ -437,7 +437,7 @@ fn add_node(
             let (text, target) = append_package(d.text, name)?;
             (text, target, None)
         }
-        (None, None) => return Err("要素を置く、モデルの入れ物（package）がありません".to_owned()),
+        (None, None) => return Err("要素を配置するパッケージがありません".to_owned()),
     };
     let names = d.names();
     let name = unique(lookup(NEW_NAME, kind).unwrap_or("NewElement"), |n| {
@@ -488,12 +488,12 @@ fn add_node(
 /// append_package("part def A;", "M")
 ///   → Ok(("part def A;\n\npackage M {\n}\n", Target { start: 13, head_end: 23, close: Some(25) }))
 /// append_package("", "1x")
-///   → Err("入れ物の名前は、英字か _ で始め、英字・数字・_ だけで付けてください")
+///   → Err("パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください")
 /// ```
 pub(super) fn append_package(text: &str, name: &str) -> Result<(String, Target), Refusal> {
     if !is_basic_name(name) {
         return Err(
-            "入れ物の名前は、英字か _ で始め、英字・数字・_ だけで付けてください".to_owned(),
+            "パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください".to_owned(),
         );
     }
     let cut = layout_comment_start(text).unwrap_or(text.len());
@@ -1071,10 +1071,10 @@ fn connect(
 /// # 例
 ///
 /// ```text
-/// no_package() → "関係を書く、モデルの入れ物（package）がありません"
+/// no_package() → "関係を追加するパッケージがありません"
 /// ```
 fn no_package() -> Refusal {
-    "関係を書く、モデルの入れ物（package）がありません".to_owned()
+    "関係を追加するパッケージがありません".to_owned()
 }
 
 /// a と b を部品として持つ最初の定義（flow を書く場所）と、その部品。部品は型の名前で探す（直下の `part` だけ）。

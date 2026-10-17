@@ -56,7 +56,7 @@
 いまは **0.1.0 に向けた alpha 版**です。おおむね 1 週間ごとに alpha を公開し、テストユーザーの声をもとに育てています。
 操作方法や保存形式は、予告なく変わることがあります。
 
-- 各版の変更点：[リリース](https://github.com/modelith/modelith/releases)
+- 各バージョンの変更点：[リリース](https://github.com/modelith/modelith/releases)
 - 0.1.0 までの予定：[リリース計画](docs/development/release-plan.md)
 - SysML v2 仕様への対応状況：[対応表](docs/reference/sysml-conformance.md)
 

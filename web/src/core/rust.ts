@@ -36,7 +36,7 @@ export function parse(text: string): ParseResult {
 
 /** 解析結果ごとの、Rust が作ったモデル（番号のまま）。`build` で取り出す。 */
 const models = new WeakMap<ParseResult, RawModel>();
-/** 解析結果ごとの、検査ルールの結果（ADR-0018 §2）。`fromAnalysis` で取り出す。 */
+/** 解析結果ごとの、チェックルールの結果（ADR-0018 §2）。`fromAnalysis` で取り出す。 */
 const ruleFindings = new WeakMap<ParseResult, RuleFinding[]>();
 
 /**
@@ -46,10 +46,10 @@ const ruleFindings = new WeakMap<ParseResult, RuleFinding[]>();
  * @param text SysML v2 のテキスト全文
  * @param analyzeJson テキストを解析し、`{ parse, model }` の JSON の文字列を返す関数（wasm の `analyze`）
  * @returns 解析結果。analyzeJson が例外を投げたり壊れた JSON を返したりしたら、要素の無い結果と、
- *   「テキストを読み取れませんでした…」の構文エラー 1 件
+ *   「テキストを解析できませんでした…」の構文エラー 1 件
  * @example
  * safeParse("package P;", () => { throw new Error("unreachable"); }).errors
- * // → [{ pos: 0, msg: "テキストを読み取れませんでした。テキストはそのまま残っています（unreachable）" }]
+ * // → [{ pos: 0, msg: "テキストを解析できませんでした。テキストはそのまま残っています（unreachable）" }]
  * safeParse("", () => "{").errors.length // → 1
  */
 export function safeParse(text: string, analyzeJson: (text: string) => string): ParseResult {
@@ -60,7 +60,7 @@ export function safeParse(text: string, analyzeJson: (text: string) => string): 
     ruleFindings.set(P, Array.isArray(raw.findings) ? raw.findings : []);
     return P;
   } catch (e) {
-    const errors = [{ pos: 0, msg: `テキストを読み取れませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` }];
+    const errors = [{ pos: 0, msg: `テキストを解析できませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` }];
     const P: ParseResult = { entries: [], rels: [], errors, layout: readLayout(text, errors), unsupported: [] };
     models.set(P, { nodes: [], views: [], edges: [], problems: [...errors], phases: null, phaseEnum: null });
     return P;
@@ -91,15 +91,15 @@ export interface RawParseResult {
 
 /**
  * Worker のコアが返した解析とモデル（`analyze` の JSON）を、解析結果とモデルのオブジェクトに戻す（ADR-0016）。例外は投げない。
- * 検査ルールのプラグインを読み込んでいれば、その結果（findings）も取り出す（ADR-0018 §2）。
+ * チェックルールのプラグインを読み込んでいれば、その結果（findings）も取り出す（ADR-0018 §2）。
  *
  * @param json wasm の `analyze`（または `RulePlugins.analyze`）が返した JSON の文字列
  * @param text その JSON を作ったときのテキスト全文（`@layout` コメントを読むのに使う）
- * @returns 解析結果 P・モデル M・検査ルールの結果 findings（無ければ空）。JSON が壊れていれば、要素の無い結果と構文エラー 1 件
+ * @returns 解析結果 P・モデル M・チェックルールの結果 findings（無ければ空）。JSON が壊れていれば、要素の無い結果と構文エラー 1 件
  * @example
  * fromAnalysis(analyze("package P { part def A; }"), "package P { part def A; }").M.nodes.map((n) => n.key) // → ["A"]
  * fromAnalysis(plugins.analyze("package P { requirement def R; }"), …).findings // → [{ plugin: "jp.x", rule: "r1", pos: 12, … }]
- * fromAnalysis("{", "package P;").P.errors[0].msg // → "テキストを読み取れませんでした。…"
+ * fromAnalysis("{", "package P;").P.errors[0].msg // → "テキストを解析できませんでした。…"
  */
 export function fromAnalysis(json: string, text: string): { P: ParseResult; M: Model; findings: RuleFinding[] } {
   const P = safeParse(text, () => json);
@@ -281,7 +281,7 @@ export interface Refused {
   refused: string;
 }
 
-/** プロジェクトが使うプラグイン 1 つの設定（modelith.json の `plugins` の値、ADR-0019）。知らない項目もそのまま持つ。 */
+/** プロジェクトが使うプラグイン 1 つの設定（modelith.json の `plugins` の値、ADR-0019）。不明な項目もそのまま持つ。 */
 export interface PluginUse {
   version?: string;
   enabled: boolean;
@@ -290,7 +290,7 @@ export interface PluginUse {
   [key: string]: unknown;
 }
 
-/** プロジェクトの設定ファイル（modelith.json）の中身（形は crates/modelith-core/src/project_file）。知らない項目もそのまま持つ。 */
+/** プロジェクトの設定ファイル（modelith.json）の中身（形は crates/modelith-core/src/project_file）。不明な項目もそのまま持つ。 */
 export interface ProjectFile {
   /** 画面に出すプロジェクト名。無ければフォルダ名を出す。 */
   name?: string;
@@ -317,10 +317,10 @@ export interface CreatedProjectFile {
   text: string;
 }
 
-/** 検査ルールの結果の重さ（plugin-sdk の DiagnosticSeverity）。 */
+/** チェックルールの結果の重さ（plugin-sdk の DiagnosticSeverity）。 */
 export type RuleSeverity = "error" | "warning" | "information" | "hint";
 
-/** 検査ルールの結果 1 件（ADR-0018 §2）。pos は要素の宣言の始まり（UTF-16）。 */
+/** チェックルールの結果 1 件（ADR-0018 §2）。pos は要素の宣言の始まり（UTF-16）。 */
 export interface RuleFinding {
   /** プラグインの ID。 */
   plugin: string;
@@ -341,7 +341,7 @@ export interface PluginFiles {
   files: Record<string, string>;
 }
 
-/** プラグインの種類（マニフェストの runtime）。rules は検査ルール、browser は TypeScript、wasm-component は WebAssembly。 */
+/** プラグインの種類（マニフェストの runtime）。rules はチェックルール、browser は TypeScript、wasm-component は WebAssembly。 */
 export type PluginRuntime = "rules" | "browser" | "wasm-component";
 
 /** マニフェスト（modelith-plugin.json）から読んだ、プラグインを画面に示すための情報。 */

@@ -101,11 +101,11 @@ async function openSampleFolder(page: Page, text: string): Promise<void> {
   await page.locator('#explorer [data-file][title="a.sysml"]').click();
 }
 
-// プラグイン（ADR-0018）の場面で使う、検査ルールのプラグインとプロジェクト
+// プラグイン（ADR-0018）の場面で使う、チェックルールのプラグインとプロジェクト
 const PLUGIN_ID = "jp.example.trace";
 const PLUGIN_DIR = `.modelith/plugins/${PLUGIN_ID}`;
 const PLUGIN_MANIFEST = JSON.stringify(
-  { id: PLUGIN_ID, name: "トレースの検査", version: "0.1.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
+  { id: PLUGIN_ID, name: "トレーサビリティのチェック", version: "0.1.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
   null,
   2,
 );
@@ -121,13 +121,13 @@ const PLUGIN_MODEL = "package P {\n    requirement def R;\n}\n";
  * @param files ほかに置くファイル（パス → テキスト）
  */
 async function openPluginProject(page: Page, plugins: Record<string, unknown>, files: Record<string, string> = {}): Promise<void> {
-  await putFiles(page, { "a.sysml": PLUGIN_MODEL, "modelith.json": JSON.stringify({ name: "給水", plugins }, null, 2) + "\n", ...files });
+  await putFiles(page, { "a.sysml": PLUGIN_MODEL, "modelith.json": JSON.stringify({ name: "給水システム", plugins }, null, 2) + "\n", ...files });
   await page.locator('[data-cmd="openFolder"]').click();
   await page.locator('#explorer [data-file][title="a.sysml"]').click();
   await expect.poll(() => editorText(page)).toBe(PLUGIN_MODEL);
 }
 
-/** 入っている検査ルールのプラグインのファイル。 */
+/** 入っているチェックルールのプラグインのファイル。 */
 const installedPlugin = (): Record<string, string> => ({ [`${PLUGIN_DIR}/modelith-plugin.json`]: PLUGIN_MANIFEST, [`${PLUGIN_DIR}/rules.yaml`]: PLUGIN_RULES });
 
 /**
@@ -193,7 +193,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-EDIT-7・Q-4: モデルの入れ物（package）を作る案内",
+    title: "F-EDIT-7・Q-4: パッケージ（package）を作る案内",
     shot: "dialog-new-package",
     act: async (page) => {
       await page.locator('[data-cmd="new"]').click();
@@ -274,7 +274,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-PLUG-1: 検査ルールの結果を示す問題一覧",
+    title: "F-PLUG-1: チェックルールの結果を示す問題一覧",
     shot: "plugin-findings",
     act: async (page) => {
       await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } }, installedPlugin());
@@ -283,7 +283,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-PLUG-8・F-PLUG-9: プラグインの一覧（使える・入っていない・止めている）",
+    title: "F-PLUG-8・F-PLUG-9: プラグインの一覧（有効・未追加・無効）",
     shot: "plugin-list",
     act: async (page) => {
       await openPluginProject(
@@ -292,7 +292,7 @@ const scenes: Scene[] = [
         {
           ...installedPlugin(),
           ".modelith/plugins/jp.example.names/modelith-plugin.json": JSON.stringify(
-            { id: "jp.example.names", name: "名前の決まり", version: "0.3.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
+            { id: "jp.example.names", name: "命名規則のチェック", version: "0.3.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
             null,
             2,
           ),
@@ -305,7 +305,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-PLUG-9: 入っていないプラグインの案内（エクスプローラーと問題一覧）",
+    title: "F-PLUG-9: 追加されていないプラグインの案内（エクスプローラーと問題一覧）",
     shot: "plugin-missing",
     act: async (page) => {
       await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } });

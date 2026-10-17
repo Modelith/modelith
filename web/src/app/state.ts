@@ -98,7 +98,7 @@ export interface AppState {
   treeQ: string;
   treeSel: number | null;
   treeScrollForce: boolean;
-  /** 今のテキストへの、検査ルールの結果（ADR-0018 §2。プラグインが無ければ空）。 */
+  /** 今のテキストへの、チェックルールの結果（ADR-0018 §2。プラグインが無ければ空）。 */
   findings: RuleFinding[];
   /** 問題一覧に出す、プラグインについての行（足りないプラグイン・読み込みの問題）。 */
   pluginNotes: PluginNote[];

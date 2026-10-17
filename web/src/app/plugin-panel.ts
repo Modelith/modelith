@@ -1,4 +1,4 @@
-// プラグイン（ADR-0018 §1・ADR-0019）の画面：プロジェクトに入れたプラグインを読み込んでコアに渡し、一覧・追加・使う／止める・削除を行う。
+// プラグイン（ADR-0018 §1・ADR-0019）の画面：プロジェクトに追加したプラグインを読み込んでコアに渡し、一覧・追加・有効／無効の切り替え・削除を行う。
 // 判断と画面の言葉は plugins.ts の純粋関数に任せ、ここはファイルの読み書きと描画だけを行う。
 
 import type { FolderRef } from "../files/types";
@@ -29,7 +29,7 @@ export interface PluginEnv {
 }
 
 /** 設定ファイルが他のアプリで変わっていたときの知らせ。 */
-const PROJECT_CHANGED = "プロジェクトの設定（modelith.json）が他のアプリで変更されていたため、読み直しました。もう一度操作してください";
+const PROJECT_CHANGED = "プロジェクトの設定（modelith.json）が他のアプリで変更されていたため、読み込み直しました。もう一度操作してください";
 
 let env: PluginEnv | null = null;
 /** コアが読み込んだプラグインのまとめ。 */
@@ -75,7 +75,7 @@ function pluginFolder(): { ref: FolderRef; source: FolderTrees & FolderFiles; pr
  *
  * @returns 設定。プロジェクトでない・読み取れない・まだ読み取っていなければ null
  * @example
- * currentProject() // → { name: "給水", plugins: { "jp.x": {…} } }
+ * currentProject() // → { name: "給水システム", plugins: { "jp.x": {…} } }
  * currentProject() // → null（modelith.json の無いフォルダ）
  */
 const currentProject = (): ProjectFile | null => pluginEnv().project()?.project ?? null;
@@ -110,8 +110,8 @@ export async function reloadPlugins(): Promise<void> {
  *
  * @param f 開いているフォルダとプロバイダ
  * @param id プラグインの ID
- * @returns プラグインのフォルダからの相対パス → テキスト。入っていない・ID がフォルダの名前にできない・読めないときは空
- *   （コアが「入っていない」「ID の形が正しくない」と知らせる。読めなかった理由はトーストで知らせる）
+ * @returns プラグインのフォルダからの相対パス → テキスト。未追加・ID がフォルダの名前にできない・読めないときは空
+ *   （コアが「追加されていない」「ID の形が正しくない」と知らせる。読めなかった理由はトーストで知らせる）
  * @example
  * await readPlugin(f, "jp.x")  // → { "modelith-plugin.json": "{…}", "rules.yaml": "…" }
  * await readPlugin(f, "../x")  // → {}（読まない）
@@ -148,12 +148,12 @@ function publish(project: ProjectFile | null): void {
  *
  * @returns HTML。プロジェクトでなければ ""
  * @example
- * pluginExplorerHtml() // → '<div class="mkproj"><button data-cmd="plugins" …>プラグイン</button></div><div class="msg plugnote">このプロジェクトはプラグイン「jp.x」を使っていますが、…<br><button data-cmd="addPlugin">追加…</button></div>'
+ * pluginExplorerHtml() // → '<div class="mkproj"><button data-cmd="plugins" …>プラグイン</button></div><div class="msg plugnote">このプロジェクトで使うプラグイン「jp.x」が追加されていません。…<br><button data-cmd="addPlugin">追加…</button></div>'
  * pluginExplorerHtml() // → ""（modelith.json の無いフォルダ）
  */
 export function pluginExplorerHtml(): string {
   if (!env || !currentProject()) return "";
-  const button = `<div class="mkproj"><button data-cmd="plugins" title="このプロジェクトに入れたプラグイン（検査ルールなど）の一覧">プラグイン${rows.length ? `（${rows.length}）` : ""}</button></div>`;
+  const button = `<div class="mkproj"><button data-cmd="plugins" title="このプロジェクトに追加したプラグイン（チェックルールなど）の一覧">プラグイン${rows.length ? `（${rows.length}）` : ""}</button></div>`;
   const notices = rows
     .filter((r) => r.enabled)
     .flatMap((r) => {
@@ -170,7 +170,7 @@ export function pluginExplorerHtml(): string {
  *
  * @returns プラグインの一覧の場面
  * @example
- * panelPlace() // → { kind: "project", projectName: "給水" }
+ * panelPlace() // → { kind: "project", projectName: "給水システム" }
  * panelPlace() // → { kind: "noFolder" }（フォルダを開いていない）
  */
 function panelPlace(): PanelPlace {
@@ -185,13 +185,13 @@ function panelPlace(): PanelPlace {
 }
 
 /**
- * プラグインの一覧の 1 行の HTML を作る（名前・状態・ID・版・ルールの数・案内・問題・使うの切り替え・削除）。
+ * プラグインの一覧の 1 行の HTML を作る（名前・状態・ID・バージョン・ルールの数・案内・問題・有効の切り替え・削除）。
  *
  * @param r 一覧の行
  * @returns 行の HTML
  * @example
- * rowHtml({ id: "jp.x", name: "トレース", state: "ok", … })
- * // → '<div class="plug" data-plugin="jp.x"><div class="ph"><b>トレース</b><span class="pst ok">使える</span></div>…</div>'
+ * rowHtml({ id: "jp.x", name: "トレーサビリティのチェック", state: "ok", … })
+ * // → '<div class="plug" data-plugin="jp.x"><div class="ph"><b>トレーサビリティのチェック</b><span class="pst ok">有効</span></div>…</div>'
  */
 function rowHtml(r: PluginRow): string {
   const version = r.version ?? "—";
@@ -202,8 +202,8 @@ function rowHtml(r: PluginRow): string {
   return (
     `<div class="plug" data-plugin="${esc(r.id)}">` +
     `<div class="ph"><b>${esc(r.name)}</b><span class="pst ${r.state}">${STATE_LABEL[r.state]}</span></div>` +
-    `<div class="pm">ID：${esc(r.id)}・版：${esc(version)}${wanted}・ルール ${r.rules} 件</div>${help}${problems}` +
-    `<div class="pa"><label><input type="checkbox" data-toggle="${esc(r.id)}"${r.enabled ? " checked" : ""}> 使う</label><button data-remove="${esc(r.id)}" class="danger">削除</button></div>` +
+    `<div class="pm">ID：${esc(r.id)}・バージョン：${esc(version)}${wanted}・ルール ${r.rules} 件</div>${help}${problems}` +
+    `<div class="pa"><label><input type="checkbox" data-toggle="${esc(r.id)}"${r.enabled ? " checked" : ""}> 有効</label><button data-remove="${esc(r.id)}" class="danger">削除</button></div>` +
     `</div>`
   );
 }
@@ -249,10 +249,10 @@ async function isProjectFresh(f: { ref: FolderRef; source: FolderFiles; projectT
 
 
 /**
- * プラグインを使うか止めるかを、設定ファイルに書く（F-PLUG-8。チームでそろう）。
+ * プラグインの有効・無効を、設定ファイルに書く（F-PLUG-8。チームでそろう）。
  *
  * @param id プラグインの ID
- * @param enabled 使うなら true
+ * @param enabled 有効にするなら true
  */
 async function setEnabled(id: string, enabled: boolean): Promise<void> {
   const f = pluginFolder();
@@ -265,14 +265,14 @@ async function setEnabled(id: string, enabled: boolean): Promise<void> {
     if (!(await isProjectFresh(f))) return;
     await f.source.writeInFolder(f.ref, PROJECT_FILE, updated.text);
     await pluginEnv().refreshFolder();
-    toast(enabled ? `プラグイン「${name}」を使うようにしました` : `プラグイン「${name}」を止めました。このプラグインの検査の結果は出なくなります`);
+    toast(enabled ? `プラグイン「${name}」を有効にしました` : `プラグイン「${name}」を無効にしました。このプラグインのチェック結果は表示されなくなります`);
   } catch (e) {
-    toast(`プロジェクトの設定を書き換えられませんでした：${(e as Error).message}`);
+    toast(`プロジェクトの設定を保存できませんでした：${(e as Error).message}`);
   }
 }
 
 /**
- * 確かめてから、プラグインをプロジェクトから削除する（フォルダを消し、設定ファイルから外す。F-PLUG-8）。
+ * 確かめてから、プラグインをプロジェクトから削除する（フォルダを削除し、設定ファイルから登録を外す。F-PLUG-8）。
  *
  * @param id プラグインの ID
  */
@@ -281,7 +281,7 @@ async function removePlugin(id: string): Promise<void> {
   const text = f?.projectText;
   if (!f || text == null) return;
   const name = rows.find((r) => r.id === id)?.name ?? id;
-  const r = await ask("プラグインを削除", `プラグイン「${name}」を、このプロジェクトから削除しますか？ ${PLUGINS_DIR}/${id}/ のファイルを消し、プロジェクトの設定（modelith.json）からも外します。`, [
+  const r = await ask("プラグインを削除", `プラグイン「${name}」をこのプロジェクトから削除しますか？ ${PLUGINS_DIR}/${id}/ のファイルを削除し、プロジェクトの設定（modelith.json）からも登録を解除します。`, [
     { id: "cancel", label: "やめる" },
     { id: "remove", label: "削除する", kind: "danger" },
   ]);
@@ -300,21 +300,21 @@ async function removePlugin(id: string): Promise<void> {
 }
 
 /**
- * 「追加」：プラグインのフォルダを選んでもらい、中身を示して確かめてから、このプロジェクトに入れる（F-PLUG-8・F-PLUG-9）。
+ * 「追加」：プラグインのフォルダを選んでもらい、中身を示して確かめてから、このプロジェクトに追加する（F-PLUG-8・F-PLUG-9）。
  * まだプロジェクトでないフォルダなら、同じ確認でプロジェクトの名前を尋ね、設定ファイルを作る（C-6：利用者の操作なしに書かない）。
- * 検査ルール以外のプラグインは、まだ追加できないと伝える。
+ * チェックルール以外のプラグインは、まだ追加できないと伝える。
  */
 export async function addPlugin(): Promise<void> {
   const f = pluginFolder();
   if (!f) return toast("プラグインを追加するには、先に「ファイル → フォルダを開く…」でモデルのフォルダを開いてください");
-  if (f.projectText !== null && !currentProject()) return toast("プロジェクトの設定（modelith.json）に誤りがあるため、プラグインを追加できません。先に設定ファイルを直してください");
+  if (f.projectText !== null && !currentProject()) return toast("プロジェクトの設定（modelith.json）にエラーがあるため、プラグインを追加できません。先に設定ファイルを修正してください");
   try {
     const picked = await f.source.pickOtherFolder();
     if (!picked) return;
     const manifest = await f.source.readInFolder(picked, MANIFEST_FILE);
-    if (manifest === null) return toast(`選んだフォルダ「${picked.name}」には、プラグインの説明（${MANIFEST_FILE}）がありません。プラグインのフォルダを選んでください`);
+    if (manifest === null) return toast(`選んだフォルダ「${picked.name}」には、プラグインの情報（${MANIFEST_FILE}）がありません。プラグインのフォルダを選んでください`);
     const described = await coreClient().describePlugin(manifest);
-    if ("refused" in described) return toast(`選んだフォルダのプラグインを読み取れません。${described.refused}`);
+    if ("refused" in described) return toast(`選んだフォルダのプラグインを読み込めません。${described.refused}`);
     const info = described.plugin;
     const prompt = addPrompt(info, currentProject(), summaries.some((s) => s.id === info.id && s.installed));
     if ("refused" in prompt) {
@@ -324,7 +324,7 @@ export async function addPlugin(): Promise<void> {
     const r = await ask("プラグインを追加", prompt.text, [
       { id: "cancel", label: "やめる" },
       { id: "ok", label: prompt.confirm, kind: "primary" },
-    ], prompt.askName ? { value: f.ref.name, label: "プロジェクトの名前" } : undefined);
+    ], prompt.askName ? { value: f.ref.name, label: "プロジェクト名" } : undefined);
     if (r?.id !== "ok") return;
     await install(f, picked, info, prompt.askName ? r.value.trim() || f.ref.name : null);
   } catch (e) {
@@ -333,7 +333,7 @@ export async function addPlugin(): Promise<void> {
 }
 
 /**
- * 選んだフォルダのプラグインを、`.modelith/plugins/<ID>/` に写し（前にあったものは消す）、設定ファイルに書き加える。
+ * 選んだフォルダのプラグインを、`.modelith/plugins/<ID>/` にコピーし（前にあったものは消す）、設定ファイルに登録する。
  * 設定ファイルを先に計算し、他のアプリで変わっていないことを確かめてから書く。
  *
  * @param f 開いているフォルダ・プロバイダ・設定ファイルのテキスト
@@ -354,7 +354,7 @@ async function install(f: { ref: FolderRef; source: FolderTrees & FolderFiles; p
   for (const [path, text] of plan.files) await f.source.writeInFolder(f.ref, path, text);
   await f.source.writeInFolder(f.ref, PROJECT_FILE, updated.text);
   await pluginEnv().refreshFolder();
-  toast(`プラグイン「${info.name}」を、このプロジェクトに追加しました`);
+  toast(`プラグイン「${info.name}」をこのプロジェクトに追加しました`);
 }
 
 /**
@@ -363,7 +363,7 @@ async function install(f: { ref: FolderRef; source: FolderTrees & FolderFiles; p
  * @param name プロジェクトの名前
  * @returns テキスト。作れなければ理由をトーストで知らせて null
  * @example
- * await createdProjectText("給水") // → '{\n  "name": "給水",\n  "plugins": {}\n}\n'
+ * await createdProjectText("給水システム") // → '{\n  "name": "給水システム",\n  "plugins": {}\n}\n'
  */
 async function createdProjectText(name: string): Promise<string | null> {
   const made = await coreClient().createProjectFile(name);
@@ -375,7 +375,7 @@ async function createdProjectText(name: string): Promise<string | null> {
 /* ---- 登録 ---- */
 
 /**
- * プラグインの画面を初期化する。ファイルメニューの「プラグイン…」・一覧の操作（追加・使う・削除・閉じる）・
+ * プラグインの画面を初期化する。ファイルメニューの「プラグイン…」・一覧の操作（追加・有効・削除・閉じる）・
  * 問題一覧の足りないプラグインの行（押すと追加）をつなぐ。起動時に 1 回呼ぶ。
  *
  * @param e ファイル操作の画面の状態と操作

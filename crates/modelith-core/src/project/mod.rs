@@ -49,7 +49,7 @@ pub fn project(source: &str, parse: &Parse) -> ParseResult {
     if let Some(at) = broken_layout_comment(source) {
         c.out.errors.push(ParseError {
             pos: c.utf16(at),
-            msg: "@layout コメントが読み取れません".to_owned(),
+            msg: "@layout コメントを読み込めません".to_owned(),
         });
     }
     c.out

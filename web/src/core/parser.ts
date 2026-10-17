@@ -304,7 +304,7 @@ export function parse(text: string): ParseResult {
  * @returns 配置情報の JSON。コメントが無ければ空のオブジェクト。JSON が読めなければ errors に足して空のオブジェクト
  * @example
  * readLayout('/* @layout {"A":{"x":1}} *\/', errors) // → { A: { x: 1 } }
- * readLayout("/* @layout {x *\/", errors)            // → {}（errors に「@layout コメントが読み取れません」）
+ * readLayout("/* @layout {x *\/", errors)            // → {}（errors に「@layout コメントを読み込めません」）
  * readLayout("package P;", errors)                  // → {}
  */
 export function readLayout(text: string, errors: ParseError[]): Record<string, unknown> {
@@ -313,7 +313,7 @@ export function readLayout(text: string, errors: ParseError[]): Record<string, u
   try {
     return JSON.parse(lm[1]!) as Record<string, unknown>;
   } catch {
-    errors.push({ pos: lm.index ?? 0, msg: "@layout コメントが読み取れません" });
+    errors.push({ pos: lm.index ?? 0, msg: "@layout コメントを読み込めません" });
     return {};
   }
 }

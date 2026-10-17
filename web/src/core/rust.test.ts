@@ -22,7 +22,7 @@ describe("parse（Rust のパーサ）", () => {
     const P = safeParse("package P;", failing);
     // Assert
     expect(P.entries).toEqual([]);
-    expect(P.errors).toEqual([{ pos: 0, msg: "テキストを読み取れませんでした。テキストはそのまま残っています（unreachable）" }]);
+    expect(P.errors).toEqual([{ pos: 0, msg: "テキストを解析できませんでした。テキストはそのまま残っています（unreachable）" }]);
   });
 
   it("壊れた JSON が返っても例外を投げない（異常系）", () => {

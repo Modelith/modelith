@@ -17,7 +17,7 @@ export interface CorePort {
 /** 編集の返事が古かったときの断り（ADR-0014 の言葉）。 */
 export const STALE_EDIT = "テキストが変わったため、この操作はやめました。もう一度操作してください";
 
-/** 解析結果を受け取ったときの処理。findings は検査ルールの結果（プラグインが無ければ空）。 */
+/** 解析結果を受け取ったときの処理。findings はチェックルールの結果（プラグインが無ければ空）。 */
 export type AnalyzedListener = (version: number, P: ParseResult, M: Model, findings: RuleFinding[]) => void;
 
 export class CoreClient {
@@ -114,7 +114,7 @@ export class CoreClient {
    *
    * @param text modelith.json のテキスト全体
    * @returns 読み取れた設定（誤りがあれば null）と問題の一覧。コアの返事が読めなければ、
-   *   設定は null で「設定ファイルを読み取れませんでした…」の誤り 1 件。例外は投げない
+   *   設定は null で「設定ファイルを読み込めませんでした…」の誤り 1 件。例外は投げない
    * @example
    * await c.parseProjectFile('{ "name": "給水" }') // → { project: { name: "給水", plugins: {} }, problems: [] }
    * await c.parseProjectFile("{")                   // → { project: null, problems: [{ severity: "error", line: 1, column: 1, … }] }
@@ -130,14 +130,14 @@ export class CoreClient {
    * @returns 作ったテキスト。コアの返事が読めなければ、作れなかった旨の断り。例外は投げない
    * @example
    * await c.createProjectFile("給水") // → { text: '{\n  "name": "給水",\n  "plugins": {}\n}\n' }
-   * // コアが壊れた返事をしたとき → { refused: "プロジェクトの設定ファイルを作れませんでした（…）" }
+   * // コアが壊れた返事をしたとき → { refused: "プロジェクトの設定ファイルを作成できませんでした（…）" }
    */
   async createProjectFile(name: string): Promise<CreatedProjectFile | Refused> {
     return parseCreated(await this.request((id) => ({ type: "createProject", id, name })));
   }
 
   /**
-   * 設定ファイルの使うプラグインの項目を、コアに書き換えてもらう（「追加」・使う／止める・「削除」。ADR-0018 §1）。知らない項目は残る。
+   * 設定ファイルの使うプラグインの項目を、コアに書き換えてもらう（「追加」・使う／止める・「削除」。ADR-0018 §1）。不明な項目は残る。
    *
    * @param text 今の modelith.json のテキスト全体
    * @param plugin プラグインの ID
@@ -148,11 +148,11 @@ export class CoreClient {
    * await c.updateProjectPlugin("{}", "jp.x", { op: "remove" })                // → { refused: "プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません" }
    */
   async updateProjectPlugin(text: string, plugin: string, change: PluginChange): Promise<CreatedProjectFile | Refused> {
-    return parseText(await this.request((id) => ({ type: "updateProject", id, text, plugin, change })), "プロジェクトの設定を書き換えられませんでした");
+    return parseText(await this.request((id) => ({ type: "updateProject", id, text, plugin, change })), "プロジェクトの設定を変更できませんでした");
   }
 
   /**
-   * 検査ルールのプラグインをコアに読み込ませる（前のものは置き換える。ADR-0018 §2）。
+   * チェックルールのプラグインをコアに読み込ませる（前のものは置き換える。ADR-0018 §2）。
    * 前にテキストを送っていれば、同じテキストを新しい版で送り直し、ルールの結果を付けた解析結果を受け取れるようにする。
    *
    * @param plugins プラグインごとの ID・使うか・ファイル（空なら、ルールを当てない）
@@ -245,11 +245,11 @@ function parseEdited(json: string): EditResult | Refused {
  * コアが返した設定ファイルの読み取りの結果（JSON）を読む。
  *
  * @param json wasm の `parseProjectFile` が返した JSON の文字列
- * @returns 読み取りの結果。JSON が壊れている・形が違うときは、設定は null で「設定ファイルを読み取れませんでした…」の誤り 1 件（例外は投げない）
+ * @returns 読み取りの結果。JSON が壊れている・形が違うときは、設定は null で「設定ファイルを読み込めませんでした…」の誤り 1 件（例外は投げない）
  * @example
  * parseProjectResult('{"project":null,"problems":[]}') // → { project: null, problems: [] }
- * parseProjectResult('{"error":"x"}')                  // → { project: null, problems: [{ …, message: "設定ファイルを読み取れませんでした（x）" }] }
- * parseProjectResult("{")                              // → { project: null, problems: [{ …, message: "設定ファイルを読み取れませんでした（…）" }] }
+ * parseProjectResult('{"error":"x"}')                  // → { project: null, problems: [{ …, message: "設定ファイルを読み込めませんでした（x）" }] }
+ * parseProjectResult("{")                              // → { project: null, problems: [{ …, message: "設定ファイルを読み込めませんでした（…）" }] }
  */
 function parseProjectResult(json: string): ProjectFileResult {
   try {
@@ -265,14 +265,14 @@ function parseProjectResult(json: string): ProjectFileResult {
  * コアが返した、新しい設定ファイルのテキスト（JSON）を読む。
  *
  * @param json wasm の `createProjectFile` が返した JSON の文字列
- * @returns テキストか断り。JSON が壊れている・形が違うときは「プロジェクトの設定ファイルを作れませんでした…」の断り（例外は投げない）
+ * @returns テキストか断り。JSON が壊れている・形が違うときは「プロジェクトの設定ファイルを作成できませんでした…」の断り（例外は投げない）
  * @example
  * parseCreated('{"text":"{}\\n"}') // → { text: "{}\n" }
  * parseCreated('{"refused":"x"}')    // → { refused: "x" }
- * parseCreated("{")                  // → { refused: "プロジェクトの設定ファイルを作れませんでした（…）" }
+ * parseCreated("{")                  // → { refused: "プロジェクトの設定ファイルを作成できませんでした（…）" }
  */
 function parseCreated(json: string): CreatedProjectFile | Refused {
-  return parseText(json, "プロジェクトの設定ファイルを作れませんでした");
+  return parseText(json, "プロジェクトの設定ファイルを作成できませんでした");
 }
 
 /**
@@ -321,20 +321,20 @@ function parsePlugins(json: string): PluginsResult {
  * コアが返した、マニフェストを読んだ結果（JSON）を読む。
  *
  * @param json wasm の `describePlugin` が返した JSON の文字列
- * @returns プラグインの情報か断り。JSON が壊れている・形が違うときは「プラグインを読み取れませんでした…」の断り（例外は投げない）
+ * @returns プラグインの情報か断り。JSON が壊れている・形が違うときは「プラグインを読み込めませんでした…」の断り（例外は投げない）
  * @example
  * parseDescribed('{"plugin":{"id":"jp.x",…}}') // → { plugin: { id: "jp.x", … } }
  * parseDescribed('{"refused":"x"}')           // → { refused: "x" }
- * parseDescribed("{")                         // → { refused: "プラグインを読み取れませんでした（…）" }
+ * parseDescribed("{")                         // → { refused: "プラグインを読み込めませんでした（…）" }
  */
 function parseDescribed(json: string): DescribedPlugin | Refused {
   try {
     const r = JSON.parse(json) as Partial<DescribedPlugin & Refused>;
     if (r.plugin && typeof r.plugin.id === "string") return { plugin: r.plugin };
     if (typeof r.refused === "string") return { refused: r.refused };
-    return { refused: "プラグインを読み取れませんでした（コアの返事の形が違います）" };
+    return { refused: "プラグインを読み込めませんでした（コアの返事の形が違います）" };
   } catch (e) {
-    return { refused: `プラグインを読み取れませんでした（${e instanceof Error ? e.message : String(e)}）` };
+    return { refused: `プラグインを読み込めませんでした（${e instanceof Error ? e.message : String(e)}）` };
   }
 }
 

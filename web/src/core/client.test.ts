@@ -113,7 +113,7 @@ describe("CoreClient（版つきのやり取り）", () => {
     const pending = c.edit("package P;", { op: "delete", keys: [] });
     deliver();
     // Assert
-    expect(got[0]?.P.errors[0]?.msg).toMatch(/^テキストを読み取れませんでした/);
+    expect(got[0]?.P.errors[0]?.msg).toMatch(/^テキストを解析できませんでした/);
     expect(await pending).toEqual({ refused: expect.stringMatching(/^操作できませんでした/) as unknown });
   });
 });
@@ -141,7 +141,7 @@ describe("CoreClient（プロジェクトの設定ファイル、F-PROJ-1）", (
     const r = await pending;
     // Assert
     expect(r.project).toBeNull();
-    expect(r.problems).toEqual([{ severity: "error", line: 2, column: 11, message: expect.stringMatching(/^書き方に誤りがあるため読み取れません/) as unknown }]);
+    expect(r.problems).toEqual([{ severity: "error", line: 2, column: 11, message: expect.stringMatching(/^書式にエラーがあるため読み込めません/) as unknown }]);
   });
 
   it("テキストが変わっても、設定ファイルの返事は断らない（版に関係しない）", async () => {
@@ -160,11 +160,11 @@ describe("CoreClient（プロジェクトの設定ファイル、F-PROJ-1）", (
     // Arrange
     const { c, deliver } = client();
     // Act
-    const pending = c.createProjectFile("給水");
+    const pending = c.createProjectFile("給水システム");
     deliver();
     const r = await pending;
     // Assert
-    expect(r).toEqual({ text: '{\n  "name": "給水",\n  "plugins": {}\n}\n' });
+    expect(r).toEqual({ text: '{\n  "name": "給水システム",\n  "plugins": {}\n}\n' });
   });
 
   it("Q-5: コアが壊れた返事をしても、設定ファイルの依頼は例外を投げない（異常系）", async () => {
@@ -175,8 +175,8 @@ describe("CoreClient（プロジェクトの設定ファイル、F-PROJ-1）", (
     const created = c.createProjectFile("A");
     deliver();
     // Assert
-    expect(await parsed).toEqual({ project: null, problems: [{ severity: "error", line: 1, column: 1, message: expect.stringMatching(/^設定ファイルを読み取れませんでした/) as unknown }] });
-    expect(await created).toEqual({ refused: expect.stringMatching(/^プロジェクトの設定ファイルを作れませんでした/) as unknown });
+    expect(await parsed).toEqual({ project: null, problems: [{ severity: "error", line: 1, column: 1, message: expect.stringMatching(/^設定ファイルを読み込めませんでした/) as unknown }] });
+    expect(await created).toEqual({ refused: expect.stringMatching(/^プロジェクトの設定ファイルを作成できませんでした/) as unknown });
   });
 
   it("コアが返事の形の違う JSON を返しても、誤りとして返す（異常系）", async () => {
@@ -187,8 +187,8 @@ describe("CoreClient（プロジェクトの設定ファイル、F-PROJ-1）", (
     const created = c.createProjectFile("A");
     deliver();
     // Assert
-    expect((await parsed).problems[0]?.message).toBe("設定ファイルを読み取れませんでした（x）");
-    expect(await created).toEqual({ refused: "プロジェクトの設定ファイルを作れませんでした（コアの返事の形が違います）" });
+    expect((await parsed).problems[0]?.message).toBe("設定ファイルを読み込めませんでした（x）");
+    expect(await created).toEqual({ refused: "プロジェクトの設定ファイルを作成できませんでした（コアの返事の形が違います）" });
   });
 });
 
@@ -235,17 +235,17 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
     const parsed = await c.parseProjectFile("{}");
     const created = await c.createProjectFile("A");
     // Assert
-    expect(parsed.problems[0]?.message).toBe("設定ファイルを読み取れませんでした（boom）");
-    expect(created).toEqual({ refused: "プロジェクトの設定ファイルを作れませんでした（boom）" });
+    expect(parsed.problems[0]?.message).toBe("設定ファイルを読み込めませんでした（boom）");
+    expect(created).toEqual({ refused: "プロジェクトの設定ファイルを作成できませんでした（boom）" });
   });
 });
 
-/** 検査ルールのプラグイン（要求に「満たす」関係が無ければ注意を出す）。 */
-const MANIFEST = JSON.stringify({ id: "jp.x", name: "トレースの検査", version: "0.1.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } });
+/** チェックルールのプラグイン（要求に「満たす」関係が無ければ注意を出す）。 */
+const MANIFEST = JSON.stringify({ id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } });
 const RULES = 'rules:\n  - id: req-sat\n    severity: warning\n    message: "要求「{name}」を満たす要素がありません"\n    match: { kind: requirement def }\n    require: { incoming: satisfy }\n';
 const plugin = (files: Record<string, string> = { "modelith-plugin.json": MANIFEST, "rules.yaml": RULES }, enabled = true): PluginFiles => ({ id: "jp.x", enabled, files });
 
-describe("CoreClient（検査ルールのプラグイン、F-PLUG-1・F-PLUG-3）", () => {
+describe("CoreClient（チェックルールのプラグイン、F-PLUG-1・F-PLUG-3）", () => {
   it("F-PLUG-1: 読み込んだプラグインのルールの結果を、今のテキストの解析結果に付けて渡す（正常系）", async () => {
     // Arrange（先にテキストを送っておく）
     const { c, got, deliver } = client();
@@ -256,7 +256,7 @@ describe("CoreClient（検査ルールのプラグイン、F-PLUG-1・F-PLUG-3�
     deliver();
     const r = await pending;
     // Assert（送り直したテキストの結果に、ルールの結果が付く）
-    expect(r.plugins.map((p) => [p.id, p.installed, p.manifest?.name, p.rules, p.problems.length])).toEqual([["jp.x", true, "トレースの検査", 1, 0]]);
+    expect(r.plugins.map((p) => [p.id, p.installed, p.manifest?.name, p.rules, p.problems.length])).toEqual([["jp.x", true, "トレーサビリティのチェック", 1, 0]]);
     expect(got.at(-1)?.findings).toEqual([{ plugin: "jp.x", rule: "req-sat", severity: "warning", message: "要求「R」を満たす要素がありません", element: "R", pos: 16 }]);
     expect(got.at(-1)?.version).toBe(c.current);
   });
@@ -329,7 +329,7 @@ describe("CoreClient（検査ルールのプラグイン、F-PLUG-1・F-PLUG-3�
     deliver();
     // Assert
     expect(await updated).toEqual({ text: '{\n  "plugins": {\n    "jp.x": {\n      "version": "0.1.0",\n      "enabled": true\n    }\n  }\n}\n' });
-    expect(await described).toEqual({ plugin: { id: "jp.x", name: "トレースの検査", version: "0.1.0", runtime: "rules" } });
+    expect(await described).toEqual({ plugin: { id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", runtime: "rules" } });
   });
 
   it("書き換えられない・読めないときは、理由の断りを返す（異常系）", async () => {
@@ -354,8 +354,8 @@ describe("CoreClient（検査ルールのプラグイン、F-PLUG-1・F-PLUG-3�
     deliver();
     // Assert
     expect((await set).error).toMatch(/^プラグインを読み込めませんでした/);
-    expect(await updated).toEqual({ refused: expect.stringMatching(/^プロジェクトの設定を書き換えられませんでした/) as unknown });
-    expect(await described).toEqual({ refused: expect.stringMatching(/^プラグインを読み取れませんでした/) as unknown });
+    expect(await updated).toEqual({ refused: expect.stringMatching(/^プロジェクトの設定を変更できませんでした/) as unknown });
+    expect(await described).toEqual({ refused: expect.stringMatching(/^プラグインを読み込めませんでした/) as unknown });
   });
 
   it("コアが返事の形の違う JSON を返しても、誤りとして返す（異常系）", async () => {
@@ -367,7 +367,7 @@ describe("CoreClient（検査ルールのプラグイン、F-PLUG-1・F-PLUG-3�
     deliver();
     // Assert
     expect(await set).toEqual({ plugins: [], error: "x" });
-    expect(await described).toEqual({ refused: "プラグインを読み取れませんでした（コアの返事の形が違います）" });
+    expect(await described).toEqual({ refused: "プラグインを読み込めませんでした（コアの返事の形が違います）" });
   });
 
   it("プラグインを置き換えると、前に読み込んだものを返す（free）", () => {

@@ -82,7 +82,7 @@ fn parse_fills_plugin_defaults() {
 
 #[test]
 fn parse_keeps_unknown_keys_and_warns_with_their_positions() {
-    // Arrange（知らない項目: 一番外側と、プラグインの設定の中）
+    // Arrange（不明な項目: 一番外側と、プラグインの設定の中）
     let text = r#"{
   "name": "A",
   "rules": ["x"],
@@ -97,8 +97,8 @@ fn parse_keeps_unknown_keys_and_warns_with_their_positions() {
     assert_eq!(
         problems_of(text),
         vec![
-            "Warning 3:3 知らない項目「rules」があります。消さずに残します",
-            "Warning 4:26 プラグイン「jp.a」の設定に、知らない項目「color」があります。消さずに残します",
+            "Warning 3:3 不明な項目「rules」があります。削除せずに残します",
+            "Warning 4:26 プラグイン「jp.a」の設定に、不明な項目「color」があります。削除せずに残します",
         ]
     );
 }
@@ -110,7 +110,7 @@ fn parse_then_to_text_round_trips_unknown_keys() {
         r#"{"zeta":{"deep":[1,2]},"name":"A","plugins":{"jp.a":{"enabled":false,"x":true}}}"#;
     // Act
     let written = to_text(&project_of(text));
-    // Assert（書き戻しても、知らない項目は消えない）
+    // Assert（書き戻しても、不明な項目は消えない）
     assert_eq!(project_of(&written), project_of(text));
     assert_eq!(
         written,
@@ -146,7 +146,7 @@ fn parse_reports_invalid_json_at_its_line_and_column() {
     assert_eq!(parsed.project, None);
     assert_eq!(
         problems_of(text),
-        vec!["Error 2:16 書き方に誤りがあるため読み取れません（JSON：expected `,` or `}`）"]
+        vec!["Error 2:16 書式にエラーがあるため読み込めません（JSON：expected `,` or `}`）"]
     );
 }
 
@@ -159,7 +159,7 @@ fn parse_reports_unclosed_object() {
     // Assert
     assert_eq!(
         problems,
-        vec!["Error 1:1 書き方に誤りがあるため読み取れません（JSON：EOF while parsing an object）"]
+        vec!["Error 1:1 書式にエラーがあるため読み込めません（JSON：EOF while parsing an object）"]
     );
 }
 
@@ -188,8 +188,8 @@ fn parse_reports_wrong_types_at_the_keys() {
     assert_eq!(
         problems_of(text),
         vec![
-            "Error 2:3 プロジェクト名（name）は、文字を \" \" で囲んで書いてください",
-            "Error 3:3 使うプラグインの一覧（plugins）は { } で囲んで書いてください",
+            "Error 2:3 プロジェクト名（name）は、文字列を \" \" で囲んで書いてください",
+            "Error 3:3 プラグインの一覧（plugins）は { } で囲んで書いてください",
         ]
     );
 }
@@ -205,8 +205,8 @@ fn parse_reports_wrong_types_inside_a_plugin() {
         problems,
         vec![
             "Error 1:14 プラグイン「a」の設定は { } で囲んで書いてください",
-            "Error 1:28 プラグイン「b」の版（version）は、文字を \" \" で囲んで書いてください（例：\"0.2.0\"）",
-            "Error 1:42 プラグイン「b」を使うかどうか（enabled）は true か false で書いてください",
+            "Error 1:28 プラグイン「b」のバージョン（version）は、文字列を \" \" で囲んで書いてください（例：\"0.2.0\"）",
+            "Error 1:42 プラグイン「b」の有効・無効（enabled）は true か false で書いてください",
         ]
     );
 }
@@ -280,7 +280,7 @@ fn updated(text: &str, id: &str, change: PluginChange) -> ProjectFile {
 #[test]
 fn update_plugin_adds_an_enabled_entry_with_the_version() {
     // Arrange（境界値: plugins の無い設定）
-    let text = r#"{ "name": "給水" }"#;
+    let text = r#"{ "name": "給水システム" }"#;
     // Act
     let out = update_plugin(
         text,
@@ -293,14 +293,14 @@ fn update_plugin_adds_an_enabled_entry_with_the_version() {
     assert_eq!(
         out.as_deref(),
         Ok(
-            "{\n  \"name\": \"給水\",\n  \"plugins\": {\n    \"jp.x\": {\n      \"version\": \"0.1.0\",\n      \"enabled\": true\n    }\n  }\n}\n"
+            "{\n  \"name\": \"給水システム\",\n  \"plugins\": {\n    \"jp.x\": {\n      \"version\": \"0.1.0\",\n      \"enabled\": true\n    }\n  }\n}\n"
         )
     );
 }
 
 #[test]
 fn update_plugin_add_keeps_settings_and_unknown_keys_of_an_existing_entry() {
-    // Arrange（止めてあり、版の違う既存の項目。知らない項目は外側にもある）
+    // Arrange（止めてあり、版の違う既存の項目。不明な項目は外側にもある）
     let text = r#"{ "plugins": { "jp.x": { "version": "0.0.9", "enabled": false, "settings": { "a": 1 }, "note": "keep" } }, "color": "red" }"#;
     // Act
     let project = updated(
@@ -368,7 +368,7 @@ fn update_plugin_refuses_a_broken_file_with_its_line() {
     // Assert
     assert_eq!(
         out,
-        Err("プロジェクトの設定（modelith.json）に誤りがあるため、書き換えられません。2 行目：プロジェクト名（name）は、文字を \" \" で囲んで書いてください".to_owned())
+        Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください".to_owned())
     );
 }
 

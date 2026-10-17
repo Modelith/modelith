@@ -98,7 +98,7 @@ fn add_node_without_package_creates_one_before_layout_comment() {
 #[test]
 fn add_node_without_package_is_refused_unless_asked_to_create_one() {
     // 異常系：package が無く、作る名前も無い・作る名前が使えない
-    assert!(refused("part def A;", r#"{"op":"addNode","kind":"part def"}"#).contains("package"));
+    assert!(refused("part def A;", r#"{"op":"addNode","kind":"part def"}"#).contains("パッケージ"));
     assert!(
         refused(
             "",

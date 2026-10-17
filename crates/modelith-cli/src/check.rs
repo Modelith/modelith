@@ -1,4 +1,4 @@
-//! `modelith check <フォルダ>`：プロジェクトに入れた検査ルールで、フォルダの中のモデルを検査する（ADR-0018・ADR-0019 §5）。
+//! `modelith check <フォルダ>`：プロジェクトに入れたチェックルールで、フォルダの中のモデルを検査する（ADR-0018・ADR-0019 §5）。
 //!
 //! ここはファイルを集めて読むだけにし、判断はコア（`modelith_core::rules`・`project_file`）と `report` に任せる。
 
@@ -25,7 +25,7 @@ use crate::report::{self, Entry};
 /// # 例
 ///
 /// ```text
-/// run(Path::new("proj"))    → Ok(("model.sysml:2:3: 注意: … [jp.x/r1]\nファイル 1 件を検査しました：…\n", false))
+/// run(Path::new("proj"))    → Ok(("model.sysml:2:3: 警告: … [jp.x/r1]\nファイル 1 件をチェックしました：…\n", false))
 /// run(Path::new("missing")) → Err("フォルダ「missing」が見つかりません")
 /// ```
 pub fn run(folder: &Path) -> Result<(String, bool), String> {
@@ -41,7 +41,7 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
             ));
         }
         Err(ReadError::Other(reason)) => {
-            return Err(format!("modelith.json を読み取れません（{reason}）"));
+            return Err(format!("modelith.json を読み込めません（{reason}）"));
         }
     };
     let parsed = project_file::parse(&project_text);
@@ -67,7 +67,8 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
                 .map(|p| report::from_load_problem(&plugin.id, p)),
         );
     }
-    let files = model_files(folder).map_err(|e| format!("フォルダの中を読み取れません（{e}）"))?;
+    let files =
+        model_files(folder).map_err(|e| format!("フォルダの内容を読み込めません（{e}）"))?;
     for file in &files {
         let path = relative(folder, file);
         match read_text(file) {
@@ -96,7 +97,7 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
 /// # 例
 ///
 /// ```text
-/// unreadable_model("a.sysml", Other("UTF-8 のテキストではありません")) → a.sysml: 誤り: ファイルを読み取れません（UTF-8 のテキストではありません）
+/// unreadable_model("a.sysml", Other("UTF-8 のテキストではありません")) → a.sysml: エラー: ファイルを読み込めません（UTF-8 のテキストではありません）
 /// ```
 fn unreadable_model(path: &str, e: &ReadError) -> Entry {
     let reason = match e {
@@ -107,7 +108,7 @@ fn unreadable_model(path: &str, e: &ReadError) -> Entry {
         path: path.to_owned(),
         place: None,
         severity: rules::DiagnosticSeverity::Error,
-        message: format!("ファイルを読み取れません（{reason}）"),
+        message: format!("ファイルを読み込めません（{reason}）"),
         source: None,
     }
 }

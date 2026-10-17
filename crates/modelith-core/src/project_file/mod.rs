@@ -1,7 +1,7 @@
 //! プロジェクトの設定ファイル（`modelith.json`、ADR-0019 §2）の読み取りと作成。
 //!
 //! ファイルの形はこのモジュールの型だけで決める（画面と CLI は、ここを通して読み書きする）。
-//! 知らない項目は消さずに `extra` に残し、書き戻しても失わない。読み取りの問題は、
+//! 不明な項目は消さずに `extra` に残し、書き戻しても失わない。読み取りの問題は、
 //! SysML v2 や JSON を知らない人にも分かる言葉（ADR-0014）と、1 始まりの行・列で返す。
 
 use std::collections::BTreeMap;
@@ -23,7 +23,7 @@ pub struct ProjectFile {
     /// プロジェクトが使うプラグイン（プラグインの ID ごと。ADR-0018）。
     #[serde(default)]
     pub plugins: BTreeMap<String, PluginUse>,
-    /// 知らない項目。書き戻すときもそのまま残す。
+    /// 不明な項目。書き戻すときもそのまま残す。
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -40,7 +40,7 @@ pub struct PluginUse {
     /// プラグインごとの設定。中身はプラグインが決め、ホストはそのまま渡す。
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub settings: Value,
-    /// 知らない項目。書き戻すときもそのまま残す。
+    /// 不明な項目。書き戻すときもそのまま残す。
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -93,7 +93,7 @@ fn enabled_by_default() -> bool {
 
 /// 設定ファイルのテキストを読み取る。失敗しない（問題は `problems` に入れる）。
 ///
-/// JSON として読めない・項目の型が違うときは、設定を使わずに誤りを返す。知らない項目は設定に残し、
+/// JSON として読めない・項目の型が違うときは、設定を使わずに誤りを返す。不明な項目は設定に残し、
 /// 1 つずつ注意を返す（F-EDIT-8 と同じく、黙って捨てない）。
 ///
 /// # 引数
@@ -107,10 +107,10 @@ fn enabled_by_default() -> bool {
 /// # 例
 ///
 /// ```text
-/// parse(r#"{ "name": "給水" }"#)   → project: { name: "給水", plugins: {} }、problems: []
-/// parse(r#"{ "color": "red" }"#)  → project: { extra: { color: "red" } }、problems: [注意 1:3「知らない項目「color」があります…」]
+/// parse(r#"{ "name": "給水システム" }"#)   → project: { name: "給水システム", plugins: {} }、problems: []
+/// parse(r#"{ "color": "red" }"#)  → project: { extra: { color: "red" } }、problems: [注意 1:3「不明な項目「color」があります…」]
 /// parse(r#"{ "name": 3 }"#)       → project: None、problems: [誤り 1:3「プロジェクト名（name）は…」]
-/// parse("{")                      → project: None、problems: [誤り 1:1「書き方に誤りがあるため読み取れません（…）」]
+/// parse("{")                      → project: None、problems: [誤り 1:1「書式にエラーがあるため読み込めません（…）」]
 /// parse("")                       → project: None、problems: [誤り 1:1「中身が空です…」]
 /// ```
 pub fn parse(text: &str) -> Parsed {
@@ -138,7 +138,7 @@ pub fn parse(text: &str) -> Parsed {
         Err(e) => {
             return failed(error(
                 locator.of_offset(0),
-                &format!("設定を読み取れませんでした（{e}）"),
+                &format!("設定を読み込めませんでした（{e}）"),
             ));
         }
     };
@@ -178,7 +178,7 @@ pub fn create(name: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum PluginChange {
-    /// 使うプラグインに加える（既にあれば版を書き換えて有効にする。プラグインごとの設定と知らない項目は残す）。
+    /// 使うプラグインに加える（既にあれば版を書き換えて有効にする。プラグインごとの設定と不明な項目は残す）。
     Add {
         /// 入れたプラグインの版。
         version: String,
@@ -192,7 +192,7 @@ pub enum PluginChange {
     Remove,
 }
 
-/// 設定ファイルのテキストの、使うプラグインの項目を書き換える（知らない項目は残す）。
+/// 設定ファイルのテキストの、使うプラグインの項目を書き換える（不明な項目は残す）。
 ///
 /// # 引数
 ///
@@ -212,7 +212,7 @@ pub enum PluginChange {
 ///   → Ok("{\n  \"plugins\": {\n    \"jp.x\": {\n      \"version\": \"0.1.0\",\n      \"enabled\": true\n    }\n  }\n}\n")
 /// update_plugin(r#"{"plugins":{"jp.x":{}}}"#, "jp.x", SetEnabled { enabled: false }) → Ok(… "enabled": false …)
 /// update_plugin("{}", "jp.x", Remove) → Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません")
-/// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）に誤りがあるため、書き換えられません。1 行目：…")
+/// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目：…")
 /// ```
 pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, String> {
     let parsed = parse(text);
@@ -224,7 +224,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
             .map(|p| format!("{} 行目：{}", p.line, p.message))
             .unwrap_or_default();
         return Err(format!(
-            "プロジェクトの設定（modelith.json）に誤りがあるため、書き換えられません。{reason}"
+            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}"
         ));
     };
     let missing =
@@ -253,7 +253,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
     Ok(to_text(&project))
 }
 
-/// 設定をファイルのテキストにする（知らない項目も書く）。
+/// 設定をファイルのテキストにする（不明な項目も書く）。
 ///
 /// # 引数
 ///
@@ -261,7 +261,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
 ///
 /// # 戻り値
 ///
-/// 字下げ 2 つの空白・末尾に改行のある JSON のテキスト。項目は `name`・`plugins`、その後に知らない項目を名前順に書く。
+/// 字下げ 2 つの空白・末尾に改行のある JSON のテキスト。項目は `name`・`plugins`、その後に不明な項目を名前順に書く。
 ///
 /// # 例
 ///
@@ -359,7 +359,7 @@ fn problem(severity: Severity, at: (u32, u32), message: &str) -> Problem {
 /// # 例
 ///
 /// ```text
-/// syntax_problem(…, "{\n  \"a\": 1,\n}", e) → 誤り 3:1「書き方に誤りがあるため読み取れません（JSON：trailing comma）」
+/// syntax_problem(…, "{\n  \"a\": 1,\n}", e) → 誤り 3:1「書式にエラーがあるため読み込めません（JSON：trailing comma）」
 /// ```
 fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Problem {
     let line_start: usize = text
@@ -374,7 +374,7 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
         .unwrap_or(&full);
     error(
         at,
-        &format!("書き方に誤りがあるため読み取れません（JSON：{reason}）"),
+        &format!("書式にエラーがあるため読み込めません（JSON：{reason}）"),
     )
 }
 
@@ -394,7 +394,7 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
 /// ```text
 /// type_problems(json!({"name": "A"}), …)  → []
 /// type_problems(json!([1]), …)            → [誤り 1:1「一番外側を { } で囲んでください…」]
-/// type_problems(json!({"plugins": 1}), …) → [誤り「使うプラグインの一覧（plugins）は…」]
+/// type_problems(json!({"plugins": 1}), …) → [誤り「プラグインの一覧（plugins）は…」]
 /// ```
 fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     let Some(root) = value.as_object() else {
@@ -410,7 +410,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     {
         problems.push(error(
             locator.of_key(&["name"]),
-            "プロジェクト名（name）は、文字を \" \" で囲んで書いてください",
+            "プロジェクト名（name）は、文字列を \" \" で囲んで書いてください",
         ));
     }
     match root.get("plugins") {
@@ -422,7 +422,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
         }
         Some(_) => problems.push(error(
             locator.of_key(&["plugins"]),
-            "使うプラグインの一覧（plugins）は { } で囲んで書いてください",
+            "プラグインの一覧（plugins）は { } で囲んで書いてください",
         )),
     }
     problems
@@ -462,22 +462,20 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
         problems.push(error(
             locator.of_key(&["plugins", id, "version"]),
             &format!(
-                "プラグイン「{id}」の版（version）は、文字を \" \" で囲んで書いてください（例：\"0.2.0\"）"
+                "プラグイン「{id}」のバージョン（version）は、文字列を \" \" で囲んで書いてください（例：\"0.2.0\"）"
             ),
         ));
     }
     if fields.get("enabled").is_some_and(|v| !v.is_boolean()) {
         problems.push(error(
             locator.of_key(&["plugins", id, "enabled"]),
-            &format!(
-                "プラグイン「{id}」を使うかどうか（enabled）は true か false で書いてください"
-            ),
+            &format!("プラグイン「{id}」の有効・無効（enabled）は true か false で書いてください"),
         ));
     }
     problems
 }
 
-/// 知らない項目を、1 つずつ注意にする（消さずに残すことを伝える）。
+/// 不明な項目を、1 つずつ注意にする（消さずに残すことを伝える）。
 ///
 /// # 引数
 ///
@@ -486,12 +484,12 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
 ///
 /// # 戻り値
 ///
-/// 知らない項目ごとの注意（一番外側と、各プラグインの設定の中）。無ければ空。
+/// 不明な項目ごとの注意（一番外側と、各プラグインの設定の中）。無ければ空。
 ///
 /// # 例
 ///
 /// ```text
-/// unknown_key_problems(parse(r#"{"color":1}"#) の設定, …) → [注意 1:2「知らない項目「color」があります。消さずに残します」]
+/// unknown_key_problems(parse(r#"{"color":1}"#) の設定, …) → [注意 1:2「不明な項目「color」があります。削除せずに残します」]
 /// unknown_key_problems(&ProjectFile::default(), …)        → []
 /// ```
 fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem> {
@@ -499,7 +497,7 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
         problem(
             Severity::Warning,
             locator.of_key(&[key]),
-            &format!("知らない項目「{key}」があります。消さずに残します"),
+            &format!("不明な項目「{key}」があります。削除せずに残します"),
         )
     });
     let in_plugins = project.plugins.iter().flat_map(|(id, plugin)| {
@@ -508,7 +506,7 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
                 Severity::Warning,
                 locator.of_key(&["plugins", id, key]),
                 &format!(
-                    "プラグイン「{id}」の設定に、知らない項目「{key}」があります。消さずに残します"
+                    "プラグイン「{id}」の設定に、不明な項目「{key}」があります。削除せずに残します"
                 ),
             )
         })

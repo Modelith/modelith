@@ -632,11 +632,11 @@ describe("Workspace: プロジェクトの設定ファイル（ADR-0019、F-PROJ
   it("フォルダを開くと、一番上の modelith.json のテキストを読む", async () => {
     // Arrange
     const s = setup();
-    s.root.put(PROJECT_FILE, '{ "name": "給水" }');
+    s.root.put(PROJECT_FILE, '{ "name": "給水システム" }');
     // Act
     await s.ws.openFolder(s.local);
     // Assert
-    expect(s.ws.folder()?.projectText).toBe('{ "name": "給水" }');
+    expect(s.ws.folder()?.projectText).toBe('{ "name": "給水システム" }');
   });
 
   it("modelith.json の無いフォルダは null で、何も書かない（境界値: 下のフォルダにだけある）", async () => {

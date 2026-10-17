@@ -67,6 +67,6 @@ test("Q-5: テキストを読み取る部品（wasm）を読み込めないと�
   // Assert
   const box = page.locator("#startupError");
   await expect(box).toBeVisible();
-  await expect(box).toContainText("ページを読み込み直してください");
+  await expect(box).toContainText("ページを再読み込みしてください");
   await expect(page.locator("#gNodes .node")).toHaveCount(0);
 });

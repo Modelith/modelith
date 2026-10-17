@@ -225,7 +225,7 @@ async function newFileInFolder(): Promise<void> {
   try {
     showDoc((await ws.createFile(path, "")).key);
   } catch (e) {
-    toast(`作れませんでした：${(e as Error).message}`);
+    toast(`作成できませんでした：${(e as Error).message}`);
   }
 }
 
@@ -397,10 +397,10 @@ async function refreshFolder(): Promise<void> {
 async function makeProject(): Promise<void> {
   const f = ws.folder();
   if (!f) return;
-  const r = await ask("プロジェクトにする", `フォルダ「${f.ref.name}」をプロジェクトにします。プロジェクトの名前を入力してください。チームで共有する設定ファイル（${PROJECT_FILE}）を、フォルダの一番上に作ります。`, [
+  const r = await ask("プロジェクトにする", `フォルダ「${f.ref.name}」をプロジェクトにします。プロジェクト名を入力してください。チームで共有する設定ファイル（${PROJECT_FILE}）を、フォルダの直下に作成します。`, [
     { id: "cancel", label: "やめる" },
     { id: "ok", label: "作成", kind: "primary" },
-  ], { value: f.ref.name, label: "プロジェクトの名前" });
+  ], { value: f.ref.name, label: "プロジェクト名" });
   if (r?.id !== "ok") return;
   const name = r.value.trim() || f.ref.name;
   const made = await coreClient().createProjectFile(name);
@@ -504,7 +504,7 @@ function folderHeader(): string {
   const title = named ? `プロジェクト「${named}」（フォルダ「${f.ref.name}」）` : f.ref.name;
   // 見出しに並べるとフォルダ名が隠れるので、見出しのすぐ下の行に出す
   const make = f.projectText === null && hasFolderFiles(f.source)
-    ? `<div class="mkproj"><button data-cmd="makeProject" title="名前と、使うプラグインなどの設定を、チームで共有できるようにします（設定ファイル ${PROJECT_FILE} を作ります）">プロジェクトにする</button></div>`
+    ? `<div class="mkproj"><button data-cmd="makeProject" title="プロジェクト名やプラグインなどの設定を、チームで共有できるようにします（設定ファイル ${PROJECT_FILE} を作成します）">プロジェクトにする</button></div>`
     : "";
   return `<div class="sec"><span class="grow" data-folder title="${esc(title)}">${esc((named ?? f.ref.name).toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}${pluginExplorerHtml()}`;
 }

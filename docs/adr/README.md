@@ -18,7 +18,7 @@
 | [0011](0011-requirements-ssot.md) | 要求仕様を 1 つの SysML v2 ファイルで管理する | 採用 |
 | [0012](0012-google-drive-without-server.md) | クラウド保存は Google ドライブから始め、サーバを持たずにブラウザから直接つなぐ | 保留 |
 | [0013](0013-spec-over-mock.md) | モックと SysML v2 仕様が食い違うときは仕様に従う | 採用 |
-| [0014](0014-plain-words-for-users.md) | 画面の言葉は、SysML v2 の構文を知らない人に合わせる | 採用 |
+| [0014](0014-plain-words-for-users.md) | 画面の言葉は、SysML v2 の構文を知らない人に合わせる | 採用（2026-10-17 改訂） |
 | [0015](0015-rust-parser.md) | Rust パーサの作り方と、暫定コアからの差し替え方 | 採用（2026-10-15 改訂） |
 | [0016](0016-rust-model-and-worker.md) | モデル構築と図の操作を Rust に移し、コアを Worker で動かす | 採用 |
 | [0018](0018-plugin-host.md) | プラグインのホスト（v0 の検査ルールと v1 の TypeScript プラグイン） | 採用 |

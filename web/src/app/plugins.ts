@@ -12,11 +12,11 @@ export type PluginState = "ok" | "error" | "missing" | "version" | "off";
 
 /** 状態の画面の言葉。 */
 export const STATE_LABEL: Record<PluginState, string> = {
-  ok: "使える",
-  error: "誤りあり",
-  missing: "入っていない",
-  version: "版が違う",
-  off: "止めている",
+  ok: "有効",
+  error: "エラーあり",
+  missing: "未追加",
+  version: "バージョン不一致",
+  off: "無効",
 };
 
 /** プラグインの一覧の 1 行。 */
@@ -24,13 +24,13 @@ export interface PluginRow {
   id: string;
   /** 画面に出す名前（マニフェストの名前。読めなければ ID）。 */
   name: string;
-  /** 入っている版（マニフェストの版）。入っていない・読めなければ null。 */
+  /** 追加されているバージョン（マニフェストのバージョン）。未追加・読めなければ null。 */
   version: string | null;
-  /** プロジェクトの設定（modelith.json）に書かれた版。書いていなければ null。 */
+  /** プロジェクトの設定（modelith.json）に書かれたバージョン。書いていなければ null。 */
   wanted: string | null;
   enabled: boolean;
   state: PluginState;
-  /** 使えるルールの数。 */
+  /** 有効なルールの数。 */
   rules: number;
   /** 読み込みの問題（「パス の 行 行目：理由」の文）。 */
   problems: string[];
@@ -43,10 +43,10 @@ export interface PluginNote {
 }
 
 /**
- * プロジェクトが使うプラグイン 1 つの状態を決める。止めている → 入っていない → 版が違う → 誤りあり → 使える、の順に見る。
+ * プロジェクトが使うプラグイン 1 つの状態を決める。無効 → 未追加 → バージョン不一致 → エラーあり → 有効、の順に見る。
  *
  * @param use modelith.json に書かれた、そのプラグインの設定
- * @param summary コアが読み込んだまとめ（まだ読み込んでいなければ undefined。入っていないとみなす）
+ * @param summary コアが読み込んだまとめ（まだ読み込んでいなければ undefined。未追加とみなす）
  * @returns 状態
  * @example
  * pluginState({ enabled: false }, summary)                                  // → "off"
@@ -68,8 +68,8 @@ export function pluginState(use: PluginUse, summary: PluginSummary | undefined):
  * @param p 読み込みの問題
  * @returns 「パス の 行 行目：理由」。位置が無ければ「パス：理由」
  * @example
- * loadProblemText({ path: ".modelith/plugins/jp.x/rules.yaml", place: { line: 3, column: 5 }, message: "知らない項目「x」があります（…）" })
- * // → ".modelith/plugins/jp.x/rules.yaml の 3 行目：知らない項目「x」があります（…）"
+ * loadProblemText({ path: ".modelith/plugins/jp.x/rules.yaml", place: { line: 3, column: 5 }, message: "不明な項目「x」があります（…）" })
+ * // → ".modelith/plugins/jp.x/rules.yaml の 3 行目：不明な項目「x」があります（…）"
  * loadProblemText({ path: "modelith.json", place: null, message: "…" }) // → "modelith.json：…"
  */
 export function loadProblemText(p: PluginLoadProblem): string {
@@ -83,8 +83,8 @@ export function loadProblemText(p: PluginLoadProblem): string {
  * @param summaries コアが読み込んだプラグインのまとめ
  * @returns 一覧の行。使うプラグインが無ければ空
  * @example
- * pluginRows({ plugins: { "jp.x": { version: "0.1.0", enabled: true } } }, [{ id: "jp.x", installed: true, manifest: { name: "トレース", version: "0.1.0", … }, rules: 2, problems: [] }])
- * // → [{ id: "jp.x", name: "トレース", version: "0.1.0", wanted: "0.1.0", enabled: true, state: "ok", rules: 2, problems: [] }]
+ * pluginRows({ plugins: { "jp.x": { version: "0.1.0", enabled: true } } }, [{ id: "jp.x", installed: true, manifest: { name: "トレーサビリティのチェック", version: "0.1.0", … }, rules: 2, problems: [] }])
+ * // → [{ id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", wanted: "0.1.0", enabled: true, state: "ok", rules: 2, problems: [] }]
  * pluginRows({ plugins: { "jp.y": { enabled: true } } }, []) // → [{ id: "jp.y", name: "jp.y", version: null, state: "missing", … }]
  */
 export function pluginRows(project: ProjectFile, summaries: readonly PluginSummary[]): PluginRow[] {
@@ -104,64 +104,65 @@ export function pluginRows(project: ProjectFile, summaries: readonly PluginSumma
 }
 
 /**
- * 入っていない・版が違うプラグインについて、何が足りないかと、追加するかを尋ねる文を作る（F-PLUG-9）。
+ * 未追加・バージョン不一致のプラグインについて、何が足りないかと、追加するかを尋ねる文を作る（F-PLUG-9）。
  *
  * @param row 一覧の行
- * @returns 案内の文。止めている・入っていて版も合うなら null
+ * @returns 案内の文。無効・追加済みでバージョンも合うなら null
  * @example
  * missingNotice({ id: "jp.x", state: "missing", … })
- * // → "このプロジェクトはプラグイン「jp.x」を使っていますが、入っていません。追加しますか？"
- * missingNotice({ name: "トレース", state: "version", wanted: "0.2.0", version: "0.1.0", … })
- * // → "このプロジェクトはプラグイン「トレース」の版 0.2.0 を使っていますが、入っているのは版 0.1.0 です。合う版を追加しますか？"
+ * // → "このプロジェクトで使うプラグイン「jp.x」が追加されていません。追加しますか？"
+ * missingNotice({ name: "トレーサビリティのチェック", state: "version", wanted: "0.2.0", version: "0.1.0", … })
+ * // → "このプロジェクトはプラグイン「トレーサビリティのチェック」のバージョン 0.2.0 を使いますが、追加されているのはバージョン 0.1.0 です。バージョン 0.2.0 を追加しますか？"
  * missingNotice({ state: "ok", … }) // → null
  */
 export function missingNotice(row: PluginRow): string | null {
-  if (row.state === "missing") return `このプロジェクトはプラグイン「${row.id}」を使っていますが、入っていません。追加しますか？`;
+  if (row.state === "missing") return `このプロジェクトで使うプラグイン「${row.id}」が追加されていません。追加しますか？`;
   if (row.state === "version") {
-    return `このプロジェクトはプラグイン「${row.name}」の版 ${row.wanted ?? ""} を使っていますが、入っているのは版 ${row.version ?? ""} です。合う版を追加しますか？`;
+    const wanted = row.wanted ?? "";
+    return `このプロジェクトはプラグイン「${row.name}」のバージョン ${wanted} を使いますが、追加されているのはバージョン ${row.version ?? ""} です。バージョン ${wanted} を追加しますか？`;
   }
   return null;
 }
 
 /**
- * 問題一覧に出す、プラグインについての行を作る。使うプラグインだけを見る（止めたものは出さない）。
+ * 問題一覧に出す、プラグインについての行を作る。有効なプラグインだけを見る（無効にしたものは出さない）。
  * 足りないプラグインは追加を尋ねる行（押すと追加を始める）、読み込みの問題はプラグインの名前とファイル・行を添えた行にする（F-PLUG-3・F-PLUG-9）。
  *
  * @param rows 一覧の行
  * @returns 問題一覧の行（一覧の順）
  * @example
  * pluginNotes([{ id: "jp.x", state: "missing", enabled: true, … }])
- * // → [{ msg: "このプロジェクトはプラグイン「jp.x」を使っていますが、入っていません。追加しますか？", add: "jp.x" }]
- * pluginNotes([{ name: "トレース", state: "error", enabled: true, problems: ["….yaml の 3 行目：…"], … }])
- * // → [{ msg: "プラグイン「トレース」：….yaml の 3 行目：…" }]
+ * // → [{ msg: "このプロジェクトで使うプラグイン「jp.x」が追加されていません。追加しますか？", add: "jp.x" }]
+ * pluginNotes([{ name: "トレーサビリティのチェック", state: "error", enabled: true, problems: ["….yaml の 3 行目：…"], … }])
+ * // → [{ msg: "プラグイン「トレーサビリティのチェック」：….yaml の 3 行目：…" }]
  * pluginNotes([{ state: "off", … }]) // → []
  */
 export function pluginNotes(rows: readonly PluginRow[]): PluginNote[] {
   return rows.flatMap((row) => {
     if (!row.enabled) return [];
     const notice = missingNotice(row);
-    // 入っていないプラグインの「マニフェストが見つからない」は、追加を尋ねる行と同じことなので重ねない
+    // 未追加のプラグインの「マニフェストが見つからない」は、追加を尋ねる行と同じことなので重ねない
     const problems = row.state === "missing" ? [] : row.problems.map((p) => ({ msg: `プラグイン「${row.name}」：${p}` }));
     return notice ? [{ msg: notice, add: row.id }, ...problems] : problems;
   });
 }
 
 /**
- * 検査ルールの結果を、問題一覧に出す文にする。どのプラグインのどのルールかを添える（F-PLUG-1）。
+ * チェックルールの結果を、問題一覧に出す文にする。どのプラグインのどのルールかを添える（F-PLUG-1）。
  *
- * @param f 検査ルールの結果
+ * @param f チェックルールの結果
  * @param names プラグインの ID → 画面に出す名前（無ければ ID を出す）
  * @returns 「結果の文（プラグイン「名前」のルール ID）」
  * @example
- * findingText({ plugin: "jp.x", rule: "req-sat", message: "要求「R」を満たす要素がありません", … }, new Map([["jp.x", "トレースの検査"]]))
- * // → "要求「R」を満たす要素がありません（プラグイン「トレースの検査」のルール req-sat）"
+ * findingText({ plugin: "jp.x", rule: "req-sat", message: "要求「R」を満たす要素がありません", … }, new Map([["jp.x", "トレーサビリティのチェック"]]))
+ * // → "要求「R」を満たす要素がありません（プラグイン「トレーサビリティのチェック」のルール req-sat）"
  * findingText({ plugin: "jp.y", rule: "r1", message: "m", … }, new Map()) // → "m（プラグイン「jp.y」のルール r1）"
  */
 export function findingText(f: RuleFinding, names: ReadonlyMap<string, string>): string {
   return `${f.message}（プラグイン「${names.get(f.plugin) ?? f.plugin}」のルール ${f.rule}）`;
 }
 
-/** 検査ルールの結果の重さごとの印（問題一覧の行の頭）。 */
+/** チェックルールの結果の重大度ごとの印（問題一覧の行の頭）。 */
 export const SEVERITY_MARK: Record<RuleSeverity, string> = { error: "⚠", warning: "△", information: "ℹ", hint: "ℹ" };
 
 /** プラグインの一覧の画面が置かれた場面。 */
@@ -173,41 +174,41 @@ export type PanelPlace =
   | { kind: "project"; projectName: string };
 
 /**
- * プラグインの一覧の画面の、最初の案内と「追加」を押せるかを決める。プロジェクトが無ければ、プロジェクトに入れて使うことと、その作り方を示す。
+ * プラグインの一覧の画面の、最初の案内と「追加」を押せるかを決める。プロジェクトが無ければ、プロジェクトに追加して使うことと、その作り方を示す。
  *
  * @param place 場面（フォルダを開けないブラウザ・フォルダ無し・プロジェクトでないフォルダ・読めない設定・プロジェクト）
- * @param count 使うプラグインの数（プロジェクトのとき）
+ * @param count プロジェクトのプラグインの数（プロジェクトのとき）
  * @returns 案内の文と、「追加」を押せるか
  * @example
- * panelIntro({ kind: "noFolder" }, 0)                 // → { text: "プラグインは、プロジェクト（モデルのフォルダ）に入れて使います。…", canAdd: false }
- * panelIntro({ kind: "project", projectName: "給水" }, 0) // → { text: "プロジェクト「給水」には、まだプラグインがありません。…", canAdd: true }
+ * panelIntro({ kind: "noFolder" }, 0)                 // → { text: "プラグインは、プロジェクト（モデルのフォルダ）に追加して使います。…", canAdd: false }
+ * panelIntro({ kind: "project", projectName: "給水システム" }, 0) // → { text: "プロジェクト「給水システム」にはまだプラグインがありません。…", canAdd: true }
  */
 export function panelIntro(place: PanelPlace, count: number): { text: string; canAdd: boolean } {
   switch (place.kind) {
     case "unsupported":
-      return { text: "このブラウザではフォルダを開けないため、プラグインを使えません（Chrome・Edge で使えます）。プラグインは、プロジェクト（モデルのフォルダ）に入れて使います。", canAdd: false };
+      return { text: "このブラウザはフォルダを開けないため、プラグインを使用できません（Chrome・Edge で使用できます）。プラグインは、プロジェクト（モデルのフォルダ）に追加して使います。", canAdd: false };
     case "noFolder":
       return {
-        text: "プラグインは、プロジェクト（モデルのフォルダ）に入れて使います。「ファイル → フォルダを開く…」でモデルのフォルダを開くと、追加できます。1 つだけ開いたファイルやサンプルには入れられません。",
+        text: "プラグインは、プロジェクト（モデルのフォルダ）に追加して使います。「ファイル → フォルダを開く…」でモデルのフォルダを開くと、追加できるようになります。単独で開いたファイルやサンプルには追加できません。",
         canAdd: false,
       };
     case "folder":
       return {
-        text: `フォルダ「${place.folderName}」は、まだプロジェクトではありません。「追加…」でプラグインのフォルダを選ぶと、このフォルダをプロジェクトにしてから入れます（設定ファイル modelith.json を作ります）。`,
+        text: `フォルダ「${place.folderName}」はまだプロジェクトではありません。「追加…」でプラグインのフォルダを選ぶと、このフォルダをプロジェクトにしてから追加します（設定ファイル modelith.json を作成します）。`,
         canAdd: true,
       };
     case "brokenProject":
-      return { text: "プロジェクトの設定（modelith.json）に誤りがあるため、プラグインを使えません。設定ファイルを直してから、エクスプローラーの「一覧を更新」（↻）を押してください。", canAdd: false };
+      return { text: "プロジェクトの設定（modelith.json）にエラーがあるため、プラグインを使用できません。設定ファイルを修正してから、エクスプローラーの「一覧を更新」（↻）を押してください。", canAdd: false };
     case "project":
       return count
-        ? { text: `プロジェクト「${place.projectName}」に入れたプラグインです。検査ルールの結果は、テキストの下の問題一覧に出ます。`, canAdd: true }
-        : { text: `プロジェクト「${place.projectName}」には、まだプラグインがありません。「追加…」で、検査ルールのプラグインのフォルダを選んでください。`, canAdd: true };
+        ? { text: `プロジェクト「${place.projectName}」に追加されているプラグインです。チェックルールの結果は、テキストの下の問題一覧に表示されます。`, canAdd: true }
+        : { text: `プロジェクト「${place.projectName}」にはまだプラグインがありません。「追加…」を押して、チェックルールのプラグインのフォルダを選んでください。`, canAdd: true };
   }
 }
 
 /** 種類ごとの、追加できないことを伝える言葉。 */
 const RUNTIME_WORDS: Record<Exclude<PluginRuntime, "rules">, string> = {
-  browser: "画面に機能を足すプラグイン（TypeScript）",
+  browser: "画面に機能を追加するプラグイン（TypeScript）",
   "wasm-component": "WebAssembly で動くプラグイン",
 };
 
@@ -221,37 +222,37 @@ export interface AddPrompt {
 }
 
 /**
- * 選んだプラグインを「このプロジェクト」に追加する前に示す、確認の中身を作る。検査ルールのプラグイン以外は、まだ追加できないと伝える。
+ * 選んだプラグインを「このプロジェクト」に追加する前に示す、確認の中身を作る。チェックルールのプラグイン以外は、まだ追加できないと伝える。
  *
  * @param info マニフェストから読んだ、プラグインの情報
  * @param project 今のプロジェクトの設定。まだプロジェクトでないフォルダなら null
- * @param installed 同じ ID のプラグインが、すでに入っているか
+ * @param installed 同じ ID のプラグインが、すでに追加されているか
  * @returns 確認の中身。追加できない種類なら `{ refused: 理由の文 }`
  * @example
- * addPrompt({ id: "jp.x", name: "トレース", version: "0.1.0", runtime: "rules" }, { plugins: {} }, false)
- * // → { text: "「トレース」（ID：jp.x、版 0.1.0）を、このプロジェクトに追加します。検査ルールのプラグインです。…", confirm: "追加する", askName: false }
+ * addPrompt({ id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", runtime: "rules" }, { plugins: {} }, false)
+ * // → { text: "「トレーサビリティのチェック」（ID：jp.x、バージョン 0.1.0）をこのプロジェクトに追加します。チェックルールのプラグインです。…", confirm: "追加する", askName: false }
  * addPrompt({ …, runtime: "rules" }, null, false) // → { …, confirm: "プロジェクトにして追加", askName: true }
- * addPrompt({ name: "書き出し", runtime: "browser", … }, …) // → { refused: "「書き出し」は、画面に機能を足すプラグイン（TypeScript）です。この種類は、まだ追加できません。…" }
+ * addPrompt({ name: "書き出し", runtime: "browser", … }, …) // → { refused: "「書き出し」は、画面に機能を追加するプラグイン（TypeScript）です。この種類はまだ追加できません。…" }
  */
 export function addPrompt(info: PluginInfo, project: ProjectFile | null, installed: boolean): AddPrompt | { refused: string } {
   if (info.runtime !== "rules") {
-    return { refused: `「${info.name}」は、${RUNTIME_WORDS[info.runtime]}です。この種類は、まだ追加できません。今追加できるのは、検査ルールのプラグインだけです` };
+    return { refused: `「${info.name}」は、${RUNTIME_WORDS[info.runtime]}です。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインだけです` };
   }
   const wanted = project?.plugins[info.id]?.version;
   const parts = [
-    `「${info.name}」（ID：${info.id}、版 ${info.version}）を、このプロジェクトに追加します。`,
+    `「${info.name}」（ID：${info.id}、バージョン ${info.version}）をこのプロジェクトに追加します。`,
     info.description ? `説明：${info.description}` : "",
-    "検査ルールのプラグインです。モデルの決まりを書いたもので、プログラムは含みません。",
-    `プラグインのファイルを ${PLUGINS_DIR}/${info.id}/ に写し、プロジェクトの設定（modelith.json）に書き加えます。Git で共有すると、チームの全員と CI が同じプラグインを使えます。`,
-    installed ? "すでに入っているものは、置き換えます。" : "",
-    wanted && wanted !== info.version ? `プロジェクトの設定では版 ${wanted} を使うことになっています。追加すると、設定の版を ${info.version} に書き換えます。` : "",
-    project ? "" : "このフォルダはまだプロジェクトではないため、プロジェクトにします（設定ファイル modelith.json をフォルダの一番上に作ります）。プロジェクトの名前を入力してください。",
+    "チェックルールのプラグインです。モデルのルールを記述したもので、プログラムは含みません。",
+    `プラグインのファイルを ${PLUGINS_DIR}/${info.id}/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員と CI が同じプラグインを使えます。`,
+    installed ? "追加済みのプラグインは上書きされます。" : "",
+    wanted && wanted !== info.version ? `プロジェクトの設定ではバージョン ${wanted} が指定されています。追加すると、設定のバージョンを ${info.version} に変更します。` : "",
+    project ? "" : "このフォルダはまだプロジェクトではないため、プロジェクトにします（設定ファイル modelith.json をフォルダの直下に作成します）。プロジェクト名を入力してください。",
   ];
   return { text: parts.filter(Boolean).join(""), confirm: project ? "追加する" : "プロジェクトにして追加", askName: !project };
 }
 
 /**
- * 選んだプラグインのフォルダのファイルを、プロジェクトの中の置き場所（`.modelith/plugins/<ID>/…`）に写す計画にする。
+ * 選んだプラグインのフォルダのファイルを、プロジェクトの中の置き場所（`.modelith/plugins/<ID>/…`）にコピーする計画にする。
  * プラグインのフォルダの外を指すパスは受け付けない。
  *
  * @param id プラグインの ID（マニフェストの ID。コアが形を確かめたもの）
