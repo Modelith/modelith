@@ -183,6 +183,7 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .modal textarea{width:100%;height:260px;font-family:var(--mono);font-size:11px;background:var(--panel2);border:1px solid var(--rule);border-radius:6px;padding:8px;color:var(--ink)}
 .modal p{margin:0;font-size:13px;color:var(--ink2);line-height:1.6}
 .modal .row{display:flex;gap:8px;justify-content:flex-end}
+.modal button:disabled{opacity:.4;cursor:default}
 @media (max-width:760px){
   header{padding:8px 10px;gap:8px}
   header h1{font-size:14px}

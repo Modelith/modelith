@@ -1,6 +1,6 @@
 // UI テスト（見た目の回帰）。画面を撮って基準画像（visual.spec.ts-snapshots/）と比べる。
 // 差があれば HTML レポートに「基準・今回・差分」の 3 枚が並ぶ。意図した変更なら基準を更新する（docs/development/testing.md）。
-import { expect, nodeKeys, openApp, putFiles, test, typeAtEnd } from "./fixtures";
+import { editorText, expect, nodeKeys, openApp, pickDirNext, putFiles, test, typeAtEnd } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 
 // 画素はフォントや描画の設定で変わるので、基準のブラウザ（scripts/e2e.sh が Docker で起動する）でだけ比べる
@@ -72,6 +72,19 @@ test.describe("UI: 画面全体", () => {
       // Assert
       await expect(page).toHaveScreenshot("app-narrow.png");
     });
+
+    test("F-PLUG-8・Q-2: 幅 390px の画面のプラグインの一覧", async ({ page }) => {
+      // Arrange（狭い画面ではエクスプローラーとメニューが畳まれるので、広い画面で開いてから狭める）
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await openApp(page);
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true }, "jp.example.ports": { version: "1.0.0", enabled: true } }, installedPlugin());
+      await openPluginList(page);
+      // Act
+      await page.setViewportSize({ width: 390, height: 800 });
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("plugin-list-narrow.png");
+    });
   });
 });
 
@@ -86,6 +99,46 @@ async function openSampleFolder(page: Page, text: string): Promise<void> {
   await putFiles(page, { "a.sysml": text, "models/b.sysml": "package B;\n" });
   await page.locator('[data-cmd="openFolder"]').click();
   await page.locator('#explorer [data-file][title="a.sysml"]').click();
+}
+
+// プラグイン（ADR-0018）の場面で使う、検査ルールのプラグインとプロジェクト
+const PLUGIN_ID = "jp.example.trace";
+const PLUGIN_DIR = `.modelith/plugins/${PLUGIN_ID}`;
+const PLUGIN_MANIFEST = JSON.stringify(
+  { id: PLUGIN_ID, name: "トレースの検査", version: "0.1.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
+  null,
+  2,
+);
+const PLUGIN_RULES =
+  'rules:\n  - id: req-has-satisfier\n    severity: warning\n    message: "要求「{name}」を満たす要素がありません"\n    match: { kind: requirement def }\n    require: { incoming: satisfy }\n';
+const PLUGIN_MODEL = "package P {\n    requirement def R;\n}\n";
+
+/**
+ * project フォルダにプロジェクトを置いてフォルダを開き、a.sysml を開く。
+ *
+ * @param page 画面
+ * @param plugins modelith.json の plugins に書く中身
+ * @param files ほかに置くファイル（パス → テキスト）
+ */
+async function openPluginProject(page: Page, plugins: Record<string, unknown>, files: Record<string, string> = {}): Promise<void> {
+  await putFiles(page, { "a.sysml": PLUGIN_MODEL, "modelith.json": JSON.stringify({ name: "給水", plugins }, null, 2) + "\n", ...files });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  await expect.poll(() => editorText(page)).toBe(PLUGIN_MODEL);
+}
+
+/** 入っている検査ルールのプラグインのファイル。 */
+const installedPlugin = (): Record<string, string> => ({ [`${PLUGIN_DIR}/modelith-plugin.json`]: PLUGIN_MANIFEST, [`${PLUGIN_DIR}/rules.yaml`]: PLUGIN_RULES });
+
+/**
+ * ファイルメニューから、プラグインの一覧を開く。
+ *
+ * @param page 画面
+ */
+async function openPluginList(page: Page): Promise<void> {
+  await page.locator("#fileMenu summary").click();
+  await page.locator("#btnPlugins").click();
+  await expect(page.locator("#plugins")).toBeVisible();
 }
 
 const scenes: Scene[] = [
@@ -218,6 +271,67 @@ const scenes: Scene[] = [
       await expect(page.locator("#btnLayout")).toBeFocused();
       await page.locator("#btnEdge").hover();
       return [page.locator(".diagrampane .toolbar")];
+    },
+  },
+  {
+    title: "F-PLUG-1: 検査ルールの結果を示す問題一覧",
+    shot: "plugin-findings",
+    act: async (page) => {
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } }, installedPlugin());
+      await expect(page.locator("#problems button.rule")).toHaveCount(1);
+      return [page.locator(".textpane")];
+    },
+  },
+  {
+    title: "F-PLUG-8・F-PLUG-9: プラグインの一覧（使える・入っていない・止めている）",
+    shot: "plugin-list",
+    act: async (page) => {
+      await openPluginProject(
+        page,
+        { [PLUGIN_ID]: { version: "0.1.0", enabled: true }, "jp.example.ports": { version: "1.0.0", enabled: true }, "jp.example.names": { version: "0.3.0", enabled: false } },
+        {
+          ...installedPlugin(),
+          ".modelith/plugins/jp.example.names/modelith-plugin.json": JSON.stringify(
+            { id: "jp.example.names", name: "名前の決まり", version: "0.3.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
+            null,
+            2,
+          ),
+          ".modelith/plugins/jp.example.names/rules.yaml": "rules: []\n",
+        },
+      );
+      await openPluginList(page);
+      await expect(page.locator("#plugins .plug")).toHaveCount(3);
+      return [page.locator("#plugins .box")];
+    },
+  },
+  {
+    title: "F-PLUG-9: 入っていないプラグインの案内（エクスプローラーと問題一覧）",
+    shot: "plugin-missing",
+    act: async (page) => {
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } });
+      await expect(page.locator("#explorer .plugnote")).toBeVisible();
+      return [page.locator(".treepane"), page.locator("#problems")];
+    },
+  },
+  {
+    title: "F-PLUG-8: プラグインを追加する前の確認",
+    shot: "plugin-add",
+    act: async (page) => {
+      await openPluginProject(page, {});
+      await putFiles(page, { "modelith-plugin.json": PLUGIN_MANIFEST, "rules.yaml": PLUGIN_RULES }, "trace-rules");
+      await pickDirNext(page, "trace-rules");
+      await openPluginList(page);
+      await page.locator("#pluginsAdd").click();
+      await expect(page.locator("#dialogText")).toContainText("このプロジェクトに追加します");
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-PLUG-8: フォルダを開いていないときのプラグインの一覧",
+    shot: "plugin-no-project",
+    act: async (page) => {
+      await openPluginList(page);
+      return [page.locator("#plugins .box")];
     },
   },
 ];
