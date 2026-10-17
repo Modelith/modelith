@@ -39,7 +39,7 @@ fn load_yaml(yaml: &str) -> LoadedPlugin {
     load_files(
         ID,
         &[
-            (&format!("{DIR}/manifest.json"), &m),
+            (&format!("{DIR}/modelith-plugin.json"), &m),
             (&format!("{DIR}/rules.yaml"), yaml),
         ],
     )

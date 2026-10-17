@@ -91,7 +91,7 @@ fn project() -> TempDir {
     let dir = TempDir::new();
     dir.write("modelith.json", MODELITH_JSON);
     dir.write(
-        &format!(".modelith/plugins/{PLUGIN}/manifest.json"),
+        &format!(".modelith/plugins/{PLUGIN}/modelith-plugin.json"),
         MANIFEST,
     );
     dir.write(&format!(".modelith/plugins/{PLUGIN}/rules.yaml"), RULES);
@@ -264,7 +264,7 @@ fn missing_plugin_is_named_and_exits_with_1() {
     assert_eq!(
         stdout(&out),
         format!(
-            ".modelith/plugins/{PLUGIN}/manifest.json: 誤り: このプロジェクトはプラグイン「{PLUGIN}」を使っていますが、入っていません。プラグインを .modelith/plugins/{PLUGIN}/ に追加してください（manifest.json が見つかりません） [{PLUGIN}]\n\
+            ".modelith/plugins/{PLUGIN}/modelith-plugin.json: 誤り: このプロジェクトはプラグイン「{PLUGIN}」を使っていますが、入っていません。プラグインを .modelith/plugins/{PLUGIN}/ に追加してください（modelith-plugin.json が見つかりません） [{PLUGIN}]\n\
              ファイル 0 件を検査しました：誤り 1 件・注意 0 件・情報 0 件・ヒント 0 件\n"
         )
     );
@@ -276,7 +276,7 @@ fn rule_path_outside_the_plugin_is_rejected() {
     // Arrange（プラグインのフォルダの外を指す）
     let dir = project();
     dir.write(
-        &format!(".modelith/plugins/{PLUGIN}/manifest.json"),
+        &format!(".modelith/plugins/{PLUGIN}/modelith-plugin.json"),
         &MANIFEST.replace("\"rules.yaml\"", "\"../../../modelith.json\""),
     );
     // Act

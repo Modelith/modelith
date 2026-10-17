@@ -49,7 +49,7 @@ use regex_lite::Regex;
 pub const PLUGINS_DIR: &str = ".modelith/plugins";
 
 /// プラグインのフォルダの中の、マニフェストのファイル名。
-pub const MANIFEST_FILE: &str = "manifest.json";
+pub const MANIFEST_FILE: &str = "modelith-plugin.json";
 
 /// ルールに書く関係の種類と、モデルの線の種類（`Edge.kind`）の対応。
 pub const RELATIONS: &[(&str, &str)] = &[

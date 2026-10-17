@@ -16,7 +16,7 @@ my-project/
   .modelith/
     plugins/
       jp.example.trace/
-        manifest.json
+        modelith-plugin.json
         rules.yaml
 ```
 
@@ -31,7 +31,7 @@ my-project/
 }
 ```
 
-`.modelith/plugins/<ID>/manifest.json`：プラグインのマニフェスト。`runtime` は `rules`、`apiVersion` は `"0"`。
+`.modelith/plugins/<ID>/modelith-plugin.json`：プラグインのマニフェスト。`runtime` は `rules`、`apiVersion` は `"0"`。
 `contributes.rules` に、ルールのファイルを**プラグインのフォルダからの相対パス**で並べる（フォルダの外は指せない）。
 
 ```json

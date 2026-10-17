@@ -123,9 +123,9 @@ fn problem(path: &str, place: Option<Place>, message: String) -> LoadProblem {
 /// # 例
 ///
 /// ```text
-/// manifest_read_problem("jp.x", "…/manifest.json", NotFound)
+/// manifest_read_problem("jp.x", "…/modelith-plugin.json", NotFound)
 ///   → 「このプロジェクトはプラグイン「jp.x」を使っていますが、入っていません…」
-/// manifest_read_problem("jp.x", "…/manifest.json", Other("権限がありません"))
+/// manifest_read_problem("jp.x", "…/modelith-plugin.json", Other("権限がありません"))
 ///   → 「プラグイン「jp.x」のマニフェストを読み取れません（権限がありません）」
 /// ```
 fn manifest_read_problem(id: &str, path: &str, e: &ReadError) -> LoadProblem {

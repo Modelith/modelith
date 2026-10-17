@@ -48,7 +48,7 @@ fn loads_every_rule_file_in_order() {
     let plugin = load_files(
         ID,
         &[
-            (&format!("{DIR}/manifest.json"), &m),
+            (&format!("{DIR}/modelith-plugin.json"), &m),
             (&format!("{DIR}/a.yaml"), &a),
             (&format!("{DIR}/more/b.yaml"), &b),
         ],
@@ -73,7 +73,7 @@ fn manifest_without_rule_files_loads_no_rules() {
     // Arrange（境界値：contributes.rules が空）
     let m = manifest(&[]);
     // Act
-    let plugin = load_files(ID, &[(&format!("{DIR}/manifest.json"), &m)]);
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &m)]);
     // Assert
     assert_eq!((plugin.rules.len(), problems(&plugin)), (0, vec![]));
 }
@@ -152,7 +152,7 @@ fn missing_plugin_tells_which_plugin_to_add() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/manifest.json このプロジェクトはプラグイン「{ID}」を使っていますが、入っていません。プラグインを {DIR}/ に追加してください（manifest.json が見つかりません）"
+            "{DIR}/modelith-plugin.json このプロジェクトはプラグイン「{ID}」を使っていますが、入っていません。プラグインを {DIR}/ に追加してください（modelith-plugin.json が見つかりません）"
         )]
     );
 }
@@ -167,7 +167,7 @@ fn unreadable_manifest_is_reported_with_the_reason() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/manifest.json プラグイン「{ID}」のマニフェストを読み取れません（UTF-8 ではありません）"
+            "{DIR}/modelith-plugin.json プラグイン「{ID}」のマニフェストを読み取れません（UTF-8 ではありません）"
         )]
     );
 }
@@ -177,13 +177,13 @@ fn manifest_json_syntax_error_has_line_and_column() {
     // Arrange（3 行目の閉じかっこの前に余計な「,」）
     let text = "{\n  \"id\": \"jp.example.rules\",\n}";
     // Act
-    let plugin = load_files(ID, &[(&format!("{DIR}/manifest.json"), text)]);
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), text)]);
     // Assert
     let all = problems(&plugin);
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
         all[0].starts_with(&format!(
-            "{DIR}/manifest.json:3:1 書き方に誤りがあるため読み取れません（JSON："
+            "{DIR}/modelith-plugin.json:3:1 書き方に誤りがあるため読み取れません（JSON："
         )),
         "{all:?}"
     );
@@ -194,7 +194,7 @@ fn unknown_key_in_manifest_is_named() {
     // Arrange（deny_unknown_fields）
     let text = manifest(&[]).replace("\"license\"", "\"licence\": \"MIT\",\n  \"license\"");
     // Act
-    let plugin = load_files(ID, &[(&format!("{DIR}/manifest.json"), &text)]);
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &text)]);
     // Assert
     let all = problems(&plugin);
     assert_eq!(all.len(), 1, "{all:?}");
@@ -211,7 +211,7 @@ fn unsupported_api_version_is_reported_at_the_key_and_rules_are_not_read() {
     let mut read_rules = false;
     // Act
     let plugin = load_plugin(ID, |path| {
-        if path.ends_with("manifest.json") {
+        if path.ends_with("modelith-plugin.json") {
             Ok(text.clone())
         } else {
             read_rules = true;
@@ -223,7 +223,7 @@ fn unsupported_api_version_is_reported_at_the_key_and_rules_are_not_read() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/manifest.json:5:3 対応していない版（apiVersion「1」）のプラグインです。この Modelith が読めるのは「0」です"
+            "{DIR}/modelith-plugin.json:5:3 対応していない版（apiVersion「1」）のプラグインです。この Modelith が読めるのは「0」です"
         )]
     );
 }
@@ -233,12 +233,12 @@ fn runtime_other_than_rules_is_reported() {
     // Arrange（v1 の TypeScript のプラグイン）
     let text = manifest(&[]).replace("\"runtime\": \"rules\"", "\"runtime\": \"browser\"");
     // Act
-    let plugin = load_files(ID, &[(&format!("{DIR}/manifest.json"), &text)]);
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &text)]);
     // Assert
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/manifest.json:6:3 検査ルールのプラグイン（runtime: rules）ではないため、ここでは使えません"
+            "{DIR}/modelith-plugin.json:6:3 検査ルールのプラグイン（runtime: rules）ではないため、ここでは使えません"
         )]
     );
 }
@@ -248,12 +248,12 @@ fn manifest_id_must_match_the_project_entry() {
     // Arrange
     let text = manifest(&[]).replace(ID, "jp.example.other");
     // Act
-    let plugin = load_files(ID, &[(&format!("{DIR}/manifest.json"), &text)]);
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &text)]);
     // Assert
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/manifest.json:2:3 マニフェストの ID「jp.example.other」が、プロジェクトに書かれた ID「{ID}」と違います"
+            "{DIR}/modelith-plugin.json:2:3 マニフェストの ID「jp.example.other」が、プロジェクトに書かれた ID「{ID}」と違います"
         )]
     );
 }
@@ -267,7 +267,7 @@ fn rule_paths_outside_the_plugin_folder_are_rejected_but_others_load() {
     let plugin = load_files(
         ID,
         &[
-            (&format!("{DIR}/manifest.json"), &m),
+            (&format!("{DIR}/modelith-plugin.json"), &m),
             (&format!("{DIR}/rules.yaml"), &yaml),
         ],
     );
@@ -276,7 +276,7 @@ fn rule_paths_outside_the_plugin_folder_are_rejected_but_others_load() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/manifest.json:8:30 ルールのファイル「../secret.yaml」は、プラグインのフォルダの中を、そこからの相対パスで指してください"
+            "{DIR}/modelith-plugin.json:8:30 ルールのファイル「../secret.yaml」は、プラグインのフォルダの中を、そこからの相対パスで指してください"
         )]
     );
 }
@@ -286,7 +286,7 @@ fn missing_rule_file_is_reported() {
     // Arrange
     let m = manifest(&["rules.yaml"]);
     // Act
-    let plugin = load_files(ID, &[(&format!("{DIR}/manifest.json"), &m)]);
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &m)]);
     // Assert
     assert_eq!(
         problems(&plugin),
@@ -539,7 +539,7 @@ fn duplicate_rule_ids_are_reported_at_the_second_one() {
     let plugin = load_files(
         ID,
         &[
-            (&format!("{DIR}/manifest.json"), &m),
+            (&format!("{DIR}/modelith-plugin.json"), &m),
             (&format!("{DIR}/a.yaml"), &a),
             (&format!("{DIR}/b.yaml"), &b),
         ],
