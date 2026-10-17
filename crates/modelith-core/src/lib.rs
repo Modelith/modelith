@@ -7,6 +7,7 @@ pub mod edit;
 mod line_index;
 pub mod model;
 pub mod project;
+pub mod project_file;
 pub mod syntax;
 
 pub use line_index::{LineCol, LineIndex};

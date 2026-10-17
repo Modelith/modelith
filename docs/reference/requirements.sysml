@@ -665,5 +665,11 @@ package ModelithRequirements {
                 verify LayoutReq;
             }
         }
+        verification def ProjectFileTest {
+            doc /* crates/modelith-core/src/project_file：プロジェクトの設定ファイル（modelith.json）の読み取り（名前・使うプラグインと既定値・知らない項目を残して書き戻す・JSON の誤りと型の誤りの行と列・空のテキスト）と作成。crates/modelith-wasm：結果の JSON での受け渡し。web/src/core/client.test.ts：コア（Worker）への読み取りと作成の依頼（コアが壊れた返事をしても例外を投げない）。web/src/files/local-folder.test.ts：開いたフォルダの中のファイルの読み書き（偽のファイルシステムで）。web/src/workspace/workspace.test.ts：フォルダを開く・一覧の更新で読み、「プロジェクトにする」で書く（既にあれば上書きしない）。web/src/app/project.test.ts：見出しに出す名前と、問題の知らせ方。web/e2e/project.spec.ts：プロジェクト名の表示・前回のフォルダと一覧の更新・「プロジェクトにする」とやめたとき・設定ファイルの無いフォルダ・誤りと知らない項目の知らせ（OPFS で） */
+            objective {
+                verify ProjectReq;
+            }
+        }
     }
 }

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
-import { FakeDir, FakeFsApi, MemoryHandleStore } from "../files/fake-fs";
+import { FakeDir, FakeFile, FakeFsApi, MemoryHandleStore } from "../files/fake-fs";
 import { LocalFolderProvider } from "../files/local-folder";
 import { ProviderRegistry, type DirEntry, type FileRef } from "../files/types";
 import { AutoSaver, type Timer } from "./autosave";
 import { kvDraftStore } from "./drafts";
-import { Workspace, suggestName, type SaveOutcome } from "./workspace";
+import { PROJECT_FILE, Workspace, suggestName, type SaveOutcome } from "./workspace";
 
 function setup() {
   const api = new FakeFsApi();
@@ -625,5 +625,70 @@ describe("Workspace: フォルダを開けないブラウザの配置ファイ�
     expect(dirty).toBe(true);
     expect(s.downloads).toEqual(["m.sysml", "m.layout.json"]);
     expect(s.ws.isDirty(doc)).toBe(false);
+  });
+});
+
+describe("Workspace: プロジェクトの設定ファイル（ADR-0019、F-PROJ-1、C-6）", () => {
+  it("フォルダを開くと、一番上の modelith.json のテキストを読む", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put(PROJECT_FILE, '{ "name": "給水" }');
+    // Act
+    await s.ws.openFolder(s.local);
+    // Assert
+    expect(s.ws.folder()?.projectText).toBe('{ "name": "給水" }');
+  });
+
+  it("modelith.json の無いフォルダは null で、何も書かない（境界値: 下のフォルダにだけある）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("sub/modelith.json", "{}");
+    // Act
+    await s.ws.openFolder(s.local);
+    // Assert
+    expect(s.ws.folder()?.projectText).toBeNull();
+    expect(s.root.entries.has(PROJECT_FILE)).toBe(false);
+  });
+
+  it("一覧を更新すると、他で作られた modelith.json も読み直す", async () => {
+    // Arrange
+    const s = setup();
+    await s.ws.openFolder(s.local);
+    s.root.put(PROJECT_FILE, "{}");
+    // Act
+    await s.ws.refreshFolder();
+    // Assert
+    expect(s.ws.folder()?.projectText).toBe("{}");
+  });
+
+  it("プロジェクトにすると、modelith.json を書いて読み直し、変更を知らせる", async () => {
+    // Arrange
+    const s = setup();
+    await s.ws.openFolder(s.local);
+    let notified = 0;
+    s.ws.subscribe(() => notified++);
+    // Act
+    await s.ws.makeProject('{ "name": "A" }\n');
+    // Assert
+    expect((s.root.entries.get(PROJECT_FILE) as FakeFile).content).toBe('{ "name": "A" }\n');
+    expect(s.ws.folder()?.projectText).toBe('{ "name": "A" }\n');
+    expect(notified).toBeGreaterThan(0);
+  });
+
+  it("既に modelith.json があれば、上書きせずに断る（異常系: 開いた後に他で作られた）", async () => {
+    // Arrange
+    const s = setup();
+    await s.ws.openFolder(s.local);
+    const theirs = s.root.put(PROJECT_FILE, '{ "name": "theirs" }');
+    // Act & Assert
+    await expect(s.ws.makeProject("{}")).rejects.toThrow("このフォルダは既にプロジェクトです（modelith.json があります）");
+    expect(theirs.content).toBe('{ "name": "theirs" }');
+  });
+
+  it("フォルダを開いていなければ断る（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    // Act & Assert
+    await expect(s.ws.makeProject("{}")).rejects.toThrow("フォルダが開かれていません");
   });
 });

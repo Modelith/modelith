@@ -2,13 +2,17 @@
 // 返事を届ける順番をテストで決める。
 import { describe, expect, it } from "vitest";
 import { CoreClient, STALE_EDIT, type CorePort } from "./client";
-import { handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
+import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text-ops";
-import { analyze, edit } from "./wasm/modelith_core.js";
+import { analyze, createProjectFile, edit, parseProjectFile } from "./wasm/modelith_core.js";
 import type { Model, ParseResult } from "./types";
 
 /** 返事をためておき、deliver() で届ける偽の Worker。 */
-function fakeWorker(fns: CoreFns = { analyze, edit }) {
+const wasm: CoreFns = { analyze, edit, parseProjectFile, createProjectFile };
+/** コアがどの依頼にも壊れた JSON を返す（Q-5 の異常系）。 */
+const broken: CoreFns = { analyze: () => "{", edit: () => "{", parseProjectFile: () => "{", createProjectFile: () => "{" };
+
+function fakeWorker(fns: CoreFns = wasm) {
   const state: CoreState = { text: "" };
   const queue: CoreResponse[] = [];
   let listener: (r: CoreResponse) => void = () => {};
@@ -94,7 +98,7 @@ describe("CoreClient（版つきのやり取り）", () => {
 
   it("Q-5: コアが壊れた返事をしても例外を投げない（異常系）", async () => {
     // Arrange
-    const { c, got, deliver } = client({ analyze: () => "{", edit: () => "{" });
+    const { c, got, deliver } = client(broken);
     // Act
     c.sync("package P;");
     const pending = c.edit("package P;", { op: "delete", keys: [] });
@@ -102,5 +106,124 @@ describe("CoreClient（版つきのやり取り）", () => {
     // Assert
     expect(got[0]?.P.errors[0]?.msg).toMatch(/^テキストを読み取れませんでした/);
     expect(await pending).toEqual({ refused: expect.stringMatching(/^操作できませんでした/) as unknown });
+  });
+});
+
+describe("CoreClient（プロジェクトの設定ファイル、F-PROJ-1）", () => {
+  it("設定ファイルを読み取り、設定と問題を返す（正常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const pending = c.parseProjectFile('{ "name": "給水", "extra": 1 }');
+    deliver();
+    const r = await pending;
+    // Assert
+    expect(r.project?.name).toBe("給水");
+    expect(r.project?.["extra"]).toBe(1);
+    expect(r.problems.map((p) => [p.severity, p.line, p.column])).toEqual([["warning", 1, 17]]); // 「給水」は UTF-16 で 2 単位
+  });
+
+  it("読み取れない設定ファイルは、設定を null にして誤りの位置を返す（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const pending = c.parseProjectFile("{\n  \"name\": }");
+    deliver();
+    const r = await pending;
+    // Assert
+    expect(r.project).toBeNull();
+    expect(r.problems).toEqual([{ severity: "error", line: 2, column: 11, message: expect.stringMatching(/^書き方に誤りがあるため読み取れません/) as unknown }]);
+  });
+
+  it("テキストが変わっても、設定ファイルの返事は断らない（版に関係しない）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const pending = c.parseProjectFile("{}");
+    // Act
+    c.sync("package P;");
+    deliver();
+    const r = await pending;
+    // Assert
+    expect(r).toEqual({ project: { plugins: {} }, problems: [] });
+  });
+
+  it("新しい設定ファイルのテキストを作る（正常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const pending = c.createProjectFile("給水");
+    deliver();
+    const r = await pending;
+    // Assert
+    expect(r).toEqual({ text: '{\n  "name": "給水",\n  "plugins": {}\n}\n' });
+  });
+
+  it("Q-5: コアが壊れた返事をしても、設定ファイルの依頼は例外を投げない（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client(broken);
+    // Act
+    const parsed = c.parseProjectFile("{}");
+    const created = c.createProjectFile("A");
+    deliver();
+    // Assert
+    expect(await parsed).toEqual({ project: null, problems: [{ severity: "error", line: 1, column: 1, message: expect.stringMatching(/^設定ファイルを読み取れませんでした/) as unknown }] });
+    expect(await created).toEqual({ refused: expect.stringMatching(/^プロジェクトの設定ファイルを作れませんでした/) as unknown });
+  });
+
+  it("コアが返事の形の違う JSON を返しても、誤りとして返す（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client({ ...wasm, parseProjectFile: () => '{"error":"x"}', createProjectFile: () => "{}" });
+    // Act
+    const parsed = c.parseProjectFile("{}");
+    const created = c.createProjectFile("A");
+    deliver();
+    // Assert
+    expect((await parsed).problems[0]?.message).toBe("設定ファイルを読み取れませんでした（x）");
+    expect(await created).toEqual({ refused: "プロジェクトの設定ファイルを作れませんでした（コアの返事の形が違います）" });
+  });
+});
+
+describe("failedReply（コアの中の予期しない失敗）", () => {
+  it.each<[Exclude<CoreRequest, { type: "init" }>, CoreResponse["type"]]>([
+    [{ type: "didChange", version: 1, text: "" }, "analyzed"],
+    [{ type: "edit", version: 1, id: 2, intent: { op: "delete", keys: [] } }, "edited"],
+    [{ type: "parseProject", id: 3, text: "{}" }, "projectParsed"],
+    [{ type: "createProject", id: 4, name: "A" }, "projectCreated"],
+  ])("%o には %s で返す", (req, type) => {
+    // Arrange・Act
+    const r = failedReply(req, "boom");
+    // Assert
+    expect(r.type).toBe(type);
+  });
+
+  it("CoreClient は、失敗の返事を読み取れない設定・断りとして受け取る", async () => {
+    // Arrange
+    const fail = (): string => {
+      throw new Error("boom");
+    };
+    const state: CoreState = { text: "" };
+    let listener: (r: CoreResponse) => void = () => {};
+    const c = new CoreClient(
+      {
+        post: (req) => {
+          if (req.type === "init") return;
+          try {
+            listener(handle(state, req, { ...wasm, parseProjectFile: fail, createProjectFile: fail }));
+          } catch (e) {
+            listener(failedReply(req, (e as Error).message));
+          }
+        },
+        listen: (fn) => {
+          listener = fn;
+        },
+      },
+      () => {},
+    );
+    // Act
+    const parsed = await c.parseProjectFile("{}");
+    const created = await c.createProjectFile("A");
+    // Assert
+    expect(parsed.problems[0]?.message).toBe("設定ファイルを読み取れませんでした（boom）");
+    expect(created).toEqual({ refused: "プロジェクトの設定ファイルを作れませんでした（boom）" });
   });
 });

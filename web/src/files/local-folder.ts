@@ -9,6 +9,7 @@ import {
   type FileLocator,
   type FilePicker,
   type FileRef,
+  type FolderFiles,
   type FolderRef,
   type FolderSource,
   type Readable,
@@ -93,7 +94,7 @@ const versionOf = (f: FileLike): string => `${f.lastModified}:${f.size}`;
 const SKIP_DIR = /^(\.|node_modules$)/;
 const RECENT_KEY = "recent-folder";
 
-export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator {
+export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles {
   readonly id = "local";
   readonly label = "このコンピュータ";
   private readonly files = new Map<string, FileHandleLike>();
@@ -310,6 +311,47 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
   }
 
   /**
+   * 開いたフォルダの中のファイルを読む（プロジェクトの設定ファイルなど。一覧に出ないファイルも読める）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path フォルダからの相対パス（`/` 区切り）
+   * @returns 内容。ファイル（か途中のフォルダ）が無ければ null。開いていないフォルダなら例外（Error）を投げる
+   * @example
+   * await p.readInFolder(folder, "modelith.json")  // → '{ "name": "給水" }'
+   * await p.readInFolder(folder, "none/a.json")    // → null（途中のフォルダが無い）
+   */
+  async readInFolder(folder: FolderRef, path: string): Promise<string | null> {
+    const segs = path.split("/").filter(Boolean);
+    const name = segs.pop();
+    if (!name) return null;
+    let dir = this.folderHandle(folder);
+    for (const s of segs) {
+      const sub = await childDir(dir, s);
+      if (!sub) return null;
+      dir = sub;
+    }
+    if (!(await exists(dir, name))) return null;
+    return (await (await dir.getFileHandle(name)).getFile()).text();
+  }
+
+  /**
+   * 開いたフォルダの中のファイルに書く。無ければ作る（途中のフォルダも作る）。
+   * 名前が空・開いていないフォルダなら例外（Error）を投げる。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path フォルダからの相対パス（`/` 区切り）
+   * @param text 書く内容
+   */
+  async writeInFolder(folder: FolderRef, path: string, text: string): Promise<void> {
+    const segs = path.split("/").filter(Boolean);
+    const name = segs.pop();
+    if (!name) throw new Error("ファイル名がありません");
+    let dir = this.folderHandle(folder);
+    for (const s of segs) dir = await dir.getDirectoryHandle(s, { create: true });
+    await writeText(await dir.getFileHandle(name, { create: true }), text);
+  }
+
+  /**
    * フォルダから開いたファイルなら、そのフォルダと、ファイルのある階層までのパスを返す。
    *
    * @param ref ファイルの参照
@@ -460,6 +502,24 @@ async function exists(dir: DirHandleLike, name: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * フォルダの直下の、その名前のフォルダを引く。
+ *
+ * @param dir フォルダ
+ * @param name フォルダの名前
+ * @returns フォルダのハンドル。引けなければ（無い・ファイルである）null
+ * @example
+ * await childDir(root, "models") // → models のハンドル
+ * await childDir(root, "none")   // → null
+ */
+async function childDir(dir: DirHandleLike, name: string): Promise<DirHandleLike | null> {
+  try {
+    return await dir.getDirectoryHandle(name);
+  } catch {
+    return null;
   }
 }
 

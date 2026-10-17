@@ -111,8 +111,31 @@ export interface SiblingFiles extends ProviderInfo {
   writeSibling(ref: FileRef, name: string, text: string): Promise<void>;
 }
 
+/** 開いたフォルダの中の、決まった場所のファイルを読み書きできる（プロジェクトの設定ファイル modelith.json など、ADR-0019）。 */
+export interface FolderFiles extends ProviderInfo {
+  /**
+   * フォルダの中のファイルを読む。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path フォルダからの相対パス（`/` 区切り）
+   * @returns 内容。ファイルが無ければ null
+   * @example
+   * await p.readInFolder(folder, "modelith.json") // → '{ "name": "給水" }'
+   * await p.readInFolder(folder, "none.json")     // → null
+   */
+  readInFolder(folder: FolderRef, path: string): Promise<string | null>;
+  /**
+   * フォルダの中のファイルに書く。無ければ作る（途中のフォルダも作る）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path フォルダからの相対パス（`/` 区切り）
+   * @param text 書く内容
+   */
+  writeInFolder(folder: FolderRef, path: string, text: string): Promise<void>;
+}
+
 export type FileProvider = ProviderInfo &
-  Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator, keyof ProviderInfo>>;
+  Partial<Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator & FolderFiles, keyof ProviderInfo>>;
 
 /**
  * ファイルを読めるプロバイダか（`read` があるか）。
@@ -198,6 +221,17 @@ export const canLocate = (p: FileProvider): p is FileLocator => typeof p.locate 
 export const hasRecentFolders = (p: FileProvider): p is RecentFolders =>
   typeof p.recentFolder === "function" && typeof p.reopenRecent === "function";
 
+/**
+ * 開いたフォルダの中のファイルを読み書きできるプロバイダか（`readInFolder`・`writeInFolder` がそろっているか）。
+ *
+ * @param p プロバイダ
+ * @returns 両方あれば true（型を FolderFiles に絞る）
+ * @example
+ * hasFolderFiles(new LocalFolderProvider(…)) // → true
+ * hasFolderFiles(new BrowserFileProvider(io)) // → false
+ */
+export const hasFolderFiles = (p: FileProvider): p is FolderFiles =>
+  typeof p.readInFolder === "function" && typeof p.writeInFolder === "function";
 /**
  * モデルとして扱うファイルか（拡張子が .sysml か .kerml。大文字・小文字は区別しない）。
  *

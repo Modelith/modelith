@@ -1,14 +1,14 @@
 // ファイル操作の UI（ADR-0010）：エクスプローラー・ファイルメニュー・ショートカット・未保存の警告・外部での変更の読み直し。
 // 判断はワークスペース（web/src/workspace）に任せ、ここは操作を受けて結果を画面に出すだけ。
 
-import { readLayout, removeLayoutComment } from "../core";
+import { readLayout, removeLayoutComment, type ProjectFileResult } from "../core";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, type FsApi } from "../files/local-folder";
-import { ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
+import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
-import { layoutNameFor, suggestName, Workspace, type Doc } from "../workspace/workspace";
+import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
 import { $, closest, esc, store } from "./dom";
@@ -18,7 +18,8 @@ import { dropHistory, recordHistory, useHistory } from "./history";
 import { layoutFromJson, type Layout } from "./layout";
 import { isEmptyLayout, parseLayoutFile, serializeLayout } from "./layout-file";
 import { clearSel, S } from "./state";
-import { loadLayout, onLayoutChange, onTextChange, setText, settled, toast } from "./sync";
+import { projectNotice, projectTitle } from "./project";
+import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast } from "./sync";
 import { opsIdle } from "./intent";
 
 const AUTOSAVE_KEY = "modelith-autosave";
@@ -39,6 +40,10 @@ let shownKey: string | null = null;
 const collapsed = new Set<string>();
 /** 古い形式の配置を移すか、もう尋ねた文書（ファイルを開いたときに一度だけ尋ねる、C-6）。 */
 const legacyAsked = new Set<string>();
+/** 読み取りを頼んだプロジェクトの設定ファイル（フォルダの id と設定ファイルのテキスト）。無ければ null。 */
+let projectKey: string | null = null;
+/** 開いているフォルダのプロジェクトの設定を読み取った結果（ADR-0019）。まだ読み取っていない・設定ファイルが無ければ null。 */
+let project: ProjectFileResult | null = null;
 
 /**
  * まだ使われていない無題の名前を作る（untitled-1.sysml から順に空いている番号）。
@@ -344,6 +349,54 @@ async function closeDoc(key: string): Promise<void> {
   if (wasActive) ensureDoc();
 }
 
+/**
+ * 開いているフォルダのプロジェクトの設定ファイル（modelith.json）が変わったら、コアに読み取ってもらう（ADR-0019、F-PROJ-1）。
+ * ワークスペースの変更のたびに呼ぶ。読み取れたらエクスプローラーを描き直し、問題があればトーストで知らせる（黙って捨てない）。
+ * 同じフォルダの同じテキストなら、読み直さない。
+ */
+function syncProject(): void {
+  const f = ws.folder();
+  const text = f?.projectText ?? null;
+  const key = f && text !== null ? `${f.ref.id}\n${text}` : null;
+  if (key === projectKey) return;
+  projectKey = key;
+  project = null;
+  if (key === null || text === null) return;
+  void coreClient()
+    .parseProjectFile(text)
+    .then((result) => {
+      // 読み取る間に、別のフォルダを開いた・設定ファイルが変わった
+      if (projectKey !== key) return;
+      project = result;
+      const notice = projectNotice(result.problems);
+      if (notice) toast(notice);
+      renderFiles();
+    });
+}
+
+/**
+ * 開いているフォルダをプロジェクトにする（ADR-0019、F-PROJ-1）。プロジェクトの名前を尋ね（既定はフォルダ名）、
+ * コアで設定ファイルを作って、フォルダの一番上に書く。利用者が選んだときだけ書く（C-6）。できなければ理由をトーストで知らせる。
+ */
+async function makeProject(): Promise<void> {
+  const f = ws.folder();
+  if (!f) return;
+  const r = await ask("プロジェクトにする", `フォルダ「${f.ref.name}」をプロジェクトにします。プロジェクトの名前を入力してください。チームで共有する設定ファイル（${PROJECT_FILE}）を、フォルダの一番上に作ります。`, [
+    { id: "cancel", label: "やめる" },
+    { id: "ok", label: "作成", kind: "primary" },
+  ], { value: f.ref.name, label: "プロジェクトの名前" });
+  if (r?.id !== "ok") return;
+  const name = r.value.trim() || f.ref.name;
+  const made = await coreClient().createProjectFile(name);
+  if ("refused" in made) return toast(made.refused);
+  try {
+    await ws.makeProject(made.text);
+    toast(`フォルダ「${f.ref.name}」を、プロジェクト「${name}」にしました`);
+  } catch (e) {
+    toast(`プロジェクトにできませんでした：${(e as Error).message}`);
+  }
+}
+
 /* ---- 描画 ---- */
 
 /**
@@ -399,7 +452,7 @@ function renderFiles(): void {
   let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs}`;
   const f = ws.folder();
   if (f) {
-    h += `<div class="sec"><span class="grow" title="${esc(f.ref.name)}">${esc(f.ref.name.toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>`;
+    h += folderHeader();
     h += f.entries.length ? folderRows(f.entries, 0) : `<div class="msg">モデルのファイル（.sysml）がありません。</div>`;
   } else if (local) {
     h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">フォルダを開くと、中の .sysml ファイルを一覧して編集・上書き保存できます。<br><button data-cmd="openFolder" class="primary">フォルダを開く</button>`;
@@ -414,6 +467,29 @@ function renderFiles(): void {
     $("#docName").innerHTML = esc(active.name) + staleMark(active) + (ws.isDirty(active) ? " ●" : "") + layoutMark(active);
     document.title = `${ws.isDirty(active) ? "● " : ""}${active.name} — Modelith`;
   }
+}
+
+/**
+ * エクスプローラーの、開いているフォルダの見出しの HTML を作る（F-FILE-1・F-PROJ-1）。
+ * プロジェクトならプロジェクト名、そうでなければフォルダ名を出す。設定ファイルの無いフォルダには、見出しの下に「プロジェクトにする」を出す。
+ *
+ * @returns 見出し（と「プロジェクトにする」の行）の HTML。フォルダを開いていなければ ""
+ * @example
+ * // フォルダ water に { "name": "給水" } の modelith.json がある
+ * folderHeader() // → '<div class="sec"><span class="grow" data-folder title="プロジェクト「給水」（フォルダ「water」）">給水</span><button data-cmd="newInFolder" …>＋</button>…</div>'
+ * // modelith.json の無いフォルダ water
+ * folderHeader() // → '<div class="sec"><span class="grow" data-folder title="water">WATER</span>…</div><div class="mkproj"><button data-cmd="makeProject" …>プロジェクトにする</button></div>'
+ */
+function folderHeader(): string {
+  const f = ws.folder();
+  if (!f) return "";
+  const named = project?.project ? projectTitle(f.ref.name, project.project) : null;
+  const title = named ? `プロジェクト「${named}」（フォルダ「${f.ref.name}」）` : f.ref.name;
+  // 見出しに並べるとフォルダ名が隠れるので、見出しのすぐ下の行に出す
+  const make = f.projectText === null && hasFolderFiles(f.source)
+    ? `<div class="mkproj"><button data-cmd="makeProject" title="名前と、使うプラグインなどの設定を、チームで共有できるようにします（設定ファイル ${PROJECT_FILE} を作ります）">プロジェクトにする</button></div>`
+    : "";
+  return `<div class="sec"><span class="grow" data-folder title="${esc(title)}">${esc((named ?? f.ref.name).toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}`;
 }
 
 /**
@@ -547,7 +623,7 @@ function initMenu(): void {
 
 /**
  * エクスプローラーに操作をつなぐ。文書を押して表示・閉じる、フォルダの開閉、フォルダのファイルを開く、
- * 新しいファイル・一覧の更新・フォルダを開くのボタン。前回選んだ横のパネルを戻す。
+ * 新しいファイル・一覧の更新・プロジェクトにする・フォルダを開くのボタン。前回選んだ横のパネルを戻す。
  */
 function initExplorer(): void {
   $("#sideFiles").onclick = () => showSide("files");
@@ -564,6 +640,7 @@ function initExplorer(): void {
     if (c === "new") return newUntitled();
     if (c === "newInFolder") return void newFileInFolder();
     if (c === "refresh") return void ws.refreshFolder();
+    if (c === "makeProject") return void makeProject();
     if (c === "openFolder") return void openFolder();
     if (c === "reopen") return void openFolder(true);
     const doc = closest(ev, "[data-doc]")?.dataset["doc"];
@@ -634,6 +711,8 @@ export function initFiles(sample: { name: string; text: string; layout: string }
     ws.setLayout(shownKey, layout);
     onEdited(shownKey);
   });
+  // 設定ファイルの読み取りの状態を先に変えてから描く
+  ws.subscribe(syncProject);
   ws.subscribe(renderFiles);
   initMenu();
   initExplorer();
