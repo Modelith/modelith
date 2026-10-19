@@ -1,8 +1,10 @@
 // プラグイン（ADR-0018・ADR-0019）の画面の言葉と判断。入出力を持たない純粋関数だけを置く（読み書きは plugin-panel.ts）。
 
 import type { PlacedDiagnostic, PluginFiles, PluginInfo, PluginLoadProblem, PluginRuntime, PluginSummary, PluginUse, ProjectFile, RuleFinding, RuleSeverity } from "../core";
+import type { BrowserPlugin } from "../plugins/browser-store";
 import type { Permission } from "../plugins/generated/protocol";
 import { NETWORK_WARNING, permissionLines } from "../plugins/permissions";
+import { sizeText } from "../plugins/transfer";
 import type { ScriptPlugin } from "../plugins/view";
 
 /** プロジェクトに入れたプラグインを置くフォルダ（プロジェクトのフォルダからの相対パス。ADR-0019 §1）。 */
@@ -10,8 +12,14 @@ export const PLUGINS_DIR = ".modelith/plugins";
 /** プラグインのフォルダの中の、マニフェストのファイル名。 */
 export const MANIFEST_FILE = "modelith-plugin.json";
 
-/** 一覧に出すプラグインの状態。 */
-export type PluginState = "ok" | "error" | "missing" | "version" | "off";
+/** プラグインを入れる先（ADR-0018 §1）。project は modelith.json と .modelith/plugins/、browser はこのブラウザの保存場所。 */
+export type PluginPlace = "project" | "browser";
+
+/** 入れる先の画面の言葉。 */
+export const PLACE_LABEL: Record<PluginPlace, string> = { project: "このプロジェクト", browser: "このブラウザ" };
+
+/** 一覧に出すプラグインの状態。shadowed は、同じ ID のプロジェクトのプラグインがあるため使わない、このブラウザのプラグイン。 */
+export type PluginState = "ok" | "error" | "missing" | "version" | "off" | "shadowed";
 
 /** 状態の画面の言葉。 */
 export const STATE_LABEL: Record<PluginState, string> = {
@@ -20,7 +28,11 @@ export const STATE_LABEL: Record<PluginState, string> = {
   missing: "未追加",
   version: "バージョン不一致",
   off: "無効",
+  shadowed: "プロジェクトを優先",
 };
+
+/** 同じ ID のプロジェクトのプラグインがあるため、このブラウザのプラグインを使わないことの説明。 */
+export const SHADOWED_NOTICE = "このプロジェクトに同じ ID のプラグインがあるため、このプロジェクトではプロジェクトのものを使います（このブラウザのものは使いません）。";
 
 /** プラグインの一覧の 1 行。 */
 export interface PluginRow {
@@ -43,6 +55,8 @@ export interface PluginRow {
   permissions: Permission[];
   /** メニューに出すコマンドの数。 */
   commands: number;
+  /** 入れた先。 */
+  place: PluginPlace;
 }
 
 /** 問題一覧に出す、プラグインについての 1 行。add があれば、押すとそのプラグインの追加を始める。 */
@@ -111,8 +125,93 @@ export function pluginRows(project: ProjectFile, summaries: readonly PluginSumma
       runtime: summary?.manifest?.runtime ?? null,
       permissions: summary?.manifest?.permissions ?? [],
       commands: summary?.manifest?.commands?.length ?? 0,
+      place: "project" as const,
     };
   });
+}
+
+/**
+ * このブラウザに入れたプラグインが、同じ ID のプロジェクトのプラグインに隠されるか（ADR-0018 §1：プロジェクトのものが優先）。
+ * modelith.json に書かれていれば、未追加・無効でもプロジェクトの決めたことを優先する（チームと CI と同じ結果にするため）。
+ *
+ * @param id プラグインの ID
+ * @param project 読み取ったプロジェクトの設定（無ければ null。隠さない）
+ * @returns 隠されるなら true
+ * @example
+ * isShadowed("jp.x", { plugins: { "jp.x": { enabled: false } } }) // → true
+ * isShadowed("jp.x", { plugins: {} })                              // → false
+ * isShadowed("jp.x", null)                                         // → false
+ */
+export function isShadowed(id: string, project: ProjectFile | null): boolean {
+  return !!project && Object.hasOwn(project.plugins, id);
+}
+
+/**
+ * コアが返した読み込みの問題のパス（`.modelith/plugins/<ID>/…`）を、このブラウザに入れたプラグインのパスとして示す形にする。
+ *
+ * @param p 読み込みの問題
+ * @param id プラグインの ID
+ * @returns パスを「このブラウザの <ID>/…」にした問題
+ * @example
+ * browserProblem({ path: ".modelith/plugins/jp.x/rules.yaml", … }, "jp.x") // → { path: "このブラウザの jp.x/rules.yaml", … }
+ * browserProblem({ path: "other.yaml", … }, "jp.x")                       // → { path: "other.yaml", … }（そのまま）
+ */
+export function browserProblem(p: PluginLoadProblem, id: string): PluginLoadProblem {
+  const prefix = `${PLUGINS_DIR}/${id}/`;
+  return p.path.startsWith(prefix) ? { ...p, path: `このブラウザの ${id}/${p.path.slice(prefix.length)}` } : p;
+}
+
+/**
+ * このブラウザに入れたプラグインの、一覧の行を作る（ID の順）。同じ ID のプロジェクトのプラグインがあれば「プロジェクトを優先」にする。
+ *
+ * @param plugins このブラウザに入れたプラグイン
+ * @param project 読み取ったプロジェクトの設定（無ければ null）
+ * @param summaries コアが読み込んだプラグインのまとめ（隠されたものは含まない）
+ * @returns 一覧の行
+ * @example
+ * browserRows([{ id: "jp.y", enabled: true, info: { name: "レビューの記録", version: "1.0.0", runtime: "browser", … }, files }], null, [summaryOfY])
+ * // → [{ id: "jp.y", name: "レビューの記録", state: "ok", place: "browser", … }]
+ * browserRows([{ id: "jp.x", … }], { plugins: { "jp.x": { enabled: true } } }, summaries)
+ * // → [{ id: "jp.x", state: "shadowed", place: "browser", … }]
+ */
+export function browserRows(plugins: readonly BrowserPlugin[], project: ProjectFile | null, summaries: readonly PluginSummary[]): PluginRow[] {
+  return [...plugins]
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((p) => {
+      const shadowed = isShadowed(p.id, project);
+      const summary = shadowed ? undefined : summaries.find((s) => s.id === p.id);
+      const m = summary?.manifest ?? p.info;
+      const problems = (summary?.problems ?? []).map((x) => loadProblemText(browserProblem(x, p.id)));
+      const state: PluginState = shadowed ? "shadowed" : !p.enabled ? "off" : problems.length ? "error" : "ok";
+      return {
+        id: p.id,
+        name: m.name,
+        version: m.version,
+        wanted: null,
+        enabled: p.enabled,
+        state,
+        rules: summary?.rules ?? 0,
+        problems,
+        runtime: m.runtime,
+        permissions: m.permissions ?? [],
+        commands: m.commands?.length ?? 0,
+        place: "browser" as const,
+      };
+    });
+}
+
+/**
+ * このブラウザに入れたプラグインのうち、コアに読み込ませるもの（同じ ID のプロジェクトのプラグインが無いもの）を選ぶ。
+ *
+ * @param plugins このブラウザに入れたプラグイン
+ * @param project 読み取ったプロジェクトの設定（無ければ null）
+ * @returns コアに渡すプラグインのファイル
+ * @example
+ * browserPluginFiles([{ id: "jp.y", enabled: true, files: { … }, … }], null) // → [{ id: "jp.y", enabled: true, files: { … } }]
+ * browserPluginFiles([{ id: "jp.x", … }], { plugins: { "jp.x": {…} } })      // → []（プロジェクトのものが優先）
+ */
+export function browserPluginFiles(plugins: readonly BrowserPlugin[], project: ProjectFile | null): PluginFiles[] {
+  return plugins.filter((p) => !isShadowed(p.id, project)).map((p) => ({ id: p.id, enabled: p.enabled, files: p.files }));
 }
 
 /**
@@ -134,8 +233,44 @@ export function scriptPlugins(project: ProjectFile | null, summaries: readonly P
     const m = summaries.find((s) => s.id === id && s.installed && !s.problems.length)?.manifest;
     const code = m?.main ? files.find((f) => f.id === id)?.files[m.main] : undefined;
     if (!use.enabled || !m || m.runtime !== "browser" || code === undefined) return [];
-    return [{ id, name: m.name, version: m.version, permissions: m.permissions ?? [], commands: m.commands ?? [], code, ...(use.settings === undefined ? {} : { settings: use.settings }) }];
+    return [{ ...scriptOf(m, code), ...(use.settings === undefined ? {} : { settings: use.settings }) }];
   });
+}
+
+/**
+ * 動かす v1 のプラグインを、このブラウザに入れたものから選ぶ。有効で、同じ ID のプロジェクトのプラグインが無く、
+ * コアが読み込めて、プログラムのファイルがあるものだけ（ADR-0018 §1・§3）。
+ *
+ * @param plugins このブラウザに入れたプラグイン
+ * @param project 読み取ったプロジェクトの設定（無ければ null）
+ * @param summaries コアが読み込んだプラグインのまとめ
+ * @returns 動かすプラグイン（設定は持たない）
+ * @example
+ * browserScriptPlugins([{ id: "jp.y", enabled: true, files: { "main.js": "…", … }, … }], null, [{ id: "jp.y", installed: true, problems: [], manifest: { runtime: "browser", main: "main.js", … } }])
+ * // → [{ id: "jp.y", …, code: "…" }]
+ * browserScriptPlugins([{ id: "jp.x", … }], { plugins: { "jp.x": {…} } }, summaries) // → []（プロジェクトのものが優先）
+ */
+export function browserScriptPlugins(plugins: readonly BrowserPlugin[], project: ProjectFile | null, summaries: readonly PluginSummary[]): ScriptPlugin[] {
+  return plugins.flatMap((p) => {
+    const m = summaries.find((s) => s.id === p.id && s.installed && !s.problems.length)?.manifest;
+    const code = m?.main ? p.files[m.main] : undefined;
+    if (!p.enabled || isShadowed(p.id, project) || !m || m.runtime !== "browser" || code === undefined) return [];
+    return [scriptOf(m, code)];
+  });
+}
+
+/**
+ * マニフェストの情報とプログラムから、動かすプラグインを作る。
+ *
+ * @param m マニフェストの情報
+ * @param code プログラムのファイルの中身
+ * @returns 動かすプラグイン（設定は持たない）
+ * @example
+ * scriptOf({ id: "jp.y", name: "n", version: "1.0.0", runtime: "browser", commands: [c] }, "…")
+ * // → { id: "jp.y", name: "n", version: "1.0.0", permissions: [], commands: [c], importers: [], exporters: [], code: "…" }
+ */
+function scriptOf(m: PluginInfo, code: string): ScriptPlugin {
+  return { id: m.id, name: m.name, version: m.version, permissions: m.permissions ?? [], commands: m.commands ?? [], importers: m.importers ?? [], exporters: m.exporters ?? [], code };
 }
 
 /**
@@ -223,89 +358,220 @@ export type PanelPlace =
   | { kind: "project"; projectName: string };
 
 /**
- * プラグインの一覧の画面の、最初の案内と「追加」を押せるかを決める。プロジェクトが無ければ、プロジェクトに追加して使うことと、その作り方を示す。
+ * プラグインの一覧の画面の、最初の案内を決める。プロジェクトに追加できない場面では、このブラウザに追加できることと、
+ * チームと共有するにはプロジェクトに追加することを示す（ADR-0018 §1・ADR-0019 §4）。「追加」はどの場面でも押せる（このブラウザに追加できる）。
  *
  * @param place 場面（フォルダを開けないブラウザ・フォルダ無し・プロジェクトでないフォルダ・読めない設定・プロジェクト）
  * @param count プロジェクトのプラグインの数（プロジェクトのとき）
- * @returns 案内の文と、「追加」を押せるか
+ * @returns 案内の文
  * @example
- * panelIntro({ kind: "noFolder" }, 0)                 // → { text: "プラグインは、プロジェクト（モデルのフォルダ）に追加して使います。…", canAdd: false }
- * panelIntro({ kind: "project", projectName: "給水システム" }, 0) // → { text: "プロジェクト「給水システム」にはまだプラグインがありません。…", canAdd: true }
+ * panelIntro({ kind: "noFolder" }, 0)                 // → "フォルダを開いていないため、プラグインはこのブラウザにだけ追加できます。…"
+ * panelIntro({ kind: "project", projectName: "給水システム" }, 0) // → "プロジェクト「給水システム」にはまだプラグインがありません。…"
  */
-export function panelIntro(place: PanelPlace, count: number): { text: string; canAdd: boolean } {
+export function panelIntro(place: PanelPlace, count: number): string {
   switch (place.kind) {
     case "unsupported":
-      return { text: "このブラウザはフォルダを開けないため、プラグインを使用できません（Chrome・Edge で使用できます）。プラグインは、プロジェクト（モデルのフォルダ）に追加して使います。", canAdd: false };
+      return "このブラウザはフォルダを開けないため、プラグインはこのブラウザにだけ追加できます（自分だけが使えます）。プロジェクトに追加してチームや CI と共有するには、Chrome・Edge でモデルのフォルダを開いてください。";
     case "noFolder":
-      return {
-        text: "プラグインは、プロジェクト（モデルのフォルダ）に追加して使います。「ファイル → フォルダを開く…」でモデルのフォルダを開くと、追加できるようになります。単独で開いたファイルやサンプルには追加できません。",
-        canAdd: false,
-      };
+      return "フォルダを開いていないため、プラグインはこのブラウザにだけ追加できます（自分だけが使えます）。チームや CI と共有するには、「ファイル → フォルダを開く…」でモデルのフォルダを開き、プロジェクトに追加してください。単独で開いたファイルやサンプルは、プロジェクトではありません。";
     case "folder":
-      return {
-        text: `フォルダ「${place.folderName}」はまだプロジェクトではありません。「追加…」でプラグインのフォルダを選ぶと、このフォルダをプロジェクトにしてから追加します（設定ファイル modelith.json を作成します）。`,
-        canAdd: true,
-      };
+      return `フォルダ「${place.folderName}」はまだプロジェクトではありません。「追加…」でプラグインのフォルダを選び、追加先に「このプロジェクト」を選ぶと、このフォルダをプロジェクトにしてから追加します（設定ファイル modelith.json を作成します）。`;
     case "brokenProject":
-      return { text: "プロジェクトの設定（modelith.json）にエラーがあるため、プラグインを使用できません。設定ファイルを修正してから、エクスプローラーの「一覧を更新」（↻）を押してください。", canAdd: false };
+      return "プロジェクトの設定（modelith.json）にエラーがあるため、プロジェクトのプラグインを使用できません。設定ファイルを修正してから、エクスプローラーの「一覧を更新」（↻）を押してください。このブラウザへの追加はできます。";
     case "project":
       return count
-        ? { text: `プロジェクト「${place.projectName}」に追加されているプラグインです。チェックルールの結果は、テキストの下の問題一覧に表示されます。`, canAdd: true }
-        : { text: `プロジェクト「${place.projectName}」にはまだプラグインがありません。「追加…」を押して、プラグインのフォルダを選んでください。`, canAdd: true };
+        ? `プロジェクト「${place.projectName}」に追加されているプラグインです。チェックルールの結果は、テキストの下の問題一覧に表示されます。`
+        : `プロジェクト「${place.projectName}」にはまだプラグインがありません。「追加…」を押して、プラグインのフォルダを選んでください。`;
   }
+}
+
+/**
+ * その場面で「このプロジェクト」に追加できない理由を返す。
+ *
+ * @param place 場面
+ * @returns 理由の文。追加できるなら null
+ * @example
+ * projectBlocked({ kind: "noFolder" })                              // → "フォルダを開いていないため選べません。「ファイル → フォルダを開く…」で開けます"
+ * projectBlocked({ kind: "project", projectName: "給水システム" })    // → null
+ * projectBlocked({ kind: "folder", folderName: "water" })           // → null（プロジェクトにしてから追加する）
+ */
+export function projectBlocked(place: PanelPlace): string | null {
+  switch (place.kind) {
+    case "unsupported":
+      return "このブラウザはフォルダを開けないため選べません";
+    case "noFolder":
+      return "フォルダを開いていないため選べません。「ファイル → フォルダを開く…」で開けます";
+    case "brokenProject":
+      return "プロジェクトの設定（modelith.json）にエラーがあるため選べません";
+    case "folder":
+    case "project":
+      return null;
+  }
+}
+
+/** 追加先の選択肢 1 つ。 */
+export interface PlaceOption {
+  id: PluginPlace;
+  label: string;
+  /** 選択肢の説明（どこに置くか・誰が使えるか）。選べないときは、その理由。 */
+  note: string;
+  /** 選べないなら true。 */
+  disabled: boolean;
+  /** これを選んだときの、追加するボタンの文言。 */
+  confirm: string;
+  /** これを選んだときに、プロジェクトの名前を尋ねるか（まだプロジェクトでないフォルダ）。 */
+  askName: boolean;
 }
 
 /** 「追加」の確認ダイアログの中身。 */
 export interface AddPrompt {
   text: string;
-  /** 押すと追加するボタンの文言。 */
-  confirm: string;
-  /** プロジェクトの名前を尋ねるか（まだプロジェクトでないフォルダ）。 */
-  askName: boolean;
+  /** 追加先の選択肢（このプロジェクト・このブラウザの順）。 */
+  places: PlaceOption[];
+  /** 始めに選んでおく追加先（このプロジェクトに追加できれば、このプロジェクト）。 */
+  initial: PluginPlace;
   /** 本文の下に出す、使う権限の言葉（画面に機能を追加するプラグインのとき）。 */
   items?: string[];
   /** 外部と通信できるプラグインについての注意。 */
   warning?: string;
 }
 
+/** 追加先を決めるための、今の状態。 */
+export interface AddTarget {
+  /** 今のプロジェクトの設定。まだプロジェクトでないフォルダ・フォルダが無いなら null。 */
+  project: ProjectFile | null;
+  /** 「このプロジェクト」に追加できない理由（projectBlocked）。追加できるなら null。 */
+  blocked: string | null;
+  /** 同じ ID のプラグインが、このプロジェクトにすでに追加されているか。 */
+  inProject: boolean;
+  /** 同じ ID のプラグインが、このブラウザにすでに追加されているか。 */
+  inBrowser: boolean;
+}
+
 /**
- * 選んだプラグインを「このプロジェクト」に追加する前に示す、確認の中身を作る。
+ * 選んだプラグインを追加する前に示す、確認の中身を作る。追加先は「このプロジェクト」（既定）か「このブラウザ」から選ぶ（ADR-0018 §1）。
  * 画面に機能を追加するプラグイン（TypeScript）は、使う権限と、外部と通信できるならその注意も示す（ADR-0018 §5）。
  * WebAssembly で動くプラグインは、まだ追加できないと伝える。
  *
  * @param info マニフェストから読んだ、プラグインの情報
- * @param project 今のプロジェクトの設定。まだプロジェクトでないフォルダなら null
- * @param installed 同じ ID のプラグインが、すでに追加されているか
+ * @param target 今のプロジェクト・プロジェクトに追加できない理由・同じ ID のプラグインが追加済みか
  * @returns 確認の中身。追加できない種類なら `{ refused: 理由の文 }`
  * @example
- * addPrompt({ id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", runtime: "rules" }, { plugins: {} }, false)
- * // → { text: "「トレーサビリティのチェック」（ID：jp.x、バージョン 0.1.0）をこのプロジェクトに追加します。チェックルールのプラグインです。…", confirm: "追加する", askName: false }
- * addPrompt({ …, runtime: "rules" }, null, false) // → { …, confirm: "プロジェクトにして追加", askName: true }
- * addPrompt({ name: "要求の ID の補完", runtime: "browser", permissions: ["network"], … }, { plugins: {} }, false)
- * // → { text: "…画面に機能を追加するプラグイン（TypeScript）です。…", items: ["インターネットなど外部と通信する（network）"], warning: "このプラグインは、あなたのモデルを外部に送信できます。…", … }
- * addPrompt({ name: "解析", runtime: "wasm-component", … }, …) // → { refused: "「解析」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。…" }
+ * addPrompt({ id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", runtime: "rules" }, { project: { plugins: {} }, blocked: null, inProject: false, inBrowser: false })
+ * // → { text: "「トレーサビリティのチェック」（ID：jp.x、バージョン 0.1.0）を追加します。チェックルールのプラグインです。…", initial: "project",
+ * //      places: [{ id: "project", note: ".modelith/plugins/jp.x/ にコピーし、…", confirm: "追加する", … }, { id: "browser", note: "このブラウザだけに保存します。…", … }] }
+ * addPrompt(info, { project: null, blocked: "フォルダを開いていないため選べません。…", … }) // → { …, initial: "browser", places: [{ id: "project", disabled: true, … }, …] }
+ * addPrompt({ name: "解析", runtime: "wasm-component", … }, target) // → { refused: "「解析」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。…" }
  */
-export function addPrompt(info: PluginInfo, project: ProjectFile | null, installed: boolean): AddPrompt | { refused: string } {
+export function addPrompt(info: PluginInfo, target: AddTarget): AddPrompt | { refused: string } {
   if (info.runtime === "wasm-component") {
     return { refused: `「${info.name}」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインと、画面に機能を追加するプラグイン（TypeScript）です` };
   }
   const script = info.runtime === "browser";
   const permissions = info.permissions ?? [];
-  const wanted = project?.plugins[info.id]?.version;
   const parts = [
-    `「${info.name}」（ID：${info.id}、バージョン ${info.version}）をこのプロジェクトに追加します。`,
+    `「${info.name}」（ID：${info.id}、バージョン ${info.version}）を追加します。`,
     info.description ? `説明：${info.description}` : "",
     script
       ? "画面に機能を追加するプラグイン（TypeScript）です。プログラムを含み、下の権限を使います。初めて実行する前に、実行してよいかを確認します。"
       : "チェックルールのプラグインです。モデルのルールを記述したもので、プログラムは含みません。",
-    `プラグインのファイルを ${PLUGINS_DIR}/${info.id}/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員${script ? "" : "と CI "}が同じプラグインを使えます。`,
-    installed ? "追加済みのプラグインは上書きされます。" : "",
+  ];
+  const places = [projectOption(info, target, script), browserOption(info, target, script)];
+  const prompt: AddPrompt = { text: parts.filter(Boolean).join(""), places, initial: target.blocked === null ? "project" : "browser" };
+  if (!script) return prompt;
+  return { ...prompt, items: permissionLines(permissions), ...(permissions.includes("network") ? { warning: NETWORK_WARNING } : {}) };
+}
+
+/**
+ * 追加先「このプロジェクト」の選択肢を作る。
+ *
+ * @param info プラグインの情報
+ * @param target 今の状態
+ * @param script 画面に機能を追加するプラグイン（TypeScript）か（CLI では動かないので、CI の共有を書かない）
+ * @returns 選択肢
+ * @example
+ * projectOption(info, { project: { plugins: {} }, blocked: null, inProject: true, … }, false)
+ * // → { id: "project", label: "このプロジェクト", note: ".modelith/plugins/jp.x/ にコピーし、…追加済みのプラグインは上書きされます。", disabled: false, confirm: "追加する", askName: false }
+ */
+function projectOption(info: PluginInfo, target: AddTarget, script: boolean): PlaceOption {
+  const label = PLACE_LABEL.project;
+  if (target.blocked !== null) return { id: "project", label, note: target.blocked, disabled: true, confirm: "追加する", askName: false };
+  const project = target.project;
+  const wanted = project?.plugins[info.id]?.version;
+  const note = [
+    `${PLUGINS_DIR}/${info.id}/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員${script ? "" : "と CI "}が同じプラグインを使えます。`,
+    target.inProject ? "追加済みのプラグインは上書きされます。" : "",
     wanted && wanted !== info.version ? `プロジェクトの設定ではバージョン ${wanted} が指定されています。追加すると、設定のバージョンを ${info.version} に変更します。` : "",
     project ? "" : "このフォルダはまだプロジェクトではないため、プロジェクトにします（設定ファイル modelith.json をフォルダの直下に作成します）。プロジェクト名を入力してください。",
   ];
-  const prompt: AddPrompt = { text: parts.filter(Boolean).join(""), confirm: project ? "追加する" : "プロジェクトにして追加", askName: !project };
-  if (!script) return prompt;
-  return { ...prompt, items: permissionLines(permissions), ...(permissions.includes("network") ? { warning: NETWORK_WARNING } : {}) };
+  return { id: "project", label, note: note.filter(Boolean).join(""), disabled: false, confirm: project ? "追加する" : "プロジェクトにして追加", askName: !project };
+}
+
+/**
+ * 追加先「このブラウザ」の選択肢を作る。
+ *
+ * @param info プラグインの情報
+ * @param target 今の状態
+ * @param script 画面に機能を追加するプラグイン（TypeScript）か
+ * @returns 選択肢
+ * @example
+ * browserOption(info, { project: { plugins: { "jp.x": {…} } }, inBrowser: false, … }, false)
+ * // → { id: "browser", note: "このブラウザだけに保存します。…このプロジェクトには同じ ID のプラグインがあるため、…", disabled: false, confirm: "追加する", askName: false }
+ */
+function browserOption(info: PluginInfo, target: AddTarget, script: boolean): PlaceOption {
+  const note = [
+    `このブラウザだけに保存します。どのプロジェクトでも、フォルダを開かなくても使えます。ほかの人${script ? "" : "や CI（modelith check）"}とは共有されません。`,
+    target.inBrowser ? "このブラウザに追加済みのプラグインは上書きされます。" : "",
+    isShadowed(info.id, target.project) ? "このプロジェクトには同じ ID のプラグインがあるため、このプロジェクトではプロジェクトのものを使います。" : "",
+  ];
+  return { id: "browser", label: PLACE_LABEL.browser, note: note.filter(Boolean).join(""), disabled: false, confirm: "追加する", askName: false };
+}
+
+/** 削除の確認ダイアログの中身。 */
+export interface RemovePrompt {
+  text: string;
+  /** このブラウザに保存された、プラグインのデータを残すか削除するかの選択。尋ねないなら省く。 */
+  data?: { label: string };
+}
+
+/**
+ * プラグインを削除する前に示す、確認の中身を作る。プラグインがこのブラウザにデータを保存していて、
+ * 削除すると同じ ID のプラグインが残らないときは、そのデータも削除するかを尋ねる（F-PLUG-8）。
+ *
+ * @param row 一覧の行
+ * @param dataBytes このブラウザに保存された、そのプラグインのデータの大きさ（UTF-8 のバイト数。無ければ 0）
+ * @param otherCopy 同じ ID のプラグインが、もう一方の追加先にもあるか（あればデータは残す）
+ * @returns 確認の中身
+ * @example
+ * removePrompt({ name: "トレーサビリティのチェック", id: "jp.x", place: "project", … }, 0, false)
+ * // → { text: "プラグイン「トレーサビリティのチェック」をこのプロジェクトから削除しますか？ .modelith/plugins/jp.x/ のファイルを削除し、…" }
+ * removePrompt({ name: "レビューの記録", place: "browser", … }, 2048, false)
+ * // → { text: "プラグイン「レビューの記録」をこのブラウザから削除しますか？", data: { label: "このプラグインがこのブラウザに保存したデータ（2 KB）" } }
+ */
+export function removePrompt(row: PluginRow, dataBytes: number, otherCopy: boolean): RemovePrompt {
+  const text =
+    row.place === "project"
+      ? `プラグイン「${row.name}」をこのプロジェクトから削除しますか？ ${PLUGINS_DIR}/${row.id}/ のファイルを削除し、プロジェクトの設定（modelith.json）からも登録を解除します。`
+      : `プラグイン「${row.name}」をこのブラウザから削除しますか？`;
+  return dataBytes > 0 && !otherCopy ? { text, data: { label: `このプラグインがこのブラウザに保存したデータ（${sizeText(dataBytes)}）` } } : { text };
+}
+
+/**
+ * フォルダを選ぶ入力欄（webkitdirectory）で選んだファイルの、選んだフォルダからの相対パスを求める。
+ * 隠しファイル・隠しフォルダ・node_modules の中のファイルは読まない（プロジェクトのフォルダを読むときと同じ）。
+ *
+ * @param relativePath ブラウザが示した相対パス（`File.webkitRelativePath`。先頭は選んだフォルダの名前）
+ * @returns 選んだフォルダからの相対パス。読まないファイルなら null
+ * @example
+ * pluginFolderPath("trace-rules/rules/a.yaml")  // → "rules/a.yaml"
+ * pluginFolderPath("trace-rules/.git/config")   // → null（隠しフォルダ）
+ * pluginFolderPath("trace-rules/node_modules/x") // → null
+ * pluginFolderPath("a.yaml")                    // → null（境界値: フォルダの名前が無い）
+ */
+export function pluginFolderPath(relativePath: string): string | null {
+  const segs = relativePath.split("/").slice(1);
+  if (!segs.length || segs.some((x) => x === "" || x.startsWith(".") || x === "node_modules")) return null;
+  return segs.join("/");
 }
 
 /**

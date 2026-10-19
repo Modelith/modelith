@@ -108,3 +108,59 @@ export async function typeAtEnd(page: Page, text: string): Promise<void> {
 /** 図に描かれている要素のキー。 */
 export const nodeKeys = (page: Page): Promise<string[]> =>
   page.locator("#gNodes .node, #gNodes .lifeline").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset["key"] ?? ""));
+
+/** このブラウザに追加したプラグイン（web/src/plugins/browser-store.ts の BrowserPlugin と同じ形）。 */
+export interface BrowserPluginRecord {
+  id: string;
+  enabled: boolean;
+  info: Record<string, unknown>;
+  files: Record<string, string>;
+}
+
+/**
+ * このブラウザの保存場所（IndexedDB の modelith-plugins）に、プラグインを直接置く（画面で追加したのと同じ状態にする）。
+ * アプリは起動したときに読むので、置いた後に開き直す（reload）。
+ */
+export async function putBrowserPlugin(page: Page, record: BrowserPluginRecord): Promise<void> {
+  await page.evaluate(
+    (record) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open("modelith-plugins", 1);
+        req.onupgradeneeded = () => {
+          req.result.createObjectStore("installed", { keyPath: "id" });
+          req.result.createObjectStore("data", { keyPath: "id" });
+        };
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const tx = req.result.transaction("installed", "readwrite");
+          tx.objectStore("installed").put(record);
+          tx.oncomplete = () => {
+            req.result.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    record,
+  );
+}
+
+/** このブラウザの保存場所から、プラグイン用のデータ（JSON のテキスト）を読む。無ければ null。 */
+export async function readPluginData(page: Page, id: string): Promise<string | null> {
+  return page.evaluate(
+    (id) =>
+      new Promise<string | null>((resolve, reject) => {
+        const req = indexedDB.open("modelith-plugins", 1);
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const get = req.result.transaction("data", "readonly").objectStore("data").get(id);
+          get.onsuccess = () => {
+            req.result.close();
+            resolve((get.result as { json: string } | undefined)?.json ?? null);
+          };
+          get.onerror = () => reject(get.error);
+        };
+      }),
+    id,
+  );
+}

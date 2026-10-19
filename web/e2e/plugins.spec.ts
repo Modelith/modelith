@@ -1,6 +1,8 @@
-// プラグイン（ADR-0018・ADR-0019）。プロジェクトの .modelith/plugins/ に追加したチェックルールのプラグインを読み込み、結果を問題一覧に出す。
-// プラグインの追加・有効／無効の切り替え・削除は「このプロジェクト」に対して行う（ローカルフォルダの代わりに OPFS を使う）。
-import { editorText, expect, openApp, pickDirNext, putFiles, readFile, test } from "./fixtures";
+// プラグイン（ADR-0018・ADR-0019）。プロジェクトの .modelith/plugins/ と、このブラウザに追加したチェックルールのプラグインを読み込み、結果を問題一覧に出す。
+// プラグインの追加・有効／無効の切り替え・削除を「このプロジェクト」（ローカルフォルダの代わりに OPFS を使う）と「このブラウザ」に対して行う。
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { editorText, expect, openApp, pickDirNext, putBrowserPlugin, putFiles, readFile, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const ID = "jp.example.trace";
@@ -90,7 +92,8 @@ test("F-PLUG-9: 追加されていないプラグインは、何が足りない�
   await preparePluginFolder(page);
   // Act
   await page.locator('#explorer [data-cmd="addPlugin"]').click();
-  await expect(page.locator("#dialogText")).toContainText("「トレーサビリティのチェック」（ID：jp.example.trace、バージョン 0.1.0）をこのプロジェクトに追加します。チェックルールのプラグインです。");
+  await expect(page.locator("#dialogText")).toContainText("「トレーサビリティのチェック」（ID：jp.example.trace、バージョン 0.1.0）を追加します。チェックルールのプラグインです。");
+  await expect(page.locator('#dialogPick input[value="project"]')).toBeChecked();
   await page.locator('#dialogButtons [data-id="ok"]').click();
   // Assert
   await expect.poll(() => readFile(page, `${DIR}/rules.yaml`)).toBe(RULES);
@@ -182,28 +185,101 @@ test("F-PLUG-8: WebAssembly で動くプラグインは、まだ追加できな�
   expect(await readFile(page, "modelith.json")).toBe(project({}));
 });
 
-test("F-PLUG-8: フォルダを開いていないときは、プラグインはプロジェクトに追加して使うことを示す", async ({ page }) => {
+test("F-PLUG-8: フォルダを開いていないときは、このブラウザにだけ追加できることと、プロジェクトに追加する方法を示す", async ({ page }) => {
   // Arrange
   await openApp(page);
   // Act
   await openPluginList(page);
   // Assert
-  await expect(page.locator("#pluginsBody")).toContainText("プラグインは、プロジェクト（モデルのフォルダ）に追加して使います。「ファイル → フォルダを開く…」でモデルのフォルダを開くと、追加できるようになります。");
-  await expect(page.locator("#pluginsAdd")).toBeDisabled();
+  await expect(page.locator("#pluginsBody")).toContainText("フォルダを開いていないため、プラグインはこのブラウザにだけ追加できます（自分だけが使えます）。チームや CI と共有するには、「ファイル → フォルダを開く…」でモデルのフォルダを開き、プロジェクトに追加してください。");
+  await expect(page.locator("#pluginsAdd")).toBeEnabled();
   await page.locator("#pluginsClose").click();
   await expect(page.locator("#plugins")).toBeHidden();
+});
+
+test("F-PLUG-8: プロジェクトを開いているときも、追加先に「このブラウザ」を選べる（プロジェクトには書かない）", async ({ page }) => {
+  // Arrange
+  await openProject(page, { "modelith.json": project({}) });
+  await openPluginList(page);
+  await preparePluginFolder(page);
+  await page.locator("#pluginsAdd").click();
+  // Act
+  await page.locator('#dialogPick input[value="browser"]').check();
+  await page.locator('#dialogButtons [data-id="ok"]').click();
+  // Assert
+  await expect(page.locator('#plugins .plug[data-place="browser"] .ploc')).toHaveText("このブラウザ");
+  await expect(ruleRows(page)).toHaveText([FINDING]);
+  expect(await readFile(page, "modelith.json")).toBe(project({}));
+  expect(await readFile(page, `${DIR}/rules.yaml`)).toBeNull();
+});
+
+test("F-PLUG-8: このプロジェクトとこのブラウザに同じ ID のプラグインがあれば、プロジェクトのものを使い、そのことを示す", async ({ page }) => {
+  // Arrange（このブラウザのものは、名前とルールの文が違う）
+  await openApp(page);
+  const personal = MANIFEST.replace("トレーサビリティのチェック", "トレーサビリティのチェック（個人用）");
+  await putBrowserPlugin(page, {
+    id: ID,
+    enabled: true,
+    info: { id: ID, name: "トレーサビリティのチェック（個人用）", version: "0.1.0", runtime: "rules" },
+    files: { "modelith-plugin.json": personal, "rules.yaml": RULES.replace("満たす要素がありません", "満たす部品がありません（個人用）") },
+  });
+  await openApp(page);
+  // Act
+  await openProject(page, installed());
+  // Assert（問題一覧はプロジェクトのルールの結果だけ）
+  await expect(ruleRows(page)).toHaveText([FINDING]);
+  await openPluginList(page);
+  const browserRow = page.locator(`#plugins .plug[data-plugin="${ID}"][data-place="browser"]`);
+  await expect(browserRow.locator(".pst")).toHaveText("プロジェクトを優先");
+  await expect(browserRow).toContainText("このプロジェクトに同じ ID のプラグインがあるため、このプロジェクトではプロジェクトのものを使います（このブラウザのものは使いません）。");
+  await expect(page.locator(`#plugins .plug[data-plugin="${ID}"][data-place="project"] .pst`)).toHaveText("有効");
 });
 
 test.describe("フォルダを開けないブラウザ", () => {
   test.use({ fsAccess: false });
 
-  test("F-PLUG-8: フォルダを開けないブラウザでは、プラグインを使用できないことを示す", async ({ page }) => {
+  test("F-PLUG-8: フォルダを開けないブラウザでは、このブラウザにだけ追加できることを示す", async ({ page }) => {
     // Arrange
     await openApp(page);
     // Act
     await openPluginList(page);
     // Assert
-    await expect(page.locator("#pluginsBody")).toContainText("このブラウザはフォルダを開けないため、プラグインを使用できません（Chrome・Edge で使用できます）。");
-    await expect(page.locator("#pluginsAdd")).toBeDisabled();
+    await expect(page.locator("#pluginsBody")).toContainText("このブラウザはフォルダを開けないため、プラグインはこのブラウザにだけ追加できます（自分だけが使えます）。");
+    await expect(page.locator("#pluginsAdd")).toBeEnabled();
+  });
+
+  test("F-PLUG-8: フォルダを開けないブラウザで、チェックルールのプラグインをこのブラウザに追加し、無効にして、開き直しても使える", async ({ page }, testInfo) => {
+    // Arrange（プラグインのフォルダを、手元のディスクに用意する）
+    const dir = testInfo.outputPath("trace-rules");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "modelith-plugin.json"), MANIFEST);
+    writeFileSync(join(dir, "rules.yaml"), RULES);
+    await openApp(page);
+    await page.locator("#ed").fill(MODEL);
+    await openPluginList(page);
+    const chooser = page.waitForEvent("filechooser");
+    await page.locator("#pluginsAdd").click();
+    await (await chooser).setFiles(dir);
+    // Act（このプロジェクトは選べず、このブラウザが選ばれている）
+    await expect(page.locator('#dialogPick input[value="project"]')).toBeDisabled();
+    await expect(page.locator('#dialogPick input[value="browser"]')).toBeChecked();
+    await expect(page.locator("#dialogPick")).toContainText("このブラウザはフォルダを開けないため選べません");
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    // Assert
+    const row = page.locator(`#plugins .plug[data-plugin="${ID}"][data-place="browser"]`);
+    await expect(row.locator(".pst")).toHaveText("有効");
+    await expect(row.locator(".ploc")).toHaveText("このブラウザ");
+    await expect(ruleRows(page)).toHaveText([FINDING]);
+    await row.locator("[data-toggle]").uncheck();
+    await expect(row.locator(".pst")).toHaveText("無効");
+    await expect(ruleRows(page)).toHaveCount(0);
+    await row.locator("[data-toggle]").check();
+    // 保存場所への書き込みが終わり、一覧が描き直されるまで待ってから開き直す
+    await expect(row.locator(".pst")).toHaveText("有効");
+    await expect(ruleRows(page)).toHaveText([FINDING]);
+    // 開き直し、起動し終えてからテキストを入れる
+    await openApp(page);
+    await page.locator("#ed").fill(MODEL);
+    await expect(ruleRows(page)).toHaveText([FINDING]);
   });
 });

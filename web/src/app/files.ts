@@ -4,7 +4,7 @@
 import { readLayout, removeLayoutComment, type ProjectFileResult } from "../core";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
-import { hasFsAccess, LocalFolderProvider, type FsApi } from "../files/local-folder";
+import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "../files/local-folder";
 import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
@@ -18,7 +18,10 @@ import { dropHistory, recordHistory, useHistory } from "./history";
 import { layoutFromJson, type Layout } from "./layout";
 import { isEmptyLayout, parseLayoutFile, serializeLayout } from "./layout-file";
 import { clearSel, S } from "./state";
-import { addPlugin, initPlugins, openPlugins, pluginExplorerHtml, reloadPlugins } from "./plugin-panel";
+import { addPlugin, initPlugins, openPlugins, pluginExplorerHtml, reloadPlugins, type PickedPluginFolder } from "./plugin-panel";
+import { pluginFolderPath } from "./plugins";
+import { idbBrowserPlugins, idbPluginData } from "../plugins/browser-store";
+import { importedDocName } from "../plugins/transfer";
 import { projectNotice, projectTitle } from "./project";
 import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast } from "./sync";
 import { opsIdle } from "./intent";
@@ -594,6 +597,67 @@ function chooseFiles(): Promise<PickedFile[]> {
 }
 
 /**
+ * プラグインのフォルダを選ばせ、中のファイルをテキストで読む（プラグインの追加、ADR-0018 §1）。
+ * フォルダを開けるブラウザではフォルダのピッカーを、開けないブラウザ（Firefox・Safari）ではフォルダを選ぶ入力欄（webkitdirectory）を使う。
+ * 隠しファイル・隠しフォルダ・node_modules は読まない。
+ *
+ * @returns フォルダの名前とファイル（フォルダからの相対パス → テキスト）。選ばなければ null。
+ *   ファイルが多すぎる（MAX_TREE_FILES 件を超える）・読めないときは例外（Error）を投げる
+ * @example
+ * await pickPluginFolder() // → { name: "trace-rules", files: { "modelith-plugin.json": "{…}", "rules.yaml": "…" } }
+ * await pickPluginFolder() // → null（キャンセル）
+ */
+async function pickPluginFolder(): Promise<PickedPluginFolder | null> {
+  if (local) {
+    const picked = await local.pickOtherFolder();
+    if (!picked) return null;
+    return { name: picked.name, files: (await local.readTree(picked, "")) ?? {} };
+  }
+  const chosen = await chooseFolderFiles();
+  const files: Record<string, string> = {};
+  for (const file of chosen) {
+    const path = pluginFolderPath(file.webkitRelativePath);
+    if (path === null) continue;
+    if (Object.keys(files).length >= MAX_TREE_FILES) throw new Error(`ファイルが多すぎます（${MAX_TREE_FILES} 件まで）。プラグインのフォルダを選んでください`);
+    files[path] = await file.text();
+  }
+  const first = chosen[0]?.webkitRelativePath.split("/")[0];
+  return first === undefined ? null : { name: first, files };
+}
+
+/**
+ * フォルダを選ぶ入力欄（webkitdirectory）でフォルダを選ばせる。
+ *
+ * @returns 選んだフォルダの中のファイル（下のフォルダのものも含む）。選ばずに閉じたら空
+ * @example
+ * await chooseFolderFiles() // → [File(trace-rules/modelith-plugin.json), File(trace-rules/rules.yaml)]
+ */
+function chooseFolderFiles(): Promise<File[]> {
+  const input = $<HTMLInputElement>("#pluginDirInput");
+  return new Promise((resolve) => {
+    input.value = "";
+    input.onchange = () => resolve([...(input.files ?? [])]);
+    input.oncancel = () => resolve([]);
+    input.click();
+  });
+}
+
+/**
+ * プラグインが読み込んだテキストを、新しい無題の文書として開いて表示する（既存のファイルは書き換えない。ADR-0018 §4、C-6）。
+ *
+ * @param fileName プラグインが示したファイル名（拡張子を .sysml にし、開いている文書と重ならない名前にする）
+ * @param text 読み込んだテキスト
+ * @returns 付けた文書の名前
+ * @example
+ * openImported("要求一覧.reqif", "package 要求一覧;") // → "要求一覧.sysml"
+ */
+function openImported(fileName: string, text: string): string {
+  const name = importedDocName(fileName, new Set(ws.list().map((d) => d.name)));
+  showDoc(ws.newUntitled(name, text).key);
+  return name;
+}
+
+/**
  * 開いているメニュー（details.menu）をすべて閉じる。
  */
 function closeMenus(): void {
@@ -741,6 +805,10 @@ export function initFiles(sample: { name: string; text: string; layout: string }
     project: () => project,
     refreshFolder,
     rerender: renderFiles,
+    pickPluginFolder,
+    openImported,
+    browser: idbBrowserPlugins,
+    data: idbPluginData,
   });
   $("#btnSample").onclick = () => {
     closeMenus();

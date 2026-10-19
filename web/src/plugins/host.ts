@@ -1,18 +1,34 @@
-// v1 のプラグイン（TypeScript、ADR-0018 §3〜§5）のホスト。プロジェクトに入れたプラグインを、許可を確かめてから隔離した場所で動かし、
-// テキストの変更を知らせ、届いたメッセージをコアに確かめてもらってから使う。
-// 判断は純粋関数（trust.ts・messages.ts・view.ts・permissions.ts）とコア（Rust）に任せ、ここは状態の出し入れと画面の操作だけを行う。
+// v1 のプラグイン（TypeScript、ADR-0018 §3〜§5）のホスト。プロジェクトかこのブラウザに入れたプラグインを、許可を確かめてから隔離した場所で動かし、
+// テキストの変更を知らせ、届いたメッセージをコアに確かめてもらってから使う。コマンド・読み込み・書き出しをメニューから頼み、
+// プラグイン用の保存場所（storage）をプラグインごとに分けて貸す。
+// 判断は純粋関数（trust.ts・messages.ts・view.ts・permissions.ts・storage.ts・transfer.ts）とコア（Rust）に任せ、ここは状態の出し入れと画面の操作だけを行う。
 
 import { applyTextEdits, type VersionedSnapshot } from "../core";
 import { ask } from "../app/dialog";
 import { $, closest, esc, store } from "../app/dom";
+import { download } from "../app/export";
 import { S } from "../app/state";
 import { coreClient, onAnalyzedVersion, renderProblems, setText, toast, updateSync } from "../app/sync";
+import { modelView } from "../app/views";
+import type { PluginDataStore } from "./browser-store";
 import { API_VERSION, type HostMessage, type Permission } from "./generated/protocol";
-import { addNotice, decideMessage, flashRange, messageJson, STALE_PLUGIN_EDIT, type HostAction } from "./messages";
+import { addNotice, decideMessage, flashRange, messageJson, STALE_PLUGIN_EDIT, type HostAction, type PendingRequest } from "./messages";
 import { sandboxPage } from "./permissions";
 import { startSandbox, type Sandbox } from "./sandbox";
+import { PLUGIN_STORAGE_LIMIT, storageUpdate, storedValue } from "./storage";
+import { base64ToBytes, bytesToBase64, MAX_TRANSFER_BYTES, sizeText } from "./transfer";
 import { parseTrustStore, trustCheck, trustPrompt, trustRecord, type TrustCheck, type TrustRecord } from "./trust";
-import { commandItems, stopNotice, type RunState, type ScriptPlugin } from "./view";
+import { commandItems, exportItems, importItems, stopNotice, type CommandItem, type RunState, type ScriptPlugin } from "./view";
+
+/** ホストが使う、画面の他の部分の操作と保存場所（初期化のときに受け取る）。 */
+export interface HostEnv {
+  /** 動かしているプラグインの状態が変わったときに呼ぶ処理（プラグインの一覧を描き直す）。 */
+  onChange(): void;
+  /** 読み込んだテキストを新しい無題の文書として開いて表示し、付けた名前を返す（既存のファイルは書き換えない。C-6）。 */
+  openImported(fileName: string, text: string): string;
+  /** プラグイン用の保存場所。 */
+  data: PluginDataStore;
+}
 
 /** 一覧に出す、動かしているプラグインの状態と知らせ。 */
 export interface RunInfo {
@@ -28,8 +44,8 @@ interface Entry {
   state: RunState;
   notices: string[];
   sandbox: Sandbox | null;
-  /** 実行を頼んで、まだ答えの無いコマンド（依頼の番号 → 表示名）。 */
-  pending: Map<number, string>;
+  /** 頼んで、まだ答えの無いこと（依頼の番号 → コマンド・読み込み・書き出しと、その表示名）。 */
+  pending: Map<number, PendingRequest>;
   nextRequest: number;
   /** 届いたメッセージを、届いた順に 1 つずつ扱うためのつなぎ。 */
   queue: Promise<void>;
@@ -41,6 +57,8 @@ interface Entry {
 const TRUST_KEY = "modelith-plugin-trust";
 
 const entries = new Map<string, Entry>();
+/** 画面の他の部分の操作と保存場所（initScriptHost で受け取る）。 */
+let env: HostEnv | null = null;
 /** 一覧が変わったときに呼ぶ処理（プラグインの一覧を描き直す）。 */
 let changed: () => void = () => {};
 /** プラグインの一覧を合わせる処理のつなぎ（許可の確認を挟むので、順に行う）。 */
@@ -49,21 +67,39 @@ let syncing: Promise<void> = Promise.resolve();
 let snapshotCache: { version: number; snapshot: Promise<VersionedSnapshot | null> } | null = null;
 
 /**
- * ホストを初期化する。解析結果の反映のたびにプラグインへ didChange を送り、ファイルメニューのコマンドをつなぐ。起動時に 1 回呼ぶ。
+ * ホストを初期化する。解析結果の反映のたびにプラグインへ didChange を送り、ファイルメニューのコマンド・読み込み・書き出しをつなぐ。起動時に 1 回呼ぶ。
  *
- * @param onChange 動かしているプラグインの状態が変わったときに呼ぶ処理（プラグインの一覧を描き直す）
+ * @param e 画面の他の部分の操作と保存場所
  */
-export function initScriptHost(onChange: () => void): void {
-  changed = onChange;
+export function initScriptHost(e: HostEnv): void {
+  env = e;
+  changed = () => e.onChange();
   onAnalyzedVersion((version) => {
-    for (const e of entries.values()) if (e.state === "running" && version === coreClient().current) void sendDidChange(e);
+    for (const x of entries.values()) if (x.state === "running" && version === coreClient().current) void sendDidChange(x);
   });
   $("#pluginCommands").addEventListener("click", (ev) => {
-    const b = closest(ev, "[data-plugin-command]");
+    const b = closest(ev, "[data-plugin]");
     if (!b) return;
     document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => (d.open = false));
-    runCommand(b.dataset["pluginCommand"] ?? "", b.dataset["command"] ?? "");
+    const plugin = b.dataset["plugin"] ?? "";
+    const item = b.dataset["item"] ?? "";
+    if (b.dataset["kind"] === "import") void runImport(plugin, item);
+    else if (b.dataset["kind"] === "export") runExport(plugin, item);
+    else runCommand(plugin, item);
   });
+}
+
+/**
+ * 初期化で受け取った、画面の他の部分の操作と保存場所を返す。
+ *
+ * @returns initScriptHost で渡したもの。まだ初期化していなければ例外（Error）を投げる
+ * @example
+ * // initScriptHost(e) の後
+ * hostEnv() // → e
+ */
+function hostEnv(): HostEnv {
+  if (!env) throw new Error("プラグインのホストがまだ初期化されていません");
+  return env;
 }
 
 /**
@@ -270,16 +306,17 @@ async function receive(e: Entry, run: number, data: unknown): Promise<void> {
   if (json === null) return notice(e, "JSON にできないメッセージが届いたため、使いませんでした");
   const result = await coreClient().checkPluginMessage(json, e.plugin.permissions);
   if (e.run !== run) return;
-  act(e, decideMessage(result, e.pending));
+  await act(e, decideMessage(result, e.pending));
 }
 
 /**
- * 決めたことを行う。
+ * 決めたことを行う。保存場所の読み書きは、終わるまで待つ（次のメッセージを追い越させない）。
  *
  * @param e プラグインの状態
  * @param a 行うこと
+ * @returns 行い終えたら解決する Promise
  */
-function act(e: Entry, a: HostAction): void {
+async function act(e: Entry, a: HostAction): Promise<void> {
   const name = e.plugin.name;
   switch (a.kind) {
     case "ready":
@@ -299,21 +336,61 @@ function act(e: Entry, a: HostAction): void {
     case "commandDone":
       e.pending.delete(a.requestId);
       return;
-    case "commandFailed":
+    case "imported": {
       e.pending.delete(a.requestId);
-      toast(`プラグイン「${name}」のコマンド「${a.title}」を実行できませんでした：${a.message}`);
-      return notice(e, `コマンド「${a.title}」を実行できませんでした：${a.message}`);
+      const doc = hostEnv().openImported(a.fileName, a.text);
+      toast(`「${a.title}」で読み込んだ結果を、新しいファイル「${doc}」として開きました（プラグイン「${name}」）。保存するまでファイルには書き込みません`);
+      return;
+    }
+    case "exported":
+      e.pending.delete(a.requestId);
+      download(a.fileName, base64ToBytes(a.base64), a.mediaType);
+      toast(`「${a.title}」で書き出した「${a.fileName}」をダウンロードしました（プラグイン「${name}」）`);
+      return;
+    case "requestFailed":
+      e.pending.delete(a.requestId);
+      toast(`プラグイン「${name}」の${a.notice}`);
+      return notice(e, a.notice);
+    case "storageGet":
+    case "storageSet":
+      return useStorage(e, a);
     case "notify":
       toast(`プラグイン「${name}」：${a.message}`);
       if (a.level !== "info") notice(e, a.message);
       return;
-    case "reply":
-      e.sandbox?.post(a.message);
-      return notice(e, a.notice);
     case "drop":
       return notice(e, a.notice);
     case "ignore":
       return;
+  }
+}
+
+/**
+ * プラグイン用の保存場所を読み書きし、storageResult で答える（ADR-0018 §3。プラグインごとに分け、上限を設ける）。
+ * 上限を超える・保存場所が使えないときは保存せず、値なしで答えて、トーストとプラグインの一覧で知らせる。
+ *
+ * @param e プラグインの状態
+ * @param a 読む（storageGet）か、書く（storageSet）か
+ * @returns 答えを送ったら解決する Promise
+ */
+async function useStorage(e: Entry, a: Extract<HostAction, { kind: "storageGet" | "storageSet" }>): Promise<void> {
+  const data = hostEnv().data;
+  const reply = (value?: unknown): void => e.sandbox?.post(value === undefined ? { type: "storageResult", requestId: a.requestId } : { type: "storageResult", requestId: a.requestId, value });
+  try {
+    const json = await data.read(e.plugin.id);
+    if (a.kind === "storageGet") return reply(storedValue(json, a.key));
+    const updated = storageUpdate(json, a.key, a.value, PLUGIN_STORAGE_LIMIT);
+    if ("refused" in updated) {
+      toast(`プラグイン「${e.plugin.name}」：${updated.refused}`);
+      notice(e, updated.refused);
+      return reply();
+    }
+    await data.write(e.plugin.id, updated.json);
+    reply();
+  } catch (err) {
+    const text = `プラグイン用の保存場所を使えませんでした：${err instanceof Error ? err.message : String(err)}`;
+    notice(e, text);
+    reply();
   }
 }
 
@@ -368,8 +445,69 @@ function runCommand(id: string, command: string): void {
   const c = e?.plugin.commands.find((x) => x.id === command);
   if (!e || !c || e.state !== "running") return toast("プラグインがまだ準備できていないため、コマンドを実行できません");
   const requestId = e.nextRequest++;
-  e.pending.set(requestId, c.title);
+  e.pending.set(requestId, { kind: "command", title: c.title });
   e.sandbox?.post({ type: "runCommand", requestId, command });
+}
+
+/**
+ * プラグインの読み込み（取り込み）を実行する。対応する拡張子で絞ってファイルを選ばせ、中身を base64 で送る（F-PLUG-4）。
+ * 結果（imported）は、新しい無題のファイルとして開く。上限より大きいファイルは送らずに知らせる。
+ *
+ * @param id プラグインの ID
+ * @param importer 取り込みの ID
+ * @returns 送り終えた（選ばなかった・送れなかった）ら解決する Promise
+ */
+async function runImport(id: string, importer: string): Promise<void> {
+  const e = entries.get(id);
+  const imp = e?.plugin.importers.find((x) => x.id === importer);
+  if (!e || !imp || e.state !== "running") return toast("プラグインがまだ準備できていないため、読み込めません");
+  const item = importItems([{ ...e.plugin, state: e.state }]).find((x) => x.command === importer);
+  const file = await pickFile(item?.accept ?? "");
+  if (!file) return;
+  if (file.size > MAX_TRANSFER_BYTES) return toast(`「${file.name}」は大きすぎるため読み込めません（${sizeText(file.size)}。上限 ${sizeText(MAX_TRANSFER_BYTES)}）`);
+  const run = e.run;
+  const base64 = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
+  if (e.run !== run || e.state !== "running") return toast("プラグインが停止したため、読み込めませんでした");
+  const requestId = e.nextRequest++;
+  e.pending.set(requestId, { kind: "import", title: imp.label });
+  e.sandbox?.post({ type: "import", requestId, importer, fileName: file.name, base64 });
+}
+
+/**
+ * プラグインの書き出しを実行する。表示中の保存された図があれば、その名前を添える（F-PLUG-4）。
+ * 結果（exported）は、ダウンロードさせる（プロジェクトのフォルダには書かない）。
+ *
+ * @param id プラグインの ID
+ * @param exporter 書き出しの ID
+ */
+function runExport(id: string, exporter: string): void {
+  const e = entries.get(id);
+  const x = e?.plugin.exporters.find((y) => y.id === exporter);
+  if (!e || !x || e.state !== "running") return toast("プラグインがまだ準備できていないため、書き出せません");
+  const requestId = e.nextRequest++;
+  e.pending.set(requestId, { kind: "export", title: x.label, extension: x.extension });
+  const view = modelView()?.name;
+  e.sandbox?.post(view === undefined ? { type: "export", requestId, exporter } : { type: "export", requestId, exporter, view });
+}
+
+/**
+ * 読み込むファイルを 1 つ選ばせる（ファイルメニューの「ファイルを開く」とは別の、隠したファイルの入力欄を使う）。
+ *
+ * @param accept 選べるファイルの絞り込み（例：".reqif,.xml"。"" なら絞らない）
+ * @returns 選んだファイル。選ばずに閉じたら null
+ * @example
+ * await pickFile(".reqif") // → File（要求一覧.reqif）
+ * await pickFile(".reqif") // → null（キャンセル）
+ */
+function pickFile(accept: string): Promise<File | null> {
+  const input = $<HTMLInputElement>("#pluginFileInput");
+  return new Promise((resolve) => {
+    input.value = "";
+    input.accept = accept;
+    input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
 }
 
 /**
@@ -384,15 +522,25 @@ function clearDiagnostics(id: string): void {
   updateSync();
 }
 
-/** ファイルメニューの「プラグインのコマンド」を、実行中のプラグインのコマンドで描き直す（無ければ隠す）。 */
+/** ファイルメニューの「プラグインのコマンド」「プラグインで読み込む」「プラグインで書き出す」を、実行中のプラグインのもので描き直す（無ければ隠す）。 */
 function renderCommands(): void {
-  const items = commandItems([...entries.values()].map((e) => ({ id: e.plugin.id, name: e.plugin.name, state: e.state, commands: e.plugin.commands })));
+  const plugins = [...entries.values()].map((e) => ({ ...e.plugin, state: e.state }));
+  const sections: [string, string, CommandItem[]][] = [
+    ["プラグインのコマンド", "command", commandItems(plugins)],
+    ["プラグインで読み込む", "import", importItems(plugins)],
+    ["プラグインで書き出す", "export", exportItems(plugins)],
+  ];
+  const html = sections
+    .filter(([, , items]) => items.length)
+    .map(
+      ([head, kind, items]) =>
+        `<div class="phead">${head}</div>` +
+        items.map((i) => `<button data-plugin="${esc(i.plugin)}" data-kind="${kind}" data-item="${esc(i.command)}" title="${esc(i.tooltip)}">${esc(i.label)}</button>`).join(""),
+    )
+    .join("");
   const box = $("#pluginCommands");
-  box.hidden = !items.length;
-  box.innerHTML = items.length
-    ? `<div class="phead">プラグインのコマンド</div>` +
-      items.map((i) => `<button data-plugin-command="${esc(i.plugin)}" data-command="${esc(i.command)}" title="${esc(i.tooltip)}">${esc(i.label)}</button>`).join("")
-    : "";
+  box.hidden = !html;
+  box.innerHTML = html;
 }
 
 /**

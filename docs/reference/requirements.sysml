@@ -687,27 +687,37 @@ package ModelithRequirements {
             }
         }
         verification def PluginE2E {
-            doc /* web/e2e/plugins.spec.ts：プロジェクトに入れた検査ルールの結果を、プラグインとルールを添えて問題一覧に示し、押すとその行に移り、編集で直すと消える・壊れたルールのファイルをファイルと行で知らせる・入っていない／版が違うプラグインの案内から追加する。同じファイルで、プラグインのフォルダの追加・止める・また使う・削除と、プロジェクトが無いときの案内も確かめる（OPFS で） */
+            doc /* web/e2e/plugins.spec.ts：プロジェクトに入れた検査ルールの結果を、プラグインとルールを添えて問題一覧に示し、押すとその行に移り、編集で直すと消える・壊れたルールのファイルをファイルと行で知らせる・入っていない／版が違うプラグインの案内から追加する。同じファイルで、プラグインのフォルダの追加・止める・また使う・削除と、プロジェクトが無いときの案内も確かめる（OPFS で）。
+                   このブラウザ：プロジェクトを開いていても追加先に「このブラウザ」を選べてプロジェクトには書かない・同じ ID のプラグインがプロジェクトにもあればプロジェクトのものを使い「プロジェクトを優先」と示す・フォルダを開けないブラウザ（fsAccess=false）では「このブラウザ」にだけ追加できると示し、フォルダを選ぶ入力欄で選んだチェックルールのプラグインを追加して、無効にし、また有効にし、開き直しても使える。
+                   web/e2e/script-plugins.spec.ts：フォルダを開けないブラウザで TypeScript のプラグインを「このブラウザ」に追加して許可して動かす・削除するときにプラグインが保存したデータも削除するかを選べる。web/e2e/visual.spec.ts：追加先を選ぶ追加の確認と、このブラウザのプラグイン（実行中・プロジェクトを優先）を含む一覧の見た目（明るい・暗い配色） */
             objective {
                 verify RuleCheckReq;
                 verify PluginErrorReq;
                 verify MissingPluginReq;
+                verify PluginListReq;
             }
         }
         verification def ScriptPluginHostTest {
-            doc /* crates/modelith-core/src/plugin_host：プラグインから届いたメッセージを plugin-sdk の型で読む（知らない種類・欠けた項目・負の番号を断る）・権限の要るメッセージ（診断は model:read、変更案は edits:propose、保存場所は storage）を宣言していなければ断る・変更案と診断の範囲を UTF-16 の位置に直す（行末・行の長さ + 1・最終行 + 1・サロゲートペアの途中・逆向き・重なり・同じ位置から始まる 2 つ・空）・プラグインに渡すモデル（要素の範囲・ポートの型と向き・関係の種類）。crates/modelith-core/src/rules：runtime が browser のプラグインの読み込み（main が無い・フォルダの外・ファイルが無い）。crates/modelith-wasm：確かめた結果とモデルの JSON。web/src/core/client.test.ts：コア（Worker）への確認の依頼と、その間にテキストが変わったときの印。web/src/plugins/messages.test.ts：確かめたメッセージの扱い（版が同じ変更案だけを当てる・古い版と確かめる間の変更は断って知らせる・頼んでいない答え・保存場所の依頼・古い診断）。web/src/plugins/trust.test.ts：許可を尋ね直す条件（初めて・権限が 1 つ増えた・減った・入れ替えた・外部と通信できるプラグインのファイルとバージョンの変更・通信できないものの変更・許可しなかったもの）と覚える形。web/src/plugins/permissions.test.ts：隔離用のページの CSP（2 つのページは connect-src だけが違う）と、プラグインのコードより先に EventSource・Worker・SharedWorker を消すこと。web/src/app/plugins.test.ts：追加の確認に権限と外部への送信の注意を出す・動かすプラグインの選び方 */
+            doc /* crates/modelith-core/src/plugin_host：プラグインから届いたメッセージを plugin-sdk の型で読む（知らない種類・欠けた項目・負の番号を断る）・権限の要るメッセージ（診断は model:read、変更案は edits:propose、保存場所は storage）を宣言していなければ断る・変更案と診断の範囲を UTF-16 の位置に直す（行末・行の長さ + 1・最終行 + 1・サロゲートペアの途中・逆向き・重なり・同じ位置から始まる 2 つ・空）・プラグインに渡すモデル（要素の範囲・ポートの型と向き・関係の種類）。crates/modelith-core/src/rules：runtime が browser のプラグインの読み込み（main が無い・フォルダの外・ファイルが無い）。crates/modelith-wasm：確かめた結果とモデルの JSON。web/src/core/client.test.ts：コア（Worker）への確認の依頼と、その間にテキストが変わったときの印。web/src/plugins/messages.test.ts：確かめたメッセージの扱い（版が同じ変更案だけを当てる・古い版と確かめる間の変更は断って知らせる・頼んでいない答え・保存場所の依頼・古い診断）。web/src/plugins/trust.test.ts：許可を尋ね直す条件（初めて・権限が 1 つ増えた・減った・入れ替えた・外部と通信できるプラグインのファイルとバージョンの変更・通信できないものの変更・許可しなかったもの）と覚える形。web/src/plugins/permissions.test.ts：隔離用のページの CSP（2 つのページは connect-src だけが違う）と、プラグインのコードより先に EventSource・Worker・SharedWorker を消すこと。web/src/app/plugins.test.ts：追加の確認に権限と外部への送信の注意を出す・動かすプラグインの選び方・追加先の選択肢（このプロジェクトに追加できない場面の理由・既定の追加先・上書きと優先の説明）・このブラウザのプラグインの行と優先（modelith.json に同じ ID があれば無効・未追加でもプロジェクトを優先）・コアに渡すものと動かすもの・削除の確認（保存したデータを尋ねる条件）・フォルダを選ぶ入力欄のパス。
+                   web/src/plugins/messages.test.ts：読み込み・書き出しの答え（頼んだ種類と番号のものだけを使う・種類の食い違い・上限ちょうどと上限を超える大きさ・base64 でない中身・形の正しくない MIME タイプ）と失敗の知らせ。web/src/plugins/transfer.test.ts：base64 の確かめと変換（区切りを超える長さ・空）・新しい文書の名前（拡張子・重なる名前の番号・パスと使えない文字・名前が残らない）・ダウンロードの名前と種類。web/src/plugins/storage.test.ts：保存場所の更新（足す・置き換える・null で消す・上限ちょうどと上限 + 1 バイト・壊れた保存内容）と読み出し。web/src/plugins/view.test.ts：メニューの読み込み・書き出しの項目（拡張子での絞り込み・実行中のものだけ） */
             objective {
                 verify PluginEditReq;
                 verify PluginTrustReq;
                 verify PluginSandboxReq;
+                verify ScriptPluginReq;
+                verify PluginListReq;
             }
         }
         verification def ScriptPluginE2E {
-            doc /* web/e2e/script-plugins.spec.ts（基準のブラウザ、OPFS で）：コマンドが提案した変更を当てて 1 回の「元に戻す」で取り消す・古いテキストへの変更を断って知らせる・宣言していない権限の変更案を使わず一覧で知らせる・診断をプラグインを添えて問題一覧に出し直すと消える。外部との通信を宣言していないプラグインの fetch・XMLHttpRequest・WebSocket・EventSource・importScripts がすべて失敗し、テストのサーバに何も届かない・ブラウザの保存場所と親の画面に触れられない（宣言して許可したものだけが通信できる）。止まらない処理をしても画面が動き、停止できる。初めて動かす前に名前・ID・バージョン・権限を示して尋ね、外部と通信できるものはそのことを示す・開き直しても尋ねない・権限が増えた・通信できるプラグインのファイルが変わったら尋ね直す・通信できないものは尋ねない・許可しなかったものを一覧から許可する・追加の確認で権限を示す。web/e2e/visual.spec.ts：許可のダイアログと実行中のプラグインの一覧の見た目。コマンドのメニューは確かめているが、取り込みと書き出し（ScriptPluginReq の残り）は次の段階なので、ScriptPluginReq はまだ検証済みとしない */
+            doc /* web/e2e/script-plugins.spec.ts（基準のブラウザ、OPFS で）：コマンドが提案した変更を当てて 1 回の「元に戻す」で取り消す・古いテキストへの変更を断って知らせる・宣言していない権限の変更案を使わず一覧で知らせる・診断をプラグインを添えて問題一覧に出し直すと消える。外部との通信を宣言していないプラグインの fetch・XMLHttpRequest・WebSocket・EventSource・importScripts がすべて失敗し、テストのサーバに何も届かない・ブラウザの保存場所と親の画面に触れられない（宣言して許可したものだけが通信できる）。止まらない処理をしても画面が動き、停止できる（この隔離の 3 つは Chromium・Firefox・WebKit で、このブラウザに追加したプラグインで確かめる）。初めて動かす前に名前・ID・バージョン・権限を示して尋ね、外部と通信できるものはそのことを示す・開き直しても尋ねない・権限が増えた・通信できるプラグインのファイルが変わったら尋ね直す・通信できないものは尋ねない・許可しなかったものを一覧から許可する・追加の確認で権限を示す。
+                   読み込み：選んだファイルからプラグインが作ったテキストを新しいファイルとして開き、開いていたファイルとフォルダは書き換えない・プラグインが失敗を返せば理由を示す。書き出し：プラグインが返したファイルを、拡張子を補った名前でダウンロードさせ、フォルダには書かない・保存された図を表示していればその名前を渡す。
+                   保存場所：storage を宣言したプラグインが読み書きでき、開き直しても残る・1 MB を超える値は保存せず知らせる・宣言していなければ使わず一覧で知らせる。web/e2e/visual.spec.ts：許可のダイアログと実行中のプラグインの一覧の見た目 */
             objective {
                 verify PluginEditReq;
                 verify PluginTrustReq;
                 verify PluginSandboxReq;
+                verify ScriptPluginReq;
+                verify PluginListReq;
             }
         }
         verification def CliCheckTest {

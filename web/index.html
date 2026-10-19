@@ -59,6 +59,8 @@
       </div>
     </details>
     <input type="file" id="fileInput" accept=".sysml,.kerml,.txt,.json,text/plain,application/json" multiple hidden>
+    <input type="file" id="pluginFileInput" hidden>
+    <input type="file" id="pluginDirInput" webkitdirectory hidden>
   </header>
   <main id="main" data-tab="diagram">
     <aside class="pane treepane" aria-label="サイドバー">
@@ -127,6 +129,7 @@
     <b id="dialogTitle"></b>
     <p id="dialogText"></p>
     <div class="ddetail" id="dialogDetail" hidden></div>
+    <div class="dpick" id="dialogPick" hidden></div>
     <div class="row" id="dialogButtons"></div>
   </div>
 </div>
