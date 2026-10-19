@@ -63,17 +63,17 @@
 ## SysML v2 の対応状況
 
 SysML v2 のテキストの書き方のうち、よく使う部分から対応しています。まだ読めない書き方は、エラーにせず、問題一覧に「まだ扱えない構文」として知らせます（一部は知らせずに読み飛ばします）。
-書き方ごとの詳しい状況は [対応表](docs/reference/sysml-conformance.md) をご覧ください（2026-10-19 時点）。
+書き方ごとの詳しい状況は [対応表](docs/reference/sysml-conformance.md) をご覧ください（0.1.0-alpha.7 時点）。
 
 ### 使えるもの
 
 - **パッケージ**：`package`（入れ子を含む）、`library package`
-- **構造**：`part`・`item`・`attribute`・`port`・`enum`（列挙値）・`occurrence` の定義と使用、型付け `: A`、値 `= 式`、`in`・`out` などの向き
+- **構造**：`part`・`item`・`attribute`・`port`・`enum`・`occurrence` の定義と使用、`event occurrence`・`timeslice`・`snapshot`、型付け `: A`・`typed by`、値 `= 式`、`in`・`out` などの向き、`constant`・`variant`・`variation`
 - **つながり**：`connection`・`interface`（`connect a.p to b.p`）、`flow of … from … to …`、`message`
 - **振る舞い**：`action`・`perform action`・`then action`、`state`・`exhibit state`、`calc`、`constraint`
-- **要求と検証**：`requirement`・`subject`・`stakeholder`、`satisfy R by X`、`concern`・`frame`、`analysis`・`verification`、`use case`、`#derivation dependency`（導出）
-- **図（ビュー）**：`view`・`view def`、`expose`、標準のビュー定義のうち GeneralView・InterconnectionView・StateTransitionView・SequenceView
-- **名前と注釈**：引用名 `'Fuel Tank'`、短い名前 `<R1>`、`doc`、`metadata def` と前置のメタデータ `#M`
+- **要求と検証**：`requirement`・`subject`・`stakeholder`・`actor`、`satisfy`（`by` の無い形・`assert satisfy`・`not satisfy` を含む）、`concern`・`frame`、`case`・`analysis`・`verification`、`use case`・`include use case`、`#derivation dependency`（導出）
+- **図（ビュー）**：`view`・`view def`、`expose`、標準のビュー定義のうち GeneralView・InterconnectionView・StateTransitionView・SequenceView。`viewpoint`・`rendering` はツリーに出す
+- **名前と注釈**：引用名 `'Fuel Tank'`、短い名前 `<R1>`、同じファイルの中の修飾名 `A::B` と `alias`、`doc`、`metadata def`・前置のメタデータ `#M`・`metadata … about`、自分で決めたキーワード（`#X def`）
 
 ### 一部だけ使えるもの
 
@@ -82,14 +82,13 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 | 特殊化・部分集合・再定義・参照（`:>`・`:>>`・`::>` など）、多重度 `[0..4]` | 読むが、図に線やラベルとして描かない | 0.1.0-alpha.8 |
 | 遷移 `transition`、`if`・`while`・`for`、`parallel` | 遷移は線にならず、条件や並行は記録しない | 0.1.0-alpha.9 |
 | ビューの `filter`・`render` | `and`・`or` などの式と、`render` の書き方の一部が使えない | 0.1.0-alpha.9 |
-| `expose`・修飾名 `A::B` | 他のパッケージやファイルを通した名前を解決しない | 0.1.0-alpha.7（同じファイルの中）・0.2.0 |
+| `expose`・修飾名 `A::B`・`alias` | `import` を通した名前と、他のファイルの名前を解決しない | 0.2.0 |
 | 式・単位 `1500 [kg]` | 文字列として持つだけで、計算しない | 0.3.0 以降 |
 
 ### まだ使えないもの
 
 | 書き方 | 対応の予定 |
 | --- | --- |
-| `alias`、`case`・`objective`・`actor`・`include use case`、`enum` の使用、`event occurrence`・`timeslice`・`snapshot`、`typed by`、`constant`・`variant`、`viewpoint`・`rendering`、`metadata … about`、自分で決めたキーワード（`#X def`）、`by` の無い `satisfy`・`not satisfy`・`assert satisfy`。あわせて、`rep`・`assert not constraint`・`assume constraint`・`verify`・`viewpoint` で誤ったエラーが出る問題を直す | 0.1.0-alpha.7 |
 | `dependency`、`comment … about`・`rep` の本文、単独の `connect`・`bind`、`allocation`・`allocate`、`flow def`・名前付きのフロー | 0.1.0-alpha.8 |
 | アクションの流れ（`first … then`・`succession`）、`fork`・`join`・`merge`・`decide`、`send`・`accept`・`terminate`、状態の `entry`・`do`・`exit`、ActionFlowView | 0.1.0-alpha.9 |
 | `import`、ファイルをまたぐモデル | 0.2.0 |
