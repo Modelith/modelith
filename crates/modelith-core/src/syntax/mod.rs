@@ -209,7 +209,8 @@ pub fn parse(text: &str) -> Parse {
 
 /// パーサに渡すトークン（生のトークンの番号）。空白と注記は除く。
 ///
-/// `/* … */`（REGULAR_COMMENT）は、要素として書かれたもの（文の頭にあるもの、`doc`・`comment` の本文）だけを渡し、
+/// `/* … */`（REGULAR_COMMENT）は、要素として書かれたもの（文の頭にあるもの、`doc`・`comment` の本文、
+/// `rep`・`language` の言語の名前の直後にある本文）だけを渡し、
 /// 宣言の途中にあるものは読み飛ばす（KerML 8.2.2.1・8.2.3.3.2）。
 ///
 /// # 引数
@@ -229,25 +230,34 @@ pub fn parse(text: &str) -> Parse {
 /// significant_tokens("part /* x */ a;", …) → [0, 4, 5]     // 宣言の途中のコメントは除く
 /// // トークン: コメント / 空白 / part / 空白 / a / ;
 /// significant_tokens("/* x */ part a;", …) → [0, 2, 4, 5]  // 文の頭のコメントは残す
+/// // トークン: language / 空白 / "x" / 空白 / コメント
+/// significant_tokens("language \"x\" /* b */", …) → [0, 2, 4]  // 表し方の本文は残す
 /// significant_tokens("", …)               → []
 /// ```
 fn significant_tokens(text: &str, tokens: &[Token], starts: &[usize]) -> Vec<usize> {
     let mut out = Vec::with_capacity(tokens.len());
     // 今の文の最初のトークン（文の区切りの直後は None）
     let mut first: Option<&str> = None;
+    // 直前に渡したトークンの種類
+    let mut previous: Option<SyntaxKind> = None;
     for (i, t) in tokens.iter().enumerate() {
         if t.kind.is_trivia() {
             continue;
         }
         let s = &text[starts[i]..starts[i] + t.len];
         if t.kind == SyntaxKind::REGULAR_COMMENT {
-            if matches!(first, None | Some("doc" | "comment")) {
+            // `rep r language "x" /* … */` の本文は、言語の名前の直後のコメント（TextualRepresentation、8.2.2.4）
+            let is_rep_body =
+                matches!(first, Some("rep" | "language")) && previous == Some(SyntaxKind::STRING);
+            if matches!(first, None | Some("doc" | "comment")) || is_rep_body {
                 out.push(i);
+                previous = Some(t.kind);
                 first = None;
             }
             continue;
         }
         out.push(i);
+        previous = Some(t.kind);
         if first.is_none() {
             first = Some(s);
         }

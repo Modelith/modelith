@@ -228,38 +228,36 @@ fn filter_of(expr: &str, is_metadata: impl Fn(&str) -> bool) -> Option<Filter> {
 }
 
 impl Builder<'_> {
-    /// 修飾名（A::B::C）の要素。後ろから順に、親の名前が合うものを探す。暫定コアの `resolveQualified` と同じ。
-    /// 親の段は直接の外側の宣言から順に比べ、書いた段より外側は比べない。
+    /// expose の対象の名前（`A`・`A::B::C`）の要素。
+    ///
+    /// 修飾名は、view から外へ向かって最初の段を探し、そこから中へたどる（`lookup`、8.2.2.5）。
+    /// 修飾の無い名前は、これまでどおりファイル全体で書いた順に最初のもの（無ければ同じ名前の別名の指す先）。
     ///
     /// # 引数
     ///
-    /// - `qn`：修飾名（`P::Q`・`A` など。`::` で区切る）
+    /// - `qn`：対象の名前（`P::Q`・`A` など。`::` で区切る）
+    /// - `ctx`：expose を書いた view の番号
     ///
     /// # 戻り値
     ///
-    /// 最後の段の名前を持ち、親の名前が合う宣言のうち、書いた順で最初のものの番号。無ければ None。
+    /// 対象の宣言の番号。無ければ None。
     ///
     /// # 例
     ///
     /// ```text
-    /// // "package P { package Q { part def B; } }" のとき
-    /// resolve_qualified("P::Q")    → Some(Q の番号)
-    /// resolve_qualified("Q::B")    → Some(B の番号)   // P より外は比べない
-    /// resolve_qualified("Nope::X") → None
+    /// // "package P { package Q { part def B; } view v; }" のとき
+    /// resolve_qualified("P::Q", Some(v の番号))    → Some(Q の番号)
+    /// resolve_qualified("Q::B", Some(v の番号))    → Some(B の番号)   // Q は v の外側の P から見える
+    /// resolve_qualified("Nope::X", Some(v の番号)) → None
     /// ```
-    fn resolve_qualified(&self, qn: &str) -> Option<usize> {
-        let mut segs: Vec<&str> = qn.split("::").collect();
-        let last = segs.pop().unwrap_or("");
-        self.by_name.get(last)?.iter().copied().find(|&i| {
-            let mut a = self.entries[i].pe;
-            for seg in segs.iter().rev() {
-                match a {
-                    Some(x) if self.entries[x].name == *seg => a = self.entries[x].pe,
-                    _ => return false,
-                }
-            }
-            true
-        })
+    fn resolve_qualified(&self, qn: &str, ctx: Option<usize>) -> Option<usize> {
+        if qn.contains("::") {
+            return self.lookup(qn, ctx);
+        }
+        self.by_name
+            .get(qn)
+            .and_then(|l| l.first().copied())
+            .or_else(|| self.alias_anywhere(qn, 0))
     }
 
     /// 入れ子の中身すべて（書いた順）を `out` の後ろに足す。各中身のすぐ後にその中身が続く（深さ優先）。暫定コアの `descendants` と同じ。
@@ -433,7 +431,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
         let mut shown: Vec<usize> = Vec::new();
         let mut shown_set = HashSet::new();
         for x in v.exposes.iter().flatten() {
-            let Some(target) = b.resolve_qualified(&x.target) else {
+            let Some(target) = b.resolve_qualified(&x.target, Some(vi)) else {
                 let msg = format!(
                     "図「{}」に出す要素「{}」が見つかりません（expose）",
                     v.name, x.target

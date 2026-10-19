@@ -86,6 +86,9 @@ pub struct Entry {
     pub conj: Option<bool>,
     #[serde(rename = "type")]
     pub ty: String,
+    /// 型の修飾名（`Q::A`。引用符を外し `::` でつなぐ）。修飾の無い型は `ty` と同じ。名前の解決にだけ使い、TS には渡さない。
+    #[serde(skip)]
+    pub ty_path: String,
     pub owner: Option<Scope>,
     pub pe: Option<usize>,
     pub start: usize,
@@ -179,6 +182,9 @@ pub enum RelKind {
         name: String,
         #[serde(rename = "type")]
         ty: String,
+        /// 関心事の型の修飾名（`ty` の修飾を残したもの）。名前の解決にだけ使い、TS には渡さない。
+        #[serde(skip)]
+        path: String,
     },
     Flow {
         item: String,
@@ -223,6 +229,17 @@ pub struct Unsupported {
     pub head: String,
 }
 
+/// 別名（`alias B for A;`、AliasMember）。持ち主の中身と同じように、名前 `name` で `target` を指す。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alias {
+    /// 別名（引用符を外したもの）。
+    pub name: String,
+    /// 指す先の修飾名（引用符を外し `::` でつなぐ）。
+    pub target: String,
+    /// 別名を書いた宣言の番号（package など）。ファイルの直下なら `None`。
+    pub pe: Option<usize>,
+}
+
 /// 解析結果。`layout`（`@layout` コメント）は TS の境界で読む。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ParseResult {
@@ -231,4 +248,7 @@ pub struct ParseResult {
     pub rels: Vec<Rel>,
     pub errors: Vec<ParseError>,
     pub unsupported: Vec<Unsupported>,
+    /// 同じファイルの中の別名。名前の解決にだけ使い、TS には渡さない。
+    #[serde(skip)]
+    pub aliases: Vec<Alias>,
 }

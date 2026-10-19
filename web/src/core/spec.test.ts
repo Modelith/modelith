@@ -313,3 +313,133 @@ for (const [impl, parse, build] of PARSERS) {
     });
   });
 }
+
+// alpha.7 から、暫定の TS コアは alpha.6 の範囲で止め、新しく直した文法と読み方は Rust のコアだけで確かめる（ADR-0015）。
+// 暫定コアは beta.1 で削除する。
+for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) {
+  describe(`${impl}（alpha.7 から Rust だけ）`, () => {
+    const entry = (text: string, name: string) => parse(text).entries.find((e) => e.name === name);
+    const problems = (text: string): string[] => build(parse(text)).problems.map((p) => p.msg);
+    const errors = (text: string): string[] => build(parse(text)).problems.filter((p) => !p.kind).map((p) => p.msg);
+    const edges = (text: string): string[] => build(parse(text)).edges.map((e) => `${e.kind}|${e.from}|${e.to}`);
+
+    describe("テキストでの表し方（TextualRepresentation、8.2.2.4）", () => {
+      it("rep … language \"…\" /* … */ は本文のコメントで終わり、続く宣言を読む", () => {
+        // Arrange
+        const text = 'package P { rep r language "x" /* body */ part def B; }';
+        // Act
+        const b = entry(text, "B");
+        // Assert
+        expect(b?.pe?.name).toBe("P");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("本体の中の language \"…\" /* … */ も、次の行の宣言を隠さない（境界値：rep の無い形）", () => {
+        // Arrange
+        const text = 'package P { part def A {\n  language "x" /* body */\n  part c;\n} }';
+        // Act
+        const c = entry(text, "c");
+        // Assert
+        expect(c?.pe?.name).toBe("A");
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("assert not・assume・require の制約（AssertConstraintUsage・RequirementConstraintMember、8.2.2.20〜21）", () => {
+      it("assert not constraint d { x < 0 } と assume constraint { y < 1 } は、式を持ち主に入れる", () => {
+        // Arrange
+        const text = "package P { part def A { assert not constraint d { x < 0 } assume constraint { y < 1 } require constraint c { z < 2 } } }";
+        // Act
+        const a = entry(text, "A");
+        // Assert
+        expect(a?.exprs.map((x) => [x.text, x.via])).toEqual([["x < 0", "assert"], ["y < 1", "assume"], ["z < 2", "require"]]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("verify（RequirementVerificationUsage、8.2.2.24）", () => {
+      it("パッケージ直下の使用の中の verify は、相手を見つけ、使用の型から線を引く", () => {
+        // Arrange
+        const text = "package P { requirement def RD; verification def VD; verification v : VD { objective { verify RD; } } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["verify|VD|RD"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("viewpoint の frame（ViewpointDefinition・FramedConcernMember、8.2.2.26）", () => {
+      it("viewpoint はまだ扱えないと知らせるが、中の frame を「見つからない」とは言わない", () => {
+        // Arrange
+        const text = "package P { concern def C; viewpoint def VP { frame concern c : C; } viewpoint vp { frame concern c : C; } }";
+        // Act
+        const ps = build(parse(text)).problems;
+        // Assert
+        expect(ps.filter((p) => !p.kind)).toEqual([]);
+        expect(ps.map((p) => p.kind)).toEqual(["unsupported", "unsupported"]);
+      });
+    });
+
+    describe("まだ扱えない文の本体（F-EDIT-8）", () => {
+      it.each([
+        ["case def CS { part x; }"],
+        ["allocation def AD { part x; }"],
+        ["rendering def R { part x; }"],
+        ["metadata M about A { part x; }"],
+      ])("%s の中の宣言を、外側の package の中身として読まない", (stmt) => {
+        // Arrange
+        const text = `package P { ${stmt} }`;
+        // Act
+        const x = entry(text, "x");
+        // Assert
+        expect(x).toBeUndefined();
+        expect(build(parse(text)).problems.map((p) => p.kind)).toEqual(["unsupported"]);
+      });
+    });
+
+    describe("修飾名（QualifiedName、8.2.2.1〜2。名前は参照した場所から外へ探す、8.2.2.5）", () => {
+      const MODEL = "package X { part def A; } package P { package Q { part def A; } part def H { ";
+
+      it("Q::A は、H から見える Q の中の A につなぐ（同じ名前の X::A ではない）", () => {
+        // Arrange
+        const text = `${MODEL}part a : Q::A; } }`;
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["comp|H|A@Q"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("たどれない修飾名は、最後の名前が同じ要素があっても「見つからない」とする（異常系）", () => {
+        // Arrange
+        const text = `${MODEL}part b : Nope::A; part c : X::Z; } }`;
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["型「Nope::A」が見つかりません（b）", "型「X::Z」が見つかりません（c）"]);
+      });
+
+      it("標準ライブラリの修飾名（ISQ::MassValue・ScalarValues::Real）は知らせない", () => {
+        // Arrange
+        const text = "package P { part def H { attribute m : ISQ::MassValue; attribute r : ScalarValues::Real; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+    });
+
+    describe("別名（AliasMember、8.2.2.5）", () => {
+      it("同じファイルの alias B for Q::A で型付けすると、A につなぐ", () => {
+        // Arrange
+        const text = "package P { package Q { part def A; } alias B for Q::A; part def H { part b : B; } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["comp|H|A"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+  });
+}

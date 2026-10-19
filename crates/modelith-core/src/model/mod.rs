@@ -4,6 +4,7 @@
 //! 一致は web の golden.test.ts・spec.test.ts が TS と Rust の両方で確かめる。
 //! SysML v2 の意味（名前解決・継承など）に沿った作り直しは、0.1.0 の後に行う。
 
+mod names;
 mod types;
 mod views;
 
@@ -282,6 +283,7 @@ impl<'a> Builder<'a> {
     }
 
     /// 名前 `nm` の最初の定義（書いた順で最初の `… def`）。暫定コアの `defNamed` と同じ。
+    /// その名前の定義が無ければ、同じファイルの別名（`alias nm for …;`）の指す先の定義を返す。
     ///
     /// # 引数
     ///
@@ -289,22 +291,22 @@ impl<'a> Builder<'a> {
     ///
     /// # 戻り値
     ///
-    /// 定義の宣言の番号。その名前の定義が無ければ None（同じ名前の使用だけがあっても None）。
+    /// 定義の宣言の番号。その名前の定義も、定義を指す別名も無ければ None（同じ名前の使用だけがあっても None）。
     ///
     /// # 例
     ///
     /// ```text
-    /// // "package P { part def A; part a : A; }" のとき
+    /// // "package P { part def A; part a : A; alias B for A; }" のとき
     /// def_named("A") → Some(part def A の番号)
+    /// def_named("B") → Some(part def A の番号)   // 別名
     /// def_named("a") → None   // 使用だけ
     /// def_named("Z") → None   // 名前が無い
     /// ```
     pub(crate) fn def_named(&self, nm: &str) -> Option<usize> {
         self.by_name
-            .get(nm)?
-            .iter()
-            .copied()
-            .find(|&i| self.e(i).is_def)
+            .get(nm)
+            .and_then(|l| l.iter().copied().find(|&i| self.e(i).is_def))
+            .or_else(|| self.alias_anywhere(nm, 0).filter(|&i| self.e(i).is_def))
     }
 
     /// 宣言の中身を探す範囲（定義はそれ自身、使用は型の定義）。暫定コアの `typeScope` と同じ。
@@ -315,7 +317,7 @@ impl<'a> Builder<'a> {
     ///
     /// # 戻り値
     ///
-    /// 中身を探す定義の番号。型の無い使用や、型の定義が見つからない使用なら None。
+    /// 中身を探す定義の番号。型の無い使用や、型の定義が見つからない使用なら None。型が修飾名なら `def_of` で探す。
     ///
     /// # 例
     ///
@@ -333,7 +335,7 @@ impl<'a> Builder<'a> {
         } else if e.ty.is_empty() {
             None
         } else {
-            self.def_named(&e.ty)
+            self.def_of(&e.ty_path, e.pe)
         }
     }
 
@@ -364,12 +366,14 @@ impl<'a> Builder<'a> {
     }
 
     /// 文の持ち主から外へ向かって名前を探し、無ければ全体から探す（図の要素を優先する）。暫定コアの `findFirst` と同じ。
-    /// 外へたどる各段では、直下の中身 → その宣言自身の名前の順に比べる。
+    /// 外へたどる各段では、直下の中身 → その宣言自身の名前 → その宣言に書いた別名の順に比べる。
+    /// 全体にも無ければ、ファイルのどこかに書いた同じ名前の別名の指す先を返す。
     ///
     /// # 引数
     ///
     /// - `nm`：探す名前（修飾の無い名前）
     /// - `ctx`：探し始める宣言の番号（文の持ち主）。None なら全体からだけ探す
+    /// - `depth`：ここまでにたどった別名の数（別名の輪で止まらないように数える。最初は 0）
     ///
     /// # 戻り値
     ///
@@ -378,12 +382,13 @@ impl<'a> Builder<'a> {
     /// # 例
     ///
     /// ```text
-    /// // "package P { part def A { part b; } part def C { part b; } }" のとき
-    /// find_first("b", Some(C の番号)) → Some(C の中の b の番号)   // 持ち主の中を優先
-    /// find_first("A", None)           → Some(A の番号)
-    /// find_first("Z", Some(C の番号)) → None
+    /// // "package P { part def A { part b; } part def C { part b; } alias D for A; }" のとき
+    /// find_first_at("b", Some(C の番号), 0) → Some(C の中の b の番号)   // 持ち主の中を優先
+    /// find_first_at("A", None, 0)           → Some(A の番号)
+    /// find_first_at("D", Some(C の番号), 0) → Some(A の番号)            // 別名
+    /// find_first_at("Z", Some(C の番号), 0) → None
     /// ```
-    fn find_first(&self, nm: &str, ctx: Option<usize>) -> Option<usize> {
+    fn find_first_at(&self, nm: &str, ctx: Option<usize>, depth: usize) -> Option<usize> {
         let mut a = ctx;
         while let Some(i) = a {
             if let Some(c) = self.child_named(i, nm) {
@@ -392,9 +397,14 @@ impl<'a> Builder<'a> {
             if self.e(i).name == nm {
                 return Some(i);
             }
+            if let Some(c) = self.alias_named(Some(i), nm, depth) {
+                return Some(c);
+            }
             a = self.e(i).pe;
         }
-        let list = self.by_name.get(nm)?;
+        let Some(list) = self.by_name.get(nm) else {
+            return self.alias_anywhere(nm, depth);
+        };
         list.iter()
             .copied()
             .find(|i| self.node_of.contains_key(i))
@@ -402,7 +412,8 @@ impl<'a> Builder<'a> {
     }
 
     /// `a.b.c` の参照をたどる。暫定コアの `resolve` と同じ。
-    /// 最初の段は `find_first` で探し（`P::a` なら最後の `a` だけを使う）、以降の段は直下の中身、無ければ型の定義の中身から探す。
+    /// 最初の段は `lookup` で探し（修飾の無い名前は `find_first_at` と同じ、`P::a` は `P` を持ち主から外へ探して中へたどる）、
+    /// 以降の段は直下の中身、無ければ型の定義の中身から探す。
     ///
     /// # 引数
     ///
@@ -419,11 +430,14 @@ impl<'a> Builder<'a> {
     /// // "part def S { port o; } part def H { part s : S; }" のとき
     /// resolve("s.o", Some(H の番号)) → Some(S の中の o の番号)   // s の型 S の中から探す
     /// resolve("s.x", Some(H の番号)) → None
+    /// // "package X { requirement def R; } package P { requirement def R; }" の P の中から
+    /// resolve("X::R", Some(P の番号)) → Some(X の中の R の番号)
+    /// resolve("Nope::R", Some(P の番号)) → None
     /// ```
     fn resolve(&self, chain: &str, ctx: Option<usize>) -> Option<usize> {
         let mut segs = chain.split('.');
         let first = segs.next().unwrap_or("");
-        let mut cur = self.find_first(first.rsplit("::").next().unwrap_or(first), ctx);
+        let mut cur = self.lookup(first, ctx);
         for seg in segs {
             let c = cur?;
             cur = self
@@ -485,6 +499,39 @@ impl<'a> Builder<'a> {
             a = self.e(x).pe;
         }
         None
+    }
+
+    /// 関係（verify・frame）の線を引く元の図の要素。`node_ancestor` で見つからなければ、外へ向かって最初に
+    /// 型の定義が図の要素になっている使用の、その要素にする（`verification v : VD { objective { verify R; } }` の VD）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：関係の文の持ち主の宣言の番号。None なら None を返す
+    ///
+    /// # 戻り値
+    ///
+    /// 図の要素の番号（`model.nodes` の添字）。外側にも、外側の使用の型にも図の要素が無ければ None。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "package P { verification def VD; verification v : VD { … } verification w { … } }" のとき
+    /// owner_node(Some(v の番号)) → Some(VD の要素の番号)   // v は図の要素ではないので、型の VD
+    /// owner_node(Some(w の番号)) → None                    // 型が無い
+    /// // "package P { part def H { part s : S; } }" のとき
+    /// owner_node(Some(s の番号)) → Some(H の要素の番号)    // これまでどおり外側の要素を優先
+    /// ```
+    fn owner_node(&self, i: Option<usize>) -> Option<usize> {
+        self.node_ancestor(i).or_else(|| {
+            let mut a = i;
+            while let Some(x) = a {
+                if let Some(&n) = self.type_scope(x).and_then(|t| self.node_of.get(&t)) {
+                    return Some(n);
+                }
+                a = self.e(x).pe;
+            }
+            None
+        })
     }
 
     /// 図の線を 1 本加える（モデルの `edges` を書き換える）。暫定コアの `addEdge` と同じ。
@@ -564,7 +611,7 @@ impl<'a> Builder<'a> {
         if has_word(m, "in") {
             return "in";
         }
-        let Some(pd) = self.def_named(&e.ty) else {
+        let Some(pd) = self.def_of(&e.ty_path, e.pe) else {
             return "inout";
         };
         let ds: Vec<&str> = self
@@ -629,7 +676,7 @@ impl<'a> Builder<'a> {
             if u.is_def || u.ty.is_empty() || u.kind == "package" {
                 continue;
             }
-            let Some(t) = self.def_named(&u.ty) else {
+            let Some(t) = self.def_of(&u.ty_path, u.pe) else {
                 if !is_lib(&u.ty)
                     && u.kind != "subject"
                     && !(u.kind == "view" && is_standard_view(&u.ty))
@@ -637,7 +684,7 @@ impl<'a> Builder<'a> {
                     let who = if u.name.is_empty() { &u.kind } else { &u.name };
                     self.problem(
                         u.start,
-                        format!("型「{}」が見つかりません（{who}）", u.ty),
+                        format!("型「{}」が見つかりません（{who}）", u.ty_path),
                         None,
                     );
                 }
@@ -692,12 +739,14 @@ impl<'a> Builder<'a> {
                     }
                 }
                 RelKind::Verify { req } => {
-                    let a = self.node_ancestor(pe);
+                    let a = self.owner_node(pe);
                     let b = self.node_for(self.resolve(req, pe));
                     match (a, b) {
                         (Some(a), Some(b)) => {
                             self.add_edge("verify", a, b, "«verify»".into(), src);
                         }
+                        // 相手はあるが、線を引く元が図に無い（型の無い使用の中など）。相手が無いとは言わない
+                        (None, Some(_)) => {}
                         _ => self.problem(
                             r.start,
                             format!("「検証する」関係の相手「{req}」が見つかりません（verify）"),
@@ -705,20 +754,24 @@ impl<'a> Builder<'a> {
                         ),
                     }
                 }
-                RelKind::Frame { ty, .. } => {
-                    let a = self.node_ancestor(pe);
+                RelKind::Frame { ty, path, .. } => {
+                    let a = self.owner_node(pe);
                     let tn = self
-                        .def_named(ty)
+                        .def_of(path, pe)
                         .and_then(|t| self.node_of.get(&t).copied());
                     match (a, tn) {
                         (Some(a), Some(tn)) => {
                             self.add_edge("frame", a, tn, "«frame»".into(), src);
                         }
-                        _ => self.problem(
-                            r.start,
-                            format!("扱う関心事「{ty}」が見つかりません（frame）"),
-                            None,
-                        ),
+                        (None, Some(_)) => {}
+                        _ => {
+                            let shown = if path.is_empty() { ty } else { path };
+                            self.problem(
+                                r.start,
+                                format!("扱う関心事「{shown}」が見つかりません（frame）"),
+                                None,
+                            );
+                        }
                     }
                 }
                 RelKind::Flow { item, a: ra, b: rb }
@@ -866,7 +919,7 @@ impl<'a> Builder<'a> {
         });
         let en = pmd
             .and_then(|m| self.child_named(m, "stage"))
-            .and_then(|st| self.def_named(&self.e(st).ty));
+            .and_then(|st| self.def_of(&self.e(st).ty_path, self.e(st).pe));
         if let Some(en) = en {
             let e = self.e(en);
             if let Some(vs) = e.enum_values.as_ref().filter(|v| !v.is_empty()) {

@@ -1,6 +1,8 @@
 // Rust のモデル構築が、暫定コアのモデル構築と同じ結果を返すことを確かめる結合テスト（ADR-0016 の手順 A）。
 // 同じ解析結果（Rust のパーサ）を両方に渡すので、パーサの違いに左右されずにモデル構築だけを比べられる。
 // 入力は、ケースの途中まで書いたもの（書いている途中の形）と、ケースの行を乱数で組み合わせたもの。
+// alpha.7 から、Rust は暫定コアの取り違え（修飾名を最後の名前だけで探す・別名を読まない・図に無い持ち主の verify と frame を
+// 「見つからない」とする）を直している（F-EDIT-8、ADR-0015）。暫定コアは alpha.6 の範囲で止めるので、その違いは比べない。
 import { describe, expect, it } from "vitest";
 import { build as tsBuild } from "./model";
 import { build as rustBuild, parse } from "./rust";
@@ -43,6 +45,25 @@ const EXTRA_LINES = [
 
 const PHASE_DEFS = EXTRA_LINES.slice(2, 4);
 
+/**
+ * alpha.7 で Rust だけが読み方を直した書き方の行（修飾名の参照・verify・frame・alias）。乱数で組み合わせる行から除く。
+ * `import A::*`・`expose Q::*`・`stage = K::x` のように、名前の解決が変わらない `::` は残す。
+ */
+const FIXED_IN_RUST = /\b(?:verify|frame|alias)\b|[:>~]\s*[\w']+::[\w']|\b(?:expose|satisfy|by|from|to)\s+[\w']+::[\w']/;
+
+/**
+ * 「型「Q::A」が見つかりません」の修飾を外す。alpha.7 から、Rust は見つからない型を修飾名のまま知らせる。
+ *
+ * @param msg 問題の文
+ * @returns 型の名前の修飾を外した文。型の問題でなければそのまま
+ * @example
+ * unqualifiedTypeMessage("型「Behavior::Step」が見つかりません（s）") // → "型「Step」が見つかりません（s）"
+ * unqualifiedTypeMessage("型「Step」が見つかりません（s）")           // → そのまま
+ */
+function unqualifiedTypeMessage(msg: string): string {
+  return msg.replace(/^型「(?:[^「」]*::)?([^「」:]*)」/, "型「$1」");
+}
+
 /** 決まった種から作る乱数（テストを毎回同じにする）。 */
 function random(seed: number): () => number {
   let s = seed >>> 0;
@@ -62,7 +83,7 @@ function snapshot(P: ParseResult, M: Model): unknown {
     nodes: M.nodes.map((n) => ({ ...n, entry: ref(n.entry), ports: n.ports.map((p) => ({ ...p, entry: ref(p.entry) })) })),
     edges: M.edges.map((e) => ({ ...e, rel: e.rel ? P.rels.indexOf(e.rel) : null })),
     views: M.views.map((v) => ({ ...v, entry: ref(v.entry), targets: v.targets.map(ref), frames: v.frames.map((f) => ({ ...f, entry: ref(f.entry) })) })),
-    problems: M.problems,
+    problems: M.problems.map((p) => ({ ...p, msg: unqualifiedTypeMessage(p.msg) })),
     phases: M.phases,
     phaseEnum: M.phaseEnum,
     nodeOf: [...M.nodeOf].map(([e, n]) => [ref(e), n.key]),
@@ -97,7 +118,7 @@ describe("Rust のモデル構築と暫定コアの一致", () => {
   }
 
   it("ケースの行を乱数で組み合わせた入力でも、同じモデルになる", () => {
-    const lines = [...Object.values(cases).flatMap((t) => t.split("\n")), ...EXTRA_LINES];
+    const lines = [...Object.values(cases).flatMap((t) => t.split("\n")), ...EXTRA_LINES].filter((l) => !FIXED_IN_RUST.test(l));
     const next = random(20261016);
     const seen = { edges: 0, views: 0, phases: 0, gaps: 0 };
     for (let i = 0; i < 300; i++) {

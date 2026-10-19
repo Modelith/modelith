@@ -34,11 +34,10 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 38・△ 27・× 31。そのうち ⚠ は 7 件。
-次の 2 つは、書き方によって誤った表示を出す（alpha.7 で直す）。
+件数：テキスト記法（2 章）96 項目のうち ○ 38・△ 28・× 30。⚠ は 0 件。
 
-- **まだ扱えない構文の本体が漏れる**：`case def C { part x; }` のように、まだ扱えない宣言に `{ … }` があると、中身が外側の要素の子として取り込まれ、図に出る（`case`・`allocation`・`viewpoint`・`rendering`・`flow def`・`metadata … about` など）。
-- **修飾名を最後の名前だけで探す**（2.1 の修飾名の ⚠）：`Q::A` は、ファイル全体から `A` という名前を探す。別のパッケージに同じ名前があると、そちらに結ぶ。存在しない修飾（`Nope::A`）も、エラーにならない。
+2026-10-19 の照合では ⚠ が 7 件あり、alpha.7 で直した（`rep`・`alias`・`assert not constraint`・`assume constraint`・パッケージ直下の `verify`・`viewpoint` の中の `frame`・修飾名）。
+あわせて、まだ扱えない宣言の `{ … }` の中身が外側の要素の子として取り込まれ、図に出る誤りも直した（今は本体を読まない）。
 
 前回（暫定の TS コア。2026-10-14 の更新後、3 章の 8 行を含む 102 項目）は ○ 37・△ 27・× 38（⚠ 4 件）だった。
 
@@ -64,7 +63,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | 基本名 | NAME | ○ | | |
 | 引用名 `'Fuel Tank'` | NAME | ○ | | 宣言の名前と型の参照に使える（ADR-0013） |
 | 短い名前 `<'R1'>`・`<R1>` | Identification | ○ | | 引用あり・なしの両方（ADR-0013） |
-| 修飾名 `A::B` | QualifiedName | △⚠ | alpha.7（同じファイル）・0.2.0 | 最後の区切りだけで、ファイル全体から探す。同じ名前が別のパッケージにあると誤って結び、存在しない修飾も黙って通す |
+| 修飾名 `A::B` | QualifiedName | △ | 0.2.0 | 参照した場所から外へ最初の段を探し、中へたどる（同じファイルの中）。たどれなければ「見つかりません」と示す。`import` を通した名前と他のファイルは解決しない |
 | コメント `/* */`・`//` | 8.2.2.1.2 | ○ | | 解析では読み飛ばす。中の括弧も数えない |
 | 文字列 `"a{b"` | STRING_VALUE | ○ | | 字句解析で 1 つの語にする。中の括弧で誤ったエラーを出さない（以前は ⚠） |
 | 知らない文 | — | △ | — | 予約語で始まり、どの読み方にも当たらない文は「まだ扱えない」と問題一覧に示す（エラーとしては数えない。ADR-0013）。予約語以外で始まる文と、読み飛ばしを決めている文（`import` など）は知らせない |
@@ -78,7 +77,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | 他の `#X dependency` | 同上 | △ | alpha.8 | 関係として読むが、図に出ない |
 | `doc` | Documentation | ○ | | locale は無視 |
 | `comment … about` | Comment | × | alpha.8 | 本文を黙って捨てる（後の宣言は残る） |
-| `rep … language` | TextualRepresentation | ×⚠ | alpha.7（誤り）・alpha.8（本文） | 本文のコメントで文が終わらない。パッケージ直下では後の宣言を飲み込んで消し、本体の中では「「;」がありません」と誤ったエラーを出す |
+| `rep … language` | TextualRepresentation | × | alpha.8 | 本文のコメントで文が終わり、続く宣言を正しく読む。表し方そのものはまだ捨てる |
 
 ### 2.3 パッケージ（8.2.2.5）
 
@@ -88,7 +87,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | `standard library package`・`library package` | LibraryPackage | ○ | | package として取り込む（ライブラリの印は記録しない） |
 | `import Q::A` / `::*` / `::**` / `all` | Import 系 | × | 0.2.0 | 黙って捨てる。他のファイルは読まない |
 | `import Q::*[@F]` | FilterPackage | × | 0.2.0 | |
-| `alias B for A` | AliasMember | ×⚠ | alpha.7（同じファイル）・0.2.0 | 別名で型付けすると「型が見つかりません」と誤って示す |
+| `alias B for A` | AliasMember | △ | 0.2.0 | 同じファイルの別名は、指す先として解決する（型付け・関係の相手・expose。別名の別名も）。他のファイルの別名と `import` は解決しない |
 | `filter @X;`（package 直下） | ElementFilterMember | × | 0.2.0 | 黙って捨てる |
 | `private` / `public` / `protected` | VisibilityIndicator | △ | 0.2.0 | 記録するだけ（import と一緒に意味を持つ） |
 
@@ -133,9 +132,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | `bind` / `binding` | × | alpha.8 | `bind` は黙って捨てる。`binding … bind …` は親の「式」に入る |
 | `succession` / `first … then` | × | alpha.9 | 黙って捨てる |
 | `interface def` / `interface … connect` | ○ | | |
-| `allocation def` / `allocation` / `allocate` | × | alpha.8（本体の漏れは alpha.7） | 定義と使用は「まだ扱えない」と知らせ、`allocate` は黙って捨てる |
+| `allocation def` / `allocation` / `allocate` | × | alpha.8 | 定義と使用は「まだ扱えない」と知らせ（本体の中は読まない）、`allocate` は黙って捨てる |
 | `flow of F from a.p to b.p` | ○ | | |
-| `flow def`、名前付きのフロー | × | alpha.8 | 「まだ扱えない」と知らせる |
+| `flow def`、名前付きのフロー | × | alpha.8 | 「まだ扱えない」と知らせる（本体の中は読まない） |
 | `succession flow` | × | alpha.9 | 黙って捨てる |
 | `message` | ○ | | シーケンス図 |
 
@@ -161,19 +160,19 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | --- | --- | --- | --- |
 | `calc def` / `calc` / `return` | ○ | | 式は文字列 |
 | `constraint def` / `constraint` | ○ | | 式は文字列（評価しない） |
-| `assert constraint` / `assert not` | △⚠ | alpha.7 | `assert constraint { x > 1 }` は式として親に入る。`assert not constraint d { … }` で「「;」がありません」と誤ったエラー。`assert constraint c : CD;` は黙って捨てる |
+| `assert constraint` / `assert not` | △ | alpha.7 | `assert constraint { … }`・`assert not constraint d { … }` は式として親に入る（`x < 0` のような比べる式も誤ったエラーにしない）。`assert constraint c : CD;` は黙って捨てる |
 | `requirement def` / `requirement` | ○ | | |
 | `subject` / `stakeholder` | ○ | | |
-| `require` / `assume constraint` | △⚠ | alpha.7 | `require constraint { … }` は式として入る。`assume constraint { … }` で「「;」がありません」と誤ったエラー。`require c : CD;` は黙って捨てる |
+| `require` / `assume constraint` | △ | alpha.7 | `require constraint { … }`・`assume constraint { … }`（名前付きも）は式として入る。`require c : CD;` は黙って捨てる |
 | `actor` | × | alpha.7 | 「まだ扱えない」と知らせる |
 | `satisfy R by X` | ○ | | |
 | `by` の無い `satisfy`、`assert satisfy`、`not satisfy` | × | alpha.7 | 知らせるか、黙って捨てる |
 | `concern def`、`frame concern c : C` | ○ | | 型の無い `frame c;` は「まだ扱えない」と知らせる |
-| `case def` / `case` | × | alpha.7 | 「まだ扱えない」と知らせる。本体の中身が外に漏れる |
+| `case def` / `case` | × | alpha.7 | 「まだ扱えない」と知らせる（本体の中は読まない） |
 | `objective` | △ | alpha.7 | 中身は親に入る |
 | `analysis def` / `analysis` | ○ | | |
 | `verification def` / `verification` | ○ | | |
-| `verify` | △⚠ | alpha.7 | 定義の中なら ○。パッケージ直下の使用の中では、相手があるのに「見つかりません」と示す |
+| `verify` | △ | | 定義の中と、パッケージ直下の型付きの使用の中（型の定義から線を引く）で線になる。型の無い使用の中では線を引かない |
 | `use case def` / `use case` | ○ | | 専用のビューは無い |
 | `include use case` | × | alpha.7 | 「まだ扱えない」と知らせる |
 
@@ -183,12 +182,12 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | --- | --- | --- | --- | --- |
 | `view def` | ViewDefinition | ○ | | 標準ビュー定義の特殊化（`:>`・`specializes`）をたどる。中の `filter`・`render` は、その型の `view` に引き継ぐ。図のノードにはしない |
 | `view` | ViewUsage | ○ | | 名前のある `view` を、＋メニューから図として開ける（F-VIEW-7）。型の無い `view` は GeneralView として描く |
-| `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 0.2.0 | `import`・`alias` を通した名前は解決しない |
+| `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 0.2.0 | 修飾名は view から外へ最初の段を探し、中へたどる。同じファイルの `alias` は解決する。`import` を通した名前は解決しない |
 | ビュー内の `filter` | ElementFilterMember | △ | alpha.9 | `@メタクラス`（`@SysML::PartDefinition` など）と `@メタデータ` だけ。`and`・`or` などの式は、知らせたうえで使わない |
 | `render`（参照形） | ViewRenderingMember | △ | 0.3.0 以降 | `asTreeDiagram`・`asInterconnectionDiagram` は型より優先する。`asTextualNotation`・`asElementTable` は知らせて図で描く |
 | `render`（合成形） | ViewRenderingMember | × | alpha.9 | 「まだ扱えない」と知らせる |
-| `viewpoint def` / `viewpoint` | ViewpointDefinition / Usage | ×⚠ | alpha.7 | 中の `frame concern c : C;` で、C があるのに「見つかりません」と示す |
-| `rendering def` / `rendering` | RenderingDefinition / Usage | × | alpha.7 | 「まだ扱えない」と知らせる。本体の中身が外に漏れる |
+| `viewpoint def` / `viewpoint` | ViewpointDefinition / Usage | × | alpha.7 | 「まだ扱えない」と知らせる。中（`frame` を含む）は読まない |
+| `rendering def` / `rendering` | RenderingDefinition / Usage | × | alpha.7 | 「まだ扱えない」と知らせる（本体の中は読まない） |
 
 ### 2.10 メタデータ（8.2.2.27）
 

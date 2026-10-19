@@ -229,6 +229,7 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "inout",
     "interface",
     "item",
+    "language",
     "library",
     "message",
     "metadata",
@@ -245,6 +246,7 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "ref",
     "render",
     "rendering",
+    "rep",
     "require",
     "requirement",
     "return",
@@ -390,6 +392,7 @@ fn member(p: &mut Parser<'_>) {
 ///
 /// ```text
 /// keyword_member("doc /* 説明 */")      → DOCUMENTATION
+/// keyword_member("rep r language \"x\" /* … */") → TEXTUAL_REPRESENTATION
 /// keyword_member("import A::*::**;")   → IMPORT
 /// keyword_member("perform a;")         → PERFORM_ACTION_USAGE
 /// keyword_member("send x via p;")      → UNSUPPORTED_MEMBER   // 文法を持たない文
@@ -406,6 +409,10 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
             p.bump();
             comment_tail(p, true);
             COMMENT
+        }
+        "rep" | "language" => {
+            textual_representation(p);
+            TEXTUAL_REPRESENTATION
         }
         "package" => {
             p.bump();
@@ -569,8 +576,8 @@ fn headed(p: &mut Parser<'_>, owner: usize, kws: &[&str], kind: SyntaxKind) -> S
 ///
 /// # 戻り値
 ///
-/// 今のトークンが関係の記号（`:`・`:>`・`:>>`・`::>`）か、名前の次が関係の記号・`=`・`:=`・`;`・`[`・`{`・`<`・
-/// 関係のキーワード（`redefines` など）なら `true`。それ以外（式など）は `false`。
+/// 今のトークンが関係の記号（`:`・`:>`・`:>>`・`::>`）か、名前の次が関係の記号・`=`・`:=`・`;`・`[`・`{`・
+/// `<名前>`・関係のキーワード（`redefines` など）なら `true`。それ以外（式など）は `false`。
 ///
 /// # 例
 ///
@@ -578,6 +585,7 @@ fn headed(p: &mut Parser<'_>, owner: usize, kws: &[&str], kind: SyntaxKind) -> S
 /// is_feature_declaration("stage = K::X;") → true
 /// is_feature_declaration(":>> mass;")     → true
 /// is_feature_declaration("a * b == c")    → false   // 式
+/// is_feature_declaration("x < 0")         → false   // 比べる式（`<` の後が `名前>` でない）
 /// is_feature_declaration("a.b;")          → false
 /// ```
 fn is_feature_declaration(p: &Parser<'_>) -> bool {
@@ -588,8 +596,9 @@ fn is_feature_declaration(p: &Parser<'_>) -> bool {
         return false;
     }
     match p.nth(1) {
-        COLON | COLON_GT | COLON_GT2 | COLON2_GT | EQ | COLON_EQ | SEMI | L_BRACK | L_BRACE
-        | LT => true,
+        COLON | COLON_GT | COLON_GT2 | COLON2_GT | EQ | COLON_EQ | SEMI | L_BRACK | L_BRACE => true,
+        // `x <s> …` の形だけを宣言とみなす（`x < 0` は比べる式）
+        LT => p.nth_at_name(2) && p.nth_at(3, GT),
         KEYWORD => matches!(
             p.nth_text(1),
             "redefines" | "subsets" | "references" | "defined" | "specializes" | "default"
@@ -744,18 +753,7 @@ fn end(p: &mut Parser<'_>, owner: usize, label: &str, allow_body: bool) {
 /// - `p`：`doc`・`comment` の直後にいるパーサ
 /// - `about`：`about` の後の参照の並びを読むか（`comment` は真、`doc` は偽）
 fn comment_tail(p: &mut Parser<'_>, about: bool) {
-    if p.at(LT) && p.nth_at_name(1) && p.nth_at(2, GT) {
-        let m = p.start();
-        p.bump();
-        p.bump();
-        p.bump();
-        m.complete(p, SHORT_NAME);
-    }
-    if p.at_name() {
-        let m = p.start();
-        p.bump();
-        m.complete(p, NAME);
-    }
+    identification(p);
     if about && p.eat_kw("about") {
         loop {
             if p.at_name() {
@@ -771,6 +769,53 @@ fn comment_tail(p: &mut Parser<'_>, about: bool) {
     }
     if !p.eat(REGULAR_COMMENT) {
         p.error("本文（/* … */）がありません");
+    }
+}
+
+/// 名前の付け方（Identification）。`<短い名前>` と名前を、あればそれぞれ `SHORT_NAME`・`NAME` の節にする。
+///
+/// # 引数
+///
+/// - `p`：短い名前か名前の頭にいるパーサ（どちらも無ければ何も読まない）
+fn identification(p: &mut Parser<'_>) {
+    if p.at(LT) && p.nth_at_name(1) && p.nth_at(2, GT) {
+        let m = p.start();
+        p.bump();
+        p.bump();
+        p.bump();
+        m.complete(p, SHORT_NAME);
+    }
+    if p.at_name() {
+        let m = p.start();
+        p.bump();
+        m.complete(p, NAME);
+    }
+}
+
+/// テキストでの表し方（TextualRepresentation、8.2.2.4）。`( rep Identification )? language STRING_VALUE REGULAR_COMMENT`。
+///
+/// 本文の `/* … */` が文の終わりになる（`;` は書かない）。`language`・言語の名前・本文が欠けていれば、
+/// そこにエラーを置く。欠けたまま `;` が続くときは、その `;` までを 1 つの文として読む。
+///
+/// # 引数
+///
+/// - `p`：`rep` か `language` にいるパーサ
+fn textual_representation(p: &mut Parser<'_>) {
+    if p.eat_kw("rep") {
+        identification(p);
+    }
+    let missing = if !p.eat_kw("language") {
+        Some("「language」がありません")
+    } else if !p.eat(STRING) {
+        Some("言語の名前（\"…\"）がありません")
+    } else if !p.eat(REGULAR_COMMENT) {
+        Some("本文（/* … */）がありません")
+    } else {
+        None
+    };
+    if let Some(message) = missing {
+        p.error(message);
+        p.eat(SEMI);
     }
 }
 

@@ -197,3 +197,108 @@ fn readable_or_missing_layout_comment_is_not_an_error() {
         );
     }
 }
+
+// ---- 取り違えの修正（F-EDIT-8、alpha.7） ----
+
+#[test]
+fn textual_representation_is_dropped_without_hiding_the_next_declaration() {
+    // Arrange（TextualRepresentation、8.2.2.4：package の直下と、定義の本体の中）
+    let text = "package P { rep r language \"x\" /* a */ part def B;\n part def A { rep language \"y\" /* b */\n part c; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (p, a) = (entry(&r, "P"), entry(&r, "A"));
+    assert_eq!(entry(&r, "B").pe, Some(p.idx));
+    assert_eq!(entry(&r, "c").pe, Some(a.idx));
+    assert!(r.errors.is_empty());
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
+    // Arrange（AssertConstraintUsage・RequirementConstraintMember、8.2.2.20〜21）
+    let text = "part def A { assert not constraint d { x < 0 } assume constraint { y < 1 } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let via: Vec<(&str, &str)> = entry(&r, "A")
+        .exprs
+        .iter()
+        .map(|x| (x.text.as_str(), x.via.as_str()))
+        .collect();
+    assert_eq!(via, [("x < 0", "assert"), ("y < 1", "assume")]);
+    assert!(r.errors.is_empty());
+}
+
+#[test]
+fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
+    // Arrange（同値分割：まだ扱えない定義・使用・メタデータ・列挙の使用・variant）
+    for text in [
+        "package P { case def CS { part x; } }",
+        "package P { allocation def AD { part x; } }",
+        "package P { viewpoint vp { part x; } }",
+        "package P { rendering def R { part x; } }",
+        "package P { flow def F { part x; } }",
+        "package P { metadata M about A { part x; } }",
+        "package P { part def H { enum e : E { part x; } } }",
+        "package P { part def H { variant part v : V { part x; } } }",
+    ] {
+        // Act
+        let r = run(text);
+        // Assert
+        assert!(r.entries.iter().all(|e| e.name != "x"), "{text}");
+        assert_eq!(r.unsupported.len(), 1, "{text}");
+        assert!(r.blocks.is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn body_of_a_supported_anonymous_block_is_still_read() {
+    // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
+    let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let kws: Vec<&str> = r.blocks.iter().map(|b| b.kw.as_str()).collect();
+    assert_eq!(kws, ["objective", "@Phase"]);
+    assert_eq!(r.rels.len(), 1);
+    assert!(entry(&r, "V").meta.is_some());
+}
+
+#[test]
+fn qualified_type_keeps_its_path() {
+    // Arrange（QualifiedName、8.2.2.1〜2：引用名の段も外して残す）
+    let text = "part def H { part a : Q::'A b'; part c : C; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (a, c) = (entry(&r, "a"), entry(&r, "c"));
+    assert_eq!((a.ty.as_str(), a.ty_path.as_str()), ("A b", "Q::A b"));
+    assert_eq!((c.ty.as_str(), c.ty_path.as_str()), ("C", "C"));
+}
+
+#[test]
+fn alias_is_recorded_with_its_owner_and_qualified_target() {
+    // Arrange（AliasMember、8.2.2.5）
+    let text = "package P { alias B for Q::A; alias <s> C for D; alias E; }";
+    // Act
+    let r = run(text);
+    // Assert（指す先の無い alias E は記録しない）
+    let p = entry(&r, "P").idx;
+    assert_eq!(
+        r.aliases,
+        vec![
+            Alias {
+                name: "B".to_owned(),
+                target: "Q::A".to_owned(),
+                pe: Some(p),
+            },
+            Alias {
+                name: "C".to_owned(),
+                target: "D".to_owned(),
+                pe: Some(p),
+            },
+        ]
+    );
+    assert!(r.unsupported.is_empty());
+}
