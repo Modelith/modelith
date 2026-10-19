@@ -41,7 +41,9 @@ mod tests;
 
 pub use check::{check, check_text};
 pub use load::{describe_manifest, load_plugin, load_plugin_files};
-pub use modelith_plugin_protocol::{Command, DiagnosticSeverity, Permission, Runtime};
+pub use modelith_plugin_protocol::{
+    Command, DiagnosticSeverity, Exporter, Importer, Permission, Runtime,
+};
 
 use regex_lite::Regex;
 use serde::Serialize;
@@ -133,6 +135,12 @@ pub struct ManifestInfo {
     /// 画面のメニューに出すコマンド（`contributes.commands`）。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<Command>,
+    /// 取り込み（`contributes.importers`）。「ファイル」メニューから、対応する拡張子のファイルを選んで使う。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub importers: Vec<Importer>,
+    /// 書き出し（`contributes.exporters`）。「ファイル」メニューから使う。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub exporters: Vec<Exporter>,
 }
 
 /// 読み込んだプラグイン 1 つ。

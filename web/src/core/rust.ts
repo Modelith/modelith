@@ -7,7 +7,7 @@ import { readLayout } from "./parser";
 import type {
   Block, Entry, Model, ModelEdge, ModelNode, ModelView, ParseResult, PhaseInfo, Port, Problem, Rel, Scope, Unsupported,
 } from "./types";
-import type { Command, ModelSnapshot, Permission, PluginMessage } from "../plugins/generated/protocol";
+import type { Command, Exporter, Importer, ModelSnapshot, Permission, PluginMessage } from "../plugins/generated/protocol";
 import initWasm, { analyze as analyzeJson, edit as editJson } from "./wasm/modelith_core.js";
 
 /**
@@ -358,6 +358,10 @@ export interface PluginInfo {
   main?: string;
   /** メニューに出すコマンド（無ければ省く）。 */
   commands?: Command[];
+  /** 取り込み（無ければ省く）。 */
+  importers?: Importer[];
+  /** 書き出し（無ければ省く）。 */
+  exporters?: Exporter[];
 }
 
 /** プラグインを読み込むときの問題 1 件。path はプロジェクトのフォルダからの相対パス、place は 1 始まりの行・列（無ければ null）。 */

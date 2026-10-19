@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 
 use super::super::load::{describe_serde_error, inside_plugin, rule_places};
 use super::super::{
-    Command, ManifestInfo, Permission, Place, ReadError, Runtime, describe_manifest, element_kinds,
-    load_plugin, load_plugin_files,
+    Command, Exporter, Importer, ManifestInfo, Permission, Place, ReadError, Runtime,
+    describe_manifest, element_kinds, load_plugin, load_plugin_files,
 };
 use super::{DIR, ID, load_files, load_yaml, manifest, one_rule};
 
@@ -733,6 +733,8 @@ fn load_plugin_files_reads_paths_relative_to_the_plugin_folder() {
             permissions: vec![],
             main: None,
             commands: vec![],
+            importers: vec![],
+            exporters: vec![],
         })
     );
 }
@@ -774,7 +776,7 @@ fn manifest_info_is_kept_even_when_the_plugin_cannot_be_used() {
 #[test]
 fn describe_manifest_returns_name_version_and_runtime() {
     // Arrange（TypeScript のプラグイン。追加の前に種類を示す）
-    let text = r#"{"id":"jp.ts","name":"図の書き出し","version":"1.2.0","apiVersion":"0","runtime":"browser","description":"説明","license":"MIT","main":"main.js","permissions":["model:read","network"],"contributes":{"commands":[{"id":"export","title":"書き出す"}]}}"#;
+    let text = r#"{"id":"jp.ts","name":"図の書き出し","version":"1.2.0","apiVersion":"0","runtime":"browser","description":"説明","license":"MIT","main":"main.js","permissions":["model:read","network"],"contributes":{"commands":[{"id":"export","title":"書き出す"}],"importers":[{"id":"reqif","label":"ReqIF","extensions":[".reqif"]}],"exporters":[{"id":"csv","label":"表（CSV）","extension":".csv"}]}}"#;
     // Act
     let info = describe_manifest("modelith-plugin.json", text);
     // Assert
@@ -791,6 +793,16 @@ fn describe_manifest_returns_name_version_and_runtime() {
             commands: vec![Command {
                 id: "export".to_owned(),
                 title: "書き出す".to_owned()
+            }],
+            importers: vec![Importer {
+                id: "reqif".to_owned(),
+                label: "ReqIF".to_owned(),
+                extensions: vec![".reqif".to_owned()],
+            }],
+            exporters: vec![Exporter {
+                id: "csv".to_owned(),
+                label: "表（CSV）".to_owned(),
+                extension: ".csv".to_owned(),
             }],
         })
     );
