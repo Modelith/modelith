@@ -1,11 +1,14 @@
-// v1 のプラグイン（TypeScript、ADR-0018 §3〜§5）。プロジェクトの .modelith/plugins/ に置いたプラグインを、
-// 許可を確かめてから、サンドボックス化した iframe の中の Worker で動かす（ローカルフォルダの代わりに OPFS を使う）。
+// v1 のプラグイン（TypeScript、ADR-0018 §3〜§5）。プロジェクトの .modelith/plugins/ に置いたプラグイン（ローカルフォルダの代わりに OPFS を使う）と、
+// このブラウザに追加したプラグインを、許可を確かめてから、サンドボックス化した iframe の中の Worker で動かす。
 // プラグインは e2e/script-plugin/main.js（1 つのファイルにまとめた従来型のスクリプト）。
 // 通信が届いたかは、テストが立てるサーバ（PROBE）が受けた要求で確かめる（ブラウザ側の結果だけに頼らない）。
+// 「隔離」のまとまりは、Chromium・Firefox・WebKit の 3 つで動かす（playwright.config.ts の projects）。
+// WebKit（Linux）には OPFS が無いので、このまとまりは、フォルダを開けないブラウザとして、このブラウザに追加したプラグインで確かめる。
 import { createServer, type Server } from "node:http";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { editorText, expect, openApp, pickDirNext, putFiles, readFile, test } from "./fixtures";
+import { editorText, expect, openApp, pickDirNext, putBrowserPlugin, putFiles, readFile, readPluginData, test } from "./fixtures";
 
 const ID = "jp.example.review";
 const DIR = `.modelith/plugins/${ID}`;
@@ -14,7 +17,12 @@ const NAME = "レビューの記録";
 /** 要求 R がレビューされていないモデル（R は 2 行目）。 */
 const MODEL = "package P {\n    requirement def R;\n}\n";
 const MARK = "// レビュー済み\n";
+/** 通信を受けるサーバのポートの始まり（並んで動くワーカーごとに 1 つずつずらす）。プラグインのコードにも書いてある。 */
 const PROBE_PORT = 4198;
+/** 取り込みの表示名。 */
+const IMPORTER = "要求の一覧（テキスト）";
+/** 書き出しの表示名。 */
+const EXPORTER = "テキストのまま";
 
 /** マニフェスト（権限とバージョンを変えられる）。 */
 const manifest = (permissions: string[], version = "1.0.0"): string =>
@@ -27,7 +35,11 @@ const manifest = (permissions: string[], version = "1.0.0"): string =>
           { id: "stale", title: "古い版に変更を提案する" },
           { id: "probe", title: "通信を試す" },
           { id: "loop", title: "止まらない処理" },
+          { id: "count", title: "回数を数える" },
+          { id: "big", title: "大きな値を保存する" },
         ],
+        importers: [{ id: "lines", label: IMPORTER, extensions: [".txt"] }],
+        exporters: [{ id: "text", label: EXPORTER, extension: ".txt" }],
       },
     },
     null,
@@ -79,15 +91,35 @@ async function openPluginList(page: Page): Promise<void> {
   await expect(page.locator("#plugins")).toBeVisible();
 }
 
-/** ファイルメニューの「プラグインのコマンド」から実行する。 */
-async function runCommand(page: Page, title: string): Promise<void> {
+/** ファイルメニューの「プラグインのコマンド」（kind が import・export なら「プラグインで読み込む」「プラグインで書き出す」）から実行する。 */
+async function runCommand(page: Page, title: string, kind = "command"): Promise<void> {
   await page.locator("#fileMenu summary").click();
-  await page.locator("#pluginCommands button", { hasText: title }).click();
+  await page.locator(`#pluginCommands button[data-kind="${kind}"]`, { hasText: title }).click();
 }
 
 /** プラグインが動き始める（コマンドがメニューに出る）まで待つ。 */
 async function waitRunning(page: Page): Promise<void> {
-  await expect(page.locator("#pluginCommands button")).toHaveCount(4);
+  await expect(page.locator('#pluginCommands [data-kind="command"]')).toHaveCount(6);
+}
+
+/** マニフェストから、このブラウザに追加したときに覚える情報（一覧に出すため）を作る。 */
+const infoOf = (manifestText: string): Record<string, unknown> => {
+  const m = JSON.parse(manifestText) as Record<string, unknown> & { contributes: Record<string, unknown> };
+  return { id: m["id"], name: m["name"], version: m["version"], runtime: m["runtime"], permissions: m["permissions"], main: m["main"], ...m.contributes };
+};
+
+/**
+ * このブラウザにプラグインを置いて開き直し、許可して、動き始めるまで待つ（フォルダは開かない）。
+ *
+ * @param code プラグインのプログラム（通信を受けるポートを書き換えたもの）
+ */
+async function startInBrowser(page: Page, permissions: string[], code = CODE): Promise<void> {
+  await openApp(page);
+  const m = manifest(permissions);
+  await putBrowserPlugin(page, { id: ID, enabled: true, info: infoOf(m), files: { "modelith-plugin.json": m, "main.js": code } });
+  await page.reload();
+  await allow(page);
+  await waitRunning(page);
 }
 
 /** フォルダの一覧を読み直す（プラグインも読み込み直す）。 */
@@ -143,11 +175,17 @@ test.describe("コマンドと変更", () => {
 });
 
 test.describe("隔離", () => {
-  // 通信を受けるサーバは 1 つのポートで立てるので、このまとまりのテストは同じワーカーで順に動かす
+  // 3 つのブラウザに共通の方法で確かめるため、このブラウザに追加したプラグインを、フォルダを開けないブラウザとして動かす
+  test.use({ fsAccess: false });
+  // 通信を受けるサーバは、ワーカーごとに 1 つのポートで立てるので、このまとまりのテストは同じワーカーで順に動かす
   test.describe.configure({ mode: "default" });
   let server: Server;
   let hits: string[] = [];
-  test.beforeAll(async () => {
+  /** このワーカーのサーバのポートに書き換えたプラグインのコード。 */
+  let code = CODE;
+  test.beforeAll(async ({}, workerInfo) => {
+    const port = PROBE_PORT + workerInfo.parallelIndex;
+    code = CODE.replace(`localhost:${PROBE_PORT}`, `localhost:${port}`);
     server = createServer((req, res) => {
       hits.push(`${req.method} ${req.url}`);
       res.writeHead(200, { "access-control-allow-origin": "*", "content-type": req.url?.includes("/es") ? "text/event-stream" : "text/plain" });
@@ -157,7 +195,7 @@ test.describe("隔離", () => {
       hits.push(`UPGRADE ${req.url}`);
       socket.destroy();
     });
-    await new Promise<void>((resolve) => server.listen(PROBE_PORT, resolve));
+    await new Promise<void>((resolve) => server.listen(port, resolve));
   });
   test.afterAll(async () => {
     await new Promise((resolve) => server.close(resolve));
@@ -170,7 +208,7 @@ test.describe("隔離", () => {
     // Arrange（アプリのオリジンに秘密を置く）
     await openApp(page);
     await page.evaluate(() => localStorage.setItem("modelith-secret", "app"));
-    await startWith(page, installed([]));
+    await startInBrowser(page, [], code);
     // Act
     await runCommand(page, "通信を試す");
     // Assert
@@ -181,7 +219,7 @@ test.describe("隔離", () => {
 
   test("F-PLUG-7: 外部との通信を宣言して許可されたプラグインだけが、通信できる", async ({ page }) => {
     // Arrange（確かめる仕組みが働いていること：同じサーバに届く）
-    await startWith(page, installed(["network"]));
+    await startInBrowser(page, ["network"], code);
     // Act
     await runCommand(page, "通信を試す");
     // Assert（スクリプトの読み込みと EventSource は、通信を宣言しても使えない）
@@ -193,7 +231,7 @@ test.describe("隔離", () => {
 
   test("F-PLUG-7: 止まらない処理をするプラグインがあっても、画面は動き、停止できる", async ({ page }) => {
     // Arrange
-    await startWith(page, installed([]));
+    await startInBrowser(page, [], code);
     await runCommand(page, "止まらない処理");
     // Act（プラグインが止まらない間も、テキストを編集できる）
     await page.locator("#ed").fill("package Q {\n    part def A;\n    part def B;\n}\n");
@@ -205,6 +243,108 @@ test.describe("隔離", () => {
     await expect(pluginRow(page).locator(".pst")).toHaveText("停止");
     await expect(page.locator("iframe.plugin-sandbox")).toHaveCount(0);
     await expect(page.locator("#pluginCommands button")).toHaveCount(0);
+  });
+});
+
+test.describe("保存場所", () => {
+  test("F-PLUG-7: storage を宣言したプラグインは、プラグイン用の保存場所に読み書きでき、開き直しても残る", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed(["storage"]));
+    await runCommand(page, "回数を数える");
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」：保存した回数：1`);
+    // Act
+    await page.reload();
+    await page.locator('[data-cmd="openFolder"]').click();
+    await waitRunning(page);
+    await runCommand(page, "回数を数える");
+    // Assert
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」：保存した回数：2`);
+    expect(await readPluginData(page, ID)).toBe('{"count":2}');
+  });
+
+  test("F-PLUG-7: プラグイン用の保存場所の上限（1 MB）を超える値は保存せず、知らせる", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed(["storage"]));
+    // Act
+    await runCommand(page, "大きな値を保存する");
+    // Assert
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」：大きな値：保存されていません`);
+    await openPluginList(page);
+    await expect(pluginRow(page).locator(".pp li")).toHaveText(["プラグイン用の保存場所の上限（1 MB）を超えるため、「big」を保存しませんでした"]);
+  });
+
+  test("F-PLUG-7: storage を宣言していないプラグインの保存場所の依頼は使わず、一覧で知らせる", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed([]));
+    // Act
+    await runCommand(page, "回数を数える");
+    // Assert
+    await openPluginList(page);
+    await expect(pluginRow(page).locator(".pp li")).toHaveText(["宣言していない権限（storage）が要るメッセージ（storageGet）のため、使いませんでした"]);
+  });
+});
+
+test.describe("読み込みと書き出し", () => {
+  test("F-PLUG-4: プラグインで読み込んだ結果を、新しいファイルとして開き、開いていたファイルは書き換えない", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed([]));
+    const chooser = page.waitForEvent("filechooser");
+    // Act
+    await runCommand(page, `${IMPORTER}…`, "import");
+    await (await chooser).setFiles({ name: "要求一覧.txt", mimeType: "text/plain", buffer: Buffer.from("給水\n排水\n") });
+    // Assert
+    const imported = "package 要求一覧 {\n    requirement def 給水;\n    requirement def 排水;\n}\n";
+    await expect.poll(() => editorText(page)).toBe(imported);
+    await expect(page.locator("#toast")).toHaveText(`「${IMPORTER}」で読み込んだ結果を、新しいファイル「要求一覧.sysml」として開きました（プラグイン「${NAME}」）。保存するまでファイルには書き込みません`);
+    await expect(page.locator("#explorer [data-doc]", { hasText: "要求一覧.sysml" })).toHaveCount(1);
+    expect(await readFile(page, "a.sysml")).toBe(MODEL);
+    expect(await readFile(page, "要求一覧.sysml")).toBeNull();
+  });
+
+  test("F-PLUG-4: 選んだファイルを読み込めなかったときは、プラグインの理由を示す", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed([]));
+    const chooser = page.waitForEvent("filechooser");
+    // Act
+    await runCommand(page, `${IMPORTER}…`, "import");
+    const files = await chooser;
+    await files.setFiles({ name: "メモ.txt", mimeType: "text/plain", buffer: Buffer.from("失敗\n") });
+    // Assert
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」の読み込み「${IMPORTER}」を実行できませんでした：要求の一覧ではありません`);
+    expect(await editorText(page)).toBe(MODEL);
+  });
+
+  test("F-PLUG-4: プラグインで書き出したファイルを、ダウンロードさせる", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed([]));
+    const download = page.waitForEvent("download");
+    // Act
+    await runCommand(page, EXPORTER, "export");
+    // Assert（ファイル名には拡張子を補う。プロジェクトのフォルダには書かない）
+    const file = await download;
+    expect(file.suggestedFilename()).toBe("モデル.txt");
+    const chunks: Buffer[] = [];
+    for await (const c of await file.createReadStream()) chunks.push(c as Buffer);
+    expect(Buffer.concat(chunks).toString("utf8")).toBe(`図：（なし）\n${MODEL}`);
+    await expect(page.locator("#toast")).toHaveText(`「${EXPORTER}」で書き出した「モデル.txt」をダウンロードしました（プラグイン「${NAME}」）`);
+    expect(await readFile(page, "モデル.txt")).toBeNull();
+  });
+
+  test("F-PLUG-4: 保存された図を表示しているときは、その図の名前を書き出しに渡す", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed([]));
+    const text = "package P {\n    requirement def R;\n    view reqs { expose P::R; }\n}\n";
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="reqs"]').click();
+    const download = page.waitForEvent("download");
+    // Act
+    await runCommand(page, EXPORTER, "export");
+    // Assert
+    const chunks: Buffer[] = [];
+    for await (const c of await (await download).createReadStream()) chunks.push(c as Buffer);
+    expect(Buffer.concat(chunks).toString("utf8")).toBe(`図：reqs\n${text}`);
   });
 });
 
@@ -305,4 +445,52 @@ test("F-PLUG-6: 画面に機能を追加するプラグインを、使う権限�
   await allow(page);
   await expect(pluginRow(page).locator(".pst")).toHaveText("実行中");
   await expect(pluginRow(page).locator(".pperm li")).toHaveText(["インターネットなど外部と通信する（network）"]);
+});
+
+test.describe("このブラウザ", () => {
+  test.use({ fsAccess: false });
+
+  test("F-PLUG-8: フォルダを開けないブラウザで、画面に機能を追加するプラグインをこのブラウザに追加し、許可して動かす", async ({ page }, testInfo) => {
+    // Arrange（プラグインのフォルダを、手元のディスクに用意する）
+    const dir = testInfo.outputPath("review-plugin");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "modelith-plugin.json"), manifest(["edits:propose"]));
+    writeFileSync(join(dir, "main.js"), CODE);
+    await openApp(page);
+    await openPluginList(page);
+    const chooser = page.waitForEvent("filechooser");
+    await page.locator("#pluginsAdd").click();
+    await (await chooser).setFiles(dir);
+    await expect(page.locator("#dialogPick input:checked")).toHaveValue("browser");
+    // Act
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    await allow(page);
+    // Assert
+    const row = page.locator(`#plugins .plug[data-plugin="${ID}"][data-place="browser"]`);
+    await expect(row.locator(".pst")).toHaveText("実行中");
+    await expect(row.locator(".ploc")).toHaveText("このブラウザ");
+    await page.locator("#pluginsClose").click();
+    await page.locator("#ed").fill(MODEL);
+    await expect(page.locator("#textInfo")).toHaveText("SysML v2 テキスト：要素 1、関係 0"); // 解析が済み、プラグインに今のテキストが届いてから
+    await runCommand(page, "レビュー済みの印を付ける");
+    await expect.poll(() => editorText(page)).toBe(MARK + MODEL);
+  });
+
+  test("F-PLUG-8: このブラウザから削除するときは、プラグインが保存したデータも削除するかを選べる", async ({ page }) => {
+    // Arrange
+    await startInBrowser(page, ["storage"]);
+    await runCommand(page, "回数を数える");
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」：保存した回数：1`);
+    await openPluginList(page);
+    // Act
+    await pluginRow(page).locator("[data-remove]").click();
+    await expect(page.locator("#dialogText")).toHaveText(`プラグイン「${NAME}」をこのブラウザから削除しますか？`);
+    await expect(page.locator('#dialogPick input[value="keep"]')).toBeChecked();
+    await page.locator('#dialogPick input[value="delete"]').check();
+    await page.locator('#dialogButtons [data-id="remove"]').click();
+    // Assert
+    await expect(pluginRow(page)).toHaveCount(0);
+    await expect.poll(() => readPluginData(page, ID)).toBeNull();
+    await expect(page.locator("iframe.plugin-sandbox")).toHaveCount(0);
+  });
 });

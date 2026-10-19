@@ -1,6 +1,6 @@
 // UI テスト（見た目の回帰）。画面を撮って基準画像（visual.spec.ts-snapshots/）と比べる。
 // 差があれば HTML レポートに「基準・今回・差分」の 3 枚が並ぶ。意図した変更なら基準を更新する（docs/development/testing.md）。
-import { editorText, expect, nodeKeys, openApp, pickDirNext, putFiles, test, typeAtEnd } from "./fixtures";
+import { editorText, expect, nodeKeys, openApp, pickDirNext, putBrowserPlugin, putFiles, test, typeAtEnd } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 
 // 画素はフォントや描画の設定で変わるので、基準のブラウザ（scripts/e2e.sh が Docker で起動する）でだけ比べる
@@ -349,7 +349,19 @@ const scenes: Scene[] = [
       await pickDirNext(page, "trace-rules");
       await openPluginList(page);
       await page.locator("#pluginsAdd").click();
-      await expect(page.locator("#dialogText")).toContainText("このプロジェクトに追加します");
+      await expect(page.locator("#dialogText")).toContainText("を追加します");
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-PLUG-8: フォルダを開いていないときに、画面に機能を追加するプラグインを追加する前の確認（このブラウザだけを選べる）",
+    shot: "plugin-add-browser",
+    act: async (page) => {
+      await putFiles(page, { "modelith-plugin.json": SCRIPT_MANIFEST, "main.js": SCRIPT_CODE }, "sync-plugin");
+      await pickDirNext(page, "sync-plugin");
+      await openPluginList(page);
+      await page.locator("#pluginsAdd").click();
+      await expect(page.locator('#dialogPick input[value="browser"]')).toBeChecked();
       return [page.locator("#dialog .box")];
     },
   },
@@ -369,6 +381,31 @@ const scenes: Scene[] = [
       await page.locator('#dialogButtons [data-id="allow"]').click();
       await openPluginList(page);
       await expect(page.locator(`#plugins .plug[data-plugin="${SCRIPT_ID}"] .pst`)).toHaveText("実行中");
+      return [page.locator("#plugins .box")];
+    },
+  },
+  {
+    title: "F-PLUG-8: このブラウザに追加したプラグイン（実行中と、プロジェクトのものを優先しているもの）の一覧",
+    shot: "plugin-list-browser",
+    act: async (page) => {
+      await putBrowserPlugin(page, {
+        id: SCRIPT_ID,
+        enabled: true,
+        info: { id: SCRIPT_ID, name: "要求の同期", version: "1.2.0", runtime: "browser", main: "main.js", permissions: ["model:read", "edits:propose", "network"] },
+        files: { "modelith-plugin.json": SCRIPT_MANIFEST, "main.js": SCRIPT_CODE },
+      });
+      await putBrowserPlugin(page, {
+        id: PLUGIN_ID,
+        enabled: true,
+        info: { id: PLUGIN_ID, name: "トレーサビリティのチェック", version: "0.0.9", runtime: "rules" },
+        files: { "modelith-plugin.json": PLUGIN_MANIFEST.replace('"0.1.0"', '"0.0.9"'), "rules.yaml": PLUGIN_RULES },
+      });
+      await page.reload();
+      await page.locator('#dialogButtons [data-id="allow"]').click();
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } }, installedPlugin());
+      await openPluginList(page);
+      await expect(page.locator(`#plugins .plug[data-plugin="${SCRIPT_ID}"] .pst`)).toHaveText("実行中");
+      await expect(page.locator("#plugins .plug")).toHaveCount(3);
       return [page.locator("#plugins .box")];
     },
   },

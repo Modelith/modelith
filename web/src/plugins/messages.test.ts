@@ -2,7 +2,8 @@
 // 形と権限と範囲はコア（Rust）が確かめる（crates/modelith-core/src/plugin_host）。ここでは、その結果をホストがどう扱うかを確かめる。
 import { describe, expect, it } from "vitest";
 import type { CheckedPluginMessage, Refused } from "../core";
-import { addNotice, decideMessage, flashRange, messageJson, STALE_PLUGIN_EDIT, type CheckResult } from "./messages";
+import { addNotice, decideMessage, failedNotice, flashRange, messageJson, STALE_PLUGIN_EDIT, type CheckResult, type PendingRequest } from "./messages";
+import { MAX_TRANSFER_BYTES } from "./transfer";
 
 const EDITS = [{ start: 0, end: 7, text: "library" }];
 const RANGE = { start: { line: 0, character: 0 }, end: { line: 0, character: 7 } };
@@ -53,29 +54,31 @@ describe("decideMessage（形と権限、F-PLUG-7）", () => {
     expect(got).toEqual({ kind: "drop", notice: "依頼していない結果（imported）が届いたため、使いませんでした" });
   });
 
-  it("保存場所の依頼には、値なしで答え、まだ使えないことを知らせる", () => {
+  it("保存場所の依頼（コアが storage の権限を確かめた後）は、ホストに任せる", () => {
     // Arrange・Act
-    const got = decideMessage(at({ message: { type: "storageGet", requestId: 7, key: "k" } }), new Map());
+    const get = decideMessage(at({ message: { type: "storageGet", requestId: 7, key: "k" } }), new Map());
+    const set = decideMessage(at({ message: { type: "storageSet", requestId: 8, key: "k", value: { n: 1 } } }), new Map());
     // Assert
-    expect(got).toEqual({ kind: "reply", message: { type: "storageResult", requestId: 7 }, notice: "このバージョンでは、プラグイン用の保存場所はまだ使えません（storage）" });
+    expect(get).toEqual({ kind: "storageGet", requestId: 7, key: "k" });
+    expect(set).toEqual({ kind: "storageSet", requestId: 8, key: "k", value: { n: 1 } });
   });
 });
 
 describe("decideMessage（コマンド・診断・知らせ）", () => {
   it("頼んだコマンドの完了と失敗を、表示名を添えて扱う", () => {
     // Arrange
-    const pending = new Map([[5, "要求に ID を付ける"]]);
+    const pending = new Map<number, PendingRequest>([[5, { kind: "command", title: "要求に ID を付ける" }]]);
     // Act
     const done = decideMessage(at({ message: { type: "commandDone", requestId: 5 } }), pending);
     const failed = decideMessage(at({ message: { type: "failed", requestId: 5, message: "要求がありません" } }), pending);
     // Assert
     expect(done).toEqual({ kind: "commandDone", requestId: 5 });
-    expect(failed).toEqual({ kind: "commandFailed", requestId: 5, title: "要求に ID を付ける", message: "要求がありません" });
+    expect(failed).toEqual({ kind: "requestFailed", requestId: 5, notice: "コマンド「要求に ID を付ける」を実行できませんでした：要求がありません" });
   });
 
   it("頼んでいない番号の完了は、捨てて知らせる（異常系）", () => {
     // Arrange・Act
-    const got = decideMessage(at({ message: { type: "commandDone", requestId: 6 } }), new Map([[5, "x"]]));
+    const got = decideMessage(at({ message: { type: "commandDone", requestId: 6 } }), new Map<number, PendingRequest>([[5, { kind: "command", title: "x" }]]));
     // Assert
     expect(got).toEqual({ kind: "drop", notice: "依頼していない結果（commandDone）が届いたため、使いませんでした" });
   });
@@ -99,6 +102,97 @@ describe("decideMessage（コマンド・診断・知らせ）", () => {
     // Assert（ready はテキストに関わらないので、テキストが変わっていても使う）
     expect(ready).toEqual({ kind: "ready" });
     expect(notify).toEqual({ kind: "notify", level: "warning", message: "m" });
+  });
+});
+
+describe("decideMessage（取り込みと書き出し、F-PLUG-4）", () => {
+  const importing = new Map<number, PendingRequest>([[2, { kind: "import", title: "ReqIF" }]]);
+  const exporting = new Map<number, PendingRequest>([[3, { kind: "export", title: "表（CSV）", extension: ".csv" }]]);
+  /** 書き出しの答え。 */
+  const exported = (base64: string, fileName = "要求一覧", mediaType = "text/csv"): CheckedPluginMessage => ({ message: { type: "exported", requestId: 3, fileName, mediaType, base64 } });
+
+  it("頼んだ取り込みの結果は、新しい文書として開く（正常系）", () => {
+    // Arrange・Act
+    const got = decideMessage(at({ message: { type: "imported", requestId: 2, fileName: "a.reqif", text: "package A;" } }), importing);
+    // Assert
+    expect(got).toEqual({ kind: "imported", requestId: 2, title: "ReqIF", fileName: "a.reqif", text: "package A;" });
+  });
+
+  it("書き出しの依頼の番号に届いた取り込みの結果は、捨てて知らせる（異常系: 種類の食い違い）", () => {
+    // Arrange・Act
+    const got = decideMessage(at({ message: { type: "imported", requestId: 3, fileName: "a.reqif", text: "" } }), exporting);
+    // Assert
+    expect(got).toEqual({ kind: "drop", notice: "依頼していない結果（imported）が届いたため、使いませんでした" });
+  });
+
+  it("上限より大きい取り込みの結果は、開かずに知らせる（境界値: 上限 + 1 バイト）", () => {
+    // Arrange・Act
+    const got = decideMessage(at({ message: { type: "imported", requestId: 2, fileName: "a.reqif", text: "a".repeat(MAX_TRANSFER_BYTES + 1) } }), importing);
+    // Assert
+    expect(got).toEqual({ kind: "requestFailed", requestId: 2, notice: "読み込み「ReqIF」を実行できませんでした：読み込んだテキストが大きすぎます（上限 20 MB）" });
+  });
+
+  it("頼んだ書き出しの結果は、ファイル名に拡張子を補ってダウンロードさせる（正常系）", () => {
+    // Arrange・Act
+    const got = decideMessage(at(exported("YWJj")), exporting);
+    // Assert
+    expect(got).toEqual({ kind: "exported", requestId: 3, title: "表（CSV）", fileName: "要求一覧.csv", mediaType: "text/csv", base64: "YWJj" });
+  });
+
+  it("形の正しくない種類（MIME タイプ）は、ただのバイト列として扱う", () => {
+    // Arrange・Act
+    const got = decideMessage(at(exported("YWJj", "a.csv", "text/html\n<script>")), exporting);
+    // Assert
+    expect(got).toMatchObject({ kind: "exported", mediaType: "application/octet-stream" });
+  });
+
+  it("base64 でない書き出しの結果は、書き出しができなかったと知らせる（異常系）", () => {
+    // Arrange・Act
+    const got = decideMessage(at(exported("YWJ")), exporting);
+    // Assert
+    expect(got).toEqual({ kind: "requestFailed", requestId: 3, notice: "書き出し「表（CSV）」を実行できませんでした：書き出されたファイルの中身が正しくありません（base64 ではありません）" });
+  });
+
+  it.each([
+    ["上限ちょうど", MAX_TRANSFER_BYTES, "exported"],
+    ["上限 + 3 バイト", MAX_TRANSFER_BYTES + 3, "requestFailed"],
+  ])("%s の書き出しの結果（境界値）", (_, bytes, kind) => {
+    // Arrange（3 バイトごとに 4 文字の base64。余りは = で詰める）
+    const base64 = "A".repeat(Math.floor(bytes / 3) * 4) + ["", "AA==", "AAA="][bytes % 3];
+    // Act
+    const got = decideMessage(at(exported(base64)), exporting);
+    // Assert
+    expect(got.kind).toBe(kind);
+  });
+
+  it("頼んでいない書き出しの結果は、捨てて知らせる（異常系）", () => {
+    // Arrange・Act
+    const got = decideMessage(at(exported("YWJj")), importing);
+    // Assert
+    expect(got).toEqual({ kind: "drop", notice: "依頼していない結果（exported）が届いたため、使いませんでした" });
+  });
+
+  it("取り込みの失敗は、何の失敗かを添えて知らせる", () => {
+    // Arrange・Act
+    const got = decideMessage(at({ message: { type: "failed", requestId: 2, message: "ReqIF の形式ではありません" } }), importing);
+    // Assert
+    expect(got).toEqual({ kind: "requestFailed", requestId: 2, notice: "読み込み「ReqIF」を実行できませんでした：ReqIF の形式ではありません" });
+  });
+
+  it("取り込みの依頼の番号に届いたコマンドの完了は、捨てて知らせる（異常系: 種類の食い違い）", () => {
+    // Arrange・Act
+    const got = decideMessage(at({ message: { type: "commandDone", requestId: 2 } }), importing);
+    // Assert
+    expect(got).toEqual({ kind: "drop", notice: "依頼していない結果（commandDone）が届いたため、使いませんでした" });
+  });
+});
+
+describe("failedNotice", () => {
+  it("書き出しの失敗の文", () => {
+    // Arrange・Act
+    const got = failedNotice({ kind: "export", title: "表（CSV）", extension: ".csv" }, "要素がありません");
+    // Assert
+    expect(got).toBe("書き出し「表（CSV）」を実行できませんでした：要素がありません");
   });
 });
 

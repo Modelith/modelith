@@ -283,6 +283,18 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .plug .pst.failed,.plug .pst.denied{color:var(--err)}
 .plug .pa .pbtns{display:flex;gap:6px}
 #dialog .row button{white-space:normal;text-align:left}
+#dialog .dpick fieldset{margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:6px}
+#dialog .dpick legend{padding:0;margin-bottom:4px;font-size:12px;font-weight:700;color:var(--ink2)}
+#dialog .dopt{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--rule);border-radius:6px;cursor:pointer;font-size:13px}
+#dialog .dopt:has(input:checked){border-color:var(--sel)}
+#dialog .dopt.off{cursor:default;opacity:.6}
+#dialog .dopt input{margin:3px 0 0;flex:none}
+#dialog .dopt span{display:flex;flex-direction:column;gap:2px;min-width:0}
+#dialog .dopt small{font-size:12px;color:var(--ink2);line-height:1.5;overflow-wrap:anywhere}
+.plug .ph{flex-wrap:wrap}
+.plug .pst,.plug .ploc{white-space:nowrap;flex:none}
+.plug .ploc{font-size:11px;color:var(--ink2);margin-left:auto}
+.plug .pst.shadowed{color:var(--ink2);border-style:dashed}
 
 /* 起動できなかったときの案内（main.ts） */
 #startupError{position:fixed;inset:0;margin:auto;width:min(420px,calc(100vw - 32px));height:fit-content;padding:20px 24px;

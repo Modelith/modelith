@@ -151,13 +151,13 @@ export function svgExport(): string {
 }
 
 /**
- * 文字列をファイルとしてダウンロードさせる（一時的な URL を作ってリンクを押し、すぐに URL を解放する）。
+ * 文字列やバイト列をファイルとしてダウンロードさせる（一時的な URL を作ってリンクを押し、すぐに URL を解放する）。
  *
  * @param filename 保存するファイル名（"model.svg" など）
- * @param data ファイルの中身
+ * @param data ファイルの中身（文字列は UTF-8 で書く。プラグインの書き出しはバイト列）
  * @param type MIME タイプ（"image/svg+xml" など）
  */
-export function download(filename: string, data: string, type: string): void {
+export function download(filename: string, data: string | Uint8Array<ArrayBuffer>, type: string): void {
   const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement("a");
   a.href = url;
