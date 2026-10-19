@@ -94,11 +94,11 @@ test.describe("テキストと図の同期", () => {
     // Arrange
     await openApp(page);
     // Act
-    await page.locator("#ed").fill("package P {\n    part def A;\n    case def C;\n}\n");
+    await page.locator("#ed").fill("package P {\n    part def A;\n    allocation def C;\n}\n");
     // Assert
     const info = page.locator("#problems button.unsupported");
     await expect(info).toContainText("3 行目");
-    await expect(info).toContainText("「case def C」は Modelith ではまだ扱えない");
+    await expect(info).toContainText("「allocation def C」は Modelith ではまだ扱えない");
     await expect(page.locator("#syncText")).toHaveText("同期済み");
   });
 

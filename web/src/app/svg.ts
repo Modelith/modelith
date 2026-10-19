@@ -337,6 +337,8 @@ const ICON_L: Record<string, string> = {
   requirement: "R", concern: "Cn", verification: "V", analysis: "An", part: "P", attribute: "At", port: "Po", item: "It", constraint: "Cs",
   state: "S", action: "Ac", occurrence: "Oc", interface: "If", enum: "E", calc: "Ca", connection: "Cx", "use case": "U",
   "perform action": "Ac", "exhibit state": "S", param: "·", message: "M", metadata: "Md",
+  case: "Ce", actor: "Ar", "include use case": "U", "event occurrence": "Oc", timeslice: "Oc", snapshot: "Oc",
+  viewpoint: "Vp", rendering: "Rd", variant: "Va", def: "#", usage: "#",
 };
 
 /**

@@ -10,6 +10,8 @@ mod types;
 
 pub use types::*;
 
+use std::collections::HashMap;
+
 use crate::syntax::{Parse, SyntaxKind, SyntaxKind::*, SyntaxNode, SyntaxToken};
 use text::*;
 
@@ -32,12 +34,14 @@ use text::*;
 /// ```text
 /// project("package P { part def A { part b : B; } }", …)
 ///   → entries: P・A・b（P.children = [A]、A.children = [b]、b.ty = "B"）
-/// project("package P { case def C; }\npart def Tail", …)
-///   → unsupported の head: ["case def C"]、Tail は entries に無い、errors は 1 件
+/// project("package P { allocation def C; }\npart def Tail", …)
+///   → unsupported の head: ["allocation def C"]、Tail は entries に無い、errors は 1 件
 /// ```
 pub fn project(source: &str, parse: &Parse) -> ParseResult {
     let mut c = Ctx::new(source, parse);
     c.members(&parse.syntax(), None, None);
+    c.apply_about_annotations();
+    c.resolve_extended_kinds();
     c.out.errors = parse
         .errors()
         .iter()
@@ -113,6 +117,9 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "use case def",
     "enum def",
     "view def",
+    "case def",
+    "viewpoint def",
+    "rendering def",
     "package",
     "perform action",
     "occurrence",
@@ -135,7 +142,49 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "subject",
     "stakeholder",
     "view",
+    "include use case",
+    "event occurrence",
+    "case",
+    "actor",
+    "enum",
+    "viewpoint",
+    "rendering",
 ];
+
+/// 利用者定義のキーワード（`#X def H;`・`#X h;`、8.2.2.27）で書いた宣言の、基の種類が決まらないときの種類。
+/// 定義は `"def"`、使用は `"usage"` にする（ツリーにだけ出す）。
+const EXTENDED_DEF_KIND: &str = "def";
+const EXTENDED_USAGE_KIND: &str = "usage";
+
+/// メタデータを付ける先（`@M { … }`・`metadata M about A { … }` の本体の `key = 値` を書き込む先）。
+#[derive(Clone, Copy)]
+enum MetaTarget {
+    /// 持ち主の宣言（`about` の無いメタデータ）。ファイルの直下なら None。
+    Owner(Option<usize>),
+    /// `about` の相手（`Ctx::annotations` の番号。相手は読み終えてから解決する）。
+    About(usize),
+}
+
+/// 本体を持つメタデータの使用（本体の無名ブロックに結び付ける）。
+#[derive(Clone)]
+struct MetaBlock {
+    /// メタデータの定義の名前（修飾名なら最後の名前）。
+    md: String,
+    target: MetaTarget,
+}
+
+/// `metadata M about A, B { … }`（相手は読み終えてから、書いた場所から解決する）。
+struct Annotation {
+    md: String,
+    /// 相手の参照（修飾名・特徴の連鎖）。
+    about: Vec<String>,
+    /// 文を書いた宣言の番号（名前を探し始める場所）。
+    pe: Option<usize>,
+    /// 文の位置（UTF-16 のオフセット。相手が見つからないときの問題の位置）。
+    pos: usize,
+    /// 本体の `key = 値`（書いた順）。
+    fields: Vec<(String, String)>,
+}
 
 /// 文の終わり。
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -151,6 +200,14 @@ struct Ctx {
     /// バイトの位置ごとの UTF-16 の位置。
     utf16: Vec<usize>,
     out: ParseResult,
+    /// 無名ブロックの番号 → そのブロックを本体にするメタデータの使用。
+    meta_blocks: HashMap<usize, MetaBlock>,
+    /// 直前に読んだメタデータの使用（本体のブロックを作るときに `meta_blocks` へ移す）。
+    open_meta: Option<MetaBlock>,
+    /// `about` の付いたメタデータの使用（書いた順）。
+    annotations: Vec<Annotation>,
+    /// 利用者定義のキーワードで書いた宣言の番号（基の種類を読み終えてから決める）。
+    extended: Vec<usize>,
 }
 
 impl Ctx {
@@ -199,6 +256,10 @@ impl Ctx {
             masked,
             utf16,
             out: ParseResult::default(),
+            meta_blocks: HashMap::new(),
+            open_meta: None,
+            annotations: Vec::new(),
+            extended: Vec::new(),
         }
     }
 
@@ -328,6 +389,7 @@ impl Ctx {
         } else {
             self.classify(n, owner, pe, &raw, hs, end_pos, term)
         };
+        let meta = self.open_meta.take();
         // まだ扱えない文の本体は読まない（中の宣言を、外側の宣言の中身と取り違えないように。F-EDIT-8）
         let is_unsupported = self.out.unsupported.len() > unsupported_before;
         if term != Term::Open || is_unsupported {
@@ -351,6 +413,9 @@ impl Ctx {
             }
             None => {
                 let b = self.out.blocks.len();
+                if let Some(mb) = meta {
+                    self.meta_blocks.insert(b, mb);
+                }
                 self.out.blocks.push(Block {
                     kw: first_word_space(&raw).to_owned(),
                     head: raw.clone(),
@@ -372,8 +437,9 @@ impl Ctx {
 
     /// 文を読み、宣言を作ったらその番号を返す。
     ///
-    /// メタデータの本体の `key = Value`、列挙値、関係、view の `expose`・`filter`・`render`、読み飛ばす文、
-    /// 宣言、パラメータ、式、まだ扱えない文の順に判定し、解析結果の該当する表に足す。
+    /// メタデータの本体の `key = 値`、メタデータの使用（`@M`・`metadata M about …`）、列挙値、関係、
+    /// view の `expose`・`filter`・`render`、別名、`import`、本体の無い名前付きの制約（`assert constraint c : CD`）、
+    /// 読み飛ばす文、宣言、パラメータ、式、まだ扱えない文の順に判定し、解析結果の該当する表に足す。
     ///
     /// # 引数
     ///
@@ -398,8 +464,8 @@ impl Ctx {
     /// classify(…, "in x : Real", …, Semi)  → Some(1)（kind "param"、dir "in"、ty "Real"）
     /// // "satisfy R by A;"
     /// classify(…, "satisfy R by A", …)     → None（rels に Satisfy { req: "R", by: "A" }）
-    /// // "case def C;"
-    /// classify(…, "case def C", …)         → None（unsupported に "case def C"）
+    /// // "allocation def C;"
+    /// classify(…, "allocation def C", …)   → None（unsupported に "allocation def C"）
     /// ```
     #[allow(clippy::too_many_arguments)]
     fn classify(
@@ -415,30 +481,23 @@ impl Ctx {
         let (mods, h) = strip_mods(raw);
         let (start, end) = (self.utf16(hs), self.utf16(end_pos));
 
-        // メタデータの本体（@Phase { stage = PhaseKind::X; }）
-        if let (Some(Scope::Block(b)), Some(pe)) = (owner, pe)
-            && self.out.blocks[b].kw.starts_with('@')
+        // メタデータの本体（@Phase { stage = PhaseKind::X; }・metadata M about A { k = 1 + 2; }）
+        if let Some(Scope::Block(b)) = owner
+            && let Some(mb) = self.meta_blocks.get(&b).cloned()
             && let Some((key, val)) = meta_assignment(h)
         {
-            let md = self.out.blocks[b].kw[1..].to_owned();
-            let at = self
-                .masked
-                .get(hs..)
-                .and_then(|s| s.find(val))
-                .map_or(hs, |i| hs + i);
-            let s = self.utf16(at);
-            let e = &mut self.out.entries[pe];
-            *e.meta
-                .get_or_insert_with(OrderedMap::default)
-                .entry(&md, OrderedMap::default)
-                .entry(key, String::new) = last_segment(val).to_owned();
-            if md == "Phase" {
-                e.phase_val = Some(Span {
-                    start: s,
-                    end: s + val.len(),
-                });
-                e.phase_block = Some(Scope::Block(b));
+            match mb.target {
+                MetaTarget::Owner(Some(pe)) => self.set_owner_meta(pe, b, &mb.md, key, val, hs),
+                MetaTarget::Owner(None) => {}
+                MetaTarget::About(a) => self.annotations[a]
+                    .fields
+                    .push((key.to_owned(), meta_value(val).to_owned())),
             }
+            return None;
+        }
+        // メタデータの使用（`@M`・`metadata M`、about 付きを含む。8.2.2.27）
+        if matches!(n.kind(), METADATA_USAGE | METADATA_KEYWORD_USAGE) {
+            self.metadata_usage(n, pe, start);
             return None;
         }
         // 列挙値
@@ -506,18 +565,53 @@ impl Ctx {
             }
             return None;
         }
+        if n.kind() == IMPORT {
+            if let Some(q) = child(n, QUALIFIED_NAME) {
+                self.out.imports.push(path_of(&q));
+            }
+            return None;
+        }
+        // 本体の無い `assert constraint c : CD;`・`require c : CD;` は、持ち主の式として残す（8.2.2.20〜21）
+        if matches!(
+            n.kind(),
+            ASSERT_CONSTRAINT_USAGE | REQUIREMENT_CONSTRAINT_USAGE
+        ) && term != Term::Open
+        {
+            if let Some(pe) = pe {
+                let text = constraint_reference_text(h);
+                if !text.is_empty() {
+                    self.out.entries[pe].exprs.push(Expr {
+                        text,
+                        via: first_word(h).to_owned(),
+                    });
+                }
+            }
+            return None;
+        }
         if is_skipped(h) {
             return None;
         }
-        if let Some(kind) = decl_kind(n, h) {
+        if let Some((kind, is_def)) = entry_kind(n, h, &mods, !prefix_meta.is_empty()) {
             let idx = self.out.entries.len();
-            let is_def = kind.ends_with(" def");
             let parts = decl_parts(n, is_def);
+            let name = if parts.name.is_empty()
+                && matches!(n.kind(), INCLUDE_USE_CASE_USAGE | OCCURRENCE_USAGE)
+            {
+                // `include U;`・`event e;` は、参照した特徴の名前を名前にする（OwnedReferenceSubsetting）
+                first_ref(n)
+                    .map(|r| last_segment(r.rsplit('.').next().unwrap_or(&r)).to_owned())
+                    .unwrap_or_default()
+            } else {
+                parts.name
+            };
+            if matches!(kind, EXTENDED_DEF_KIND | EXTENDED_USAGE_KIND) {
+                self.extended.push(idx);
+            }
             let mut e = Entry {
                 kind: kind.to_owned(),
                 is_def,
                 short: parts.short,
-                name: parts.name,
+                name,
                 conj: Some(parts.typed.as_ref().is_some_and(|t| t.conj)),
                 ty: parts
                     .typed
@@ -643,6 +737,168 @@ impl Ctx {
         self.out.entries.push(e);
         if let Some(pe) = pe {
             self.out.entries[pe].children.push(idx);
+        }
+    }
+
+    /// メタデータの使用（`@M`・`metadata M`・`metadata m : M about A, B`、8.2.2.27）を読む。
+    ///
+    /// `about` が無ければ持ち主の宣言 `pe` の `meta` に `M` を足し（本体が無くても足す）、あれば相手を読み終えてから
+    /// 解決するよう `annotations` に足す。どちらも、本体の `key = 値` を書き込む先を `open_meta` に置く。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：`METADATA_USAGE` か `METADATA_KEYWORD_USAGE` の節
+    /// - `pe`：文を含む、いちばん近い宣言の番号。無ければ `None`
+    /// - `pos`：文の始まり（UTF-16 のオフセット）
+    fn metadata_usage(&mut self, n: &SyntaxNode, pe: Option<usize>, pos: usize) {
+        let mut md = None;
+        let mut about = Vec::new();
+        let mut after_about = false;
+        for e in n.children_with_tokens() {
+            match e {
+                rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "about" => {
+                    after_about = true;
+                }
+                rowan::NodeOrToken::Node(c) if after_about => {
+                    if matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) {
+                        about.push(compact(&c));
+                    }
+                }
+                rowan::NodeOrToken::Node(c) if md.is_none() => match c.kind() {
+                    FEATURE_TYPING => md = type_of(&c).map(|t| t.name),
+                    QUALIFIED_NAME => md = Some(last_segment(&path_of(&c)).to_owned()),
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        let Some(md) = md.filter(|m| !m.is_empty()) else {
+            return;
+        };
+        let target = if about.is_empty() {
+            if let Some(pe) = pe {
+                self.out.entries[pe]
+                    .meta
+                    .get_or_insert_with(OrderedMap::default)
+                    .entry(&md, OrderedMap::default);
+            }
+            MetaTarget::Owner(pe)
+        } else {
+            self.annotations.push(Annotation {
+                md: md.clone(),
+                about,
+                pe,
+                pos,
+                fields: Vec::new(),
+            });
+            MetaTarget::About(self.annotations.len() - 1)
+        };
+        self.open_meta = Some(MetaBlock { md, target });
+    }
+
+    /// 持ち主の宣言のメタデータに `key = 値` を書き込む。メタデータが `Phase` なら、値の位置と本体のブロックも記録する
+    /// （フェーズの書き換えに使う）。
+    ///
+    /// # 引数
+    ///
+    /// - `pe`：書き込む宣言の番号
+    /// - `b`：メタデータの本体の無名ブロックの番号
+    /// - `md`：メタデータの定義の名前
+    /// - `key`・`val`：本体の文の名前と値の式（`meta_assignment` の結果）
+    /// - `hs`：本体の文の始まり（バイトオフセット。値の位置を探し始める所）
+    fn set_owner_meta(&mut self, pe: usize, b: usize, md: &str, key: &str, val: &str, hs: usize) {
+        let at = self
+            .masked
+            .get(hs..)
+            .and_then(|s| s.find(val))
+            .map_or(hs, |i| hs + i);
+        let s = self.utf16(at);
+        let e = &mut self.out.entries[pe];
+        *e.meta
+            .get_or_insert_with(OrderedMap::default)
+            .entry(md, OrderedMap::default)
+            .entry(key, String::new) = meta_value(val).to_owned();
+        if md == "Phase" {
+            e.phase_val = Some(Span {
+                start: s,
+                end: s + val.len(),
+            });
+            e.phase_block = Some(Scope::Block(b));
+        }
+    }
+
+    /// `metadata M about A, B { … }` の相手を、文を書いた場所から解決し（`model` の名前の解決、修飾名と別名を含む）、
+    /// 見つかった宣言の `meta` に `M` と本体の `key = 値` を書き込む。見つからない相手は `missing_about` に足す。
+    ///
+    /// 要素自身に同じメタデータの同じ名前の値があれば、それを優先する（書き換えない）。
+    /// フェーズの値の位置（`phase_val`）は記録しない（複数の相手で共有する文を、1 つの要素のフェーズの変更で書き換えないため）。
+    fn apply_about_annotations(&mut self) {
+        if self.annotations.is_empty() {
+            return;
+        }
+        let refs: Vec<(String, Option<usize>)> = self
+            .annotations
+            .iter()
+            .flat_map(|a| a.about.iter().map(|r| (r.clone(), a.pe)))
+            .collect();
+        let mut found = crate::model::resolve_refs(&self.out, &refs).into_iter();
+        for a in std::mem::take(&mut self.annotations) {
+            for r in &a.about {
+                let Some(i) = found.next().flatten() else {
+                    self.out.missing_about.push(MissingRef {
+                        pos: a.pos,
+                        name: r.clone(),
+                    });
+                    continue;
+                };
+                let meta = self.out.entries[i]
+                    .meta
+                    .get_or_insert_with(OrderedMap::default)
+                    .entry(&a.md, OrderedMap::default);
+                for (k, v) in &a.fields {
+                    // 要素自身に書いた値（`@M { k = … }`）を優先する
+                    meta.entry(k, || v.clone());
+                }
+            }
+        }
+    }
+
+    /// 利用者定義のキーワードで書いた宣言（`#X def H;`・`#X h;`）の種類を、メタデータの定義 `X` の基の型
+    /// （`:>> baseType = … meta SysML::PartUsage;`、SemanticMetadata、8.2.2.27）から決める。
+    /// 決まらなければ `"def"`・`"usage"` のままにする。
+    fn resolve_extended_kinds(&mut self) {
+        if self.extended.is_empty() {
+            return;
+        }
+        let mut refs = Vec::new();
+        for &i in &self.extended {
+            let e = &self.out.entries[i];
+            for (md, _) in e.meta.iter().flat_map(|m| m.0.iter()) {
+                refs.push((i, md.clone(), e.pe));
+            }
+        }
+        let query: Vec<(String, Option<usize>)> =
+            refs.iter().map(|(_, md, pe)| (md.clone(), *pe)).collect();
+        let found = crate::model::resolve_refs(&self.out, &query);
+        for ((i, _, _), d) in refs.into_iter().zip(found) {
+            let Some(d) = d.filter(|&d| self.out.entries[d].kind == "metadata def") else {
+                continue;
+            };
+            if !matches!(
+                self.out.entries[i].kind.as_str(),
+                EXTENDED_DEF_KIND | EXTENDED_USAGE_KIND
+            ) {
+                continue;
+            }
+            let is_def = self.out.entries[i].is_def;
+            if let Some(kind) = self.out.entries[d]
+                .exprs
+                .iter()
+                .find_map(|x| base_metaclass(&x.text))
+                .and_then(|m| base_kind(m, is_def))
+            {
+                self.out.entries[i].kind = kind.to_owned();
+            }
         }
     }
 
@@ -836,6 +1092,157 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
             _ => false,
         })
     })
+}
+
+/// 文が宣言になるときの種類（暫定コアの種類名）と、定義か。
+///
+/// `decl_kind` で決まる種類に加え、alpha.7 で読むようにした形を見分ける。
+/// `timeslice`・`snapshot` の修飾だけの使用（PortionUsage）はその語を、`#X def H`（ExtendedDefinition）は `"def"`、
+/// 種類のキーワードの無い `#X h`（ExtendedUsage）は `"usage"`、`variant a`（VariantReference）は `"variant"`、
+/// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"` にする。
+///
+/// # 引数
+///
+/// - `n`：文の節
+/// - `h`：文の頭（修飾・前置メタデータ・`then`・`return` を外したもの）
+/// - `mods`：外した修飾（空白区切り）
+/// - `has_prefix_meta`：前置メタデータ（`#X`）が付いているか
+///
+/// # 戻り値
+///
+/// `(種類, 定義か)`。宣言にならない文なら `None`。
+///
+/// # 例
+///
+/// ```text
+/// entry_kind("part def A;", "part def A", "", false)        → Some(("part def", true))
+/// entry_kind("timeslice t;", "t", "timeslice", false)       → Some(("timeslice", false))
+/// entry_kind("timeslice part p;", "part p", "timeslice", …) → Some(("part", false))
+/// entry_kind("#X def H;", "def H", "", true)                → Some(("def", true))
+/// entry_kind("#X h : T;", "h : T", "", true)                → Some(("usage", false))
+/// entry_kind("in #X x : T;", "x : T", "in", true)           → None   // パラメータとして読む
+/// entry_kind("a = 1;", "a = 1", "", false)                  → None
+/// ```
+fn entry_kind(
+    n: &SyntaxNode,
+    h: &str,
+    mods: &str,
+    has_prefix_meta: bool,
+) -> Option<(&'static str, bool)> {
+    if n.kind() == EXTENDED_DEFINITION {
+        return Some((EXTENDED_DEF_KIND, true));
+    }
+    let kind = decl_kind(n, h);
+    let portion = mods
+        .split(' ')
+        .rev()
+        .find_map(|m| ["timeslice", "snapshot"].into_iter().find(|p| *p == m));
+    if let Some(p) = portion
+        && matches!(kind, None | Some("occurrence"))
+    {
+        return Some((p, false));
+    }
+    if let Some(k) = kind {
+        return Some((k, k.ends_with(" def")));
+    }
+    let is_mod = |w: &str| mods.split(' ').any(|m| m == w);
+    match n.kind() {
+        INCLUDE_USE_CASE_USAGE => Some(("include use case", false)),
+        OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
+        REFERENCE_USAGE if is_mod("variant") => Some(("variant", false)),
+        REFERENCE_USAGE
+            if has_prefix_meta
+                && child(n, NAME).is_some()
+                && (mods.is_empty() || param(n).is_none()) =>
+        {
+            Some((EXTENDED_USAGE_KIND, false))
+        }
+        _ => None,
+    }
+}
+
+/// メタデータの定義の本体の式 `:>> baseType = … meta SysML::PartUsage` から、基のメタクラスの名前を取り出す
+/// （SemanticMetadata の baseType、8.2.2.27）。
+///
+/// # 引数
+///
+/// - `text`：メタデータの定義の式（空白をまとめたもの）
+///
+/// # 戻り値
+///
+/// `meta` の後ろの修飾名の最後の名前。`baseType` と `meta` が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// base_metaclass(":>> baseType = parts meta SysML::PartUsage") → Some("PartUsage")
+/// base_metaclass("baseType = commands meta Usage")             → Some("Usage")
+/// base_metaclass(":>> annotatedElement = x")                   → None
+/// ```
+fn base_metaclass(text: &str) -> Option<&str> {
+    let (_, rest) = text.split_once("baseType")?;
+    let (_, after) = rest.split_once(" meta ")?;
+    let qn = after.split([' ', ';']).next()?;
+    let name = last_segment(qn);
+    is_basic_name(name).then_some(name)
+}
+
+/// 基のメタクラス（`PartUsage`・`ActionDefinition` など）から、利用者定義のキーワードで書いた宣言の種類を決める。
+///
+/// # 引数
+///
+/// - `metaclass`：メタクラスの名前（修飾の無い名前）
+/// - `is_def`：定義（`#X def H`）か
+///
+/// # 戻り値
+///
+/// 宣言の種類（`DECL_KINDS` にあるもの）。定義なら `"part def"` のように ` def` を付ける。
+/// メタクラスを種類にできないか、その種類の宣言を読まないなら `None`。
+///
+/// # 例
+///
+/// ```text
+/// base_kind("PartUsage", true)       → Some("part def")
+/// base_kind("ActionUsage", false)    → Some("action")
+/// base_kind("Usage", false)          → None   // 種類が決まらない
+/// base_kind("MetadataUsage", false)  → None   // メタデータの使用は宣言として読まない
+/// ```
+fn base_kind(metaclass: &str, is_def: bool) -> Option<&'static str> {
+    let kind = crate::model::metaclass_kind(metaclass)?;
+    let head = kind.strip_suffix(" def").unwrap_or(&kind);
+    let want = if is_def {
+        format!("{head} def")
+    } else {
+        head.to_owned()
+    };
+    DECL_KINDS.iter().copied().find(|k| *k == want)
+}
+
+/// 本体の無い `assert constraint c : CD`・`require c : CD` などを、持ち主の式の文字列にする。
+/// 頭の `assert`・`require`・`assume`・`constraint` を外し、`not` は残す。
+///
+/// # 引数
+///
+/// - `h`：文の頭（空白をまとめたもの）
+///
+/// # 戻り値
+///
+/// 外した後の文字列。何も残らなければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// constraint_reference_text("assert constraint c : CD")      → "c : CD"
+/// constraint_reference_text("assert not constraint c : CD")  → "not c : CD"
+/// constraint_reference_text("require c : CD")                → "c : CD"
+/// constraint_reference_text("require constraint")            → ""
+/// ```
+fn constraint_reference_text(h: &str) -> String {
+    h.split(' ')
+        .skip_while(|w| matches!(*w, "assert" | "require" | "assume"))
+        .filter(|w| *w != "constraint")
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// 宣言の名前・短い名前・型（型付け、または定義の特殊化）。
@@ -1110,7 +1517,9 @@ fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
 /// # 例
 ///
 /// ```text
-/// relation("satisfy R by A;", "satisfy R by A")  → Some(Satisfy { req: "R", by: "A" })
+/// relation("satisfy R by A;", "satisfy R by A")  → Some(Satisfy { req: "R", by: "A", negated: false })
+/// relation("satisfy R;", "satisfy R")            → Some(Satisfy { req: "R", by: "", negated: false })
+/// relation("not satisfy R by A;", …)             → Some(Satisfy { req: "R", by: "A", negated: true })
 /// relation("verify R;", "verify R")              → Some(Verify { req: "R" })
 /// relation("transition t first idle accept Go then idle;", …)
 ///   → Some(Transition { from: "idle", ev: "Go", to: "idle" })
@@ -1140,15 +1549,24 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
             a: ref_after(n, "from")?,
             b: ref_after(n, "to")?,
         }),
-        SATISFY_REQUIREMENT_USAGE if starts_with_word(h, "satisfy") => {
+        // `satisfy R by X`・`satisfy R;`（持ち主が満たす）・`assert satisfy`・`not satisfy`（8.2.2.21）
+        SATISFY_REQUIREMENT_USAGE
+            if ["satisfy", "assert", "not"]
+                .iter()
+                .any(|w| starts_with_word(h, w)) =>
+        {
             let req = name().or_else(|| {
                 n.children()
                     .find(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
                     .map(|c| compact(&c))
             })?;
+            let negated = n
+                .children_with_tokens()
+                .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == "not"));
             Some(RelKind::Satisfy {
                 req,
-                by: ref_after(n, "by")?,
+                by: ref_after(n, "by").unwrap_or_default(),
+                negated,
             })
         }
         REQUIREMENT_VERIFICATION_USAGE => Some(RelKind::Verify { req: first_ref(n)? }),

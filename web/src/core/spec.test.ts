@@ -136,17 +136,17 @@ for (const [impl, parse, build] of PARSERS) {
     describe("まだ扱えない文（F-EDIT-5・C-6 の趣旨：黙って捨てない）", () => {
       it("知らない文は捨てずに「まだ扱えない」と知らせる", () => {
         // Arrange
-        const text = "package P { case def C; part def A; }";
+        const text = "package P { allocation def C; part def A; }";
         // Act
         const M = build(parse(text));
         // Assert
         const info = M.problems.filter((p) => p.kind === "unsupported");
-        expect(info.map((p) => p.msg)).toEqual(["「case def C」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
+        expect(info.map((p) => p.msg)).toEqual(["「allocation def C」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
       });
 
       it("まだ扱えない文は、エラーとして数えない", () => {
         // Arrange
-        const text = "package P { case def C; }";
+        const text = "package P { allocation def C; }";
         // Act
         const errors = build(parse(text)).problems.filter((p) => !p.kind);
         // Assert
@@ -370,23 +370,24 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
     });
 
     describe("viewpoint の frame（ViewpointDefinition・FramedConcernMember、8.2.2.26）", () => {
-      it("viewpoint はまだ扱えないと知らせるが、中の frame を「見つからない」とは言わない", () => {
+      it("viewpoint はツリーにだけ出し、中の frame は記録するが線にも「見つからない」にもしない", () => {
         // Arrange
         const text = "package P { concern def C; viewpoint def VP { frame concern c : C; } viewpoint vp { frame concern c : C; } }";
         // Act
-        const ps = build(parse(text)).problems;
+        const P = parse(text);
+        const M = build(P);
         // Assert
-        expect(ps.filter((p) => !p.kind)).toEqual([]);
-        expect(ps.map((p) => p.kind)).toEqual(["unsupported", "unsupported"]);
+        expect(P.entries.map((e) => e.kind)).toEqual(["package", "concern def", "viewpoint def", "viewpoint"]);
+        expect(P.rels.map((r) => r.rel)).toEqual(["frame", "frame"]);
+        expect(M.problems).toEqual([]);
+        expect(M.edges).toEqual([]);
       });
     });
 
     describe("まだ扱えない文の本体（F-EDIT-8）", () => {
       it.each([
-        ["case def CS { part x; }"],
         ["allocation def AD { part x; }"],
-        ["rendering def R { part x; }"],
-        ["metadata M about A { part x; }"],
+        ["flow def F { part x; }"],
       ])("%s の中の宣言を、外側の package の中身として読まない", (stmt) => {
         // Arrange
         const text = `package P { ${stmt} }`;
@@ -427,6 +428,234 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         const ps = problems(text);
         // Assert
         expect(ps).toEqual([]);
+      });
+    });
+
+    describe("ケース（CaseDefinition・CaseUsage、8.2.2.22）", () => {
+      it("case def と case は要素になり、本体（subject・actor・objective）も読む", () => {
+        // Arrange
+        const text = "package P { part def V; case def CS { subject v : V; actor a : V; objective { require constraint { t < 1 } } } case c : CS; }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.entries.map((e) => [e.kind, e.name])).toEqual([
+          ["package", "P"], ["part def", "V"], ["case def", "CS"], ["subject", "v"], ["actor", "a"], ["case", "c"],
+        ]);
+        expect(entry(text, "CS")?.exprs.map((x) => x.text)).toEqual(["t < 1"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("case def は図の要素にしない（ツリーにだけ出す）", () => {
+        // Arrange
+        const text = "package P { case def CS; part def A; }";
+        // Act
+        const keys = build(parse(text)).nodes.map((n) => n.key);
+        // Assert
+        expect(keys).toEqual(["A"]);
+      });
+    });
+
+    describe("アクターと include（ActorUsage・IncludeUseCaseUsage、8.2.2.24〜25）", () => {
+      it("actor は型付きの要素、include use case は含めるユースケースを型にした要素になる", () => {
+        // Arrange
+        const text = "package P { part def User; use case def Boil; use case def Make { actor u : User; include use case b : Boil; include other; } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.entries.slice(4).map((e) => [e.kind, e.name, e.type])).toEqual([
+          ["actor", "u", "User"], ["include use case", "b", "Boil"], ["include use case", "other", ""],
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("列挙の使用・出来事（EnumerationUsage 8.2.2.7、EventOccurrenceUsage・PortionUsage 8.2.2.9）", () => {
+      it("enum e : E は要素になり、enum def の中の enum は列挙値のまま", () => {
+        // Arrange
+        const text = "package P { enum def E { enum a; } part def H { enum e : E; } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(entry(text, "E")?.enumValues).toEqual(["a"]);
+        expect(entry(text, "e")?.kind).toBe("enum");
+        expect(P.unsupported).toEqual([]);
+      });
+
+      it("event occurrence・timeslice・snapshot は、書いた語を種類にした使用になる", () => {
+        // Arrange
+        const text = "package P { occurrence def O { event occurrence e; timeslice t; snapshot occurrence s; timeslice part p; } }";
+        // Act
+        const kinds = parse(text).entries.slice(2).map((e) => [e.kind, e.name, e.mods]);
+        // Assert
+        expect(kinds).toEqual([
+          ["event occurrence", "e", ""], ["timeslice", "t", "timeslice"], ["snapshot", "s", "snapshot"], ["part", "p", "timeslice"],
+        ]);
+      });
+    });
+
+    describe("typed by・constant・variant（TypedBy・UsagePrefix・VariantUsageMember、8.2.2.6）", () => {
+      it("typed by A は : A と同じく型になる", () => {
+        // Arrange
+        const text = "package P { part def A; part p typed by A; }";
+        // Act
+        const p = entry(text, "p");
+        // Assert
+        expect(p?.type).toBe("A");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("constant・variant は修飾として記録し、宣言はそのまま読む", () => {
+        // Arrange
+        const text = "package P { part def H { constant attribute k : Real = 1; } variation part def V { variant part a; } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect([entry(text, "k")?.kind, entry(text, "k")?.mods, entry(text, "k")?.value]).toEqual(["attribute", "constant", "1"]);
+        expect([entry(text, "V")?.mods, entry(text, "a")?.mods]).toEqual(["variation", "variant"]);
+        expect(entry(text, "H")?.exprs).toEqual([]);
+        expect(P.unsupported).toEqual([]);
+      });
+    });
+
+    describe("rendering（RenderingDefinition・RenderingUsage、8.2.2.26）", () => {
+      it("rendering def と rendering はツリーにだけ出す要素になる", () => {
+        // Arrange
+        const text = "package P { rendering def RD; rendering r : RD; }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(parse(text).entries.map((e) => e.kind)).toEqual(["package", "rendering def", "rendering"]);
+        expect(M.nodes).toEqual([]);
+        expect(M.problems).toEqual([]);
+      });
+    });
+
+    describe("メタデータ（MetadataUsage・MetadataBody、8.2.2.27）", () => {
+      it("metadata M about A, B { … } は、A と B のそれぞれにメタデータと値を付ける", () => {
+        // Arrange
+        const text = "package P { metadata def Safety; part def A; part def B; metadata Safety about A, B { level = 2; } }";
+        // Act
+        const [a, b] = [entry(text, "A"), entry(text, "B")];
+        // Assert
+        expect(a?.meta).toEqual({ Safety: { level: "2" } });
+        expect(b?.meta).toEqual({ Safety: { level: "2" } });
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("about の相手が無ければ問題にする（異常系）", () => {
+        // Arrange
+        const text = "package P { metadata def Safety; metadata Safety about Nope; }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["メタデータを付ける相手「Nope」が見つかりません（metadata about）"]);
+      });
+
+      it("about の無い metadata M; は、@M; と同じく持ち主に付ける", () => {
+        // Arrange
+        const text = "package P { metadata def M; metadata def N; part def A { metadata M; @N; } }";
+        // Act
+        const a = entry(text, "A");
+        // Assert
+        expect(a?.meta).toEqual({ M: {}, N: {} });
+      });
+
+      it("本体の値は式全体を残し、列挙値の修飾名だけは最後の名前にする", () => {
+        // Arrange
+        const text = "package P { part def A { @M { k = 1 + 2; e = K::High; } } }";
+        // Act
+        const a = entry(text, "A");
+        // Assert
+        expect(a?.meta).toEqual({ M: { k: "1 + 2", e: "High" } });
+      });
+
+      it("利用者定義のキーワード #X def H・#X h は捨てずに読み、メタデータ X を付ける", () => {
+        // Arrange
+        const text = "package P { metadata def X; #X def H; part def A { #X h : H; } }";
+        // Act
+        const [h, u] = [entry(text, "H"), entry(text, "h")];
+        // Assert
+        expect([h?.kind, h?.isDef, h?.meta]).toEqual(["def", true, { X: {} }]);
+        expect([u?.kind, u?.type, u?.meta]).toEqual(["usage", "H", { X: {} }]);
+        expect(build(parse(text)).problems).toEqual([]);
+      });
+
+      it("メタデータの定義が baseType で基の型を決めていれば、その種類の宣言として読む", () => {
+        // Arrange
+        const text = "package P { metadata def Cmd :> SemanticMetadata { :>> baseType = commands meta SysML::PartUsage; } #Cmd def Pump; }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(entry(text, "Pump")?.kind).toBe("part def");
+        expect(M.nodes.map((n) => n.key)).toEqual(["Pump"]);
+      });
+    });
+
+    describe("満たす関係の書き方（SatisfyRequirementUsage、8.2.2.21）", () => {
+      const MODEL = "package P { enum def K { enum a; enum b; } metadata def Phase { attribute stage : K; } requirement def R { @Phase { stage = K::b; } } ";
+
+      it("by の無い satisfy R; は、持ち主が R を満たす線になる", () => {
+        // Arrange
+        const text = "package P { requirement def R; part def H { satisfy R; } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["satisfy|H|R"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("assert satisfy R by X は satisfy R by X と同じ", () => {
+        // Arrange
+        const text = "package P { requirement def R; part def X; assert satisfy R by X; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["satisfy|X|R"]);
+      });
+
+      it("not satisfy R by X は線にせず、満たす要素として数えない（トレースの抜けが残る）", () => {
+        // Arrange
+        const text = `${MODEL}part def X; not satisfy R by X; }`;
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.edges.filter((e) => e.kind === "satisfy")).toEqual([]);
+        expect(M.problems.filter((p) => p.kind === "gap").map((p) => p.msg)).toContain("R R：この要求を満たす要素がありません（satisfy）");
+        expect(M.problems.filter((p) => p.kind === "unsupported")).toEqual([]);
+      });
+    });
+
+    describe("名前付きの制約の参照（AssertConstraintUsage・RequirementConstraintMember、8.2.2.20〜21）", () => {
+      it("本体の無い assert constraint c : CD; と require c : CD; は、持ち主の式として残す", () => {
+        // Arrange
+        const text = "package P { constraint def CD; requirement def R { require c : CD; } part def H { assert constraint d : CD; } }";
+        // Act
+        const [r, h] = [entry(text, "R"), entry(text, "H")];
+        // Assert
+        expect(r?.exprs.map((x) => [x.text, x.via])).toEqual([["c : CD", "require"]]);
+        expect(h?.exprs.map((x) => [x.text, x.via])).toEqual([["d : CD", "assert"]]);
+      });
+    });
+
+    describe("標準ライブラリの型の名前（ScalarValues・Time・ISQ、9 章の標準ライブラリ）", () => {
+      it("ScalarValues と Time の名前（Positive・Rational・Iso8601DateTime）は知らせない", () => {
+        // Arrange
+        const text = "package P { part def H { attribute a : Positive; attribute b : Rational; attribute c : Iso8601DateTime; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+
+      it("…Value で終わる名前は、ISQ などを import したときだけ標準ライブラリの型とみなす", () => {
+        // Arrange
+        const without = "package P { part def H { attribute m : MassValue; attribute t : MyTypoValue; } }";
+        const withImport = "package P { private import ISQ::*; part def H { attribute m : MassValue; } }";
+        // Act
+        const [a, b] = [errors(without), errors(withImport)];
+        // Assert
+        expect(a).toEqual(["型「MassValue」が見つかりません（m）", "型「MyTypoValue」が見つかりません（t）"]);
+        expect(b).toEqual([]);
       });
     });
 

@@ -110,7 +110,7 @@ fn flow_edge_points_to_its_relation_by_index() {
 fn unsupported_statement_head_is_shortened_to_40_utf16_units() {
     // Arrange（境界値：41 文字の頭）
     let name = "あ".repeat(41);
-    let text = format!("package P {{ case def {name}; }}");
+    let text = format!("package P {{ allocation def {name}; }}");
     // Act
     let (_, m) = run(&text);
     // Assert
@@ -220,7 +220,29 @@ fn family_and_library_types() {
     assert_eq!(family("state"), "beh");
     assert_eq!(family("part"), "part");
     assert_eq!(family("item def"), "other");
-    assert!(is_lib("Real") && is_lib("MassValue") && !is_lib("Engine"));
+}
+
+#[test]
+fn library_types_are_an_explicit_list_and_value_suffix_needs_a_quantity_import() {
+    // Arrange（同値クラス: 一覧にある名前・一覧に無い名前・…Value で終わる名前（import の有無・修飾の有無）、境界値: 空の名前）
+    let cases = [
+        ("Real", false, true),
+        ("Positive", false, true),
+        ("Iso8601DateTime", false, true),
+        ("ScalarValues::Rational", false, true),
+        ("Engine", false, false),
+        ("MassValue", false, false),
+        ("MyTypoValue", false, false),
+        ("MassValue", true, true),
+        ("ISQ::MassValue", false, true),
+        ("MyLib::MassValue", false, false),
+        ("", false, false),
+    ];
+    // Act
+    let got: Vec<bool> = cases.iter().map(|(t, q, _)| is_lib(t, *q)).collect();
+    // Assert
+    let want: Vec<bool> = cases.iter().map(|(_, _, w)| *w).collect();
+    assert_eq!(got, want, "{cases:?}");
 }
 
 /// 決まった種から作る乱数（xorshift。テストを毎回同じにする）。
@@ -562,15 +584,143 @@ fn verify_of_a_missing_requirement_is_still_reported() {
 }
 
 #[test]
-fn frame_inside_a_viewpoint_is_not_reported_as_missing() {
-    // Arrange（ViewpointDefinition・ViewpointUsage、8.2.2.26：viewpoint はまだ扱えない）
+fn frame_inside_a_viewpoint_is_recorded_without_a_line_or_problem() {
+    // Arrange（ViewpointDefinition・ViewpointUsage、8.2.2.26：視点は図に描かない）
     let text = "package P { concern def C; viewpoint def VP { frame concern c : C; } viewpoint vp { frame concern c : C; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert!(m.edges.is_empty(), "{:?}", m.edges);
+    assert_eq!(p.rels.len(), 2);
+}
+
+#[test]
+fn frame_inside_a_viewpoint_nested_in_a_part_def_does_not_draw_from_the_part() {
+    // Arrange（境界値：視点の外側に図の要素がある）
+    let text =
+        "package P { concern def C; part def H { viewpoint def VP { frame concern c : C; } } }";
     // Act
     let (_, m) = run(text);
     // Assert
-    assert!(errors(&m).is_empty());
-    let kinds: Vec<Option<&str>> = m.problems.iter().map(|p| p.kind).collect();
-    assert_eq!(kinds, [Some("unsupported"), Some("unsupported")]);
+    assert!(m.edges.is_empty(), "{:?}", m.edges);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn case_viewpoint_rendering_and_extended_definitions_are_not_drawn() {
+    // Arrange（8.2.2.22・8.2.2.26・8.2.2.27：ツリーにだけ出す定義）
+    let text = "package P { metadata def X; case def CS; viewpoint def VP; rendering def RD; #X def H; part def A; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["A"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn satisfy_without_by_is_drawn_from_the_owner() {
+    // Arrange（RequirementSatisfaction、8.2.2.21：by の無い satisfy は持ち主が満たす。使用は型の定義から）
+    let text = "package P { requirement def R; part def H { satisfy R; } part def E; part def V { part e : E { satisfy R; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let edges: Vec<(&str, &str, &str)> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "satisfy")
+        .map(|e| (e.kind, e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert_eq!(edges, [("satisfy", "H", "R"), ("satisfy", "E", "R")]);
+    assert!(errors(&m).is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn satisfy_without_by_reports_only_a_missing_requirement() {
+    // Arrange（異常系：満たす相手の要求が無い。持ち主が図に無いだけなら知らせない）
+    let text = "package P { requirement def R; part def H { satisfy Nope; } satisfy R; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        errors(&m),
+        ["「満たす」関係の相手「Nope」が見つかりません（satisfy）"]
+    );
+}
+
+#[test]
+fn assert_satisfy_draws_a_line_and_not_satisfy_does_not_count_as_satisfying() {
+    // Arrange（SatisfyRequirementUsage の isNegated、8.2.2.21。フェーズで抜けを調べる）
+    let text = "package P { enum def K { enum a; enum b; } metadata def Phase { attribute stage : K; } \
+                requirement def R1 { @Phase { stage = K::b; } } requirement def R2 { @Phase { stage = K::b; } } \
+                part def A; assert satisfy R1 by A; not satisfy R2 by A; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let satisfies: Vec<&str> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "satisfy")
+        .map(|e| e.to.as_str())
+        .collect();
+    assert_eq!(satisfies, ["R1"]);
+    let gaps: Vec<&str> = m
+        .problems
+        .iter()
+        .filter(|p| p.kind == Some("gap") && p.msg.contains("満たす"))
+        .map(|p| p.msg.as_str())
+        .collect();
+    assert_eq!(gaps.len(), 1, "{gaps:?}");
+    assert!(gaps[0].contains("R2"), "{gaps:?}");
+}
+
+#[test]
+fn value_suffix_types_warn_unless_a_quantity_package_is_imported() {
+    // Arrange（同値クラス：import なし・ISQ の import・量のパッケージで修飾）
+    let without = "package P { part def A { attribute m : MassValue; attribute t : MyTypoValue; attribute p : Positive; } }";
+    let with_import =
+        "package P { private import ISQ::*; part def A { attribute m : MassValue; } }";
+    let qualified = "package P { part def A { attribute m : ISQ::MassValue; } }";
+    // Act
+    let (_, a) = run(without);
+    let (_, b) = run(with_import);
+    let (_, c) = run(qualified);
+    // Assert
+    assert_eq!(
+        errors(&a),
+        [
+            "型「MassValue」が見つかりません（m）",
+            "型「MyTypoValue」が見つかりません（t）"
+        ]
+    );
+    assert!(errors(&b).is_empty(), "{:?}", b.problems);
+    assert!(errors(&c).is_empty(), "{:?}", c.problems);
+}
+
+#[test]
+fn metadata_about_sets_the_phase_of_each_annotated_element() {
+    // Arrange（MetadataUsage の about、8.2.2.27）
+    let text = "package P { enum def K { enum a; enum b; } metadata def Phase { attribute stage : K; } \
+                part def A; part def B; metadata Phase about A, B { stage = K::b; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(node(&m, "A").phase.as_deref(), Some("b"));
+    assert_eq!(node(&m, "B").phase.as_deref(), Some("b"));
+}
+
+#[test]
+fn metadata_about_a_missing_element_is_reported() {
+    // Arrange（異常系：about の相手が無い）
+    let text = "package P { metadata def M; part def A; metadata M about A, Nope; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        errors(&m),
+        ["メタデータを付ける相手「Nope」が見つかりません（metadata about）"]
+    );
 }
 
 #[test]
