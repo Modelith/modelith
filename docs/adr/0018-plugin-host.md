@@ -1,7 +1,7 @@
 # ADR-0018: プラグインのホスト（v0 の検査ルールと v1 の TypeScript プラグイン）
 
 - 状態: 採用
-- 日付: 2026-10-16（2026-10-17 改訂：入れ方をプロジェクトに合わせる）
+- 日付: 2026-10-16（2026-10-17 改訂：入れ方をプロジェクトに合わせる。2026-10-19 改訂：v1 の隔離を確かめた結果を反映）
 
 ## 背景
 
@@ -66,17 +66,45 @@ plugin-sdk には、マニフェスト・レジストリの索引・`TextEdit`�
   - iframe には自前の CSP を付ける。`network` を宣言していなければ `connect-src 'none'` にし、外部と通信できなくする。
   - 独自のオリジンを持たないので、アプリの下書き・開いているフォルダ・`localStorage` には触れられない。
   - ADR-0004 は「Web Worker」とだけ書いていた。Worker だけでは、アプリと同じオリジンで動き、通信や保存を止められないため、iframe で囲む（ADR-0004 の具体化）。
-  - スプリントの最初に、ブラウザ（Chrome・Edge・Safari・Firefox）で iframe の中に Worker を作れること、CSP が効くことを確かめる。作れないブラウザでは、iframe の中で直接動かす。
+  - 確かめた結果（2026-10-19、Chromium・Firefox・WebKit。Edge は Chromium、Safari は WebKit と同じ仕組み）は 3.1 に書く。
+
+#### 3.1 隔離の作り方（確かめた結果から）
+
+- **プラグインのコードは Worker でだけ動かす。iframe の文書では動かさない。**
+  iframe の文書は、自分のページを移動する形で外部にデータを送れる（CSP では止められない。3 つのブラウザとも）。
+  また、文書の中で無限ループすると、アプリの画面全体が固まり、止められない。
+  Worker を作れない場合は、プラグインを動かさず、その理由を示す（iframe の文書で直接動かす代わりの方法は採らない）。
+- **隔離用のページは、アプリと同じ場所に置いた静的なファイル**（例：`plugin-sandbox.html`）を `sandbox="allow-scripts"` で読み込む。
+  `srcdoc` はアプリの CSP を受け継ぐため、将来アプリに CSP を足すと隔離用のページが動かなくなる。
+- **隔離用のページの CSP**（`network` を宣言していないとき）：
+  `default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; connect-src 'none'`
+  - これで fetch・XMLHttpRequest・WebSocket・リモートの `import()`・`importScripts`・`sendBeacon`・画像や iframe による読み込みが、文書と Worker の両方で止まる。
+  - `'unsafe-eval'` と `'wasm-unsafe-eval'` を足さないので、プラグインは `eval`・`new Function`・WebAssembly を使えない。WebAssembly が要るプラグインが出てきたら、権限として足すかを別に決める。
+  - Chromium の blob の Worker は安全な文脈とみなされないため、`crypto.subtle` は使えない（`crypto.getRandomValues` は使える）。
+- **CSP だけでは足りない**：Firefox では、Worker の中の `EventSource` が CSP を無視して通信できる。
+  そのため、プラグインのコードより先に、Worker から `EventSource`・`Worker`・`SharedWorker`（入れ子の Worker は新しい大域を持つので、これも消す）を取り除く。
+  これは追加の防御であり、隔離の本体はあくまで独自のオリジンを持たない iframe と CSP である。
+- **プラグインは 1 つのファイルにまとめて配る**（従来型のスクリプトとして読める形。例：ESM を IIFE にまとめたもの）。
+  Chromium では、独自のオリジンを持たない文書から、blob の URL でモジュールの Worker を作れない。また、blob の URL には基準のパスが無いため、相対パスの `import` が使えない。
+  マニフェストの `main` は、この 1 つのファイルを指す。
+- **読み込み方**：ホストがプラグインのファイルをテキストとして読み、iframe に `postMessage` で渡す。iframe が blob の URL を作り、Worker を作る。
+- **通り道**：ホストが `MessageChannel` を作り、一方の口を iframe に渡し、iframe がそれを Worker に渡す。以後のやり取りは、この口だけを使う。
+  ホストは、`event.source` がその iframe であるウィンドウのメッセージだけを受け取る（独自のオリジンを持たないので、`origin` は区別に使えない）。
+- **止め方**：iframe を取り除く。Firefox・WebKit ではすぐ止まるが、Chromium では Worker が約 2 秒動き続ける。画面では「止めました」と言い切らず、止める操作をしたことを示す。
+
 - **やり取り**：ホストとプラグインは `postMessage`（`MessageChannel`）で、版つきのメッセージをやり取りする。メッセージの型は plugin-sdk に置く。
 
   | ホスト → プラグイン | プラグイン → ホスト |
   | --- | --- |
-  | `activate { apiVersion }` | `ready` |
-  | `didChange { version, text, model }`（`model:read` のとき） | `diagnostics { version, items }`（`model:read` のとき） |
-  | `runCommand { id }` | `proposeEdits { version, edits }`（`edits:propose` のとき） |
-  | `import { importer, fileName, bytes }` | `imported { text }` |
-  | `export { exporter, view }` | `exported { fileName, mediaType, bytes }` |
-  | `storageResult { … }` | `storage { get / set }`（`storage` のとき） |
+  | `activate { apiVersion, pluginId, settings? }` | `ready` |
+  | `didChange { version, text, model? }`（model は `model:read` のとき） | `diagnostics { version, items }`（`model:read` のとき） |
+  | `runCommand { requestId, command }` | `proposeEdits { version, edits, label? }`（`edits:propose` のとき）・`commandDone { requestId }` |
+  | `import { requestId, importer, fileName, base64 }` | `imported { requestId, fileName, text }` |
+  | `export { requestId, exporter, view? }` | `exported { requestId, fileName, mediaType, base64 }` |
+  | `storageResult { requestId, value? }` | `storageGet` / `storageSet`（`storage` のとき） |
+  | | `failed { requestId, message }`・`notify { level, message }` |
+
+  型は plugin-sdk の `HostMessage`・`PluginMessage`・`ModelSnapshot`（modelith/plugin-sdk#9）。ホストは、届いたメッセージを JSON Schema で検証してから使う。
 
 - **権限**：宣言していない権限のメッセージは、ホストが捨てて、プラグインの一覧に知らせる。`storage` は、ホストがプラグインごとに分けた保存場所を貸す（プラグインはブラウザの保存場所に直接触れない）。
 - **alpha.5 で使える働き**：コマンド（メニューから実行）・取り込み・書き出し・`model:read` による検査。
