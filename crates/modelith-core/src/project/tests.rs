@@ -626,3 +626,83 @@ fn value_written_on_the_element_wins_over_metadata_about() {
         )]
     );
 }
+
+/// 宣言の `specs` を（種類, 相手, 修飾名, 消す範囲の文字列）の組にする。
+fn specs_of(text: &str, name: &str) -> Vec<(&'static str, String, String, String)> {
+    let r = run(text);
+    entry(&r, name)
+        .specs
+        .iter()
+        .map(|s| {
+            (
+                s.op,
+                s.target.clone(),
+                s.path.clone(),
+                text[s.start..s.end].to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn definition_keeps_every_supertype_and_first_one_as_type() {
+    // Arrange（SubclassificationPart、8.2.2.6：`:>` と `specializes` の相手をすべて）
+    let text = "part def B :> A, 'Q 1'::C specializes D;";
+    // Act
+    let specs = specs_of(text, "B");
+    // Assert
+    assert_eq!(
+        specs,
+        [
+            ("specializes", "A".into(), "A".into(), "A, ".into()),
+            (
+                "specializes",
+                "'Q 1'::C".into(),
+                "Q 1::C".into(),
+                ", 'Q 1'::C".into()
+            ),
+            (
+                "specializes",
+                "D".into(),
+                "D".into(),
+                " specializes D".into()
+            ),
+        ]
+    );
+    assert_eq!(entry(&run(text), "B").ty, "A");
+}
+
+#[test]
+fn usage_records_subsetting_redefinition_and_reference_by_kind() {
+    // Arrange（FeatureSpecializationPart、8.2.2.6：記号とキーワードの両方）
+    let text = "part def W { part b : B :> a subsets c; attribute :>> m redefines n; part x ::> y.z; part w references v; }";
+    // Act
+    let (b, m, x, w) = (
+        specs_of(text, "b"),
+        specs_of(text, "m"),
+        specs_of(text, "x"),
+        specs_of(text, "w"),
+    );
+    // Assert（名前の無い `:>> m` も再定義として残す。型は部分集合と取り違えない）
+    let ops = |v: &[(&'static str, String, String, String)]| -> Vec<(&'static str, String)> {
+        v.iter().map(|s| (s.0, s.1.clone())).collect()
+    };
+    assert_eq!(ops(&b), [("subsets", "a".into()), ("subsets", "c".into())]);
+    assert_eq!(
+        ops(&m),
+        [("redefines", "m".into()), ("redefines", "n".into())]
+    );
+    assert_eq!(ops(&x), [("references", "y.z".into())]);
+    assert_eq!(ops(&w), [("references", "v".into())]);
+    assert_eq!(entry(&run(text), "b").ty, "B");
+}
+
+#[test]
+fn declaration_without_relations_has_no_specs() {
+    // Arrange（境界値：関係の無い宣言と、パラメータ）
+    let text = "constraint def C { in x : Real; } part def A { part p : P; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.specs.is_empty()));
+}

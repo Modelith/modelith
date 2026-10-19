@@ -644,6 +644,7 @@ impl Ctx {
                 render: None,
                 open: None,
                 close: None,
+                specs: self.specs(n, is_def),
             };
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
@@ -701,6 +702,7 @@ impl Ctx {
                 render: None,
                 open: None,
                 close: None,
+                specs: Vec::new(),
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -724,6 +726,59 @@ impl Ctx {
             });
         }
         None
+    }
+
+    /// 宣言の特殊化・部分集合・再定義・参照（8.2.2.6）を、相手ごとに書いた順に集める。
+    ///
+    /// 定義の `:>`・`specializes` は `specializes`、使用の `:>`・`specializes`・`subsets` は `subsets`、
+    /// `:>>`・`redefines` は `redefines`、`::>`・`references` は `references` にする。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：宣言の節
+    /// - `is_def`：定義か
+    ///
+    /// # 戻り値
+    ///
+    /// 相手ごとの `Spec`（範囲は UTF-16）。関係が無ければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// specs("part def B :> A, Q::C;", true) → [specializes A（範囲は "A, "）, specializes Q::C（範囲は ", Q::C"）]
+    /// specs("part b : B :> a;", false)      → [subsets a（範囲 " :> a"）]
+    /// specs("part c : C;", false)           → []
+    /// ```
+    fn specs(&self, n: &SyntaxNode, is_def: bool) -> Vec<Spec> {
+        let mut out = Vec::new();
+        for rel in n.children() {
+            let op = match rel.kind() {
+                SUBCLASSIFICATION if is_def => "specializes",
+                SUBCLASSIFICATION | SUBSETTING => "subsets",
+                REDEFINITION => "redefines",
+                REFERENCE_SUBSETTING => "references",
+                _ => continue,
+            };
+            let targets: Vec<SyntaxNode> = rel
+                .children()
+                .filter(|t| matches!(t.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+                .collect();
+            for (i, t) in targets.iter().enumerate() {
+                let (start, end) = removal_range(&rel, &targets, i);
+                out.push(Spec {
+                    op,
+                    target: compact(t),
+                    path: if t.kind() == QUALIFIED_NAME {
+                        path_of(t)
+                    } else {
+                        compact(t)
+                    },
+                    start: self.utf16(start),
+                    end: self.utf16(end),
+                });
+            }
+        }
+        out
     }
 
     /// 宣言を `entries` の末尾に足し、`pe` の宣言の `children` にその番号を足す。
@@ -1360,6 +1415,49 @@ fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
         name.clone()
     };
     Some(TypeRef { name, conj, path })
+}
+
+/// 関係の相手 1 つだけを消すときの範囲（バイトオフセット）。消した後も、関係の書き方が崩れないようにする。
+///
+/// 相手が 1 つなら関係全体と前の空白（` :> A`）、複数のうち最後でなければ次の相手の手前まで（`A, `）、
+/// 最後なら前の相手の後ろから（`, C`）。
+///
+/// # 引数
+///
+/// - `rel`：関係の節（`SUBCLASSIFICATION` など）
+/// - `targets`：関係の相手の節（書いた順。空でないこと）
+/// - `i`：消す相手の番号（`targets` の添字）
+///
+/// # 戻り値
+///
+/// 消す範囲の始まりと終わり（`end` は含まない）。
+///
+/// # 例
+///
+/// ```text
+/// // "part def B :> A, C;"
+/// removal_range(:> A, C, [A, C], 0) → "A, " の範囲
+/// removal_range(:> A, C, [A, C], 1) → ", C" の範囲
+/// // "part def B :> A;"
+/// removal_range(:> A, [A], 0)       → " :> A" の範囲
+/// ```
+fn removal_range(rel: &SyntaxNode, targets: &[SyntaxNode], i: usize) -> (usize, usize) {
+    let start_of = |n: &SyntaxNode| -> usize { n.text_range().start().into() };
+    let end_of = |n: &SyntaxNode| -> usize { n.text_range().end().into() };
+    if let (Some(t), Some(next)) = (targets.get(i), targets.get(i + 1)) {
+        return (start_of(t), start_of(next));
+    }
+    if let (Some(prev), Some(t)) = (
+        i.checked_sub(1).and_then(|p| targets.get(p)),
+        targets.get(i),
+    ) {
+        return (end_of(prev), end_of(t));
+    }
+    let space = rel
+        .prev_sibling_or_token()
+        .filter(|t| t.kind() == WHITESPACE)
+        .map(|t| t.text_range().start().into());
+    (space.unwrap_or_else(|| start_of(rel)), end_of(rel))
 }
 
 /// 修飾名の節を、引用符を外した名前を `::` でつないだ文字列にする。
