@@ -101,6 +101,18 @@ git push -u origin feat/kerml-parser
 - 破壊的変更は `feat(parser)!: ...` のように `!` を付け、本文に `BREAKING CHANGE:` を書く。
 - `dev` → `main` の PR タイトルは `chore(release): vX.Y.Z` とする。
 
+## PR の中のコミットの分け方
+
+PR はレビューの単位、コミットはコードを読む単位とする。PR の大きさは目的 1 つ分のままでよいが、その中を、1 つずつ読める大きさのコミットに分ける。
+`dev` へは Squash するので、分けたコミットは PR の上で読むためのもの（`dev` の履歴には PR が 1 つのコミットとして残る）。
+
+- 1 つのコミットは 1 つの変更だけにする。1 つの関数の追加、1 つの不具合の修正、1 つの構文への対応、などを目安にする。
+- 複数の層にまたがる変更は、下の層から順にコミットする。例えば文法への対応なら、構文（`syntax`）→ 投影（`project`）→ モデル（`model`）→ 画面（`web`）→ 文書（対応表・要求・ADR）の順。
+- テストは、それが確かめるコードと同じコミットに入れる。
+- どのコミットでも、ビルドとテストが通る状態にする（後から `git bisect` で使えるように）。
+- コミットメッセージにも Conventional Commits の形を使い、`scope` で層を示す（例：`feat(parser): read case def`、`feat(model): draw satisfy without by from the owner`）。
+- 1 つの PR に、関係の無い複数の目的を混ぜない（「1 ブランチ 1 目的」）。
+
 ## 関連リポジトリとの関係
 
 `modelith/plugin-sdk` などの関連リポジトリも同じブランチ戦略・マージ権限・コミット規約に従う（将来 org の `.github` に共通化する）。
