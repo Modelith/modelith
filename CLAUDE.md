@@ -50,6 +50,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 - ブランチ名: `<type>/<topic>`（type: feat|fix|refactor|docs|test|perf|ci|chore|claude）
 - コミット / PR タイトル: `<type>(<scope>): <summary>`（Conventional Commits）
 - 1 ブランチ 1 目的。依頼範囲外のリファクタや整形を混ぜない
+- PR の中は、1 つずつ読めるコミットに分ける（1 コミット 1 変更、層をまたぐ変更は下の層から順に、テストは同じコミットに、どのコミットでもテストが通る）。詳細は branching-strategy の「PR の中のコミットの分け方」
 - force-push 禁止。他人のブランチの履歴を書き換えない
 - **トピック → `dev` は許可なしでマージしてよい。** 条件は CI（`check` / `conventions`）がグリーンで、未解決のレビューコメントがないこと。方式は Squash
 - **`main` へのマージ（PR のマージ、auto-merge の有効化を含む）はメンテナの明示的な許可を得てから行う。**
