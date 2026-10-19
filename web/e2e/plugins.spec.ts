@@ -223,7 +223,7 @@ test("F-PLUG-8: このプロジェクトとこのブラウザに同じ ID のプ
     info: { id: ID, name: "トレーサビリティのチェック（個人用）", version: "0.1.0", runtime: "rules" },
     files: { "modelith-plugin.json": personal, "rules.yaml": RULES.replace("満たす要素がありません", "満たす部品がありません（個人用）") },
   });
-  await page.reload();
+  await openApp(page);
   // Act
   await openProject(page, installed());
   // Assert（問題一覧はプロジェクトのルールの結果だけ）
@@ -274,7 +274,11 @@ test.describe("フォルダを開けないブラウザ", () => {
     await expect(row.locator(".pst")).toHaveText("無効");
     await expect(ruleRows(page)).toHaveCount(0);
     await row.locator("[data-toggle]").check();
-    await page.reload();
+    // 保存場所への書き込みが終わり、一覧が描き直されるまで待ってから開き直す
+    await expect(row.locator(".pst")).toHaveText("有効");
+    await expect(ruleRows(page)).toHaveText([FINDING]);
+    // 開き直し、起動し終えてからテキストを入れる
+    await openApp(page);
     await page.locator("#ed").fill(MODEL);
     await expect(ruleRows(page)).toHaveText([FINDING]);
   });

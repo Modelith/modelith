@@ -253,7 +253,7 @@ test.describe("保存場所", () => {
     await runCommand(page, "回数を数える");
     await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」：保存した回数：1`);
     // Act
-    await page.reload();
+    await openApp(page);
     await page.locator('[data-cmd="openFolder"]').click();
     await waitRunning(page);
     await runCommand(page, "回数を数える");
