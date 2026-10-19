@@ -134,22 +134,23 @@ export interface TrustPrompt {
 }
 
 /**
- * 許可を尋ねるダイアログの中身を作る（名前・ID・バージョン・使う権限。外部と通信できるならその注意。F-PLUG-6）。
+ * 許可を尋ねるダイアログの中身を作る（名前・作者・ID・バージョン・使う権限。外部と通信できるならその注意。F-PLUG-6）。
+ * 作者はマニフェストの自己申告。書いていなければ「記載なし」と示す。
  *
- * @param plugin プラグインの名前・ID・バージョン・宣言した権限
+ * @param plugin プラグインの名前・作者（書いてあれば）・ID・バージョン・宣言した権限
  * @param check 尋ねる理由と、増えた権限
  * @returns ダイアログの中身
  * @example
- * trustPrompt({ name: "要求の ID の補完", id: "jp.example.fill", version: "1.0.0", permissions: ["edits:propose"] }, { kind: "ask", reason: "first", added: [] })
- * // → { title: "プラグインの実行の許可", text: "プラグイン「要求の ID の補完」（ID：jp.example.fill、バージョン 1.0.0）を初めて実行します。…", items: ["モデルのテキストを変更する（変更は元に戻せます）（edits:propose）"], confirm: "許可して実行", cancel: "許可しない" }
+ * trustPrompt({ name: "要求の ID の補完", author: "山田 花子", id: "jp.example.fill", version: "1.0.0", permissions: ["edits:propose"] }, { kind: "ask", reason: "first", added: [] })
+ * // → { title: "プラグインの実行の許可", text: "プラグイン「要求の ID の補完」（作者：山田 花子、ID：jp.example.fill、バージョン 1.0.0）を初めて実行します。…", items: ["モデルのテキストを変更する（変更は元に戻せます）（edits:propose）"], confirm: "許可して実行", cancel: "許可しない" }
  * trustPrompt({ …, permissions: ["network"] }, { kind: "ask", reason: "changed", added: [] }).warning
  * // → "このプラグインは、あなたのモデルを外部に送信できます。…"
  */
 export function trustPrompt(
-  plugin: { name: string; id: string; version: string; permissions: readonly Permission[] },
+  plugin: { name: string; author?: string; id: string; version: string; permissions: readonly Permission[] },
   check: Extract<TrustCheck, { kind: "ask" }>,
 ): TrustPrompt {
-  const who = `プラグイン「${plugin.name}」（ID：${plugin.id}、バージョン ${plugin.version}）`;
+  const who = `プラグイン「${plugin.name}」（作者：${plugin.author ?? "記載なし"}、ID：${plugin.id}、バージョン ${plugin.version}）`;
   const lead = {
     first: `${who}を初めて実行します。`,
     permissions: `${who}の使う権限が、前回許可したときより増えました（増えた権限：${check.added.map((p) => PERMISSION_WORDS[p]).join("、")}）。`,

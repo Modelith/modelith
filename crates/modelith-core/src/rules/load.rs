@@ -141,7 +141,7 @@ pub fn load_plugin_files(id: &str, files: &BTreeMap<String, String>) -> LoadedPl
 ///
 /// ```text
 /// describe_manifest(p, r#"{"id":"jp.x","name":"例","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#)
-///   → Ok(ManifestInfo { id: "jp.x", name: "例", version: "0.1.0", runtime: Rules, description: None, permissions: [], main: None, commands: [], importers: [], exporters: [] })
+///   → Ok(ManifestInfo { id: "jp.x", name: "例", version: "0.1.0", runtime: Rules, description: None, author: None, permissions: [], main: None, commands: [], importers: [], exporters: [] })
 /// describe_manifest(p, "{") → Err(誤り 1:2「書式にエラーがあるため読み込めません（JSON：…）」)
 /// ```
 pub fn describe_manifest(path: &str, text: &str) -> Result<ManifestInfo, LoadProblem> {
@@ -152,6 +152,7 @@ pub fn describe_manifest(path: &str, text: &str) -> Result<ManifestInfo, LoadPro
             version: m.version,
             runtime: m.runtime,
             description: m.description,
+            author: m.author,
             permissions: m.permissions,
             main: m.main.as_deref().and_then(inside_plugin),
             commands: m.contributes.commands,

@@ -145,7 +145,7 @@ async function openPluginList(page: Page): Promise<void> {
 const SCRIPT_ID = "jp.example.sync";
 const SCRIPT_MANIFEST = JSON.stringify(
   {
-    id: SCRIPT_ID, name: "要求の同期", version: "1.2.0", apiVersion: "0", runtime: "browser", license: "MIT", main: "main.js",
+    id: SCRIPT_ID, name: "要求の同期", version: "1.2.0", apiVersion: "0", runtime: "browser", author: "山田 花子", license: "MIT", main: "main.js",
     permissions: ["model:read", "edits:propose", "network"], contributes: { commands: [{ id: "pull", title: "要求を取り込む" }] },
   },
   null,

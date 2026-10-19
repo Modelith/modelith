@@ -24,11 +24,14 @@ const IMPORTER = "要求の一覧（テキスト）";
 /** 書き出しの表示名。 */
 const EXPORTER = "テキストのまま";
 
+/** マニフェストに書く作者（許可を尋ねる画面に出る）。 */
+const AUTHOR = "山田 花子";
+
 /** マニフェスト（権限とバージョンを変えられる）。 */
 const manifest = (permissions: string[], version = "1.0.0"): string =>
   JSON.stringify(
     {
-      id: ID, name: NAME, version, apiVersion: "0", runtime: "browser", license: "MIT", main: "main.js", permissions,
+      id: ID, name: NAME, version, apiVersion: "0", runtime: "browser", author: AUTHOR, license: "MIT", main: "main.js", permissions,
       contributes: {
         commands: [
           { id: "review", title: "レビュー済みの印を付ける" },
@@ -105,7 +108,7 @@ async function waitRunning(page: Page): Promise<void> {
 /** マニフェストから、このブラウザに追加したときに覚える情報（一覧に出すため）を作る。 */
 const infoOf = (manifestText: string): Record<string, unknown> => {
   const m = JSON.parse(manifestText) as Record<string, unknown> & { contributes: Record<string, unknown> };
-  return { id: m["id"], name: m["name"], version: m["version"], runtime: m["runtime"], permissions: m["permissions"], main: m["main"], ...m.contributes };
+  return { id: m["id"], name: m["name"], version: m["version"], runtime: m["runtime"], author: m["author"], permissions: m["permissions"], main: m["main"], ...m.contributes };
 };
 
 /**
@@ -349,13 +352,13 @@ test.describe("読み込みと書き出し", () => {
 });
 
 test.describe("許可", () => {
-  test("F-PLUG-6: 初めて動かす前に、名前・ID・バージョン・使う権限を示して尋ねる", async ({ page }) => {
+  test("F-PLUG-6: 初めて動かす前に、名前・作者・ID・バージョン・使う権限を示して尋ねる", async ({ page }) => {
     // Arrange・Act
     await openProject(page, installed(["model:read", "edits:propose"]));
     // Assert
     await expect(dialog(page)).toBeVisible();
     await expect(page.locator("#dialogText")).toHaveText(
-      `プラグイン「${NAME}」（ID：${ID}、バージョン 1.0.0）を初めて実行します。このプラグインはプログラムを含みます。アプリとは切り離された場所で動き、開いているモデルのテキストを受け取って、次の権限だけを使えます。実行を許可しますか？`,
+      `プラグイン「${NAME}」（作者：${AUTHOR}、ID：${ID}、バージョン 1.0.0）を初めて実行します。このプラグインはプログラムを含みます。アプリとは切り離された場所で動き、開いているモデルのテキストを受け取って、次の権限だけを使えます。実行を許可しますか？`,
     );
     await expect(page.locator("#dialogDetail li")).toHaveText(["解析したモデル（要素と関係）を受け取り、問題一覧に結果を出す（model:read）", "モデルのテキストを変更する（変更は元に戻せます）（edits:propose）"]);
     await expect(page.locator("#dialogDetail .warn")).toHaveCount(0);
@@ -398,7 +401,7 @@ test.describe("許可", () => {
     await putFiles(page, { [`${DIR}/main.js`]: `${CODE}\n// 更新\n` });
     await refreshFolder(page);
     // Assert
-    await expect(page.locator("#dialogText")).toContainText(`外部と通信できるプラグイン「${NAME}」（ID：${ID}、バージョン 1.0.0）のバージョンかファイルが、前回許可したときから変わりました。`);
+    await expect(page.locator("#dialogText")).toContainText(`外部と通信できるプラグイン「${NAME}」（作者：${AUTHOR}、ID：${ID}、バージョン 1.0.0）のバージョンかファイルが、前回許可したときから変わりました。`);
   });
 
   test("F-PLUG-6: 外部と通信できないプラグインは、ファイルやバージョンが変わっても尋ねずに動かす", async ({ page }) => {

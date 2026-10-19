@@ -43,6 +43,7 @@ CLI（`modelith check`）は TypeScript のプラグインを動かさない（�
   "version": "1.0.0",
   "apiVersion": "0",
   "runtime": "browser",
+  "author": "山田 花子",
   "license": "MIT",
   "main": "main.js",
   "permissions": ["model:read", "edits:propose"],
@@ -58,6 +59,7 @@ CLI（`modelith check`）は TypeScript のプラグインを動かさない（�
 | --- | --- |
 | `id` | 逆ドメイン形式の ID（例：`jp.example.review`）。プロジェクトのフォルダの名前と同じにする |
 | `name`・`description` | 画面に出す名前と説明 |
+| `author` | 作者の名前（任意）。追加するときと、実行の許可を尋ねるときに示す。書いていなければ、許可の画面に「作者：記載なし」と出る |
 | `version` | プラグインのバージョン（SemVer） |
 | `apiVersion` | `"0"`（この Modelith が対応する値） |
 | `runtime` | `"browser"` |
