@@ -288,7 +288,8 @@ impl Ctx {
     /// 要素 1 つを、宣言・関係・式・まだ扱えない文・無名ブロックのどれかにする（暫定コアの stmt と同じ順で判定する）。
     ///
     /// `doc` は `pe` の宣言の `doc` に入れる。本体 `{ … }` があれば、宣言ならその中を、宣言でなければ
-    /// 無名ブロックを作ってその中を読み、`open`・`close`・`end` を記録する。終わっていない末尾の文は読まない。
+    /// 無名ブロックを作ってその中を読み、`open`・`close`・`end` を記録する。まだ扱えない文の本体は読まない
+    /// （中の宣言を、外側の宣言の中身にしない）。終わっていない末尾の文と、`rep` の文は読まない。
     ///
     /// # 引数
     ///
@@ -297,7 +298,8 @@ impl Ctx {
     /// - `pe`：要素を含む、いちばん近い宣言の番号。無ければ `None`
     fn statement(&mut self, n: &SyntaxNode, owner: Option<Scope>, pe: Option<usize>) {
         match n.kind() {
-            COMMENT => return,
+            // テキストでの表し方（rep）は、まだ図にもツリーにも出さない（本文を残すのは後の版）
+            COMMENT | TEXTUAL_REPRESENTATION => return,
             DOCUMENTATION => {
                 if let (Some(pe), Some(body)) = (
                     pe,
@@ -320,12 +322,15 @@ impl Ctx {
         };
         let hs: usize = n.text_range().start().into();
         let raw = self.head_text(hs, end_pos);
+        let unsupported_before = self.out.unsupported.len();
         let entry = if raw.is_empty() {
             None
         } else {
             self.classify(n, owner, pe, &raw, hs, end_pos, term)
         };
-        if term != Term::Open {
+        // まだ扱えない文の本体は読まない（中の宣言を、外側の宣言の中身と取り違えないように。F-EDIT-8）
+        let is_unsupported = self.out.unsupported.len() > unsupported_before;
+        if term != Term::Open || is_unsupported {
             return;
         }
         let Some(body) = child(n, BODY) else { return };
@@ -495,6 +500,12 @@ impl Ctx {
         // 前置メタデータは、続く宣言のメタデータとして読む（ADR-0013）
         let (prefix_meta, h) = strip_prefix_metadata(h);
         let h = strip_then_return(h);
+        if n.kind() == ALIAS {
+            if let Some(a) = alias(n, pe) {
+                self.out.aliases.push(a);
+            }
+            return None;
+        }
         if is_skipped(h) {
             return None;
         }
@@ -507,8 +518,13 @@ impl Ctx {
                 is_def,
                 short: parts.short,
                 name: parts.name,
-                conj: Some(parts.typed.as_ref().is_some_and(|t| t.1)),
-                ty: parts.typed.map(|t| t.0).unwrap_or_default(),
+                conj: Some(parts.typed.as_ref().is_some_and(|t| t.conj)),
+                ty: parts
+                    .typed
+                    .as_ref()
+                    .map(|t| t.name.clone())
+                    .unwrap_or_default(),
+                ty_path: parts.typed.map(|t| t.path).unwrap_or_default(),
                 owner,
                 pe,
                 start,
@@ -558,7 +574,7 @@ impl Ctx {
             return Some(idx);
         }
         if !mods.is_empty()
-            && let Some((name, ty)) = param(n)
+            && let Some((name, typed)) = param(n)
         {
             let idx = self.out.entries.len();
             let e = Entry {
@@ -567,7 +583,8 @@ impl Ctx {
                 short: String::new(),
                 name,
                 conj: None,
-                ty,
+                ty: typed.name,
+                ty_path: typed.path,
                 owner,
                 pe,
                 start,
@@ -825,8 +842,18 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 struct DeclParts {
     short: String,
     name: String,
-    /// （型の名前, 共役 `~` か）
-    typed: Option<(String, bool)>,
+    /// 型（型付け、または定義の特殊化の相手）
+    typed: Option<TypeRef>,
+}
+
+/// 関係の相手の型。
+struct TypeRef {
+    /// 最後の修飾名の最後の部分（引用符を外したもの）。
+    name: String,
+    /// 共役（`~`）か。
+    conj: bool,
+    /// 修飾名全体（引用符を外し `::` でつなぐ）。特徴の連鎖なら `name` と同じ。
+    path: String,
 }
 
 /// 宣言の節から、短い名前・名前・型を取り出す。
@@ -841,13 +868,13 @@ struct DeclParts {
 ///
 /// # 戻り値
 ///
-/// 短い名前・名前（無ければ空文字列）・型（`(型の名前, 共役か)`、無ければ `None`）。引用名は引用符を外す。
+/// 短い名前・名前（無ければ空文字列）・型（`TypeRef`、無ければ `None`）。引用名は引用符を外す。
 ///
 /// # 例
 ///
 /// ```text
-/// decl_parts("part def <P1> Engine :> Base", true) → { short: "P1", name: "Engine", typed: Some(("Base", false)) }
-/// decl_parts("port p : ~Fuel[1];", false)          → { short: "", name: "p", typed: Some(("Fuel", true)) }
+/// decl_parts("part def <P1> Engine :> Base", true) → { short: "P1", name: "Engine", typed: Some({ name: "Base", conj: false, path: "Base" }) }
+/// decl_parts("port p : ~Q::Fuel[1];", false)       → { short: "", name: "p", typed: Some({ name: "Fuel", conj: true, path: "Q::Fuel" }) }
 /// decl_parts("attribute :>> mass;", false)         → { short: "", name: "mass", typed: None }
 /// ```
 fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
@@ -893,7 +920,7 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
     }
 }
 
-/// 関係の相手の型の名前（最後の修飾名の最後の部分）と、共役か。
+/// 関係の相手の型（最後の修飾名の最後の部分と、修飾名全体）と、共役か。
 ///
 /// # 引数
 ///
@@ -901,16 +928,17 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
 ///
 /// # 戻り値
 ///
-/// `(最初の相手の最後の名前（引用符を外す）, ~ があるか)`。相手の名前が無ければ `None`。
+/// 最初の相手の `TypeRef`（名前は引用符を外す）。相手の名前が無ければ `None`。
 ///
 /// # 例
 ///
 /// ```text
-/// type_of(": ~Fuel")  → Some(("Fuel", true))
-/// type_of(": A::B")   → Some(("B", false))
+/// type_of(": ~Fuel")  → Some({ name: "Fuel", conj: true, path: "Fuel" })
+/// type_of(": A::B")   → Some({ name: "B", conj: false, path: "A::B" })
+/// type_of(": a.b")    → Some({ name: "b", conj: false, path: "b" })   // 特徴の連鎖
 /// type_of(":")        → None   // 相手が無い
 /// ```
-fn type_of(rel: &SyntaxNode) -> Option<(String, bool)> {
+fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
     let conj = rel.children_with_tokens().any(|e| e.kind() == TILDE);
     let target = rel
         .children()
@@ -918,7 +946,75 @@ fn type_of(rel: &SyntaxNode) -> Option<(String, bool)> {
     let last = tokens(&target)
         .filter(|t| matches!(t.kind(), IDENT | QUOTED_NAME))
         .last()?;
-    Some((unquote(last.text()).to_owned(), conj))
+    let name = unquote(last.text()).to_owned();
+    let path = if target.kind() == QUALIFIED_NAME {
+        path_of(&target)
+    } else {
+        name.clone()
+    };
+    Some(TypeRef { name, conj, path })
+}
+
+/// 修飾名の節を、引用符を外した名前を `::` でつないだ文字列にする。
+///
+/// # 引数
+///
+/// - `qn`：`QUALIFIED_NAME` の節
+///
+/// # 戻り値
+///
+/// 名前を `::` でつないだ文字列。名前が無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// path_of("'P 1' :: A") → "P 1::A"
+/// path_of("A")          → "A"
+/// ```
+fn path_of(qn: &SyntaxNode) -> String {
+    tokens(qn)
+        .filter(|t| matches!(t.kind(), IDENT | QUOTED_NAME))
+        .map(|t| unquote(t.text()).to_owned())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
+/// `alias B for A;` の別名（AliasMember、8.2.2.5）。
+///
+/// # 引数
+///
+/// - `n`：`ALIAS` の節
+/// - `pe`：別名を書いた宣言の番号。ファイルの直下なら `None`
+///
+/// # 戻り値
+///
+/// 別名と指す先。名前か、`for` の後の修飾名が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// alias("alias B for Q::A;", Some(0)) → Some({ name: "B", target: "Q::A", pe: Some(0) })
+/// alias("alias B;", None)             → None   // 指す先が無い
+/// ```
+fn alias(n: &SyntaxNode, pe: Option<usize>) -> Option<Alias> {
+    let name = child(n, NAME)
+        .and_then(|c| tokens(&c).next())
+        .map(|t| unquote(t.text()).to_owned())?;
+    let mut seen = false;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "for" => seen = true,
+            rowan::NodeOrToken::Node(c) if seen && c.kind() == QUALIFIED_NAME => {
+                return Some(Alias {
+                    name,
+                    target: path_of(&c),
+                    pe,
+                });
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// キーワード `kw` の後ろの最初の参照。`kw` と参照は `n` の直接の子であること。
@@ -1060,7 +1156,8 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
             let t = child(n, FEATURE_TYPING).and_then(|c| type_of(&c))?;
             Some(RelKind::Frame {
                 name: name()?,
-                ty: t.0,
+                ty: t.name,
+                path: t.path,
             })
         }
         FLOW_USAGE if child(n, NAME).is_none() => Some(RelKind::Flow {
@@ -1087,16 +1184,16 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
 ///
 /// # 戻り値
 ///
-/// `(名前, 型の名前)`。前置メタデータを除いた最初の子が基本名の `NAME`、次の子が型付けでなければ `None`。
+/// `(名前, 型)`。前置メタデータを除いた最初の子が基本名の `NAME`、次の子が型付けでなければ `None`。
 ///
 /// # 例
 ///
 /// ```text
-/// param("in x : Real;")   → Some(("x", "Real"))
+/// param("in x : Real;")   → Some(("x", { name: "Real", conj: false, path: "Real" }))
 /// param("in x;")          → None   // 型付けが無い
 /// param("in 'x' : Real;") → None   // 引用名
 /// ```
-fn param(n: &SyntaxNode) -> Option<(String, String)> {
+fn param(n: &SyntaxNode) -> Option<(String, TypeRef)> {
     let mut cs = n.children().filter(|c| c.kind() != PREFIX_METADATA);
     let name = cs.next().filter(|c| c.kind() == NAME)?;
     let name = tokens(&name)
@@ -1105,7 +1202,7 @@ fn param(n: &SyntaxNode) -> Option<(String, String)> {
         .text()
         .to_owned();
     let typing = cs.next().filter(|c| c.kind() == FEATURE_TYPING)?;
-    Some((name, type_of(&typing)?.0))
+    Some((name, type_of(&typing)?))
 }
 
 /// 空白で区切った最初の語（無名ブロックのキーワードに使う）。

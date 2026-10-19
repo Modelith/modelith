@@ -411,3 +411,193 @@ fn exposed_package_becomes_frame_with_its_nested_elements() {
         .collect();
     assert_eq!(frames, [("Q", "Q", vec!["B", "C"])]);
 }
+
+fn errors(m: &Model) -> Vec<&str> {
+    m.problems
+        .iter()
+        .filter(|p| p.kind.is_none())
+        .map(|p| p.msg.as_str())
+        .collect()
+}
+
+fn edge_ids(m: &Model) -> Vec<&str> {
+    m.edges.iter().map(|e| e.id.as_str()).collect()
+}
+
+// ---- 取り違えの修正（F-EDIT-8、alpha.7） ----
+
+/// 同じ名前 A が、ファイルの直下の X と、P の中の Q にある。
+const TWO_AS: &str =
+    "package X { part def A; } package P { package Q { part def A; } part def H { ";
+
+#[test]
+fn qualified_type_walks_the_path_from_the_referencing_scope() {
+    // Arrange（QualifiedName、8.2.2.1〜2・8.2.2.5：Q は H の外側の P から見える）
+    let text = format!("{TWO_AS}part a : Q::A; }} }}");
+    // Act
+    let (_, m) = run(&text);
+    // Assert（X の A ではなく、Q の A につなぐ）
+    assert_eq!(edge_ids(&m), ["comp|H|A@Q|a#1"]);
+    assert!(errors(&m).is_empty());
+}
+
+#[test]
+fn qualified_type_from_the_top_level_and_nested_path_resolve() {
+    // Arrange（境界値：ファイルの直下から・3 段の修飾名）
+    let text = format!("{TWO_AS}part x : X::A; part q : P::Q::A; }} }}");
+    // Act
+    let (_, m) = run(&text);
+    // Assert
+    assert_eq!(edge_ids(&m), ["comp|H|A|x#1", "comp|H|A@Q|q#1"]);
+    assert!(errors(&m).is_empty());
+}
+
+#[test]
+fn qualified_type_with_a_missing_segment_is_not_found() {
+    // Arrange（異常系：最初の段が無い・最後の段が無い・見えない名前空間）
+    let text = "package X { package Q { part def A; } } package P { part def A; part def H { part b : Nope::A; part c : X::Z; part d : Q::A; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（最後の名前が同じ A でも、別の A にはつながない）
+    assert_eq!(
+        errors(&m),
+        [
+            "型「Nope::A」が見つかりません（b）",
+            "型「X::Z」が見つかりません（c）",
+            "型「Q::A」が見つかりません（d）",
+        ]
+    );
+    assert!(m.edges.is_empty());
+}
+
+#[test]
+fn qualified_library_type_is_not_reported() {
+    // Arrange（標準ライブラリの名前：最初の段がファイルに無い）
+    let text = "package P { part def H { attribute m : ISQ::MassValue; attribute r : ScalarValues::Real; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty());
+}
+
+#[test]
+fn qualified_relation_end_resolves_by_path() {
+    // Arrange（satisfy の相手の修飾名）
+    let text = "package X { requirement def R; } package P { requirement def R; part def A; satisfy X::R by A; satisfy Nope::R by A; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(edge_ids(&m), ["satisfy|A|R|«satisfy»#1"]);
+    assert_eq!(
+        errors(&m),
+        ["「満たす」関係の相手「Nope::R」が見つかりません（satisfy）"]
+    );
+}
+
+#[test]
+fn alias_in_the_same_file_resolves_to_its_target() {
+    // Arrange（AliasMember、8.2.2.5：修飾名の指す先・別名の別名・修飾名の中の別名）
+    let text = "package P { package Q { part def A; } alias B for Q::A; alias C for B; part def H { part b : B; part c : C; part d : P::B; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        edge_ids(&m),
+        ["comp|H|A|b#1", "comp|H|A|c#1", "comp|H|A|d#1"]
+    );
+    assert!(m.problems.is_empty());
+}
+
+#[test]
+fn alias_cycle_or_missing_target_is_not_found() {
+    // Arrange（異常系：自分を指す別名・指す先の無い別名）
+    let text =
+        "package P { alias L for L; alias M for Nope; part def H { part l : L; part m : M; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        errors(&m),
+        [
+            "型「L」が見つかりません（l）",
+            "型「M」が見つかりません（m）"
+        ]
+    );
+}
+
+#[test]
+fn verify_inside_a_package_level_usage_draws_from_its_type() {
+    // Arrange（RequirementVerificationUsage、8.2.2.24）
+    let text = "package P { requirement def RD; verification def VD; verification v : VD { objective { verify RD; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(edge_ids(&m), ["verify|VD|RD|«verify»#1"]);
+    assert!(m.problems.is_empty());
+}
+
+#[test]
+fn verify_inside_an_untyped_usage_is_not_reported_as_missing() {
+    // Arrange（境界値：線を引く元が図に無い）
+    let text = "package P { requirement def RD; verification v { objective { verify RD; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.edges.is_empty());
+    assert!(m.problems.is_empty());
+}
+
+#[test]
+fn verify_of_a_missing_requirement_is_still_reported() {
+    // Arrange（異常系）
+    let text =
+        "package P { verification def VD; verification v : VD { objective { verify Nope; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        errors(&m),
+        ["「検証する」関係の相手「Nope」が見つかりません（verify）"]
+    );
+}
+
+#[test]
+fn frame_inside_a_viewpoint_is_not_reported_as_missing() {
+    // Arrange（ViewpointDefinition・ViewpointUsage、8.2.2.26：viewpoint はまだ扱えない）
+    let text = "package P { concern def C; viewpoint def VP { frame concern c : C; } viewpoint vp { frame concern c : C; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(errors(&m).is_empty());
+    let kinds: Vec<Option<&str>> = m.problems.iter().map(|p| p.kind).collect();
+    assert_eq!(kinds, [Some("unsupported"), Some("unsupported")]);
+}
+
+#[test]
+fn qualified_frame_type_resolves_by_path() {
+    // Arrange（FramedConcernMember、8.2.2.21：関心事の型の修飾名）
+    let text = "package P { package Q { concern def C; } concern def C; requirement def R { frame concern c : Q::C; frame concern d : Nope::C; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(edge_ids(&m), ["frame|R|C|«frame»#1"]);
+    assert_eq!(
+        errors(&m),
+        ["扱う関心事「Nope::C」が見つかりません（frame）"]
+    );
+}
+
+#[test]
+fn expose_with_a_qualified_name_looks_outward_from_the_view() {
+    // Arrange（Expose、8.2.2.26.2：Q は view の外側の P から見える。X の中の Q は見えない）
+    let text = "package X { package Q { part def Z; } } package P { package Q { part def D; } view v { expose Q::D; expose Q::Z; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let v = &m.views[0];
+    assert_eq!(v.node_keys, ["D"]);
+    assert_eq!(
+        errors(&m),
+        ["図「v」に出す要素「Q::Z」が見つかりません（expose）"]
+    );
+}

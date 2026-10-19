@@ -113,6 +113,8 @@ syntax_kinds! {
     ALIAS,
     COMMENT,
     DOCUMENTATION,
+    /// `rep r language "x" /* … */`・`language "x" /* … */`（TextualRepresentation）。
+    TEXTUAL_REPRESENTATION,
     /// `@M { … }`（MetadataUsage）。
     METADATA_USAGE,
     DEPENDENCY,

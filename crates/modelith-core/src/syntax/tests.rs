@@ -321,6 +321,104 @@ fn statement_without_grammar_is_kept_as_unsupported() {
     assert!(p.errors().is_empty());
 }
 
+// ---- 取り違えの修正（F-EDIT-8、alpha.7） ----
+
+#[test]
+fn textual_representation_ends_at_its_body_comment_at_package_level() {
+    // Arrange（TextualRepresentation、8.2.2.4：本文のコメントで文が終わる）
+    let text = "package P { rep r language \"x\" /* body */ part def B; }";
+    // Act
+    let p = parse(text);
+    // Assert
+    let kinds = node_kinds(text);
+    assert!(kinds.contains(&TEXTUAL_REPRESENTATION));
+    assert!(kinds.contains(&PART_DEFINITION));
+    assert!(p.errors().is_empty());
+}
+
+#[test]
+fn textual_representation_inside_a_body_is_followed_by_the_next_line() {
+    // Arrange（定義の本体の中、次の行に宣言）
+    let text = "part def A {\n    rep language \"x\" /* b */\n    part def B;\n}";
+    // Act
+    let p = parse(text);
+    // Assert
+    assert!(p.errors().is_empty());
+    assert!(node_kinds(text).contains(&PART_DEFINITION));
+}
+
+#[test]
+fn bare_language_form_is_a_textual_representation() {
+    // Arrange（境界値：rep と名前の無い形）
+    let text = "language \"x\" /* b */ part def B;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        vec![SOURCE_FILE, TEXTUAL_REPRESENTATION, PART_DEFINITION, NAME]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn comment_before_the_language_name_is_not_the_body() {
+    // Arrange（境界値：言語の名前の前のコメントは読み飛ばす）
+    let text = "rep /* note */ r language \"x\" /* b */";
+    // Act
+    let p = parse(text);
+    // Assert
+    assert!(p.errors().is_empty());
+    let rep = p
+        .syntax()
+        .children()
+        .find(|n| n.kind() == TEXTUAL_REPRESENTATION);
+    assert!(rep.is_some_and(|n| n.children().any(|c| c.kind() == NAME)));
+}
+
+#[test]
+fn textual_representation_without_body_or_language_is_an_error() {
+    // Arrange（異常系：本文が無い・language が無い）
+    let no_body = "rep r language \"x\";";
+    let no_language = "rep r;";
+    // Act
+    let a = errors(no_body);
+    let b = errors(no_language);
+    // Assert
+    assert_eq!(a, vec![(18, "本文（/* … */）がありません".to_owned())]);
+    assert_eq!(b, vec![(5, "「language」がありません".to_owned())]);
+}
+
+#[test]
+fn less_than_after_a_name_is_a_comparison_not_a_declaration() {
+    // Arrange（AssertConstraintUsage・RequirementConstraintMember、8.2.2.20〜21：本体の式）
+    let texts = [
+        "part def A { assert not constraint d { x < 0 } }",
+        "part def A { assume constraint { y < 1 } }",
+        "part def A { assume constraint c { y < 1 } }",
+        "part def A { require constraint r { y < 1 } }",
+        "constraint def C { x < 0 }",
+    ];
+    for text in texts {
+        // Act
+        let actual = errors(text);
+        // Assert
+        assert_eq!(actual, vec![], "{text}");
+        assert!(node_kinds(text).contains(&EXPRESSION_MEMBER), "{text}");
+    }
+}
+
+#[test]
+fn name_followed_by_short_name_is_still_a_declaration() {
+    // Arrange（境界値：`x <s> …` は宣言のまま）
+    let text = "part def A { x <s> : T; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&REFERENCE_USAGE));
+    assert!(!kinds.contains(&EXPRESSION_MEMBER));
+}
+
 // ---- エラーからの立ち直り（異常系） ----
 
 #[test]
