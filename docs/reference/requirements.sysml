@@ -694,6 +694,22 @@ package ModelithRequirements {
                 verify MissingPluginReq;
             }
         }
+        verification def ScriptPluginHostTest {
+            doc /* crates/modelith-core/src/plugin_host：プラグインから届いたメッセージを plugin-sdk の型で読む（知らない種類・欠けた項目・負の番号を断る）・権限の要るメッセージ（診断は model:read、変更案は edits:propose、保存場所は storage）を宣言していなければ断る・変更案と診断の範囲を UTF-16 の位置に直す（行末・行の長さ + 1・最終行 + 1・サロゲートペアの途中・逆向き・重なり・同じ位置から始まる 2 つ・空）・プラグインに渡すモデル（要素の範囲・ポートの型と向き・関係の種類）。crates/modelith-core/src/rules：runtime が browser のプラグインの読み込み（main が無い・フォルダの外・ファイルが無い）。crates/modelith-wasm：確かめた結果とモデルの JSON。web/src/core/client.test.ts：コア（Worker）への確認の依頼と、その間にテキストが変わったときの印。web/src/plugins/messages.test.ts：確かめたメッセージの扱い（版が同じ変更案だけを当てる・古い版と確かめる間の変更は断って知らせる・頼んでいない答え・保存場所の依頼・古い診断）。web/src/plugins/trust.test.ts：許可を尋ね直す条件（初めて・権限が 1 つ増えた・減った・入れ替えた・外部と通信できるプラグインのファイルとバージョンの変更・通信できないものの変更・許可しなかったもの）と覚える形。web/src/plugins/permissions.test.ts：隔離用のページの CSP（2 つのページは connect-src だけが違う）と、プラグインのコードより先に EventSource・Worker・SharedWorker を消すこと。web/src/app/plugins.test.ts：追加の確認に権限と外部への送信の注意を出す・動かすプラグインの選び方 */
+            objective {
+                verify PluginEditReq;
+                verify PluginTrustReq;
+                verify PluginSandboxReq;
+            }
+        }
+        verification def ScriptPluginE2E {
+            doc /* web/e2e/script-plugins.spec.ts（基準のブラウザ、OPFS で）：コマンドが提案した変更を当てて 1 回の「元に戻す」で取り消す・古いテキストへの変更を断って知らせる・宣言していない権限の変更案を使わず一覧で知らせる・診断をプラグインを添えて問題一覧に出し直すと消える。外部との通信を宣言していないプラグインの fetch・XMLHttpRequest・WebSocket・EventSource・importScripts がすべて失敗し、テストのサーバに何も届かない・ブラウザの保存場所と親の画面に触れられない（宣言して許可したものだけが通信できる）。止まらない処理をしても画面が動き、停止できる。初めて動かす前に名前・ID・バージョン・権限を示して尋ね、外部と通信できるものはそのことを示す・開き直しても尋ねない・権限が増えた・通信できるプラグインのファイルが変わったら尋ね直す・通信できないものは尋ねない・許可しなかったものを一覧から許可する・追加の確認で権限を示す。web/e2e/visual.spec.ts：許可のダイアログと実行中のプラグインの一覧の見た目。コマンドのメニューは確かめているが、取り込みと書き出し（ScriptPluginReq の残り）は次の段階なので、ScriptPluginReq はまだ検証済みとしない */
+            objective {
+                verify PluginEditReq;
+                verify PluginTrustReq;
+                verify PluginSandboxReq;
+            }
+        }
         verification def CliCheckTest {
             doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json は誤りとして知らせる。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方 */
             objective {

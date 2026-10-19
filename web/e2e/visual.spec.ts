@@ -141,6 +141,33 @@ async function openPluginList(page: Page): Promise<void> {
   await expect(page.locator("#plugins")).toBeVisible();
 }
 
+/** 画面に機能を追加するプラグイン（TypeScript）のマニフェスト。プログラムは、準備ができたと答えるだけ。 */
+const SCRIPT_ID = "jp.example.sync";
+const SCRIPT_MANIFEST = JSON.stringify(
+  {
+    id: SCRIPT_ID, name: "要求の同期", version: "1.2.0", apiVersion: "0", runtime: "browser", license: "MIT", main: "main.js",
+    permissions: ["model:read", "edits:propose", "network"], contributes: { commands: [{ id: "pull", title: "要求を取り込む" }] },
+  },
+  null,
+  2,
+);
+const SCRIPT_CODE = 'self.addEventListener("message", (e) => { if (e.data && e.data.type === "activate") self.postMessage({ type: "ready" }); });\n';
+/** 入っている TypeScript のプラグインのファイル。 */
+const installedScript = (): Record<string, string> => ({ [`.modelith/plugins/${SCRIPT_ID}/modelith-plugin.json`]: SCRIPT_MANIFEST, [`.modelith/plugins/${SCRIPT_ID}/main.js`]: SCRIPT_CODE });
+
+/**
+ * project フォルダにプロジェクトを置いてフォルダを開く（TypeScript のプラグインは、初めてなので実行の許可を尋ねる）。
+ *
+ * @param page 画面
+ * @param plugins modelith.json の plugins に書く中身
+ * @param files ほかに置くファイル（パス → テキスト）
+ */
+async function openScriptProject(page: Page, plugins: Record<string, unknown>, files: Record<string, string>): Promise<void> {
+  await putFiles(page, { "a.sysml": PLUGIN_MODEL, "modelith.json": JSON.stringify({ name: "給水システム", plugins }, null, 2) + "\n", ...files });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await expect(page.locator("#dialogTitle")).toHaveText("プラグインの実行の許可");
+}
+
 const scenes: Scene[] = [
   {
     title: "F-VIEW-9: package を枠として描いた保存された図",
@@ -324,6 +351,25 @@ const scenes: Scene[] = [
       await page.locator("#pluginsAdd").click();
       await expect(page.locator("#dialogText")).toContainText("このプロジェクトに追加します");
       return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-PLUG-6: プラグインの実行の許可（外部と通信できるプラグイン）",
+    shot: "plugin-trust",
+    act: async (page) => {
+      await openScriptProject(page, { [SCRIPT_ID]: { version: "1.2.0", enabled: true } }, installedScript());
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-PLUG-6・F-PLUG-8: 実行中の TypeScript のプラグインと、チェックルールのプラグインの一覧",
+    shot: "plugin-list-script",
+    act: async (page) => {
+      await openScriptProject(page, { [SCRIPT_ID]: { version: "1.2.0", enabled: true }, [PLUGIN_ID]: { version: "0.1.0", enabled: true } }, { ...installedScript(), ...installedPlugin() });
+      await page.locator('#dialogButtons [data-id="allow"]').click();
+      await openPluginList(page);
+      await expect(page.locator(`#plugins .plug[data-plugin="${SCRIPT_ID}"] .pst`)).toHaveText("実行中");
+      return [page.locator("#plugins .box")];
     },
   },
   {

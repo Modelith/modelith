@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { PluginInfo, PluginSummary, ProjectFile, RuleFinding } from "../core";
-import { addPrompt, findingText, installFiles, isSafeName, loadProblemText, missingNotice, panelIntro, pluginNotes, pluginRows, pluginState, type PluginRow } from "./plugins";
+import type { PluginFiles, PluginInfo, PluginSummary, ProjectFile, RuleFinding } from "../core";
+import { addPrompt, diagnosticText, findingText, installFiles, isSafeName, loadProblemText, missingNotice, panelIntro, pluginNotes, pluginRows, pluginState, scriptPlugins, type PluginRow } from "./plugins";
 
 /** 追加済みで問題の無いプラグインのまとめ。 */
 const summary = (over: Partial<PluginSummary> = {}): PluginSummary => ({
@@ -25,6 +25,9 @@ const row = (over: Partial<PluginRow> = {}): PluginRow => ({
   state: "ok",
   rules: 2,
   problems: [],
+  runtime: "rules",
+  permissions: [],
+  commands: 0,
   ...over,
 });
 
@@ -70,8 +73,8 @@ describe("pluginRows（一覧の行）", () => {
     const rows = pluginRows(project, [summary({ problems: [PROBLEM] })]);
     // Assert
     expect(rows).toEqual([
-      { id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", wanted: "0.1.0", enabled: true, state: "error", rules: 2, problems: [loadProblemText(PROBLEM)] },
-      { id: "jp.y", name: "jp.y", version: null, wanted: null, enabled: false, state: "off", rules: 0, problems: [] },
+      { id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", wanted: "0.1.0", enabled: true, state: "error", rules: 2, problems: [loadProblemText(PROBLEM)], runtime: "rules", permissions: [], commands: 0 },
+      { id: "jp.y", name: "jp.y", version: null, wanted: null, enabled: false, state: "off", rules: 0, problems: [], runtime: null, permissions: [], commands: 0 },
     ]);
   });
 
@@ -190,14 +193,86 @@ describe("addPrompt（追加の確認、F-PLUG-8）", () => {
     expect(prompt.text).toContain("プロジェクトの設定ではバージョン 0.2.0 が指定されています。追加すると、設定のバージョンを 0.1.0 に変更します。");
   });
 
-  it.each([
-    ["browser", "「書き出し」は、画面に機能を追加するプラグイン（TypeScript）です。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインだけです"],
-    ["wasm-component", "「書き出し」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインだけです"],
-  ] as const)("%s のプラグインは、まだ追加できないと伝える（異常系）", (runtime, refused) => {
+  it("wasm-component のプラグインは、まだ追加できないと伝える（異常系）", () => {
     // Arrange・Act
-    const prompt = addPrompt({ ...info, name: "書き出し", runtime }, { plugins: {} }, false);
+    const prompt = addPrompt({ ...info, name: "解析", runtime: "wasm-component" }, { plugins: {} }, false);
     // Assert
-    expect(prompt).toEqual({ refused });
+    expect(prompt).toEqual({ refused: "「解析」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインと、画面に機能を追加するプラグイン（TypeScript）です" });
+  });
+
+  it("F-PLUG-6: 画面に機能を追加するプラグインは、プログラムを含むことと使う権限を示す", () => {
+    // Arrange
+    const script: PluginInfo = { id: "jp.example.fill", name: "要求の ID の補完", version: "1.0.0", runtime: "browser", permissions: ["model:read", "edits:propose"] };
+    // Act
+    const prompt = addPrompt(script, { plugins: {} }, false);
+    // Assert
+    expect(prompt).toEqual({
+      text: "「要求の ID の補完」（ID：jp.example.fill、バージョン 1.0.0）をこのプロジェクトに追加します。画面に機能を追加するプラグイン（TypeScript）です。プログラムを含み、下の権限を使います。初めて実行する前に、実行してよいかを確認します。プラグインのファイルを .modelith/plugins/jp.example.fill/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員が同じプラグインを使えます。",
+      confirm: "追加する",
+      askName: false,
+      items: ["解析したモデル（要素と関係）を受け取り、問題一覧に結果を出す（model:read）", "モデルのテキストを変更する（変更は元に戻せます）（edits:propose）"],
+    });
+  });
+
+  it("F-PLUG-6: 外部と通信できるプラグインは、モデルを外部に送信できることを示す", () => {
+    // Arrange
+    const script: PluginInfo = { id: "jp.example.sync", name: "要求の同期", version: "1.0.0", runtime: "browser", permissions: ["network"] };
+    // Act
+    const prompt = addPrompt(script, { plugins: {} }, false);
+    // Assert
+    expect(prompt).toMatchObject({ warning: "このプラグインは、あなたのモデルを外部に送信できます。提供元を信頼できる場合だけ許可してください。" });
+  });
+
+  it("権限を宣言していないプラグインは、追加の権限が無いことを示す（境界値: 0 個）", () => {
+    // Arrange
+    const script: PluginInfo = { id: "jp.example.hello", name: "あいさつ", version: "1.0.0", runtime: "browser" };
+    // Act
+    const prompt = addPrompt(script, { plugins: {} }, false);
+    // Assert
+    expect(prompt).toMatchObject({ items: ["追加の権限はありません"] });
+    expect(prompt).not.toHaveProperty("warning");
+  });
+});
+
+describe("scriptPlugins（動かす v1 のプラグイン、ADR-0018 §3）", () => {
+  const browser = (over: Partial<PluginSummary> = {}): PluginSummary =>
+    summary({ id: "jp.y", manifest: { id: "jp.y", name: "要求の ID の補完", version: "1.0.0", runtime: "browser", main: "main.js", permissions: ["edits:propose"], commands: [{ id: "fill", title: "要求に ID を付ける" }] }, rules: 0, ...over });
+  const files: PluginFiles[] = [{ id: "jp.y", enabled: true, files: { "modelith-plugin.json": "{}", "main.js": "/* code */" } }];
+
+  it("有効で問題の無い v1 のプラグインを、プログラムと設定を添えて返す（正常系）", () => {
+    // Arrange
+    const project: ProjectFile = { plugins: { "jp.y": { enabled: true, settings: { prefix: "REQ" } } } };
+    // Act
+    const got = scriptPlugins(project, [browser()], files);
+    // Assert
+    expect(got).toEqual([
+      { id: "jp.y", name: "要求の ID の補完", version: "1.0.0", permissions: ["edits:propose"], commands: [{ id: "fill", title: "要求に ID を付ける" }], code: "/* code */", settings: { prefix: "REQ" } },
+    ]);
+  });
+
+  it.each<[string, ProjectFile | null, PluginSummary[], typeof files]>([
+    ["無効", { plugins: { "jp.y": { enabled: false } } }, [browser()], files],
+    ["読み込みの問題がある", { plugins: { "jp.y": { enabled: true } } }, [browser({ problems: [PROBLEM] })], files],
+    ["チェックルールのプラグイン", { plugins: { "jp.x": { enabled: true } } }, [summary()], files],
+    ["プログラムのファイルが無い", { plugins: { "jp.y": { enabled: true } } }, [browser()], [{ id: "jp.y", enabled: true, files: {} }]],
+    ["プロジェクトが無い", null, [browser()], files],
+  ])("%s なら動かさない（異常系）", (_, project, summaries, f) => {
+    // Arrange・Act
+    const got = scriptPlugins(project, summaries, f);
+    // Assert
+    expect(got).toEqual([]);
+  });
+});
+
+describe("diagnosticText（v1 のプラグインの診断）", () => {
+  it.each([
+    [{ pos: 0, end: 1, severity: "warning" as const, message: "要求「R」に ID がありません", code: "req-id" }, "要求の ID の補完", "要求「R」に ID がありません（プラグイン「要求の ID の補完」の req-id）"],
+    [{ pos: 0, end: 1, severity: "error" as const, message: "m" }, "jp.y", "m（プラグイン「jp.y」）"],
+  ])("%o → プラグインの名前（と code）を添える", (d, name, text) => {
+    // Arrange・Act
+    const got = diagnosticText(d, name);
+    // Assert
+    expect(got).toBe(text);
   });
 });
 

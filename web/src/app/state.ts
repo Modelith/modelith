@@ -1,6 +1,6 @@
 // アプリの状態。テキストが唯一の正本で、P（解析結果）・M（モデル）・layout はテキストから作り直す（ADR-0001）。
 
-import type { Model, ParseResult, PortDir, RuleFinding } from "../core";
+import type { Model, ParseResult, PlacedDiagnostic, PortDir, RuleFinding } from "../core";
 import type { Layout, Side } from "./layout";
 import type { PluginNote } from "./plugins";
 
@@ -104,6 +104,8 @@ export interface AppState {
   pluginNotes: PluginNote[];
   /** プラグインの ID → 画面に出す名前。 */
   pluginNames: Map<string, string>;
+  /** v1 のプラグインが出した診断（プラグインごとに最後のもの。version はそれを出したテキストの版）。 */
+  pluginDiagnostics: { plugin: string; version: number; items: PlacedDiagnostic[] }[];
 }
 
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
@@ -155,6 +157,7 @@ export const S: AppState = {
   findings: [],
   pluginNotes: [],
   pluginNames: new Map(),
+  pluginDiagnostics: [],
 };
 
 /** 選択と一時的な操作状態をすべて外す。 */

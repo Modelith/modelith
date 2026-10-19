@@ -8,8 +8,11 @@ import { PROJECT_FILE, type OpenFolder } from "../workspace/workspace";
 import { ask } from "./dialog";
 import { $, closest, esc } from "./dom";
 import {
-  addPrompt, installFiles, isSafeName, MANIFEST_FILE, missingNotice, panelIntro, pluginNotes, pluginRows, PLUGINS_DIR, STATE_LABEL, type PanelPlace, type PluginRow,
+  addPrompt, installFiles, isSafeName, MANIFEST_FILE, missingNotice, panelIntro, pluginNotes, pluginRows, PLUGINS_DIR, scriptPlugins, STATE_LABEL, type PanelPlace, type PluginRow,
 } from "./plugins";
+import { allowScriptPlugin, initScriptHost, runInfo, startScriptPlugin, stopScriptPlugin, syncScriptPlugins } from "../plugins/host";
+import { permissionLines } from "../plugins/permissions";
+import { RUN_STATE_LABEL, type RunState } from "../plugins/view";
 import { projectTitle } from "./project";
 import { S } from "./state";
 import { coreClient, renderProblems, toast, updateSync } from "./sync";
@@ -84,7 +87,8 @@ const currentProject = (): ProjectFile | null => pluginEnv().project()?.project 
 
 /**
  * プロジェクトが使うプラグインのファイルを `.modelith/plugins/<ID>/` から読み、コアに渡す（ADR-0018 §1）。
- * プロジェクトが無ければ、コアのプラグインを空にする。結果（まとめ）から一覧・問題一覧・エクスプローラーの案内を描き直す。
+ * プロジェクトが無ければ、コアのプラグインを空にする。結果（まとめ）から一覧・問題一覧・エクスプローラーの案内を描き直し、
+ * v1 のプラグイン（TypeScript）を、動かすものに合わせる（止める・許可を確かめて動かす）。
  * フォルダを開いた・開き直した・一覧を更新した・設定ファイルが変わった・追加や削除をしたときに呼ぶ。
  */
 export async function reloadPlugins(): Promise<void> {
@@ -103,6 +107,8 @@ export async function reloadPlugins(): Promise<void> {
     summaries = [];
   }
   publish(project);
+  // v1 のプラグイン（TypeScript）は、許可を確かめてから隔離した場所で動かす（ADR-0018 §3・§5）
+  void syncScriptPlugins(scriptPlugins(project, summaries, plugins));
 }
 
 /**
@@ -185,27 +191,58 @@ function panelPlace(): PanelPlace {
 }
 
 /**
- * プラグインの一覧の 1 行の HTML を作る（名前・状態・ID・バージョン・ルールの数・案内・問題・有効の切り替え・削除）。
+ * プラグインの一覧の 1 行の HTML を作る（名前・状態・ID・バージョン・ルールやコマンドの数・権限・案内・問題・有効の切り替え・削除）。
+ * v1 のプラグイン（TypeScript）は、動かしている状態・権限・知らせと、許可・停止・開始のボタンも出す。
  *
  * @param r 一覧の行
  * @returns 行の HTML
  * @example
- * rowHtml({ id: "jp.x", name: "トレーサビリティのチェック", state: "ok", … })
+ * rowHtml({ id: "jp.x", name: "トレーサビリティのチェック", state: "ok", runtime: "rules", … })
  * // → '<div class="plug" data-plugin="jp.x"><div class="ph"><b>トレーサビリティのチェック</b><span class="pst ok">有効</span></div>…</div>'
+ * rowHtml({ id: "jp.y", name: "要求の ID の補完", state: "ok", runtime: "browser", … }) // → '…<span class="pst running">実行中</span>…<button data-plugin-stop="jp.y">停止</button>…'
  */
 function rowHtml(r: PluginRow): string {
+  const script = r.runtime === "browser";
+  const run = script && r.state === "ok" ? runInfo(r.id) : undefined;
   const version = r.version ?? "—";
   const wanted = r.wanted && r.wanted !== r.version ? `（設定では ${esc(r.wanted)}）` : "";
   const notice = r.enabled ? missingNotice(r) : null;
   const help = notice ? `<p class="pn">${esc(notice)} <button data-cmd="addPlugin">追加…</button></p>` : "";
-  const problems = r.problems.length && r.state !== "missing" ? `<ul class="pp">${r.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
+  const lines = [...(r.state !== "missing" ? r.problems : []), ...(run?.notices ?? [])];
+  const problems = lines.length ? `<ul class="pp">${lines.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
+  const status = run ? `<span class="pst ${run.state}">${RUN_STATE_LABEL[run.state]}</span>` : `<span class="pst ${r.state}">${STATE_LABEL[r.state]}</span>`;
+  const count = script ? `コマンド ${r.commands} 件` : `ルール ${r.rules} 件`;
+  const removeButton = `<button data-remove="${esc(r.id)}" class="danger">削除</button>`;
+  const permissions = script ? `<ul class="pperm" aria-label="権限">${permissionLines(r.permissions).map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
   return (
     `<div class="plug" data-plugin="${esc(r.id)}">` +
-    `<div class="ph"><b>${esc(r.name)}</b><span class="pst ${r.state}">${STATE_LABEL[r.state]}</span></div>` +
-    `<div class="pm">ID：${esc(r.id)}・バージョン：${esc(version)}${wanted}・ルール ${r.rules} 件</div>${help}${problems}` +
-    `<div class="pa"><label><input type="checkbox" data-toggle="${esc(r.id)}"${r.enabled ? " checked" : ""}> 有効</label><button data-remove="${esc(r.id)}" class="danger">削除</button></div>` +
+    `<div class="ph"><b>${esc(r.name)}</b>${status}</div>` +
+    `<div class="pm">ID：${esc(r.id)}・バージョン：${esc(version)}${wanted}・${count}</div>${permissions}${help}${problems}` +
+    `<div class="pa"><label><input type="checkbox" data-toggle="${esc(r.id)}"${r.enabled ? " checked" : ""}> 有効</label>` +
+    (run ? `<span class="pbtns">${runButton(r.id, run.state)}${removeButton}</span>` : removeButton) +
+    `</div>` +
     `</div>`
   );
+}
+
+/**
+ * v1 のプラグインの、状態に応じたボタン（許可する・停止・開始）の HTML を作る。
+ *
+ * @param id プラグインの ID
+ * @param state 動かしている状態
+ * @returns ボタンの HTML。押せるボタンが無い状態（確認中など）では ""
+ * @example
+ * runButton("jp.y", "denied")  // → '<button data-plugin-allow="jp.y">許可する…</button>'
+ * runButton("jp.y", "running") // → '<button data-plugin-stop="jp.y">停止</button>'
+ * runButton("jp.y", "stopped") // → '<button data-plugin-start="jp.y">開始</button>'
+ * runButton("jp.y", "asking")  // → ""
+ */
+function runButton(id: string, state: RunState): string {
+  const at = esc(id);
+  if (state === "denied") return `<button data-plugin-allow="${at}">許可する…</button>`;
+  if (state === "running" || state === "starting") return `<button data-plugin-stop="${at}">停止</button>`;
+  if (state === "stopped" || state === "failed") return `<button data-plugin-start="${at}">開始</button>`;
+  return "";
 }
 
 /** プラグインの一覧を開いていれば、今の状態で描き直す。 */
@@ -302,7 +339,7 @@ async function removePlugin(id: string): Promise<void> {
 /**
  * 「追加」：プラグインのフォルダを選んでもらい、中身を示して確かめてから、このプロジェクトに追加する（F-PLUG-8・F-PLUG-9）。
  * まだプロジェクトでないフォルダなら、同じ確認でプロジェクトの名前を尋ね、設定ファイルを作る（C-6：利用者の操作なしに書かない）。
- * チェックルール以外のプラグインは、まだ追加できないと伝える。
+ * 画面に機能を追加するプラグイン（TypeScript）は、使う権限も示す。WebAssembly で動くプラグインは、まだ追加できないと伝える。
  */
 export async function addPlugin(): Promise<void> {
   const f = pluginFolder();
@@ -324,7 +361,7 @@ export async function addPlugin(): Promise<void> {
     const r = await ask("プラグインを追加", prompt.text, [
       { id: "cancel", label: "やめる" },
       { id: "ok", label: prompt.confirm, kind: "primary" },
-    ], prompt.askName ? { value: f.ref.name, label: "プロジェクト名" } : undefined);
+    ], prompt.askName ? { value: f.ref.name, label: "プロジェクト名" } : undefined, prompt.items ? { items: prompt.items, warning: prompt.warning } : undefined);
     if (r?.id !== "ok") return;
     await install(f, picked, info, prompt.askName ? r.value.trim() || f.ref.name : null);
   } catch (e) {
@@ -375,13 +412,14 @@ async function createdProjectText(name: string): Promise<string | null> {
 /* ---- 登録 ---- */
 
 /**
- * プラグインの画面を初期化する。ファイルメニューの「プラグイン…」・一覧の操作（追加・有効・削除・閉じる）・
- * 問題一覧の足りないプラグインの行（押すと追加）をつなぐ。起動時に 1 回呼ぶ。
+ * プラグインの画面を初期化する。ファイルメニューの「プラグイン…」・一覧の操作（追加・有効・削除・許可・停止・開始・閉じる）・
+ * 問題一覧の足りないプラグインの行（押すと追加）と、v1 のプラグインのホストをつなぐ。起動時に 1 回呼ぶ。
  *
  * @param e ファイル操作の画面の状態と操作
  */
 export function initPlugins(e: PluginEnv): void {
   env = e;
+  initScriptHost(renderPanel);
   $("#btnPlugins").onclick = () => {
     document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => (d.open = false));
     openPlugins();
@@ -393,7 +431,13 @@ export function initPlugins(e: PluginEnv): void {
     if (ev.target === box) return closePlugins();
     if (closest(ev, '[data-cmd="addPlugin"]')) return void addPlugin();
     const remove = closest(ev, "[data-remove]")?.dataset["remove"];
-    if (remove !== undefined) void removePlugin(remove);
+    if (remove !== undefined) return void removePlugin(remove);
+    const allow = closest(ev, "[data-plugin-allow]")?.dataset["pluginAllow"];
+    if (allow !== undefined) return allowScriptPlugin(allow);
+    const stop = closest(ev, "[data-plugin-stop]")?.dataset["pluginStop"];
+    if (stop !== undefined) return stopScriptPlugin(stop);
+    const start = closest(ev, "[data-plugin-start]")?.dataset["pluginStart"];
+    if (start !== undefined) startScriptPlugin(start);
   });
   box.addEventListener("change", (ev) => {
     const t = ev.target;

@@ -7,6 +7,7 @@ import { readLayout } from "./parser";
 import type {
   Block, Entry, Model, ModelEdge, ModelNode, ModelView, ParseResult, PhaseInfo, Port, Problem, Rel, Scope, Unsupported,
 } from "./types";
+import type { Command, ModelSnapshot, Permission, PluginMessage } from "../plugins/generated/protocol";
 import initWasm, { analyze as analyzeJson, edit as editJson } from "./wasm/modelith_core.js";
 
 /**
@@ -344,13 +345,19 @@ export interface PluginFiles {
 /** プラグインの種類（マニフェストの runtime）。rules はチェックルール、browser は TypeScript、wasm-component は WebAssembly。 */
 export type PluginRuntime = "rules" | "browser" | "wasm-component";
 
-/** マニフェスト（modelith-plugin.json）から読んだ、プラグインを画面に示すための情報。 */
+/** マニフェスト（modelith-plugin.json）から読んだ、プラグインを画面に示すための情報（形は crates/modelith-core/src/rules の ManifestInfo）。 */
 export interface PluginInfo {
   id: string;
   name: string;
   version: string;
   runtime: PluginRuntime;
   description?: string;
+  /** 宣言した権限（無ければ省く）。 */
+  permissions?: Permission[];
+  /** v1 のプラグインのプログラムのファイル（プラグインのフォルダからの相対パス）。 */
+  main?: string;
+  /** メニューに出すコマンド（無ければ省く）。 */
+  commands?: Command[];
 }
 
 /** プラグインを読み込むときの問題 1 件。path はプロジェクトのフォルダからの相対パス、place は 1 始まりの行・列（無ければ null）。 */
@@ -380,6 +387,31 @@ export interface PluginsResult {
 
 /** 設定ファイルの使うプラグインの変更（加える・使う／止める・外す。形は crates/modelith-core/src/project_file の PluginChange）。 */
 export type PluginChange = { op: "add"; version: string } | { op: "setEnabled"; enabled: boolean } | { op: "remove" };
+
+/** プラグインの診断 1 件を、テキストの位置（UTF-16）に直したもの（形は crates/modelith-core/src/plugin_host の PlacedDiagnostic）。 */
+export interface PlacedDiagnostic {
+  pos: number;
+  end: number;
+  severity: RuleSeverity;
+  message: string;
+  code?: string;
+}
+
+/**
+ * コアが確かめた、プラグインからのメッセージ（ADR-0018 §3・§4）。変更案と診断は、テキストの位置（UTF-16）に直したものを添える。
+ * 形は crates/modelith-core/src/plugin_host の CheckedMessage。メッセージの型は plugin-sdk のもの。
+ */
+export interface CheckedPluginMessage {
+  message: PluginMessage;
+  edits?: TextEdit[];
+  diagnostics?: PlacedDiagnostic[];
+}
+
+/** プラグインに渡すモデル（plugin-sdk の型）と、それを作ったテキストの版。 */
+export interface VersionedSnapshot {
+  version: number;
+  snapshot: ModelSnapshot;
+}
 
 /** マニフェストを読んだ結果。 */
 export interface DescribedPlugin {

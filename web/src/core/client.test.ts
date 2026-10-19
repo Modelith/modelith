@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 import { CoreClient, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text-ops";
-import { analyze, createProjectFile, describePlugin, edit, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
+import { analyze, checkPluginMessage, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
 import type { PluginFiles, RuleFinding } from "./rust";
 import type { Model, ParseResult } from "./types";
 
 /** 返事をためておき、deliver() で届ける偽の Worker。 */
-const wasm: CoreFns = { analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json) };
+const wasm: CoreFns = { analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json), modelSnapshot, checkPluginMessage };
 /** コアがどの依頼にも壊れた JSON を返す（Q-5 の異常系）。 */
 const broken: CoreFns = {
   analyze: () => "{",
@@ -19,6 +19,8 @@ const broken: CoreFns = {
   updateProjectPlugin: () => "{",
   describePlugin: () => "{",
   loadPlugins: () => ({ summary: () => "{", analyze: () => "{", free: () => {} }),
+  modelSnapshot: () => "{",
+  checkPluginMessage: () => "{",
 };
 
 function fakeWorker(fns: CoreFns = wasm) {
@@ -380,5 +382,90 @@ describe("CoreClient（チェックルールのプラグイン、F-PLUG-1・F-PL
     handle(state, { type: "setPlugins", id: 2, plugins: [] }, fns);
     // Assert
     expect([freed, state.plugins]).toEqual([1, null]);
+  });
+});
+
+describe("CoreClient（v1 のプラグイン、ADR-0018 §3・§4）", () => {
+  const PROPOSE = JSON.stringify({ type: "proposeEdits", version: 1, edits: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 7 } }, newText: "library" }] });
+
+  it("今のテキストから、プラグインに渡すモデルを版つきで返す（正常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const version = c.sync("package P { part def A; }");
+    // Act
+    const pending = c.modelSnapshot();
+    deliver();
+    // Assert
+    const got = await pending;
+    expect(got?.version).toBe(version);
+    expect(got?.snapshot.elements.map((e) => e.key)).toEqual(["A"]);
+  });
+
+  it("返事の前にテキストが変わったら、モデルは null にする（古い版）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    c.sync("package P { part def A; }");
+    const pending = c.modelSnapshot();
+    // Act
+    c.sync("package P { part def B; }");
+    deliver();
+    // Assert
+    expect(await pending).toBeNull();
+  });
+
+  it("F-PLUG-5: 変更案を、今のテキストの位置に直して返す（正常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const version = c.sync("package P;");
+    // Act
+    const pending = c.checkPluginMessage(PROPOSE, ["edits:propose"]);
+    deliver();
+    // Assert
+    expect(await pending).toEqual({ version, stale: false, checked: { message: JSON.parse(PROPOSE) as unknown, edits: [{ start: 0, end: 7, text: "library" }] } });
+  });
+
+  it("F-PLUG-7: 宣言していない権限のメッセージは、理由を添えて断る（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    c.sync("package P;");
+    // Act
+    const pending = c.checkPluginMessage(PROPOSE, ["model:read"]);
+    deliver();
+    // Assert
+    expect((await pending)?.checked).toEqual({ refused: "宣言していない権限（edits:propose）が要るメッセージ（proposeEdits）のため、使いませんでした" });
+  });
+
+  it("F-PLUG-5: 返事の前にテキストが変わったら、確かめた結果に古い版の印を付ける", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const version = c.sync("package P;");
+    const pending = c.checkPluginMessage(PROPOSE, ["edits:propose"]);
+    // Act
+    c.sync("package Q;");
+    deliver();
+    // Assert
+    expect(await pending).toMatchObject({ version, stale: true });
+  });
+
+  it("Q-5: コアが壊れた返事をしても、例外を投げない（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client(broken);
+    c.sync("package P;");
+    // Act
+    const snapshot = c.modelSnapshot();
+    const checked = c.checkPluginMessage('{"type":"ready"}', []);
+    deliver();
+    // Assert
+    expect(await snapshot).toBeNull();
+    expect((await checked)?.checked).toEqual({ refused: expect.stringMatching(/^メッセージを確かめられませんでした/) as unknown });
+  });
+
+  it("コアが失敗したときも、依頼と同じ版で返事をする（failedReply）", () => {
+    // Arrange
+    const req: CoreRequest = { type: "checkPluginMessage", version: 5, id: 6, message: "{}", permissions: [] };
+    // Act
+    const res = failedReply(req as Exclude<CoreRequest, { type: "init" }>, "boom");
+    // Assert
+    expect(res).toEqual({ type: "pluginMessageChecked", version: 5, id: 6, json: '{"refused":"メッセージを確かめられませんでした（boom）"}' });
   });
 });

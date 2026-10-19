@@ -169,15 +169,15 @@ test("F-PLUG-8: 追加をやめたら、何も書かない（C-6）", async ({ p
   expect(await readFile(page, `${DIR}/modelith-plugin.json`)).toBeNull();
 });
 
-test("F-PLUG-8: 画面に機能を追加するプラグイン（TypeScript）は、まだ追加できないと伝える", async ({ page }) => {
+test("F-PLUG-8: WebAssembly で動くプラグインは、まだ追加できないと伝える", async ({ page }) => {
   // Arrange
   await openProject(page, { "modelith.json": project({}) });
   await openPluginList(page);
-  await preparePluginFolder(page, JSON.stringify({ id: "jp.example.ts", name: "書き出し", version: "1.0.0", apiVersion: "0", runtime: "browser", license: "MIT", main: "main.js" }));
+  await preparePluginFolder(page, JSON.stringify({ id: "jp.example.wasm", name: "解析", version: "1.0.0", apiVersion: "0", runtime: "wasm-component", license: "MIT", main: "plugin.wasm" }));
   // Act
   await page.locator("#pluginsAdd").click();
   // Assert
-  await expect(page.locator("#dialogText")).toHaveText("「書き出し」は、画面に機能を追加するプラグイン（TypeScript）です。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインだけです");
+  await expect(page.locator("#dialogText")).toHaveText("「解析」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインと、画面に機能を追加するプラグイン（TypeScript）です");
   await page.locator('#dialogButtons [data-id="ok"]').click();
   expect(await readFile(page, "modelith.json")).toBe(project({}));
 });

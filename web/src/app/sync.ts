@@ -1,6 +1,6 @@
 // テキストを更新し、解析し直して画面全体を同期する。図の操作も最後は setText を通る（ADR-0001）。
 
-import { lineOf, type CoreClient, type Model, type ParseResult, type Problem, type RuleFinding } from "../core";
+import { lineOf, type CoreClient, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
 import { autoPlace, nodeH } from "./geometry";
 import { scheduleRecord } from "./history";
@@ -8,7 +8,7 @@ import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
 import { serializeLayout } from "./layout-file";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
-import { findingText, SEVERITY_MARK } from "./plugins";
+import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
 import { highlight, render } from "./render";
 import { S } from "./state";
@@ -98,6 +98,7 @@ export function coreClient(): CoreClient {
  * @param P 解析結果
  * @param M 解析結果から組み立てたモデル
  * @param findings チェックルールの結果（プラグインが無ければ空。ADR-0018 §2）
+ * 反映した後、onAnalyzedVersion で登録した処理を呼ぶ。
  */
 export function onAnalyzed(version: number, P: ParseResult, M: Model, findings: RuleFinding[]): void {
   S.P = P;
@@ -110,6 +111,17 @@ export function onAnalyzed(version: number, P: ParseResult, M: Model, findings: 
   const ws = waiters;
   waiters = [];
   for (const w of ws) w();
+  analyzedListener(version);
+}
+
+let analyzedListener: (version: number) => void = () => {};
+/**
+ * 今の版の解析結果を画面に反映した後の処理（v1 のプラグインへの didChange）を登録する。前に登録した処理は置き換える。
+ *
+ * @param fn 反映した版の番号を受け取って呼ばれる処理
+ */
+export function onAnalyzedVersion(fn: (version: number) => void): void {
+  analyzedListener = fn;
 }
 
 /**
@@ -288,19 +300,20 @@ export function setSync(cls: "" | "busy" | "bad", txt: string): void {
 
 /**
  * 今のモデルから、同期の状態（問題の件数）と、テキスト欄の見出しの要素と関係の数を書き換える。
- * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数に、チェックルールの誤りと注意、プラグインについての行を足したもの。
+ * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数に、チェックルールと v1 のプラグインの診断のエラーと警告、プラグインについての行を足したもの。
  */
 export function updateSync(): void {
-  const rules = S.findings.filter((f) => f.severity === "error" || f.severity === "warning").length;
+  const serious = (s: string): boolean => s === "error" || s === "warning";
+  const rules = S.findings.filter((f) => serious(f.severity)).length + currentDiagnostics().filter((d) => serious(d.item.severity)).length;
   const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => !x.kind).length + rules + S.pluginNotes.length;
   setSync(p ? "bad" : "", p ? `同期済み（問題 ${p} 件）` : "同期済み");
   $("#textInfo").textContent = `SysML v2 テキスト：要素 ${n}、関係 ${e}`;
 }
 
 /**
- * 問題（構文エラー・参照切れ・チェックルールの結果・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
- * エラー → チェックルールの結果 → プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
- * テキストの中の位置があるもの（モデルの問題・チェックルールの結果）は行番号を付け、押すとその行に移る。
+ * 問題（構文エラー・参照切れ・チェックルールの結果・v1 のプラグインの診断・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
+ * エラー → チェックルールの結果 → プラグインの診断 → プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
+ * テキストの中の位置があるもの（モデルの問題・チェックルールの結果・プラグインの診断）は行番号を付け、押すとその行に移る。
  * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
  */
 export function renderProblems(): void {
@@ -312,11 +325,27 @@ export function renderProblems(): void {
   const rule = (f: RuleFinding): string =>
     `<button data-pos="${f.pos}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(findingText(f, S.pluginNames))}</button>`;
   const notes = S.pluginNotes.map((n) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""}>⚠ ${esc(n.msg)}</button>`);
+  const diagnostic = ({ plugin, item }: { plugin: string; item: PlacedDiagnostic }): string =>
+    `<button data-pos="${item.pos}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${lineOf(S.text, item.pos)} 行目：${esc(diagnosticText(item, S.pluginNames.get(plugin) ?? plugin))}</button>`;
   const items = [
     ...sorted.filter((p) => !p.kind).map(model),
     ...S.findings.map(rule),
+    ...currentDiagnostics().map(diagnostic),
     ...notes,
     ...sorted.filter((p) => p.kind).map(model),
   ];
   $("#problems").innerHTML = items.slice(0, 40).join("");
+}
+
+/**
+ * 画面に反映している版に対する、v1 のプラグインの診断（古い版に対するものは、プラグインが出し直すまで出さない）。
+ *
+ * @returns プラグインの ID と診断の組（プラグインの順、届いた順）
+ * @example
+ * // S.pluginDiagnostics が [{ plugin: "jp.x", version: 3, items: [d] }] で、反映している版が 3
+ * currentDiagnostics() // → [{ plugin: "jp.x", item: d }]
+ * // 反映している版が 4 → []
+ */
+function currentDiagnostics(): { plugin: string; item: PlacedDiagnostic }[] {
+  return S.pluginDiagnostics.filter((d) => d.version === applied).flatMap((d) => d.items.map((item) => ({ plugin: d.plugin, item })));
 }
