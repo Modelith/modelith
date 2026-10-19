@@ -41,7 +41,7 @@ mod tests;
 
 pub use check::{check, check_text};
 pub use load::{describe_manifest, load_plugin, load_plugin_files};
-pub use modelith_plugin_protocol::{DiagnosticSeverity, Runtime};
+pub use modelith_plugin_protocol::{Command, DiagnosticSeverity, Permission, Runtime};
 
 use regex_lite::Regex;
 use serde::Serialize;
@@ -123,6 +123,16 @@ pub struct ManifestInfo {
     /// 説明（書いてあれば）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// 宣言した権限（v1 のプラグインの許可に使う。ADR-0018 §5）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub permissions: Vec<Permission>,
+    /// プログラムのファイル（v1 のプラグイン。プラグインのフォルダからの相対パスを `/` 区切りに整えたもの）。
+    /// 書いていない・フォルダの外を指すときは `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main: Option<String>,
+    /// 画面のメニューに出すコマンド（`contributes.commands`）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub commands: Vec<Command>,
 }
 
 /// 読み込んだプラグイン 1 つ。

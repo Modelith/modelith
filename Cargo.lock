@@ -99,9 +99,10 @@ dependencies = [
 [[package]]
 name = "modelith-plugin-protocol"
 version = "0.1.0"
-source = "git+https://github.com/modelith/plugin-sdk?rev=3ecc087390db16890e4645d42c17fe69c2369270#3ecc087390db16890e4645d42c17fe69c2369270"
+source = "git+https://github.com/modelith/plugin-sdk?rev=9fb8f904670cec12f39e0576c24b09ee94738269#9fb8f904670cec12f39e0576c24b09ee94738269"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]

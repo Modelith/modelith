@@ -6,6 +6,7 @@
 pub mod edit;
 mod line_index;
 pub mod model;
+pub mod plugin_host;
 pub mod project;
 pub mod project_file;
 pub mod rules;

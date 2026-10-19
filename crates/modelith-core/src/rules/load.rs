@@ -71,10 +71,16 @@ pub fn load_plugin(
     };
     plugin.installed = true;
     plugin.manifest = describe_manifest(&manifest_path, &text).ok();
-    let (rule_paths, problems) = read_manifest(id, &manifest_path, &text);
+    let (files, problems) = read_manifest(id, &manifest_path, &text);
     plugin.problems.extend(problems);
+    if let Some(main) = files.main {
+        let file = format!("{dir}/{main}");
+        if let Err(e) = read(&file) {
+            plugin.problems.push(main_file_read_problem(&file, &e));
+        }
+    }
     let mut seen = HashSet::new();
-    for path in rule_paths {
+    for path in files.rules {
         let file = format!("{dir}/{path}");
         match read(&file) {
             Ok(text) => {
@@ -118,7 +124,7 @@ pub fn load_plugin_files(id: &str, files: &BTreeMap<String, String>) -> LoadedPl
     })
 }
 
-/// マニフェストのテキストを読み、プラグインを画面に示すための情報（名前・版・実行方式）を返す（「追加」で使う）。
+/// マニフェストのテキストを読み、プラグインを画面に示すための情報（名前・版・実行方式・権限・プログラムのファイル・コマンド）を返す（「追加」と v1 のホストで使う）。
 ///
 /// 使えるかどうか（`apiVersion`・`runtime`・ルールのファイル）は確かめない。それは読み込み（[`load_plugin`]）が行う。
 ///
@@ -135,7 +141,7 @@ pub fn load_plugin_files(id: &str, files: &BTreeMap<String, String>) -> LoadedPl
 ///
 /// ```text
 /// describe_manifest(p, r#"{"id":"jp.x","name":"例","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#)
-///   → Ok(ManifestInfo { id: "jp.x", name: "例", version: "0.1.0", runtime: Rules, description: None })
+///   → Ok(ManifestInfo { id: "jp.x", name: "例", version: "0.1.0", runtime: Rules, description: None, permissions: [], main: None, commands: [] })
 /// describe_manifest(p, "{") → Err(誤り 1:2「書式にエラーがあるため読み込めません（JSON：…）」)
 /// ```
 pub fn describe_manifest(path: &str, text: &str) -> Result<ManifestInfo, LoadProblem> {
@@ -146,6 +152,9 @@ pub fn describe_manifest(path: &str, text: &str) -> Result<ManifestInfo, LoadPro
             version: m.version,
             runtime: m.runtime,
             description: m.description,
+            permissions: m.permissions,
+            main: m.main.as_deref().and_then(inside_plugin),
+            commands: m.contributes.commands,
         }),
         Err(e) => Err(problem(
             path,
@@ -238,7 +247,42 @@ fn rule_file_read_problem(path: &str, e: &ReadError) -> LoadProblem {
     problem(path, None, message)
 }
 
-/// マニフェストを読み、使えるかを確かめ、ルールのファイルのパスを返す。
+/// v1 のプラグインのプログラムのファイル（`main`）を読めなかったことを、問題にする。
+///
+/// # 引数
+///
+/// - `path`：プログラムのファイルのパス
+/// - `e`：読めなかった理由
+///
+/// # 戻り値
+///
+/// 問題 1 件（位置なし）。
+///
+/// # 例
+///
+/// ```text
+/// main_file_read_problem("…/main.js", NotFound) → 「マニフェストに書かれたプログラムのファイルが見つかりません（main）」
+/// ```
+fn main_file_read_problem(path: &str, e: &ReadError) -> LoadProblem {
+    let message = match e {
+        ReadError::NotFound => {
+            "マニフェストに書かれたプログラムのファイルが見つかりません（main）".to_owned()
+        }
+        ReadError::Other(reason) => format!("プログラムのファイルを読み込めません（{reason}）"),
+    };
+    problem(path, None, message)
+}
+
+/// マニフェストから読み取った、読むべきファイル。
+#[derive(Debug, Default)]
+struct ManifestFiles {
+    /// ルールのファイル（プラグインのフォルダからの相対パス）。
+    rules: Vec<String>,
+    /// v1 のプラグインのプログラムのファイル（プラグインのフォルダからの相対パス）。
+    main: Option<String>,
+}
+
+/// マニフェストを読み、使えるかを確かめ、読むべきファイル（ルールのファイルと、v1 のプラグインのプログラムのファイル）を返す。
 ///
 /// # 引数
 ///
@@ -248,23 +292,25 @@ fn rule_file_read_problem(path: &str, e: &ReadError) -> LoadProblem {
 ///
 /// # 戻り値
 ///
-/// ルールのファイルの、プラグインのフォルダからの相対パス（`/` 区切りに整えたもの）と、問題の一覧。
-/// JSON の誤り・対応しない `apiVersion`・`runtime` が `rules` でない・ID の食い違いがあれば、パスは空。
+/// 読むべきファイル（プラグインのフォルダからの相対パスを `/` 区切りに整えたもの）と、問題の一覧。
+/// JSON の誤り・対応しない `apiVersion`・使えない `runtime`（`wasm-component`）・ID の食い違いがあれば、ファイルは空。
+/// `browser` のプラグインは、`main` が無い・フォルダの外を指すと問題にする。
 ///
 /// # 例
 ///
 /// ```text
-/// read_manifest("jp.x", p, r#"{"id":"jp.x",…,"runtime":"rules","contributes":{"rules":["rules.yaml"]}}"#) → (["rules.yaml"], [])
-/// read_manifest("jp.x", p, r#"{… "apiVersion": "1" …}"#) → ([], [「対応していないバージョン（apiVersion「1」）です…」])
-/// read_manifest("jp.x", p, "{") → ([], [誤り 1:2「書式にエラーがあるため読み込めません（JSON：…）」])
+/// read_manifest("jp.x", p, r#"{"id":"jp.x",…,"runtime":"rules","contributes":{"rules":["rules.yaml"]}}"#) → ({ rules: ["rules.yaml"] }, [])
+/// read_manifest("jp.x", p, r#"{"id":"jp.x",…,"runtime":"browser","main":"./main.js"}"#)             → ({ main: Some("main.js") }, [])
+/// read_manifest("jp.x", p, r#"{… "apiVersion": "1" …}"#) → ({}, [「対応していないバージョン（apiVersion「1」）です…」])
+/// read_manifest("jp.x", p, "{") → ({}, [誤り 1:2「書式にエラーがあるため読み込めません（JSON：…）」])
 /// ```
-fn read_manifest(id: &str, path: &str, text: &str) -> (Vec<String>, Vec<LoadProblem>) {
+fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadProblem>) {
     let manifest: PluginManifest = match serde_json::from_str(text) {
         Ok(m) => m,
         Err(e) => {
             let place = json_error_place(text, &e);
             return (
-                vec![],
+                ManifestFiles::default(),
                 vec![problem(
                     path,
                     place,
@@ -284,11 +330,11 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (Vec<String>, Vec<LoadProb
             ),
         ));
     }
-    if manifest.runtime != Runtime::Rules {
+    if manifest.runtime == Runtime::WasmComponent {
         problems.push(problem(
             path,
             key_place(text, "runtime"),
-            "チェックルールのプラグイン（runtime: rules）ではないため、ここでは使用できません"
+            "WebAssembly で動くプラグイン（runtime: wasm-component）には、まだ対応していません"
                 .to_owned(),
         ));
     }
@@ -303,12 +349,30 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (Vec<String>, Vec<LoadProb
         ));
     }
     if !problems.is_empty() {
-        return (vec![], problems);
+        return (ManifestFiles::default(), problems);
     }
-    let mut paths = Vec::new();
+    let mut files = ManifestFiles::default();
+    if manifest.runtime == Runtime::Browser {
+        match manifest.main.as_deref().map(|m| (m, inside_plugin(m))) {
+            Some((_, Some(main))) => files.main = Some(main),
+            Some((main, None)) => problems.push(problem(
+                path,
+                string_place(text, main),
+                format!(
+                    "プログラムのファイル「{main}」は、プラグインのフォルダの中を、そこからの相対パスで指してください"
+                ),
+            )),
+            None => problems.push(problem(
+                path,
+                None,
+                "画面に機能を追加するプラグイン（runtime: browser）には、プログラムのファイル（main）を書いてください"
+                    .to_owned(),
+            )),
+        }
+    }
     for rule_path in &manifest.contributes.rules {
         match inside_plugin(rule_path) {
-            Some(p) => paths.push(p),
+            Some(p) => files.rules.push(p),
             None => problems.push(problem(
                 path,
                 string_place(text, rule_path),
@@ -318,7 +382,7 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (Vec<String>, Vec<LoadProb
             )),
         }
     }
-    (paths, problems)
+    (files, problems)
 }
 
 /// プラグインのフォルダからの相対パスが、フォルダの中を指すなら、`/` 区切りに整えて返す。
