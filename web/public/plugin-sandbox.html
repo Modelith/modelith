@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!-- v1 のプラグインの隔離用のページ（ADR-0018 §3.1）。外部と通信できない（connect-src 'none'）。
+     plugin-sandbox-network.html と同じ中身で、CSP の connect-src だけが違う（web/src/plugins/sandbox-page.test.ts が確かめる）。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; connect-src 'none'">
+<title>Modelith plugin sandbox</title>
+<script>
+// このページは sandbox="allow-scripts" の iframe（独自のオリジンを持たない）で読み込まれる。
+// 親（アプリ）からプラグインのコードと MessagePort を受け取り、blob の Worker を作って口を渡すだけ。プラグインのコードはこの文書では動かさない。
+(() => {
+  "use strict";
+  // Worker の中で、プラグインのコードより先に動く。通信の抜け道（Firefox では Worker の EventSource が CSP をすり抜ける）と、
+  // 新しい大域を持つ入れ子の Worker を消し、受け取った口（MessagePort）を self の postMessage と message に見せる（connectToHost(self) がそのまま使える）
+  const PRELUDE = `(() => {
+  "use strict";
+  for (const name of ["EventSource", "Worker", "SharedWorker"]) {
+    try { delete self[name]; } catch (e) { /* 消せないものは、下で上書きする */ }
+    try { if (name in self) Object.defineProperty(self, name, { value: undefined, configurable: false, writable: false }); } catch (e) { /* 何もしない */ }
+  }
+  let port = null;
+  const queue = [];
+  self.addEventListener("message", (event) => {
+    if (port || !event.data || event.data.type !== "modelith:port" || !event.ports[0]) return;
+    event.stopImmediatePropagation();
+    port = event.ports[0];
+    port.onmessage = (m) => self.dispatchEvent(new MessageEvent("message", { data: m.data }));
+    for (const m of queue.splice(0)) port.postMessage(m);
+  });
+  Object.defineProperty(self, "postMessage", {
+    value: (message) => (port ? port.postMessage(message) : queue.push(message)),
+    configurable: false,
+    writable: false,
+  });
+})();
+`;
+  let started = false;
+  /** 親にこのページの状態を知らせる（独自のオリジンを持たないので、宛先は "*"。親は event.source で区別する）。 */
+  const tell = (message) => parent.postMessage(message, "*");
+  addEventListener("message", (event) => {
+    if (event.source !== parent || started) return;
+    const data = event.data;
+    if (!data || data.type !== "modelith:start" || typeof data.code !== "string" || !event.ports[0]) return;
+    started = true;
+    let worker;
+    try {
+      const url = URL.createObjectURL(new Blob([PRELUDE, "\n", data.code], { type: "text/javascript" }));
+      worker = new Worker(url);
+    } catch (e) {
+      tell({ type: "modelith:sandbox-error", message: String((e && e.message) || e) });
+      return;
+    }
+    worker.onerror = (ev) => tell({ type: "modelith:sandbox-error", message: String(ev.message || "") });
+    worker.postMessage({ type: "modelith:port" }, [event.ports[0]]);
+  });
+  tell({ type: "modelith:sandbox-ready" });
+})();
+</script>
+</head>
+<body></body>
+</html>

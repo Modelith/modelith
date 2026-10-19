@@ -22,6 +22,7 @@
   - [要求仕様（SysML v2、唯一の定義元）](reference/requirements.sysml)
   - [バージョン規則](reference/versioning.md)
   - [チェックルール（v0 のプラグイン）と modelith check](reference/check-rules.md)
+  - [TypeScript のプラグイン（v1）](reference/script-plugins.md)
 - 解説
   - [アーキテクチャ概要](explanation/architecture.md)
 - 開発者向け

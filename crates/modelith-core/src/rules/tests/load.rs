@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 
 use super::super::load::{describe_serde_error, inside_plugin, rule_places};
 use super::super::{
-    ManifestInfo, Place, ReadError, Runtime, describe_manifest, element_kinds, load_plugin,
-    load_plugin_files,
+    Command, ManifestInfo, Permission, Place, ReadError, Runtime, describe_manifest, element_kinds,
+    load_plugin, load_plugin_files,
 };
 use super::{DIR, ID, load_files, load_yaml, manifest, one_rule};
 
@@ -234,16 +234,93 @@ fn unsupported_api_version_is_reported_at_the_key_and_rules_are_not_read() {
 }
 
 #[test]
-fn runtime_other_than_rules_is_reported() {
-    // Arrange（v1 の TypeScript のプラグイン）
-    let text = manifest(&[]).replace("\"runtime\": \"rules\"", "\"runtime\": \"browser\"");
+fn wasm_component_runtime_is_reported() {
+    // Arrange（v2 の WebAssembly のプラグインには、まだ対応していない）
+    let text = manifest(&[]).replace("\"runtime\": \"rules\"", "\"runtime\": \"wasm-component\"");
     // Act
     let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &text)]);
     // Assert
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json:6:3 チェックルールのプラグイン（runtime: rules）ではないため、ここでは使用できません"
+            "{DIR}/modelith-plugin.json:6:3 WebAssembly で動くプラグイン（runtime: wasm-component）には、まだ対応していません"
+        )]
+    );
+}
+
+/// v1（TypeScript）のプラグインのマニフェスト（`main` の中身を差し込む。`None` なら書かない）。
+fn browser_manifest(main: Option<&str>) -> String {
+    let main = main.map_or(String::new(), |m| format!(",\n  \"main\": \"{m}\""));
+    manifest(&[]).replace(
+        "\"runtime\": \"rules\"",
+        &format!("\"runtime\": \"browser\"{main}"),
+    )
+}
+
+#[test]
+fn browser_plugin_with_its_main_file_loads_without_problems() {
+    // Arrange（./ で始まるパスも、フォルダの中として整える）
+    let m = browser_manifest(Some("./dist/main.js"));
+    // Act
+    let plugin = load_files(
+        ID,
+        &[
+            (&format!("{DIR}/modelith-plugin.json"), &m),
+            (
+                &format!("{DIR}/dist/main.js"),
+                "self.postMessage({type:'ready'});",
+            ),
+        ],
+    );
+    // Assert
+    assert_eq!(problems(&plugin), Vec::<String>::new());
+    assert_eq!(
+        plugin.manifest.and_then(|m| m.main),
+        Some("dist/main.js".to_owned())
+    );
+}
+
+#[test]
+fn browser_plugin_without_main_is_reported() {
+    // Arrange
+    let m = browser_manifest(None);
+    // Act
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &m)]);
+    // Assert
+    assert_eq!(
+        problems(&plugin),
+        [format!(
+            "{DIR}/modelith-plugin.json 画面に機能を追加するプラグイン（runtime: browser）には、プログラムのファイル（main）を書いてください"
+        )]
+    );
+}
+
+#[test]
+fn browser_plugin_main_outside_the_folder_is_reported() {
+    // Arrange（異常系: フォルダの外を指す）
+    let m = browser_manifest(Some("../main.js"));
+    // Act
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &m)]);
+    // Assert
+    let got = problems(&plugin);
+    assert_eq!(got.len(), 1);
+    assert!(
+        got[0].ends_with("プログラムのファイル「../main.js」は、プラグインのフォルダの中を、そこからの相対パスで指してください"),
+        "{got:?}"
+    );
+}
+
+#[test]
+fn browser_plugin_with_a_missing_main_file_is_reported() {
+    // Arrange（異常系: マニフェストはあるが、プログラムのファイルが無い）
+    let m = browser_manifest(Some("main.js"));
+    // Act
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &m)]);
+    // Assert
+    assert_eq!(
+        problems(&plugin),
+        [format!(
+            "{DIR}/main.js マニフェストに書かれたプログラムのファイルが見つかりません（main）"
         )]
     );
 }
@@ -653,6 +730,9 @@ fn load_plugin_files_reads_paths_relative_to_the_plugin_folder() {
             version: "0.1.0".to_owned(),
             runtime: Runtime::Rules,
             description: None,
+            permissions: vec![],
+            main: None,
+            commands: vec![],
         })
     );
 }
@@ -694,7 +774,7 @@ fn manifest_info_is_kept_even_when_the_plugin_cannot_be_used() {
 #[test]
 fn describe_manifest_returns_name_version_and_runtime() {
     // Arrange（TypeScript のプラグイン。追加の前に種類を示す）
-    let text = r#"{"id":"jp.ts","name":"図の書き出し","version":"1.2.0","apiVersion":"0","runtime":"browser","description":"説明","license":"MIT","main":"main.js"}"#;
+    let text = r#"{"id":"jp.ts","name":"図の書き出し","version":"1.2.0","apiVersion":"0","runtime":"browser","description":"説明","license":"MIT","main":"main.js","permissions":["model:read","network"],"contributes":{"commands":[{"id":"export","title":"書き出す"}]}}"#;
     // Act
     let info = describe_manifest("modelith-plugin.json", text);
     // Assert
@@ -706,6 +786,12 @@ fn describe_manifest_returns_name_version_and_runtime() {
             version: "1.2.0".to_owned(),
             runtime: Runtime::Browser,
             description: Some("説明".to_owned()),
+            permissions: vec![Permission::ModelRead, Permission::Network],
+            main: Some("main.js".to_owned()),
+            commands: vec![Command {
+                id: "export".to_owned(),
+                title: "書き出す".to_owned()
+            }],
         })
     );
 }

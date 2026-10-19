@@ -4,7 +4,7 @@ export { isReservedWord, mask, LAYOUT_RE } from "./parser";
 // 解析とモデル構築は Rust のコア（wasm）で行う。暫定の TS コアは、比べるテストのために beta.1 まで残す（ADR-0015・ADR-0016）
 export { build, edit, initCore, parse } from "./rust";
 export type {
-  CreatedProjectFile, DescribedPlugin, EditResult, Intent, PluginChange, PluginFiles, PluginInfo, PluginLoadProblem, PluginRuntime, PluginsResult, PluginSummary, PluginUse,
+  CheckedPluginMessage, CreatedProjectFile, DescribedPlugin, PlacedDiagnostic, VersionedSnapshot, EditResult, Intent, PluginChange, PluginFiles, PluginInfo, PluginLoadProblem, PluginRuntime, PluginsResult, PluginSummary, PluginUse,
   ProjectFile, ProjectFileResult, ProjectProblem, Refused, RuleFinding, RuleSeverity, TextEdit,
 } from "./rust";
 export { CoreClient, STALE_EDIT, startCore } from "./client";

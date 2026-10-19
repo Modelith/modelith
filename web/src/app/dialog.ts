@@ -8,6 +8,13 @@ export interface Choice {
   kind?: "primary" | "danger";
 }
 
+/** 本文の下に出す、箇条書きと注意（プラグインの権限など）。 */
+export interface AskDetail {
+  items: string[];
+  /** 目立たせて出す注意。無ければ省く。 */
+  warning?: string;
+}
+
 export interface AskResult {
   id: string;
   /** 入力欄を出したときの値。 */
@@ -23,6 +30,7 @@ export interface AskResult {
  * @param text 本文（HTML としてではなく文字として出す）
  * @param choices ボタンの一覧（id・表示名・見た目の種類 primary／danger）
  * @param input 入力欄を出すなら、その初期値と読み上げ用の名前。出さなければ省く
+ * @param detail 本文の下に出す箇条書きと注意（文字として出す）。出さなければ省く
  * @returns 押されたボタンの id と入力欄の値（入力欄が無ければ ""）を返す Promise。Esc・枠外なら null
  * @example
  * // 入力欄に "a.sysml" と入れて「作成」（id "ok"）を押した
@@ -31,11 +39,14 @@ export interface AskResult {
  * // Esc を押した
  * await ask("…", "…", choices) // → null
  */
-export function ask(title: string, text: string, choices: Choice[], input?: { value: string; label: string }): Promise<AskResult | null> {
+export function ask(title: string, text: string, choices: Choice[], input?: { value: string; label: string }, detail?: AskDetail): Promise<AskResult | null> {
   const box = $("#dialog");
   $("#dialogTitle").textContent = title;
   $("#dialogText").innerHTML =
     esc(text) + (input ? `<br><input id="dialogInput" aria-label="${esc(input.label)}" value="${esc(input.value)}" style="width:100%;margin-top:8px">` : "");
+  const more = $("#dialogDetail");
+  more.hidden = !detail;
+  more.innerHTML = detail ? `<ul>${detail.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>${detail.warning ? `<p class="warn" role="note">${esc(detail.warning)}</p>` : ""}` : "";
   $("#dialogButtons").innerHTML = choices.map((c) => `<button data-id="${esc(c.id)}" class="${c.kind ?? ""}">${esc(c.label)}</button>`).join("");
   box.hidden = false;
   const field = document.querySelector<HTMLInputElement>("#dialogInput");

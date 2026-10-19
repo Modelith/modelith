@@ -2,9 +2,10 @@
 // 返ってきた結果の版が今の版と同じときだけ使う。違えば捨てる（解析なら次の結果を待ち、編集なら適用しない）。
 
 import { projectReadProblem, type CoreRequest, type CoreResponse } from "./protocol";
+import type { Permission } from "../plugins/generated/protocol";
 import {
-  fromAnalysis, type CreatedProjectFile, type DescribedPlugin, type EditResult, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
-  type Refused, type RuleFinding,
+  fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
+  type Refused, type RuleFinding, type VersionedSnapshot,
 } from "./rust";
 import type { Model, ParseResult } from "./types";
 
@@ -29,6 +30,8 @@ export class CoreClient {
   private readonly waiting = new Map<number, (r: EditResult | Refused) => void>();
   /** 設定ファイル（modelith.json）とプラグインの依頼のうち、返事を待っているもの（返事の JSON を受け取る）。 */
   private readonly jsonWaiting = new Map<number, (json: string) => void>();
+  /** 今のテキストに対する依頼（プラグインに渡すモデル・プラグインのメッセージの確認）のうち、返事を待っているもの。返事と、その間にテキストが変わったかを受け取る。 */
+  private readonly textWaiting = new Map<number, (res: { json: string; stale: boolean }) => void>();
 
   /**
    * コアの受け口を作り、コアからの返事を聞き始める。
@@ -53,6 +56,18 @@ export class CoreClient {
    */
   get current(): number {
     return this.version;
+  }
+
+  /**
+   * 今の版のテキスト（最後に送ったテキスト）。
+   *
+   * @returns テキストの全文。まだ何も送っていなければ null
+   * @example
+   * new CoreClient(port, onAnalyzed).text // → null（まだ送っていない）
+   * // c.sync("x") の後なら c.text // → "x"
+   */
+  get text(): string | null {
+    return this.sent;
   }
 
   /**
@@ -182,6 +197,55 @@ export class CoreClient {
   }
 
   /**
+   * 今の版のテキストから、v1 のプラグインに渡すモデル（plugin-sdk の ModelSnapshot）をコアに作ってもらう（ADR-0018 §3 の `didChange`）。
+   *
+   * @returns モデルと、それを作ったテキストの版。返事が来るまでにテキストが変わった・コアの返事が読めなければ null。例外は投げない
+   * @example
+   * c.sync("package P { part def A; }")
+   * await c.modelSnapshot() // → { version: 1, snapshot: { elements: [{ key: "A", … }], relations: [] } }
+   * // 返事の前に c.sync(別のテキスト) をしたとき → null
+   */
+  async modelSnapshot(): Promise<VersionedSnapshot | null> {
+    const version = this.version;
+    const res = await this.requestForText((id) => ({ type: "modelSnapshot", version, id }));
+    return res.stale ? null : parseSnapshot(version, res.json);
+  }
+
+  /**
+   * プラグインから届いたメッセージ（JSON）を、今の版のテキストに対してコアに確かめてもらう（形・権限・範囲。ADR-0018 §3・§4）。
+   *
+   * @param message プラグインから届いたメッセージの JSON
+   * @param permissions そのプラグインがマニフェストで宣言した権限
+   * @returns 確かめたメッセージか断りと、確かめたテキストの版。stale は、返事が来るまでにテキストが変わったか
+   *   （そのときの変更案・診断の位置は古いテキストのもの）。例外は投げない
+   * @example
+   * await c.checkPluginMessage('{"type":"ready"}', [])          // → { version: 1, stale: false, checked: { message: { type: "ready" } } }
+   * await c.checkPluginMessage('{"type":"proposeEdits",…}', []) // → { version: 1, stale: false, checked: { refused: "宣言していない権限（edits:propose）…" } }
+   * // 返事の前に c.sync(別のテキスト) をしたとき → { version: 1, stale: true, checked: … }
+   */
+  async checkPluginMessage(message: string, permissions: readonly Permission[]): Promise<{ version: number; stale: boolean; checked: CheckedPluginMessage | Refused }> {
+    const version = this.version;
+    const res = await this.requestForText((id) => ({ type: "checkPluginMessage", version, id, message, permissions: [...permissions] }));
+    return { version, stale: res.stale, checked: parseChecked(res.json) };
+  }
+
+  /**
+   * 今のテキストに対する依頼をコアに送り、返事の JSON を待つ。
+   *
+   * @param make 依頼の id から依頼を作る関数
+   * @returns 同じ id の返事の JSON と、返事が来るまでにテキストが変わったか
+   * @example
+   * await this.requestForText((id) => ({ type: "modelSnapshot", version: 1, id })) // → { json: '{"elements":[],"relations":[]}', stale: false }
+   */
+  private requestForText(make: (id: number) => CoreRequest): Promise<{ json: string; stale: boolean }> {
+    const id = this.nextId++;
+    return new Promise((resolve) => {
+      this.textWaiting.set(id, resolve);
+      this.port.post(make(id));
+    });
+  }
+
+  /**
    * 設定ファイル・プラグインの依頼をコアに送り、返事の JSON を待つ。
    *
    * @param make 依頼の id から依頼を作る関数
@@ -200,7 +264,7 @@ export class CoreClient {
   /**
    * コアからの返事を 1 つ受け取る。今の版の解析結果なら onAnalyzed を呼び、編集の返事なら待っている edit を、
    * 設定ファイル・プラグインの返事なら、待っている依頼（parseProjectFile・setPlugins など）を解決する。
-   * 古い版の解析結果は捨て、古い版の編集の返事は断り（STALE_EDIT）にする。
+   * 古い版の解析結果は捨て、古い版の編集の返事は断り（STALE_EDIT）にし、モデル・メッセージの確認には古い版かどうかを添える。
    *
    * @param res コアからの返事
    */
@@ -216,6 +280,10 @@ export class CoreClient {
       const resolve = this.waiting.get(res.id);
       this.waiting.delete(res.id);
       resolve?.(res.version === this.version ? parseEdited(res.json) : { refused: STALE_EDIT });
+    } else if (res.type === "snapshotMade" || res.type === "pluginMessageChecked") {
+      const resolve = this.textWaiting.get(res.id);
+      this.textWaiting.delete(res.id);
+      resolve?.({ json: res.json, stale: res.version !== this.version });
     } else if (res.type !== "ready" && res.type !== "failed") {
       const resolve = this.jsonWaiting.get(res.id);
       this.jsonWaiting.delete(res.id);
@@ -335,6 +403,48 @@ function parseDescribed(json: string): DescribedPlugin | Refused {
     return { refused: "プラグインを読み込めませんでした（コアの返事の形が違います）" };
   } catch (e) {
     return { refused: `プラグインを読み込めませんでした（${e instanceof Error ? e.message : String(e)}）` };
+  }
+}
+
+/**
+ * コアが返した、プラグインに渡すモデル（JSON）を読む。
+ *
+ * @param version モデルを作ったテキストの版
+ * @param json wasm の `modelSnapshot` が返した JSON の文字列
+ * @returns モデルと版。JSON が壊れている・形が違うときは null（例外は投げない）
+ * @example
+ * parseSnapshot(1, '{"elements":[],"relations":[]}') // → { version: 1, snapshot: { elements: [], relations: [] } }
+ * parseSnapshot(1, '{"error":"x"}')                  // → null
+ * parseSnapshot(1, "{")                              // → null
+ */
+function parseSnapshot(version: number, json: string): VersionedSnapshot | null {
+  try {
+    const r = JSON.parse(json) as Partial<VersionedSnapshot["snapshot"]>;
+    if (!Array.isArray(r.elements) || !Array.isArray(r.relations)) return null;
+    return { version, snapshot: { elements: r.elements, relations: r.relations } };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * コアが返した、プラグインのメッセージを確かめた結果（JSON）を読む。
+ *
+ * @param json wasm の `checkPluginMessage` が返した JSON の文字列
+ * @returns 確かめたメッセージか断り。JSON が壊れている・形が違うときは「メッセージを確かめられませんでした…」の断り（例外は投げない）
+ * @example
+ * parseChecked('{"message":{"type":"ready"}}') // → { message: { type: "ready" } }
+ * parseChecked('{"refused":"x"}')              // → { refused: "x" }
+ * parseChecked("{")                            // → { refused: "メッセージを確かめられませんでした（…）" }
+ */
+function parseChecked(json: string): CheckedPluginMessage | Refused {
+  try {
+    const r = JSON.parse(json) as Partial<CheckedPluginMessage & Refused>;
+    if (r.message && typeof r.message.type === "string") return { message: r.message, edits: r.edits, diagnostics: r.diagnostics };
+    if (typeof r.refused === "string") return { refused: r.refused };
+    return { refused: "メッセージを確かめられませんでした（コアの返事の形が違います）" };
+  } catch (e) {
+    return { refused: `メッセージを確かめられませんでした（${e instanceof Error ? e.message : String(e)}）` };
   }
 }
 

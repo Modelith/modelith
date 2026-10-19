@@ -170,6 +170,56 @@ pub fn describe_plugin(text: &str) -> String {
     describe_plugin_json(text)
 }
 
+/// テキストを解析し、v1 のプラグインに渡すモデル（plugin-sdk の `ModelSnapshot`）を JSON で返す（ADR-0018 §3 の `didChange`）。
+///
+/// 中身は `model_snapshot_json` に任せる。
+///
+/// # 引数
+///
+/// - `text`：SysML v2 のテキスト全体
+///
+/// # 戻り値
+///
+/// `{ "elements": [...], "relations": [...] }` の JSON 文字列（位置は 0 始まりの行・列。列は UTF-16）。
+///
+/// # 例
+///
+/// ```text
+/// modelSnapshot("package P { part def A; }") → r#"{"elements":[{"key":"A","name":"A","kind":"part def","ports":[],"range":{…}}],"relations":[]}"#
+/// modelSnapshot("")                          → r#"{"elements":[],"relations":[]}"#
+/// ```
+#[wasm_bindgen(js_name = modelSnapshot)]
+pub fn model_snapshot(text: &str) -> String {
+    model_snapshot_json(text)
+}
+
+/// v1 のプラグインから届いたメッセージを、plugin-sdk の型で読み、宣言した権限で許されるかを確かめ、
+/// 変更案と診断の範囲を今のテキストの位置に直して、JSON で返す（ADR-0018 §3・§4）。
+///
+/// 中身は `check_plugin_message_json` に任せる。
+///
+/// # 引数
+///
+/// - `text`：今のテキスト全体
+/// - `message`：プラグインから届いたメッセージの JSON
+/// - `permissions`：マニフェストで宣言した権限の JSON（`["model:read","edits:propose"]` など）
+///
+/// # 戻り値
+///
+/// `{ "message": …, "edits"?: [{ start, end, text }], "diagnostics"?: [{ pos, end, severity, message, code? }] }`（位置は UTF-16）。
+/// 使えないときは `{ "refused": "プラグインの一覧に出す理由" }`。
+///
+/// # 例
+///
+/// ```text
+/// checkPluginMessage("ab", r#"{"type":"ready"}"#, "[]") → r#"{"message":{"type":"ready"}}"#
+/// checkPluginMessage("ab", r#"{"type":"proposeEdits",…}"#, "[]") → r#"{"refused":"宣言していない権限（edits:propose）が要るメッセージ（proposeEdits）のため、使いませんでした"}"#
+/// ```
+#[wasm_bindgen(js_name = checkPluginMessage)]
+pub fn check_plugin_message(text: &str, message: &str, permissions: &str) -> String {
+    check_plugin_message_json(text, message, permissions)
+}
+
 /// 読み込んだチェックルールのプラグイン（ADR-0018 §2）。Worker が持ち続け、解析のたびにルールを当てる。
 #[wasm_bindgen]
 pub struct RulePlugins {
@@ -431,6 +481,59 @@ fn create_project_file_json(name: &str) -> String {
     serde_json::json!({ "text": modelith_core::project_file::create(name) }).to_string()
 }
 
+/// テキストを解析し、プラグインに渡すモデルを JSON にする（`model_snapshot` の中身）。
+///
+/// # 引数
+///
+/// - `text`：SysML v2 のテキスト全体
+///
+/// # 戻り値
+///
+/// `ModelSnapshot` の JSON 文字列。JSON への変換に失敗したときは `{"elements":[],"relations":[]}`
+/// （文字列のキーだけの構造なので、実際には起きない）。
+///
+/// # 例
+///
+/// ```text
+/// model_snapshot_json("package P { part def A; }") → "{\"elements\":[{\"key\":\"A\",…}],\"relations\":[]}"
+/// model_snapshot_json("")                          → "{\"elements\":[],\"relations\":[]}"
+/// ```
+fn model_snapshot_json(text: &str) -> String {
+    let parse = modelith_core::project::project(text, &modelith_core::syntax::parse(text));
+    let model = modelith_core::model::build(&parse);
+    serde_json::to_string(&modelith_core::plugin_host::snapshot(text, &parse, &model))
+        .unwrap_or_else(|_| r#"{"elements":[],"relations":[]}"#.to_owned())
+}
+
+/// プラグインのメッセージを確かめ、結果か断りを JSON にする（`check_plugin_message` の中身）。
+///
+/// # 引数
+///
+/// - `text`：今のテキスト全体
+/// - `message`：プラグインから届いたメッセージの JSON
+/// - `permissions`：宣言した権限の JSON の並び
+///
+/// # 戻り値
+///
+/// `{ "message": …, "edits"?, "diagnostics"? }`。権限の並びが読めない・メッセージが使えないときは `{ "refused": "理由" }`。
+///
+/// # 例
+///
+/// ```text
+/// check_plugin_message_json("", r#"{"type":"ready"}"#, "[]")       → r#"{"message":{"type":"ready"}}"#
+/// check_plugin_message_json("", r#"{"type":"ready"}"#, r#"["fs"]"#) → r#"{"refused":"権限の並びを読み込めませんでした（…）"}"#
+/// ```
+fn check_plugin_message_json(text: &str, message: &str, permissions: &str) -> String {
+    let result = serde_json::from_str::<Vec<rules::Permission>>(permissions)
+        .map_err(|e| format!("権限の並びを読み込めませんでした（{e}）"))
+        .and_then(|p| modelith_core::plugin_host::check_message(text, message, &p));
+    let json = match result {
+        Ok(checked) => serde_json::to_string(&checked),
+        Err(refused) => serde_json::to_string(&Refused { refused }),
+    };
+    json.unwrap_or_else(|e| format!(r#"{{"refused":"{e}"}}"#))
+}
+
 #[derive(Serialize)]
 struct Refused {
     refused: String,
@@ -682,6 +785,42 @@ mod tests {
         assert!(
             unreadable.starts_with(r#"{"refused":"変更を読み込めませんでした"#),
             "{unreadable}"
+        );
+    }
+
+    #[test]
+    fn model_snapshot_json_lists_elements() {
+        // Arrange
+        let text = "package P { part def A; }";
+        // Act
+        let json = model_snapshot_json(text);
+        // Assert
+        assert!(
+            json.starts_with(r#"{"elements":[{"key":"A","name":"A","kind":"part def","ports":[],"range":{"start":{"line":0,"character":12}"#),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn check_plugin_message_json_returns_the_message_or_a_refusal() {
+        // Arrange
+        let edits = r#"{"type":"proposeEdits","version":1,"edits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"A"}]}"#;
+        // Act
+        let ok = check_plugin_message_json("ab", edits, r#"["edits:propose"]"#);
+        let denied = check_plugin_message_json("ab", edits, "[]");
+        let bad_permissions = check_plugin_message_json("ab", r#"{"type":"ready"}"#, r#"["fs"]"#);
+        // Assert
+        assert!(
+            ok.ends_with(r#""edits":[{"start":0,"end":1,"text":"A"}]}"#),
+            "{ok}"
+        );
+        assert!(
+            denied.starts_with(r#"{"refused":"宣言していない権限（edits:propose）"#),
+            "{denied}"
+        );
+        assert!(
+            bad_permissions.starts_with(r#"{"refused":"権限の並びを読み込めませんでした"#),
+            "{bad_permissions}"
         );
     }
 

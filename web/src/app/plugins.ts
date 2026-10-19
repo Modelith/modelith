@@ -1,6 +1,9 @@
 // プラグイン（ADR-0018・ADR-0019）の画面の言葉と判断。入出力を持たない純粋関数だけを置く（読み書きは plugin-panel.ts）。
 
-import type { PluginInfo, PluginLoadProblem, PluginRuntime, PluginSummary, PluginUse, ProjectFile, RuleFinding, RuleSeverity } from "../core";
+import type { PlacedDiagnostic, PluginFiles, PluginInfo, PluginLoadProblem, PluginRuntime, PluginSummary, PluginUse, ProjectFile, RuleFinding, RuleSeverity } from "../core";
+import type { Permission } from "../plugins/generated/protocol";
+import { NETWORK_WARNING, permissionLines } from "../plugins/permissions";
+import type { ScriptPlugin } from "../plugins/view";
 
 /** プロジェクトに入れたプラグインを置くフォルダ（プロジェクトのフォルダからの相対パス。ADR-0019 §1）。 */
 export const PLUGINS_DIR = ".modelith/plugins";
@@ -34,6 +37,12 @@ export interface PluginRow {
   rules: number;
   /** 読み込みの問題（「パス の 行 行目：理由」の文）。 */
   problems: string[];
+  /** プラグインの種類（マニフェストの runtime）。読めなければ null。 */
+  runtime: PluginRuntime | null;
+  /** 宣言した権限。 */
+  permissions: Permission[];
+  /** メニューに出すコマンドの数。 */
+  commands: number;
 }
 
 /** 問題一覧に出す、プラグインについての 1 行。add があれば、押すとそのプラグインの追加を始める。 */
@@ -99,7 +108,33 @@ export function pluginRows(project: ProjectFile, summaries: readonly PluginSumma
       state: pluginState(use, summary),
       rules: summary?.rules ?? 0,
       problems: (summary?.problems ?? []).map(loadProblemText),
+      runtime: summary?.manifest?.runtime ?? null,
+      permissions: summary?.manifest?.permissions ?? [],
+      commands: summary?.manifest?.commands?.length ?? 0,
     };
+  });
+}
+
+/**
+ * 動かす v1 のプラグイン（TypeScript）を選ぶ。プロジェクトで有効で、追加されていて、読み込みの問題が無く、プログラムのファイルがあるものだけ（ADR-0018 §3）。
+ *
+ * @param project 読み取ったプロジェクトの設定（無ければ null。何も動かさない）
+ * @param summaries コアが読み込んだプラグインのまとめ
+ * @param files プラグインごとのファイル（プラグインのフォルダからの相対パス → テキスト）
+ * @returns 動かすプラグイン（modelith.json に書いた順）
+ * @example
+ * scriptPlugins({ plugins: { "jp.x": { enabled: true, settings: { a: 1 } } } }, [{ id: "jp.x", installed: true, problems: [], manifest: { runtime: "browser", main: "main.js", … } }], [{ id: "jp.x", files: { "main.js": "…" } }])
+ * // → [{ id: "jp.x", name: …, version: …, permissions: [], commands: [], code: "…", settings: { a: 1 } }]
+ * scriptPlugins(project, [{ …, manifest: { runtime: "rules", … } }], files) // → []（チェックルールのプラグイン）
+ * scriptPlugins(null, summaries, files)                                   // → []
+ */
+export function scriptPlugins(project: ProjectFile | null, summaries: readonly PluginSummary[], files: readonly PluginFiles[]): ScriptPlugin[] {
+  if (!project) return [];
+  return Object.entries(project.plugins).flatMap(([id, use]) => {
+    const m = summaries.find((s) => s.id === id && s.installed && !s.problems.length)?.manifest;
+    const code = m?.main ? files.find((f) => f.id === id)?.files[m.main] : undefined;
+    if (!use.enabled || !m || m.runtime !== "browser" || code === undefined) return [];
+    return [{ id, name: m.name, version: m.version, permissions: m.permissions ?? [], commands: m.commands ?? [], code, ...(use.settings === undefined ? {} : { settings: use.settings }) }];
   });
 }
 
@@ -162,6 +197,20 @@ export function findingText(f: RuleFinding, names: ReadonlyMap<string, string>):
   return `${f.message}（プラグイン「${names.get(f.plugin) ?? f.plugin}」のルール ${f.rule}）`;
 }
 
+/**
+ * v1 のプラグインの診断を、問題一覧に出す文にする。どのプラグインの診断かを添える（code があれば、それも）。
+ *
+ * @param d 診断（位置はテキストの UTF-16）
+ * @param name プラグインの画面に出す名前
+ * @returns 「診断の文（プラグイン「名前」の code）」。code が無ければ「診断の文（プラグイン「名前」）」
+ * @example
+ * diagnosticText({ message: "要求「R」に ID がありません", code: "req-id", … }, "要求の ID の補完") // → "要求「R」に ID がありません（プラグイン「要求の ID の補完」の req-id）"
+ * diagnosticText({ message: "m", … }, "jp.y")                                                     // → "m（プラグイン「jp.y」）"
+ */
+export function diagnosticText(d: PlacedDiagnostic, name: string): string {
+  return `${d.message}（プラグイン「${name}」${d.code ? `の ${d.code}` : ""}）`;
+}
+
 /** チェックルールの結果の重大度ごとの印（問題一覧の行の頭）。 */
 export const SEVERITY_MARK: Record<RuleSeverity, string> = { error: "⚠", warning: "△", information: "ℹ", hint: "ℹ" };
 
@@ -202,15 +251,9 @@ export function panelIntro(place: PanelPlace, count: number): { text: string; ca
     case "project":
       return count
         ? { text: `プロジェクト「${place.projectName}」に追加されているプラグインです。チェックルールの結果は、テキストの下の問題一覧に表示されます。`, canAdd: true }
-        : { text: `プロジェクト「${place.projectName}」にはまだプラグインがありません。「追加…」を押して、チェックルールのプラグインのフォルダを選んでください。`, canAdd: true };
+        : { text: `プロジェクト「${place.projectName}」にはまだプラグインがありません。「追加…」を押して、プラグインのフォルダを選んでください。`, canAdd: true };
   }
 }
-
-/** 種類ごとの、追加できないことを伝える言葉。 */
-const RUNTIME_WORDS: Record<Exclude<PluginRuntime, "rules">, string> = {
-  browser: "画面に機能を追加するプラグイン（TypeScript）",
-  "wasm-component": "WebAssembly で動くプラグイン",
-};
 
 /** 「追加」の確認ダイアログの中身。 */
 export interface AddPrompt {
@@ -219,10 +262,16 @@ export interface AddPrompt {
   confirm: string;
   /** プロジェクトの名前を尋ねるか（まだプロジェクトでないフォルダ）。 */
   askName: boolean;
+  /** 本文の下に出す、使う権限の言葉（画面に機能を追加するプラグインのとき）。 */
+  items?: string[];
+  /** 外部と通信できるプラグインについての注意。 */
+  warning?: string;
 }
 
 /**
- * 選んだプラグインを「このプロジェクト」に追加する前に示す、確認の中身を作る。チェックルールのプラグイン以外は、まだ追加できないと伝える。
+ * 選んだプラグインを「このプロジェクト」に追加する前に示す、確認の中身を作る。
+ * 画面に機能を追加するプラグイン（TypeScript）は、使う権限と、外部と通信できるならその注意も示す（ADR-0018 §5）。
+ * WebAssembly で動くプラグインは、まだ追加できないと伝える。
  *
  * @param info マニフェストから読んだ、プラグインの情報
  * @param project 今のプロジェクトの設定。まだプロジェクトでないフォルダなら null
@@ -232,23 +281,31 @@ export interface AddPrompt {
  * addPrompt({ id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", runtime: "rules" }, { plugins: {} }, false)
  * // → { text: "「トレーサビリティのチェック」（ID：jp.x、バージョン 0.1.0）をこのプロジェクトに追加します。チェックルールのプラグインです。…", confirm: "追加する", askName: false }
  * addPrompt({ …, runtime: "rules" }, null, false) // → { …, confirm: "プロジェクトにして追加", askName: true }
- * addPrompt({ name: "書き出し", runtime: "browser", … }, …) // → { refused: "「書き出し」は、画面に機能を追加するプラグイン（TypeScript）です。この種類はまだ追加できません。…" }
+ * addPrompt({ name: "要求の ID の補完", runtime: "browser", permissions: ["network"], … }, { plugins: {} }, false)
+ * // → { text: "…画面に機能を追加するプラグイン（TypeScript）です。…", items: ["インターネットなど外部と通信する（network）"], warning: "このプラグインは、あなたのモデルを外部に送信できます。…", … }
+ * addPrompt({ name: "解析", runtime: "wasm-component", … }, …) // → { refused: "「解析」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。…" }
  */
 export function addPrompt(info: PluginInfo, project: ProjectFile | null, installed: boolean): AddPrompt | { refused: string } {
-  if (info.runtime !== "rules") {
-    return { refused: `「${info.name}」は、${RUNTIME_WORDS[info.runtime]}です。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインだけです` };
+  if (info.runtime === "wasm-component") {
+    return { refused: `「${info.name}」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインと、画面に機能を追加するプラグイン（TypeScript）です` };
   }
+  const script = info.runtime === "browser";
+  const permissions = info.permissions ?? [];
   const wanted = project?.plugins[info.id]?.version;
   const parts = [
     `「${info.name}」（ID：${info.id}、バージョン ${info.version}）をこのプロジェクトに追加します。`,
     info.description ? `説明：${info.description}` : "",
-    "チェックルールのプラグインです。モデルのルールを記述したもので、プログラムは含みません。",
-    `プラグインのファイルを ${PLUGINS_DIR}/${info.id}/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員と CI が同じプラグインを使えます。`,
+    script
+      ? "画面に機能を追加するプラグイン（TypeScript）です。プログラムを含み、下の権限を使います。初めて実行する前に、実行してよいかを確認します。"
+      : "チェックルールのプラグインです。モデルのルールを記述したもので、プログラムは含みません。",
+    `プラグインのファイルを ${PLUGINS_DIR}/${info.id}/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員${script ? "" : "と CI "}が同じプラグインを使えます。`,
     installed ? "追加済みのプラグインは上書きされます。" : "",
     wanted && wanted !== info.version ? `プロジェクトの設定ではバージョン ${wanted} が指定されています。追加すると、設定のバージョンを ${info.version} に変更します。` : "",
     project ? "" : "このフォルダはまだプロジェクトではないため、プロジェクトにします（設定ファイル modelith.json をフォルダの直下に作成します）。プロジェクト名を入力してください。",
   ];
-  return { text: parts.filter(Boolean).join(""), confirm: project ? "追加する" : "プロジェクトにして追加", askName: !project };
+  const prompt: AddPrompt = { text: parts.filter(Boolean).join(""), confirm: project ? "追加する" : "プロジェクトにして追加", askName: !project };
+  if (!script) return prompt;
+  return { ...prompt, items: permissionLines(permissions), ...(permissions.includes("network") ? { warning: NETWORK_WARNING } : {}) };
 }
 
 /**
