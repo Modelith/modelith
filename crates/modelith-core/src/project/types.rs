@@ -127,6 +127,20 @@ pub struct Entry {
     /// 特殊化・部分集合・再定義・参照（8.2.2.6）。相手ごとに、書いた順。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub specs: Vec<Spec>,
+    /// 多重度（MultiplicityPart、8.2.2.6）。書いていなければ `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multiplicity: Option<Multiplicity>,
+}
+
+/// 多重度と、その並びの性質（MultiplicityPart、8.2.2.6）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Multiplicity {
+    /// `[` と `]` の中（空白を除いたもの。`0..4`・`*`・`1`）。範囲を書いていなければ空文字列。
+    pub range: String,
+    /// `ordered` を書いたか。
+    pub ordered: bool,
+    /// `nonunique` を書いたか。
+    pub nonunique: bool,
 }
 
 /// 宣言の特殊化の相手 1 つ（SubclassificationPart・FeatureSpecializationPart、8.2.2.6）。

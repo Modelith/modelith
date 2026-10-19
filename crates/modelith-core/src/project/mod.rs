@@ -645,6 +645,7 @@ impl Ctx {
                 open: None,
                 close: None,
                 specs: self.specs(n, is_def),
+                multiplicity: multiplicity(n),
             };
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
@@ -703,6 +704,7 @@ impl Ctx {
                 open: None,
                 close: None,
                 specs: Vec::new(),
+                multiplicity: None,
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -1415,6 +1417,44 @@ fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
         name.clone()
     };
     Some(TypeRef { name, conj, path })
+}
+
+/// 宣言の多重度（MultiplicityPart、8.2.2.6）。`[…]` の中と、`ordered`・`nonunique` を読む。
+///
+/// # 引数
+///
+/// - `n`：宣言の節
+///
+/// # 戻り値
+///
+/// 多重度。`[…]` も `ordered`・`nonunique` も無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// multiplicity("part w : W[0 .. 4] ordered;") → Some({ range: "0..4", ordered: true, nonunique: false })
+/// multiplicity("part w : W nonunique;")       → Some({ range: "", ordered: false, nonunique: true })
+/// multiplicity("part w : W;")                 → None
+/// ```
+fn multiplicity(n: &SyntaxNode) -> Option<Multiplicity> {
+    let range = child(n, MULTIPLICITY).map(|m| {
+        let t = compact(&m);
+        let t = t.strip_prefix('[').unwrap_or(&t);
+        t.strip_suffix(']').unwrap_or(t).to_owned()
+    });
+    let has_kw = |kw: &str| {
+        n.children_with_tokens()
+            .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == kw))
+    };
+    let (ordered, nonunique) = (has_kw("ordered"), has_kw("nonunique"));
+    if range.is_none() && !ordered && !nonunique {
+        return None;
+    }
+    Some(Multiplicity {
+        range: range.unwrap_or_default(),
+        ordered,
+        nonunique,
+    })
 }
 
 /// 関係の相手 1 つだけを消すときの範囲（バイトオフセット）。消した後も、関係の書き方が崩れないようにする。

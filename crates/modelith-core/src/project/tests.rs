@@ -706,3 +706,32 @@ fn declaration_without_relations_has_no_specs() {
     // Assert
     assert!(r.entries.iter().all(|e| e.specs.is_empty()));
 }
+
+#[test]
+fn multiplicity_keeps_range_and_order_keywords() {
+    // Arrange（MultiplicityPart、8.2.2.6：範囲・`*`・`ordered`・`nonunique`、名前の後ろの多重度）
+    let text = "part def V { part w : W[ 0 .. 4 ] ordered nonunique; part s[*] : S; part n : N nonunique; part p : P; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let m = |name: &str| entry(&r, name).multiplicity.clone();
+    assert_eq!(
+        m("w"),
+        Some(Multiplicity {
+            range: "0..4".into(),
+            ordered: true,
+            nonunique: true
+        })
+    );
+    assert_eq!(m("s").map(|x| x.range), Some("*".into()));
+    assert_eq!(
+        m("n"),
+        Some(Multiplicity {
+            range: String::new(),
+            ordered: false,
+            nonunique: true
+        })
+    );
+    assert_eq!(m("p"), None);
+    assert_eq!(entry(&r, "s").ty, "S");
+}
