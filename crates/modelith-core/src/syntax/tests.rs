@@ -706,6 +706,73 @@ fn variant_is_a_prefix() {
 }
 
 #[test]
+fn dependency_reads_its_name_only_before_from() {
+    // Arrange（DependencyDeclaration、8.2.2.3：名前は `from` の前だけ）
+    let named = node_kinds("dependency d from A, b.c to C;");
+    let unnamed = node_kinds("dependency A, B to C, D;");
+    // Act / Assert
+    assert_eq!(
+        named,
+        [
+            SOURCE_FILE,
+            DEPENDENCY,
+            NAME,
+            QUALIFIED_NAME,
+            FEATURE_CHAIN,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME
+        ]
+    );
+    assert_eq!(
+        unnamed,
+        [
+            SOURCE_FILE,
+            DEPENDENCY,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME
+        ]
+    );
+}
+
+#[test]
+fn dependency_with_short_name_and_body_is_read() {
+    // Arrange（境界値：短い名前と、名前の無い from）
+    let short = node_kinds("dependency <D1> d from A to B { }");
+    let bare_from = node_kinds("dependency from A to B;");
+    // Act / Assert
+    assert_eq!(
+        short,
+        [
+            SOURCE_FILE,
+            DEPENDENCY,
+            SHORT_NAME,
+            NAME,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            BODY
+        ]
+    );
+    assert_eq!(
+        bare_from,
+        [SOURCE_FILE, DEPENDENCY, QUALIFIED_NAME, QUALIFIED_NAME]
+    );
+    assert!(errors("dependency <D1> d from A to B { }").is_empty());
+}
+
+#[test]
+fn dependency_without_to_or_ends_is_an_error() {
+    // Arrange（異常系：to が無い・相手の名前が無い）
+    let no_to = errors("dependency from A;");
+    let no_client = errors("dependency to B;");
+    // Act / Assert
+    assert_eq!(no_to, [(17, "「to」がありません".to_owned())]);
+    assert_eq!(no_client, [(11, "関係の相手の名前がありません".to_owned())]);
+}
+
+#[test]
 #[ignore = "調査用"]
 fn dump() {
     let path = std::env::var("DUMP").unwrap_or_default();

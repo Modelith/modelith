@@ -458,10 +458,15 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
             declaration(p, owner, false, false);
             VIEW_RENDERING_USAGE
         }
-        "alias" | "dependency" => {
+        "alias" => {
             p.bump();
             declaration(p, owner, true, false);
-            if kw == "alias" { ALIAS } else { DEPENDENCY }
+            ALIAS
+        }
+        "dependency" => {
+            p.bump();
+            dependency_tail(p, owner);
+            DEPENDENCY
         }
         "perform" => headed(p, owner, &["action"], PERFORM_ACTION_USAGE),
         "exhibit" => headed(p, owner, &["state"], EXHIBIT_STATE_USAGE),
@@ -551,6 +556,66 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
             p.bump();
             declaration(p, owner, false, false);
             UNSUPPORTED_MEMBER
+        }
+    }
+}
+
+/// `dependency` の後ろ（DependencyDeclaration、8.2.2.3）。`( Identification 'from' )? 参照 ( ',' 参照 )* 'to' 参照 ( ',' 参照 )*` と終わり。
+///
+/// 名前は `from` があるときだけ読む（`dependency A, B to C;` の `A` は名前ではなく依存する側）。
+/// 依存する側・される側の名前が無ければ「関係の相手の名前がありません」、`to` が無ければ「「to」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`dependency` の直後にいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（閉じていないブロックのエラーの位置）
+///
+/// # 例
+///
+/// ```text
+/// dependency_tail("d from A, B to C;", …) → NAME(d)、QUALIFIED_NAME(A)・(B)、to の後に QUALIFIED_NAME(C)
+/// dependency_tail("A, B to C, D;", …)     → NAME なし。A・B と C・D の QUALIFIED_NAME
+/// dependency_tail("from A;", …)           → 「「to」がありません」
+/// ```
+fn dependency_tail(p: &mut Parser<'_>, owner: usize) {
+    let short = p.at(LT) && p.nth_at_name(1) && p.nth_at(2, GT);
+    let at = if short { 3 } else { 0 };
+    let named = p.nth_at_kw(at, "from") || (p.nth_at_name(at) && p.nth_at_kw(at + 1, "from"));
+    if named {
+        identification(p);
+        p.bump();
+    }
+    reference_list(p);
+    if p.eat_kw("to") {
+        reference_list(p);
+    } else {
+        p.error("「to」がありません");
+    }
+    end(p, owner, "", true);
+}
+
+/// 参照（修飾名・特徴の連鎖）のカンマ区切りの並び。名前が無ければ「関係の相手の名前がありません」を置いて止める。
+///
+/// # 引数
+///
+/// - `p`：並びの最初の参照にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// reference_list("A, b.c to") → QUALIFIED_NAME(A)、FEATURE_CHAIN(b.c)（to の手前で止まる）
+/// reference_list("to C")      → 「関係の相手の名前がありません」
+/// ```
+fn reference_list(p: &mut Parser<'_>) {
+    loop {
+        if p.at_name() {
+            reference(p);
+        } else {
+            p.error("関係の相手の名前がありません");
+            break;
+        }
+        if !p.eat(COMMA) {
+            break;
         }
     }
 }
