@@ -1,5 +1,6 @@
 // 統合テスト（e2e）。ビルドしたアプリをプレビューで配信し、Chromium で実際に操作する。
-// File System Access API を使う要求があるため Chromium だけで動かす。
+// File System Access API を使う要求があるため、ほとんどのテストは Chromium だけで動かす。
+// v1 のプラグインの隔離（ADR-0018 §3.1）は、ブラウザごとに違いがあるので、Firefox と WebKit でも動かす（テスト名の「隔離」のまとまり）。
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 4180;
@@ -32,7 +33,15 @@ export default defineConfig({
     // UI テストの比較。アニメーションとカーソルを止める。画素ごとの色の差は 0.05 まで（アンチエイリアスの揺れ）許し、それを超える画素は 1 つも許さない
     toHaveScreenshot: { animations: "disabled", caret: "hide", scale: "css", threshold: 0.05 },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1400, height: 900 } } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1400, height: 900 } } },
+    ...(["firefox", "webkit"] as const).map((name) => ({
+      name,
+      testMatch: "script-plugins.spec.ts",
+      grep: /隔離/,
+      use: { ...devices[name === "firefox" ? "Desktop Firefox" : "Desktop Safari"], viewport: { width: 1400, height: 900 } },
+    })),
+  ],
   webServer: {
     command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}/`,

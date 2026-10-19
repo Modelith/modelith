@@ -16,8 +16,10 @@ export default class RequirementsReporter implements Reporter {
   private readonly results = new Map<string, TestResult>();
 
   onTestEnd(test: TestCase, result: PwResult): void {
-    // 再実行があれば最後の結果を使う
-    this.results.set(test.id, { title: test.titlePath().slice(-2).join(" › "), status: result.status });
+    // 再実行があれば最後の結果を使う。基準（Chromium）以外のブラウザで動かしたテストは、ブラウザの名前を添えて分ける
+    const browser = test.parent.project()?.name;
+    const title = test.titlePath().slice(-2).join(" › ");
+    this.results.set(test.id, { title: browser && browser !== "chromium" ? `${title}（${browser}）` : title, status: result.status });
   }
 
   onEnd(): void {
