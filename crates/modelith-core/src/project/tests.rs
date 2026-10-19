@@ -134,7 +134,8 @@ fn relations_read_their_ends_from_the_tree() {
             },
             RelKind::Satisfy {
                 req: "R".to_owned(),
-                by: "A".to_owned()
+                by: "A".to_owned(),
+                negated: false
             },
             RelKind::Verify {
                 req: "R".to_owned()
@@ -146,7 +147,7 @@ fn relations_read_their_ends_from_the_tree() {
 #[test]
 fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() {
     // Arrange（異常系: 末尾の「;」の無い文は、暫定コアと同じく読まない）
-    let text = "package P { case def C; }\npart def Tail";
+    let text = "package P { allocation def C; }\npart def Tail";
     // Act
     let r = run(text);
     // Assert
@@ -155,7 +156,7 @@ fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() 
             .iter()
             .map(|u| u.head.as_str())
             .collect::<Vec<_>>(),
-        vec!["case def C"]
+        vec!["allocation def C"]
     );
     assert!(r.entries.iter().all(|e| e.name != "Tail"));
     assert_eq!(r.errors.len(), 1);
@@ -232,16 +233,11 @@ fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
 
 #[test]
 fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
-    // Arrange（同値分割：まだ扱えない定義・使用・メタデータ・列挙の使用・variant）
+    // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [
-        "package P { case def CS { part x; } }",
         "package P { allocation def AD { part x; } }",
-        "package P { viewpoint vp { part x; } }",
-        "package P { rendering def R { part x; } }",
         "package P { flow def F { part x; } }",
-        "package P { metadata M about A { part x; } }",
-        "package P { part def H { enum e : E { part x; } } }",
-        "package P { part def H { variant part v : V { part x; } } }",
+        "package P { part def H { send s { part x; } } }",
     ] {
         // Act
         let r = run(text);
@@ -301,4 +297,332 @@ fn alias_is_recorded_with_its_owner_and_qualified_target() {
         ]
     );
     assert!(r.unsupported.is_empty());
+}
+
+// ---- alpha.7 で読むようにした形（SysML 2.1 Beta 2 の 8.2.2） ----
+
+/// 宣言の (種類, 名前, 型, 修飾) を、書いた順に並べる。
+fn decls(r: &ParseResult) -> Vec<(&str, &str, &str, &str)> {
+    r.entries
+        .iter()
+        .map(|e| {
+            (
+                e.kind.as_str(),
+                e.name.as_str(),
+                e.ty.as_str(),
+                e.mods.as_deref().unwrap_or(""),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn case_definition_and_usage_are_entries_whose_body_is_read() {
+    // Arrange（CaseDefinition・CaseUsage、8.2.2.22。objective の中身はこれまでどおり持ち主へ）
+    let text = "case def CS { subject v : V; actor a : A; objective { require constraint { t < 1 } } } case c : CS;";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        decls(&r),
+        [
+            ("case def", "CS", "", ""),
+            ("subject", "v", "V", ""),
+            ("actor", "a", "A", ""),
+            ("case", "c", "CS", ""),
+        ]
+    );
+    let cs = entry(&r, "CS");
+    assert!(cs.is_def);
+    assert_eq!(cs.children.len(), 2);
+    assert_eq!(cs.exprs[0].text, "t < 1");
+    assert!(r.unsupported.is_empty(), "{:?}", r.unsupported);
+}
+
+#[test]
+fn include_use_case_is_an_entry_in_both_forms() {
+    // Arrange（IncludeUseCaseUsage、8.2.2.25。同値クラス: 宣言の形・参照の形）
+    let text = "use case def U { include use case uc : U2; include other; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        decls(&r)[1..],
+        [
+            ("include use case", "uc", "U2", ""),
+            ("include use case", "other", "", ""),
+        ]
+    );
+}
+
+#[test]
+fn enumeration_usage_is_an_entry_but_enum_values_stay_values() {
+    // Arrange（EnumerationUsage・EnumeratedValue、8.2.2.7。境界値: enum def の中の enum）
+    let text = "enum def E { enum a; } part def H { enum e : E; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "E").enum_values, Some(vec!["a".to_owned()]));
+    assert_eq!(entry(&r, "e").kind, "enum");
+    assert_eq!(entry(&r, "e").ty, "E");
+}
+
+#[test]
+fn event_occurrence_timeslice_and_snapshot_are_usages() {
+    // Arrange（EventOccurrenceUsage・PortionUsage、8.2.2.9）
+    let text = "occurrence def O { event occurrence eo : E; event other; timeslice t : T; \
+                snapshot occurrence s; timeslice part p : P; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        decls(&r)[1..],
+        [
+            ("event occurrence", "eo", "E", ""),
+            ("event occurrence", "other", "", ""),
+            ("timeslice", "t", "T", "timeslice"),
+            ("snapshot", "s", "", "snapshot"),
+            ("part", "p", "P", "timeslice"),
+        ]
+    );
+}
+
+#[test]
+fn typed_by_sets_the_type() {
+    // Arrange（TYPED_BY、KerML 8.2.4。`: A` と同じ）
+    let text = "part p typed by Q::A;";
+    // Act
+    let r = run(text);
+    // Assert
+    let p = entry(&r, "p");
+    assert_eq!((p.ty.as_str(), p.ty_path.as_str()), ("A", "Q::A"));
+}
+
+#[test]
+fn constant_and_variant_are_recorded_as_modifiers() {
+    // Arrange（UsagePrefix の isConstant・VariantUsageMember・VariationDefinition、8.2.2.6）
+    let text = "part def H { constant attribute k : Real = 1; } \
+                variation part def V { variant part a : A; variant b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        decls(&r),
+        [
+            ("part def", "H", "", ""),
+            ("attribute", "k", "Real", "constant"),
+            ("part def", "V", "", "variation"),
+            ("part", "a", "A", "variant"),
+            ("variant", "b", "", "variant"),
+        ]
+    );
+    assert_eq!(entry(&r, "k").value.as_deref(), Some("1"));
+    assert!(entry(&r, "H").exprs.is_empty());
+}
+
+#[test]
+fn viewpoint_and_rendering_are_entries_distinct_from_view() {
+    // Arrange（ViewpointDefinition・RenderingDefinition、8.2.2.26。境界値: view と viewpoint の語の違い）
+    let text = "viewpoint def VP { frame concern c : C; } viewpoint vp : VP; view v : VP; \
+                rendering def RD; rendering r : RD;";
+    // Act
+    let r = run(text);
+    // Assert
+    let kinds: Vec<&str> = r.entries.iter().map(|e| e.kind.as_str()).collect();
+    assert_eq!(
+        kinds,
+        [
+            "viewpoint def",
+            "viewpoint",
+            "view",
+            "rendering def",
+            "rendering"
+        ]
+    );
+    assert!(matches!(&r.rels[0].kind, RelKind::Frame { ty, .. } if ty == "C"));
+    assert_eq!(r.rels[0].pe, Some(entry(&r, "VP").idx));
+}
+
+#[test]
+fn metadata_about_writes_fields_to_each_annotated_element() {
+    // Arrange（MetadataUsage の about、8.2.2.27。修飾名と特徴の連鎖の相手）
+    let text = "package P { package Q { part def A; } part def B { part c; } \
+                metadata Safety about Q::A, B.c { level = 1 + 2; kind = K::High; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    for name in ["A", "c"] {
+        let meta = entry(&r, name).meta.clone().unwrap_or_default();
+        assert_eq!(
+            meta.0,
+            [(
+                "Safety".to_owned(),
+                OrderedMap(vec![
+                    ("level".to_owned(), "1 + 2".to_owned()),
+                    ("kind".to_owned(), "High".to_owned()),
+                ])
+            )],
+            "{name}"
+        );
+        assert_eq!(entry(&r, name).phase_val, None);
+    }
+    assert!(entry(&r, "P").meta.is_none());
+    assert!(r.missing_about.is_empty());
+}
+
+#[test]
+fn metadata_without_about_annotates_the_owner_even_without_body() {
+    // Arrange（`metadata M;`・`@M;`・`@M { … }`。同値クラス: 本体なし・本体あり）
+    let text = "part def A { metadata M; @N; @Phase { stage = K::a; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a = entry(&r, "A");
+    let keys: Vec<&str> = a
+        .meta
+        .iter()
+        .flat_map(|m| m.0.iter().map(|(k, _)| k.as_str()))
+        .collect();
+    assert_eq!(keys, ["M", "N", "Phase"]);
+    assert!(a.phase_val.is_some());
+}
+
+#[test]
+fn metadata_about_missing_target_is_recorded() {
+    // Arrange（異常系: 相手が無い）
+    let text = "package P { part def A; metadata M about A, Nope; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        r.missing_about
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Nope"]
+    );
+    assert!(entry(&r, "A").meta.is_some());
+}
+
+#[test]
+fn extended_definition_and_usage_fall_back_to_generic_kinds() {
+    // Arrange（ExtendedDefinition・ExtendedUsage、8.2.2.27。基の型を宣言しないメタデータ）
+    let text = "metadata def X; #X def H; #X h : H; in #X x : T;";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        decls(&r)[1..],
+        [
+            ("def", "H", "", ""),
+            ("usage", "h", "H", ""),
+            ("param", "x", "T", ""),
+        ]
+    );
+    assert!(entry(&r, "H").is_def);
+    assert!(
+        entry(&r, "h")
+            .meta
+            .as_ref()
+            .is_some_and(|m| m.0[0].0 == "X")
+    );
+}
+
+#[test]
+fn extended_definition_takes_its_kind_from_the_semantic_metadata_base_type() {
+    // Arrange（SemanticMetadata の baseType、8.2.2.27）
+    let text = "metadata def Cmd :> SemanticMetadata { :>> baseType = commands meta SysML::ActionUsage; } \
+                #Cmd def Start; #Cmd stop : Start;";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "Start").kind, "action def");
+    assert_eq!(entry(&r, "stop").kind, "action");
+}
+
+#[test]
+fn satisfy_variants_are_relations() {
+    // Arrange（SatisfyRequirementUsage、8.2.2.21。by なし・assert・not）
+    let text = "part def A { satisfy R1; } assert satisfy R2 by A; assert not satisfy R3 by A; not satisfy R4 by A;";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(String, String, bool)> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Satisfy { req, by, negated } => Some((req.clone(), by.clone(), *negated)),
+            _ => None,
+        })
+        .collect();
+    let want = [
+        ("R1", "", false),
+        ("R2", "A", false),
+        ("R3", "A", true),
+        ("R4", "A", true),
+    ]
+    .map(|(a, b, c)| (a.to_owned(), b.to_owned(), c));
+    assert_eq!(got, want);
+    assert!(r.unsupported.is_empty(), "{:?}", r.unsupported);
+}
+
+#[test]
+fn named_constraint_without_body_is_kept_as_an_owner_expression() {
+    // Arrange（AssertConstraintUsage・RequirementConstraintMember、8.2.2.20〜21）
+    let text = "requirement def R { require c1 : CD; require constraint c2 : CD; assume constraint c3; } \
+                part def H { assert constraint c4 : CD; assert not constraint c5 : CD; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let texts = |name: &str| -> Vec<(String, String)> {
+        entry(&r, name)
+            .exprs
+            .iter()
+            .map(|x| (x.text.clone(), x.via.clone()))
+            .collect()
+    };
+    let pairs = |v: &[(&str, &str)]| -> Vec<(String, String)> {
+        v.iter()
+            .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+            .collect()
+    };
+    assert_eq!(
+        texts("R"),
+        pairs(&[
+            ("c1 : CD", "require"),
+            ("c2 : CD", "require"),
+            ("c3", "assume")
+        ])
+    );
+    assert_eq!(
+        texts("H"),
+        pairs(&[("c4 : CD", "assert"), ("not c5 : CD", "assert")])
+    );
+}
+
+#[test]
+fn imports_are_recorded_by_their_package_path() {
+    // Arrange（Import、8.2.2.5）
+    let text = "package P { private import ISQ::*; import ScalarValues::Real; import all SI::**; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(r.imports, ["ISQ", "ScalarValues::Real", "SI"]);
+}
+
+#[test]
+fn value_written_on_the_element_wins_over_metadata_about() {
+    // Arrange（境界値: 同じメタデータの同じ名前を、要素自身と about の両方に書く）
+    let text = "package P { part def A { @Phase { stage = K::a; } } metadata Phase about A { stage = K::b; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let meta = entry(&r, "A").meta.clone().unwrap_or_default();
+    assert_eq!(
+        meta.0,
+        [(
+            "Phase".to_owned(),
+            OrderedMap(vec![("stage".to_owned(), "a".to_owned())])
+        )]
+    );
 }

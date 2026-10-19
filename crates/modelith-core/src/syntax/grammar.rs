@@ -178,6 +178,7 @@ const PREFIX_KEYWORDS: &[&str] = &[
     "protected",
     "abstract",
     "variation",
+    "variant",
     "individual",
     "derived",
     "constant",
@@ -258,6 +259,7 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "succession",
     "transition",
     "use",
+    "variant",
     "variation",
     "verification",
     "verify",
@@ -305,12 +307,14 @@ fn member(p: &mut Parser<'_>) {
         return;
     }
     let mut prefixed = false;
+    let mut extended = false;
     loop {
         if p.at(HASH) && p.nth_at_name(1) {
             let pm = p.start();
             p.bump();
             reference(p);
             pm.complete(p, PREFIX_METADATA);
+            extended = true;
         } else if p.at(KEYWORD) && PREFIX_KEYWORDS.contains(&p.nth_text(0)) {
             p.bump();
         } else {
@@ -326,8 +330,19 @@ fn member(p: &mut Parser<'_>) {
         }
         let is_def = p.eat_kw("def");
         let kind = if is_def { def } else { usage };
-        declaration(p, owner, true, is_def);
+        if kind == METADATA_KEYWORD_USAGE {
+            metadata_usage_tail(p, owner);
+        } else {
+            declaration(p, owner, true, is_def);
+        }
         m.complete(p, kind);
+        return;
+    }
+    if extended && p.at_kw("def") {
+        // `#X def H;`：利用者定義のキーワードで書く定義（ExtendedDefinition、8.2.2.27）
+        p.bump();
+        declaration(p, owner, true, true);
+        m.complete(p, EXTENDED_DEFINITION);
         return;
     }
     if p.at(KEYWORD) {
@@ -337,10 +352,7 @@ fn member(p: &mut Parser<'_>) {
     }
     if p.at(AT) {
         p.bump();
-        if p.at_name() {
-            reference(p);
-        }
-        declaration(p, owner, false, false);
+        metadata_usage_tail(p, owner);
         m.complete(p, METADATA_USAGE);
         return;
     }
@@ -455,6 +467,13 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
         "exhibit" => headed(p, owner, &["state"], EXHIBIT_STATE_USAGE),
         "include" => headed(p, owner, &["use", "case"], INCLUDE_USE_CASE_USAGE),
         "satisfy" => headed(p, owner, &["requirement"], SATISFY_REQUIREMENT_USAGE),
+        "not" if p.nth_at_kw(1, "satisfy") => {
+            // `not satisfy R by X;`（否定の充足。SatisfyRequirementUsage の isNegated、8.2.2.21）
+            p.bump();
+            headed(p, owner, &["requirement"], SATISFY_REQUIREMENT_USAGE)
+        }
+        // `event occurrence e;` は kind_keyword が読む。ここに来るのは参照の形 `event e;`（EventOccurrenceUsage、8.2.2.9）
+        "event" => headed(p, owner, &["occurrence"], OCCURRENCE_USAGE),
         "verify" => headed(p, owner, &["requirement"], REQUIREMENT_VERIFICATION_USAGE),
         "frame" => headed(p, owner, &["concern"], FRAMED_CONCERN_USAGE),
         "require" | "assume" => headed(p, owner, &["constraint"], REQUIREMENT_CONSTRAINT_USAGE),
@@ -568,6 +587,56 @@ fn headed(p: &mut Parser<'_>, owner: usize, kws: &[&str], kind: SyntaxKind) -> S
     kind
 }
 
+/// `@` か `metadata` の後ろ（MetadataUsageDeclaration・`about`・MetadataBody、8.2.2.27）。
+///
+/// `m : M`・`m typed by M` のように名前があれば `NAME` と `FEATURE_TYPING` に、名前が無ければ型の参照
+/// （`QUALIFIED_NAME`）にする。`about A, B` の相手は、`about` の後の参照（`QUALIFIED_NAME`・`FEATURE_CHAIN`）にする。
+/// 相手の名前が無ければ「関係の相手の名前がありません」を置く。最後に `;` か本体を読む。
+///
+/// # 引数
+///
+/// - `p`：`@` か `metadata` の直後にいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（閉じていないブロックのエラーの位置）
+///
+/// # 例
+///
+/// ```text
+/// metadata_usage_tail("Safety about A, b.c { k = 1; }") → QUALIFIED_NAME(Safety)、about の後に A・b.c、BODY
+/// metadata_usage_tail("s : Safety;")                    → NAME(s)、FEATURE_TYPING(Safety)
+/// metadata_usage_tail("Safety about ;")                 → 「関係の相手の名前がありません」
+/// ```
+fn metadata_usage_tail(p: &mut Parser<'_>, owner: usize) {
+    let short = p.at(LT) && p.nth_at_name(1) && p.nth_at(2, GT);
+    let at = if short { 3 } else { 0 };
+    let typed_by =
+        p.nth_at(at + 1, IDENT) && p.nth_text(at + 1) == "typed" && p.nth_at_kw(at + 2, "by");
+    let named = p.nth_at_name(at) && (p.nth_at(at + 1, COLON) || typed_by);
+    if short || named {
+        identification(p);
+        if p.at(COLON) {
+            relationship(p, 1, FEATURE_TYPING);
+        } else if p.at(IDENT) && p.nth_text(0) == "typed" && p.nth_at_kw(1, "by") {
+            relationship(p, 2, FEATURE_TYPING);
+        }
+    } else if p.at_name() {
+        reference(p);
+    }
+    if p.eat_kw("about") {
+        loop {
+            if p.at_name() {
+                reference(p);
+            } else {
+                p.error("関係の相手の名前がありません");
+                break;
+            }
+            if !p.eat(COMMA) {
+                break;
+            }
+        }
+    }
+    declaration(p, owner, false, false);
+}
+
 /// 名前で始まる文が、キーワードの無い使用の宣言か（式ではないか）。読み進めない。
 ///
 /// # 引数
@@ -676,6 +745,10 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool) -> String {
                 p.bump();
                 m.complete(p, SHORT_NAME);
                 continue;
+            }
+            // `typed by A`（KerML の TYPED_BY。`: A` と同じ型付け。`typed` は SysML の予約語ではない）
+            IDENT if p.nth_text(0) == "typed" && p.nth_at_kw(1, "by") => {
+                relationship(p, 2, FEATURE_TYPING);
             }
             IDENT | QUOTED_NAME
                 if name_slot

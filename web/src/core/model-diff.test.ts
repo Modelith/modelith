@@ -3,6 +3,7 @@
 // 入力は、ケースの途中まで書いたもの（書いている途中の形）と、ケースの行を乱数で組み合わせたもの。
 // alpha.7 から、Rust は暫定コアの取り違え（修飾名を最後の名前だけで探す・別名を読まない・図に無い持ち主の verify と frame を
 // 「見つからない」とする）を直している（F-EDIT-8、ADR-0015）。暫定コアは alpha.6 の範囲で止めるので、その違いは比べない。
+// 標準ライブラリの型の判定も、Rust は名前の一覧と import で決める（`…Value` で終わる名前は、ISQ などを import したときだけ標準）。
 import { describe, expect, it } from "vitest";
 import { build as tsBuild } from "./model";
 import { build as rustBuild, parse } from "./rust";
@@ -64,6 +65,20 @@ function unqualifiedTypeMessage(msg: string): string {
   return msg.replace(/^型「(?:[^「」]*::)?([^「」:]*)」/, "型「$1」");
 }
 
+/**
+ * 「型「…Value」が見つかりません」のような、`…Value`・`…Kind` で終わる型の問題か。alpha.7 から、Rust はこれを
+ * import（ISQ・SI など）があるときだけ標準ライブラリの型とみなすので、行を乱数で組み合わせると暫定コアと違ってよい。
+ *
+ * @param msg 問題の文
+ * @returns `…Value`・`…Kind` の型が見つからないという問題なら true
+ * @example
+ * isValueTypeMessage("型「TimeValue」が見つかりません（t）")  // → true
+ * isValueTypeMessage("型「TempSensor」が見つかりません（s）") // → false
+ */
+function isValueTypeMessage(msg: string): boolean {
+  return /^型「[^「」]*(?:Value|Kind)」が見つかりません/.test(msg);
+}
+
 /** 決まった種から作る乱数（テストを毎回同じにする）。 */
 function random(seed: number): () => number {
   let s = seed >>> 0;
@@ -83,7 +98,7 @@ function snapshot(P: ParseResult, M: Model): unknown {
     nodes: M.nodes.map((n) => ({ ...n, entry: ref(n.entry), ports: n.ports.map((p) => ({ ...p, entry: ref(p.entry) })) })),
     edges: M.edges.map((e) => ({ ...e, rel: e.rel ? P.rels.indexOf(e.rel) : null })),
     views: M.views.map((v) => ({ ...v, entry: ref(v.entry), targets: v.targets.map(ref), frames: v.frames.map((f) => ({ ...f, entry: ref(f.entry) })) })),
-    problems: M.problems.map((p) => ({ ...p, msg: unqualifiedTypeMessage(p.msg) })),
+    problems: M.problems.filter((p) => !isValueTypeMessage(p.msg)).map((p) => ({ ...p, msg: unqualifiedTypeMessage(p.msg) })),
     phases: M.phases,
     phaseEnum: M.phaseEnum,
     nodeOf: [...M.nodeOf].map(([e, n]) => [ref(e), n.key]),

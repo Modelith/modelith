@@ -173,7 +173,11 @@ pub enum RelKind {
     },
     Satisfy {
         req: String,
+        /// 満たす要素。`by` の無い `satisfy R;` では空（持ち主が満たす。8.2.2.21）。
         by: String,
+        /// `not satisfy`（否定の充足、isNegated）か。図に描かず、トレースの抜けの検出にも数えない。
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        negated: bool,
     },
     Verify {
         req: String,
@@ -240,6 +244,15 @@ pub struct Alias {
     pub pe: Option<usize>,
 }
 
+/// `metadata M about A` の相手のうち、見つからなかったもの（8.2.2.27）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingRef {
+    /// 文の位置（UTF-16 のオフセット）。
+    pub pos: usize,
+    /// 書いた相手の名前（修飾名・特徴の連鎖のまま）。
+    pub name: String,
+}
+
 /// 解析結果。`layout`（`@layout` コメント）は TS の境界で読む。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ParseResult {
@@ -251,4 +264,10 @@ pub struct ParseResult {
     /// 同じファイルの中の別名。名前の解決にだけ使い、TS には渡さない。
     #[serde(skip)]
     pub aliases: Vec<Alias>,
+    /// `import` の対象の修飾名（`ISQ::*` なら `ISQ`。書いた順）。標準ライブラリの型の判定にだけ使い、TS には渡さない。
+    #[serde(skip)]
+    pub imports: Vec<String>,
+    /// `metadata M about A` の相手のうち、見つからなかったもの。問題一覧に出すためだけに使い、TS には渡さない。
+    #[serde(skip)]
+    pub missing_about: Vec<MissingRef>,
 }

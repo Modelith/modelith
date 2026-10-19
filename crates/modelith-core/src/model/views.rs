@@ -210,21 +210,43 @@ fn filter_of(expr: &str, is_metadata: impl Fn(&str) -> bool) -> Option<Filter> {
         "Usage" => return Some(Filter::Usage),
         _ => {}
     }
-    let split = name
+    if let Some(kind) = metaclass_kind(name) {
+        return Some(Filter::Kind(kind));
+    }
+    is_metadata(name).then(|| Filter::Metadata(name.to_owned()))
+}
+
+/// メタクラスの名前（`PartDefinition`・`ActionUsage` など）を、Modelith の要素の種類にする。
+///
+/// # 引数
+///
+/// - `name`：メタクラスの名前（修飾の無い名前）
+///
+/// # 戻り値
+///
+/// `…Definition` なら `"part def"` のような定義の種類、`…Usage` なら `"part"` のような使用の種類。
+/// 頭が `METACLASS_KIND` に無いか、`Definition`・`Usage` で終わらなければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// metaclass_kind("PartDefinition") → Some("part def")
+/// metaclass_kind("UseCaseUsage")   → Some("use case")
+/// metaclass_kind("Usage")          → None   // 頭が空
+/// metaclass_kind("Safety")         → None
+/// ```
+pub(crate) fn metaclass_kind(name: &str) -> Option<String> {
+    let (head, is_def) = name
         .strip_suffix("Definition")
         .map(|h| (h, true))
         .or_else(|| name.strip_suffix("Usage").map(|h| (h, false)))
-        .filter(|(h, _)| !h.is_empty());
-    if let Some((head, is_def)) = split
-        && let Some((_, kind)) = METACLASS_KIND.iter().find(|(m, _)| *m == head)
-    {
-        return Some(Filter::Kind(if is_def {
-            format!("{kind} def")
-        } else {
-            (*kind).to_owned()
-        }));
-    }
-    is_metadata(name).then(|| Filter::Metadata(name.to_owned()))
+        .filter(|(h, _)| !h.is_empty())?;
+    let (_, kind) = METACLASS_KIND.iter().find(|(m, _)| *m == head)?;
+    Some(if is_def {
+        format!("{kind} def")
+    } else {
+        (*kind).to_owned()
+    })
 }
 
 impl Builder<'_> {

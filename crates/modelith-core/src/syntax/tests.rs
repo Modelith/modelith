@@ -580,6 +580,131 @@ fn every_suffix_parses_losslessly() {
     }
 }
 
+// ---- alpha.7 で読むようにした形 ----
+
+#[test]
+fn typed_by_is_a_feature_typing_like_colon() {
+    // Arrange（KerML の TYPED_BY。同値クラス: 名前あり・名前なし（境界値））
+    let named = node_kinds("part p typed by A;");
+    let unnamed = node_kinds("part typed by A;");
+    // Act / Assert
+    assert!(
+        named.contains(&NAME) && named.contains(&FEATURE_TYPING),
+        "{named:?}"
+    );
+    assert!(
+        !unnamed.contains(&NAME) && unnamed.contains(&FEATURE_TYPING),
+        "{unnamed:?}"
+    );
+    assert!(errors("part p typed by A;").is_empty());
+}
+
+#[test]
+fn metadata_usage_reads_type_about_targets_and_body() {
+    // Arrange（MetadataUsage・MetadataUsageDeclaration、8.2.2.27）
+    let text = "metadata Safety about A, b.c { k = 1 + 2; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            METADATA_KEYWORD_USAGE,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            FEATURE_CHAIN,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            BODY,
+            REFERENCE_USAGE,
+            NAME,
+            FEATURE_VALUE,
+            EXPRESSION,
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn named_metadata_usage_has_name_and_typing() {
+    // Arrange（`m : M`・`m typed by M` の形）
+    let colon = node_kinds("@s : Safety;");
+    let typed = node_kinds("metadata s typed by Safety about A;");
+    // Act / Assert
+    assert_eq!(
+        colon,
+        [
+            SOURCE_FILE,
+            METADATA_USAGE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME
+        ]
+    );
+    assert_eq!(
+        typed,
+        [
+            SOURCE_FILE,
+            METADATA_KEYWORD_USAGE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME
+        ]
+    );
+}
+
+#[test]
+fn metadata_about_without_target_is_an_error() {
+    // Arrange（異常系: about の後に相手が無い）
+    let text = "metadata Safety about ;";
+    // Act
+    let es = errors(text);
+    // Assert
+    assert_eq!(es, [(22, "関係の相手の名前がありません".to_owned())]);
+}
+
+#[test]
+fn prefix_metadata_followed_by_def_is_an_extended_definition() {
+    // Arrange（ExtendedDefinition、8.2.2.27。境界値: abstract と 2 つの #）
+    let one = node_kinds("#X def H;");
+    let two = node_kinds("abstract #X #Y def H :> B;");
+    // Act / Assert
+    assert_eq!(
+        one,
+        [
+            SOURCE_FILE,
+            EXTENDED_DEFINITION,
+            PREFIX_METADATA,
+            QUALIFIED_NAME,
+            NAME
+        ]
+    );
+    assert_eq!(two[1], EXTENDED_DEFINITION);
+    assert!(two.contains(&SUBCLASSIFICATION), "{two:?}");
+}
+
+#[test]
+fn not_satisfy_and_event_reference_are_read() {
+    // Arrange（SatisfyRequirementUsage の isNegated・EventOccurrenceUsage の参照の形）
+    let not_satisfy = node_kinds("not satisfy R by A;");
+    let event = node_kinds("event e;");
+    // Act / Assert
+    assert_eq!(not_satisfy[1], SATISFY_REQUIREMENT_USAGE);
+    assert_eq!(event, [SOURCE_FILE, OCCURRENCE_USAGE, QUALIFIED_NAME]);
+}
+
+#[test]
+fn variant_is_a_prefix() {
+    // Arrange（VariantUsageMember、8.2.2.6）
+    let usage = node_kinds("variant part a : A;");
+    let reference = node_kinds("variant b;");
+    // Act / Assert
+    assert_eq!(usage[1], PART_USAGE);
+    assert_eq!(reference, [SOURCE_FILE, REFERENCE_USAGE, NAME]);
+}
+
 #[test]
 #[ignore = "調査用"]
 fn dump() {

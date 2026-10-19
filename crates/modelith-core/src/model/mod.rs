@@ -8,15 +8,25 @@ mod names;
 mod types;
 mod views;
 
+pub(crate) use names::resolve_refs;
 pub use types::*;
+pub(crate) use views::metaclass_kind;
 pub use views::{is_standard_view, std_view_label};
 
 use std::collections::{HashMap, HashSet};
 
 use crate::project::{Entry, ParseResult, RelKind, Span};
 
-/// 図に描かない定義の種類（ほかの定義はすべて図に描く要素になる）。
-pub(crate) const UNDRAWN_DEF_KINDS: &[&str] = &["metadata def", "view def"];
+/// 図に描かない定義の種類（ほかの定義はすべて図に描く要素になる）。ツリーにだけ出す。
+/// `def` は、基の種類の決まらない利用者定義のキーワードの定義（`#X def H;`）。
+pub(crate) const UNDRAWN_DEF_KINDS: &[&str] = &[
+    "metadata def",
+    "view def",
+    "case def",
+    "viewpoint def",
+    "rendering def",
+    "def",
+];
 
 /// package の直下にあるときだけ図に描く要素になる、使用の種類。
 pub(crate) const TOP_USAGE_KINDS: &[&str] = &["part", "requirement"];
@@ -38,12 +48,115 @@ const COMP_KINDS: &[&str] = &[
     "port",
 ];
 
-/// 標準ライブラリの型か（未定義でも問題にしない）。暫定コアの `isLib`（`web/src/core/model.ts`）と同じ。
-/// `…Value`・`…Kind` で終わる名前と、`Real`・`Integer`・`Boolean`・`String`・`Natural`・`Number`・`Complex`・`Anything` を標準とみなす。
+/// 標準ライブラリの型のうち、`import` を解決しなくても「型が見つかりません」と言わない名前。
+/// SysML-v2-Release 2026-08 の `sysml.library` にあることを確かめたものだけを入れる
+/// （Base・ScalarValues・Occurrences、Systems Library の各パッケージの基の定義、VerificationCases、Time）。
+const LIBRARY_TYPES: &[&str] = &[
+    // Base・ScalarValues・Occurrences（Kernel Libraries）
+    "Anything",
+    "DataValue",
+    "ScalarValue",
+    "Boolean",
+    "String",
+    "NumericalValue",
+    "Number",
+    "Complex",
+    "Real",
+    "Rational",
+    "Integer",
+    "Natural",
+    "Positive",
+    "Occurrence",
+    // Systems Library の基の定義
+    "Part",
+    "Item",
+    "Action",
+    "StateAction",
+    "Port",
+    "Connection",
+    "Interface",
+    "Allocation",
+    "Calculation",
+    "ConstraintCheck",
+    "RequirementCheck",
+    "Case",
+    "AnalysisCase",
+    "VerificationCase",
+    "UseCase",
+    "View",
+    "Rendering",
+    "MetadataItem",
+    // VerificationCases
+    "VerdictKind",
+    "VerificationMethodKind",
+    // Time（Quantities and Units）
+    "TimeInstantValue",
+    "DateTime",
+    "Date",
+    "TimeOfDay",
+    "UtcTimeInstantValue",
+    "Iso8601DateTime",
+];
+
+/// 量と単位のライブラリのパッケージ（Domain Libraries/Quantities and Units）。これを `import` したファイルと、
+/// これで修飾した名前（`ISQ::MassValue`）では、`…Value`・`…Kind` で終わる名前を標準ライブラリの型とみなす。
+const QUANTITY_PACKAGES: &[&str] = &[
+    "ISQ",
+    "ISQAcoustics",
+    "ISQAtomicNuclear",
+    "ISQBase",
+    "ISQCharacteristicNumbers",
+    "ISQChemistryMolecular",
+    "ISQCondensedMatter",
+    "ISQElectromagnetism",
+    "ISQInformation",
+    "ISQLight",
+    "ISQMechanics",
+    "ISQSpaceTime",
+    "ISQThermodynamics",
+    "SI",
+    "SIPrefixes",
+    "USCustomaryUnits",
+    "Quantities",
+    "QuantityCalculations",
+    "MeasurementReferences",
+    "MeasurementRefCalculations",
+    "Time",
+    "TensorCalculations",
+    "VectorCalculations",
+];
+
+/// 修飾名の最初の段が、量と単位のライブラリのパッケージ（`QUANTITY_PACKAGES`）か。
 ///
 /// # 引数
 ///
-/// - `t`：型の名前（修飾の無い名前。`ScalarValues::Real` のような修飾名は標準とみなさない）
+/// - `path`：修飾名（`ISQ::MassValue`・`ISQ` など。引用符を外したもの）
+///
+/// # 戻り値
+///
+/// 最初の段が表にあれば true。
+///
+/// # 例
+///
+/// ```text
+/// is_quantity_path("ISQ::MassValue") → true
+/// is_quantity_path("SI")             → true
+/// is_quantity_path("MyLib::Value")   → false
+/// ```
+fn is_quantity_path(path: &str) -> bool {
+    let first = path.split("::").next().unwrap_or("");
+    QUANTITY_PACKAGES.contains(&first)
+}
+
+/// 標準ライブラリの型か（未定義でも問題にしない。ライブラリは同梱していないので名前で判定する）。
+///
+/// 最後の名前が `LIBRARY_TYPES` にあれば標準とみなす（`ScalarValues::Real` も）。`…Value`・`…Kind` で終わる名前は、
+/// ファイルが量と単位のライブラリ（ISQ・SI など）を `import` しているか、名前をそのパッケージで修飾しているときだけ標準とみなす。
+///
+/// # 引数
+///
+/// - `path`：型の名前（書いた修飾名のまま。引用符は外したもの）
+/// - `quantities_imported`：ファイルが量と単位のライブラリを `import` しているか
 ///
 /// # 戻り値
 ///
@@ -52,25 +165,22 @@ const COMP_KINDS: &[&str] = &[
 /// # 例
 ///
 /// ```text
-/// is_lib("Real")      → true
-/// is_lib("MassValue") → true    // …Value で終わる
-/// is_lib("Engine")    → false
-/// is_lib("")          → false   // 空の名前
+/// is_lib("Real", false)            → true
+/// is_lib("Positive", false)        → true
+/// is_lib("MassValue", true)        → true    // ISQ などを import している
+/// is_lib("MassValue", false)       → false   // import が無い
+/// is_lib("ISQ::MassValue", false)  → true    // 量のパッケージで修飾している
+/// is_lib("MyTypoValue", false)     → false
+/// is_lib("", false)                → false   // 空の名前
 /// ```
-pub fn is_lib(t: &str) -> bool {
-    t.ends_with("Value")
-        || t.ends_with("Kind")
-        || matches!(
-            t,
-            "Real"
-                | "Integer"
-                | "Boolean"
-                | "String"
-                | "Natural"
-                | "Number"
-                | "Complex"
-                | "Anything"
-        )
+pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
+    let name = path.rsplit("::").next().unwrap_or(path);
+    if LIBRARY_TYPES.contains(&name) {
+        return true;
+    }
+    let qualified = path.contains("::");
+    (name.ends_with("Value") || name.ends_with("Kind"))
+        && (quantities_imported || (qualified && is_quantity_path(path)))
 }
 
 /// 種類から色分けの系統を決める。暫定コアの `family`（`web/src/core/model.ts`）と同じ。
@@ -172,6 +282,8 @@ pub(crate) struct Builder<'a> {
     p: &'a ParseResult,
     /// 名前ごとの宣言（書いた順）。
     pub(crate) by_name: HashMap<&'a str, Vec<usize>>,
+    /// ファイルが量と単位のライブラリ（ISQ・SI など）を `import` しているか（`is_lib` に渡す）。
+    quantities_imported: bool,
     /// 宣言の番号 → 図の要素の番号。
     pub(crate) node_of: HashMap<usize, usize>,
     pub(crate) model: Model,
@@ -205,6 +317,7 @@ impl<'a> Builder<'a> {
             entries: &p.entries,
             p,
             by_name,
+            quantities_imported: p.imports.iter().any(|i| is_quantity_path(i)),
             node_of: HashMap::new(),
             model: Model::default(),
         }
@@ -520,8 +633,14 @@ impl<'a> Builder<'a> {
     /// owner_node(Some(w の番号)) → None                    // 型が無い
     /// // "package P { part def H { part s : S; } }" のとき
     /// owner_node(Some(s の番号)) → Some(H の要素の番号)    // これまでどおり外側の要素を優先
+    /// // "part def H { viewpoint def VP { frame concern c : C; } }" のとき
+    /// owner_node(Some(VP の番号)) → None                   // 視点は図に描かない
     /// ```
     fn owner_node(&self, i: Option<usize>) -> Option<usize> {
+        // 視点（viewpoint）は図に描かないので、その中の frame・verify の線を外側の要素から引かない
+        if i.is_some_and(|x| matches!(self.e(x).kind.as_str(), "viewpoint" | "viewpoint def")) {
+            return None;
+        }
         self.node_ancestor(i).or_else(|| {
             let mut a = i;
             while let Some(x) = a {
@@ -677,7 +796,7 @@ impl<'a> Builder<'a> {
                 continue;
             }
             let Some(t) = self.def_of(&u.ty_path, u.pe) else {
-                if !is_lib(&u.ty)
+                if !is_lib(&u.ty_path, self.quantities_imported)
                     && u.kind != "subject"
                     && !(u.kind == "view" && is_standard_view(&u.ty))
                 {
@@ -721,13 +840,22 @@ impl<'a> Builder<'a> {
             };
             let pe = r.pe;
             match &r.kind {
-                RelKind::Satisfy { req, by } => {
-                    let a = self.node_for(self.resolve(by, pe));
+                RelKind::Satisfy { req, by, negated } => {
+                    // `by` の無い `satisfy R;` は、持ち主（使用なら型の定義）が満たす（8.2.2.21）
+                    let a = if by.is_empty() {
+                        self.node_for(pe).or_else(|| self.owner_node(pe))
+                    } else {
+                        self.node_for(self.resolve(by, pe))
+                    };
                     let b = self.node_for(self.resolve(req, pe));
                     match (a, b) {
+                        // 否定の充足（not satisfy）は線にせず、トレースの抜けの検出にも数えない
+                        (_, Some(_)) if *negated => {}
                         (Some(a), Some(b)) => {
                             self.add_edge("satisfy", a, b, "«satisfy»".into(), src);
                         }
+                        // 相手はあるが、満たす持ち主が図に無い（`by` の無い文）。相手が無いとは言わない
+                        (None, Some(_)) if by.is_empty() => {}
                         _ => {
                             let who = if b.is_none() { req } else { by };
                             self.problem(
@@ -891,12 +1019,22 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 構文解析のエラーと、まだ扱えない構文を問題一覧に加える（モデルの `problems` を書き換える）。
+    /// 構文解析のエラー、`metadata … about` の見つからない相手、まだ扱えない構文を問題一覧に加える（モデルの `problems` を書き換える）。
     /// まだ扱えない構文は、頭を UTF-16 で 40 単位までに切って示し、種類を `unsupported` にする。
     fn parse_problems(&mut self) {
         let p = self.p;
         for e in &p.errors {
             self.problem(e.pos, e.msg.clone(), None);
+        }
+        for m in &p.missing_about {
+            self.problem(
+                m.pos,
+                format!(
+                    "メタデータを付ける相手「{}」が見つかりません（metadata about）",
+                    m.name
+                ),
+                None,
+            );
         }
         // 黙って捨てず、まだ扱えない構文があることを知らせる（ADR-0013）
         for u in &p.unsupported {

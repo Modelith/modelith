@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 38・△ 28・× 30。⚠ は 0 件。
+件数：テキスト記法（2 章）96 項目のうち ○ 52・△ 25・× 19。⚠ は 0 件。
+
+alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum` の使用・`event occurrence`・`timeslice`・`snapshot`・`typed by`・`constant`・`variant`・`viewpoint`・`rendering`・`metadata … about`・利用者定義のキーワード・`satisfy` の書き方・名前付きの制約の参照を読むようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 38・△ 28・× 30 だった。
 
 2026-10-19 の照合では ⚠ が 7 件あり、alpha.7 で直した（`rep`・`alias`・`assert not constraint`・`assume constraint`・パッケージ直下の `verify`・`viewpoint` の中の `frame`・修飾名）。
 あわせて、まだ扱えない宣言の `{ … }` の中身が外側の要素の子として取り込まれ、図に出る誤りも直した（今は本体を読まない）。
@@ -96,7 +98,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | 要素 | BNF | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- | --- |
 | 型付け `: A` | FeatureTyping | ○ | | `: A, B` は先頭の 1 つだけ |
-| `typed by` / `defined by` | TypedBy | △ | alpha.7 | `defined by A` は型になる。`typed by A` は型が空のまま |
+| `typed by` / `defined by` | TypedBy | ○ | | `defined by A`・`typed by A` は `: A` と同じく型になる（`typed by` は KerML の TYPED_BY。SysML の BNF ではメタデータの使用の宣言にだけ出るが、どこでも同じに読む） |
 | 定義の特殊化 `:> A` | SubclassificationPart | △ | alpha.8 | 先頭の 1 つを記録するが、線は描かない |
 | `specializes` | 同上 | △ | alpha.8 | `:>` と同じ |
 | 使用の部分集合 `:>` / `subsets` | Subsets | △ | alpha.8 | 型と取り違えない。関係そのものは記録しない（ADR-0013） |
@@ -106,7 +108,7 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | 値 `= 式` | FeatureValue | ○ | | 文字列として保持し、図に出す |
 | `:=` / `default` | FeatureValue | △ | alpha.8 | 値として残るが、`=` と区別しない |
 | `abstract`・`ref`・`derived`・`end`・`in`・`out`・`inout` など | Prefix 系 | ○ | | 記録する |
-| `constant`・`variant` | UsagePrefix 等 | × | alpha.7 | `variant` は「まだ扱えない」と知らせる。`constant attribute …` は親の「式」に黙って入る |
+| `constant`・`variant` | UsagePrefix 等 | ○ | | 後ろの宣言をそのまま読み、`constant`・`variant` を修飾として記録する。`variant a;`（VariantReference）は種類 `variant` の要素になる。`variation part def V { variant part a; }` も読む（バリアントの意味は持たない） |
 
 ### 2.5 属性・列挙・出来事・項目・部品・ポート（8.2.2.7〜12）
 
@@ -114,10 +116,10 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | --- | --- | --- | --- |
 | `attribute def` / `attribute` | ○ | | |
 | `enum def`・列挙値 | ○ | | 列挙値はフェーズにも使う |
-| `enum` の使用 `enum e : E;` | × | alpha.7 | 「まだ扱えない」と知らせる |
+| `enum` の使用 `enum e : E;` | ○ | | 種類 `enum` の要素になる。`enum def` の中の `enum a;` はこれまでどおり列挙値 |
 | `occurrence def` / `occurrence` | ○ | | シーケンス図の文脈 |
 | `individual` | △ | alpha.8 | 修飾子として記録するだけ |
-| `timeslice` / `snapshot` / `event occurrence` | × | alpha.7 | 「まだ扱えない」と知らせる |
+| `timeslice` / `snapshot` / `event occurrence` | ○ | | 書いた語を種類にした使用の要素になる（`event e;` の参照の形も）。`timeslice part p` のように種類のキーワードが続けば、その種類の要素に `timeslice` を修飾として記録する |
 | `item def` / `item` | ○ | | |
 | `part def` / `part` | ○ | | |
 | `port def` / `port`、共役 `~` | ○ | | 向きを推定する |
@@ -160,21 +162,21 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | --- | --- | --- | --- |
 | `calc def` / `calc` / `return` | ○ | | 式は文字列 |
 | `constraint def` / `constraint` | ○ | | 式は文字列（評価しない） |
-| `assert constraint` / `assert not` | △ | alpha.7 | `assert constraint { … }`・`assert not constraint d { … }` は式として親に入る（`x < 0` のような比べる式も誤ったエラーにしない）。`assert constraint c : CD;` は黙って捨てる |
+| `assert constraint` / `assert not` | △ | 0.3.0 以降 | `assert constraint { … }`・`assert not constraint d { … }` は式として親に入る（`x < 0` のような比べる式も誤ったエラーにしない）。本体の無い `assert constraint c : CD;` も `c : CD` を親の式として残す（`not` は `not c : CD` と残す）。本体のある形では否定（`not`）を記録しない |
 | `requirement def` / `requirement` | ○ | | |
 | `subject` / `stakeholder` | ○ | | |
-| `require` / `assume constraint` | △ | alpha.7 | `require constraint { … }`・`assume constraint { … }`（名前付きも）は式として入る。`require c : CD;` は黙って捨てる |
-| `actor` | × | alpha.7 | 「まだ扱えない」と知らせる |
+| `require` / `assume constraint` | ○ | | `require constraint { … }`・`assume constraint { … }`（名前付きも）は式として入る。本体の無い `require c : CD;`・`require constraint c : CD;` も `c : CD` を式として残す（要求の区画に出る） |
+| `actor` | ○ | | 型付きの要素になり、ツリーに出る（`subject`・`stakeholder` と違い、ツリーで隠さない） |
 | `satisfy R by X` | ○ | | |
-| `by` の無い `satisfy`、`assert satisfy`、`not satisfy` | × | alpha.7 | 知らせるか、黙って捨てる |
+| `by` の無い `satisfy`、`assert satisfy`、`not satisfy` | ○ | | `satisfy R;` は持ち主（使用なら型の定義）から満たす線を引く。`assert satisfy R by X` は `satisfy R by X` と同じ。`not satisfy R by X` は関係として記録するが、線にせず、トレースの抜けの検出でも満たす要素に数えない |
 | `concern def`、`frame concern c : C` | ○ | | 型の無い `frame c;` は「まだ扱えない」と知らせる |
-| `case def` / `case` | × | alpha.7 | 「まだ扱えない」と知らせる（本体の中は読まない） |
-| `objective` | △ | alpha.7 | 中身は親に入る |
+| `case def` / `case` | ○ | | ツリーに出る要素になる（図のノードにはしない）。本体（`subject`・`actor`・`objective` など）も読む |
+| `objective` | △ | | 中身は親に入る（目的の要求そのものは要素にしない） |
 | `analysis def` / `analysis` | ○ | | |
 | `verification def` / `verification` | ○ | | |
 | `verify` | △ | | 定義の中と、パッケージ直下の型付きの使用の中（型の定義から線を引く）で線になる。型の無い使用の中では線を引かない |
 | `use case def` / `use case` | ○ | | 専用のビューは無い |
-| `include use case` | × | alpha.7 | 「まだ扱えない」と知らせる |
+| `include use case` | ○ | | 種類 `include use case` の要素になる（`include use case u : U;` は U を型にする。`include u;` は u を名前にし、型は付けない）。図の線は引かない |
 
 ### 2.9 ビュー（8.2.2.26）— ADR-0005
 
@@ -186,18 +188,18 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | ビュー内の `filter` | ElementFilterMember | △ | alpha.9 | `@メタクラス`（`@SysML::PartDefinition` など）と `@メタデータ` だけ。`and`・`or` などの式は、知らせたうえで使わない |
 | `render`（参照形） | ViewRenderingMember | △ | 0.3.0 以降 | `asTreeDiagram`・`asInterconnectionDiagram` は型より優先する。`asTextualNotation`・`asElementTable` は知らせて図で描く |
 | `render`（合成形） | ViewRenderingMember | × | alpha.9 | 「まだ扱えない」と知らせる |
-| `viewpoint def` / `viewpoint` | ViewpointDefinition / Usage | × | alpha.7 | 「まだ扱えない」と知らせる。中（`frame` を含む）は読まない |
-| `rendering def` / `rendering` | RenderingDefinition / Usage | × | alpha.7 | 「まだ扱えない」と知らせる（本体の中は読まない） |
+| `viewpoint def` / `viewpoint` | ViewpointDefinition / Usage | ○ | | ツリーに出る要素になる（`view def` と同じく図のノードにはしない。`view` とは取り違えない）。中の `frame concern c : C;` は関係として記録するが、視点を図に描かないので線は引かない |
+| `rendering def` / `rendering` | RenderingDefinition / Usage | ○ | | ツリーに出る要素になる（図のノードにはしない） |
 
 ### 2.10 メタデータ（8.2.2.27）
 
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | `metadata def` | ○ | | フェーズに使う。図のノードにはしない |
-| `@M { k = E::V; }` | △ | alpha.7 | 「識別子 = 修飾名」の最後の名前だけ。`k = 1 + 2` は `1` で切れる |
-| `metadata M about A { … }` | × | alpha.7 | 「まだ扱えない」と知らせる |
+| `@M { k = E::V; }` | ○ | | 値は式の全体（`k = 1 + 2` は `1 + 2`）。列挙値などの修飾名（`E::V`）だけは最後の名前（フェーズに使う）。本体の無い `@M;` も持ち主に `M` を付ける |
+| `metadata M about A { … }` | ○ | | `about` の相手（修飾名・特徴の連鎖も）を書いた場所から探し、それぞれに `M` と本体の値を付ける。見つからない相手は問題一覧に示す。`about` の無い `metadata M;` は持ち主に付ける（`@M;` と同じ） |
 | 前置の `#M part def A;` | ○ | | 宣言を読み、`M` をメタデータとして記録する（ADR-0013） |
-| 利用者定義のキーワード `#X def`・`#X x;` | × | alpha.7 | `#X def H;` は「まだ扱えない」、`#X h;` は黙って捨てる |
+| 利用者定義のキーワード `#X def`・`#X x;` | ○ | | メタデータの定義 `X` が `:>> baseType = … meta SysML::PartUsage;` で基の型を決めていれば、その種類（`part def`・`part` など）として読む。決まらなければ種類 `def`・`usage` の要素としてツリーにだけ出す。どちらも `X` をメタデータとして記録する |
 
 ### 2.11 式・KerML
 
@@ -232,9 +234,10 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 ## 4. 標準ライブラリ
 
 - 同梱も解析もしていない（0.3.0 以降）。`import` は捨てる。
-- 名前が `Value` か `Kind` で終わる型、`Real`・`Integer`・`Boolean`・`String` などの一部の名前だけ、「型が見つかりません」の警告を抑えている（`ScalarValues::Real` のような修飾名も、最後の名前で判定する）。
-  - そのため `Positive`・`Rational`・`Iso8601DateTime` などは、誤って警告になる（alpha.7 で、名前の一覧を標準ライブラリに合わせて直す）。
-  - 利用者が作った型の書き忘れが、名前が `…Value` で終わるために見逃されることがある（同上）。
+- 「型が見つかりません」の警告を抑える標準ライブラリの型は、名前で判定する（`crates/modelith-core/src/model/mod.rs` の `LIBRARY_TYPES`。`ScalarValues::Real` のような修飾名も、最後の名前で判定する）。
+  - 一覧には、照合した `sysml.library` にある名前だけを入れた：Base・ScalarValues・Occurrences（`Anything`・`DataValue`・`ScalarValue`・`Boolean`・`String`・`NumericalValue`・`Number`・`Complex`・`Real`・`Rational`・`Integer`・`Natural`・`Positive`・`Occurrence`）、Systems Library の基の定義（`Part`・`Item`・`Action`・`StateAction`・`Port`・`Connection`・`Interface`・`Allocation`・`Calculation`・`ConstraintCheck`・`RequirementCheck`・`Case`・`AnalysisCase`・`VerificationCase`・`UseCase`・`View`・`Rendering`・`MetadataItem`）、VerificationCases（`VerdictKind`・`VerificationMethodKind`）、Time（`TimeInstantValue`・`DateTime`・`Date`・`TimeOfDay`・`UtcTimeInstantValue`・`Iso8601DateTime`）。
+  - `…Value`・`…Kind` で終わる名前（`MassValue` など）は、ファイルが量と単位のライブラリ（`ISQ`・`ISQBase`・`ISQSpaceTime` などの ISQ の各パッケージ、`SI`・`SIPrefixes`・`USCustomaryUnits`・`Quantities`・`QuantityCalculations`・`MeasurementReferences`・`MeasurementRefCalculations`・`Time`・`TensorCalculations`・`VectorCalculations`）のどれかを `import` しているとき、または名前をそのパッケージで修飾しているとき（`ISQ::MassValue`）だけ標準とみなす。それ以外で、ファイルに定義の無い `…Value` の型は「見つかりません」と示す（alpha.6 までは、名前だけで標準とみなし、書き間違いを見逃していた）。
+  - ライブラリを読んでいないので、一覧に無い標準の名前（`Flow` など）や、量のパッケージに無い `…Value` の名前は区別できない。
 - 単位 `[kg]` は解決しない（0.3.0 以降）。
 - 標準ビュー定義（`GeneralView`・`gv` など）と標準のレンダリング（`asTreeDiagram` など）の名前だけを、組み込みで持つ。
 

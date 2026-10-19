@@ -153,6 +153,8 @@ syntax_kinds! {
     VIEWPOINT_DEFINITION,
     RENDERING_DEFINITION,
     METADATA_DEFINITION,
+    /// `#X def H;`（利用者定義のキーワードで書く定義。ExtendedDefinition、8.2.2.27）。
+    EXTENDED_DEFINITION,
 
     ATTRIBUTE_USAGE,
     ENUMERATION_USAGE,

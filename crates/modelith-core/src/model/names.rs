@@ -6,8 +6,36 @@
 //! 別名（`alias B for A;`、AliasMember、8.2.2.5）は、書いた名前空間の中身と同じように見え、指す先に置き換わる。
 
 use super::Builder;
-use crate::project::Alias;
 use crate::project::text::unquote;
+use crate::project::{Alias, ParseResult};
+
+/// 解析結果の中で、参照（修飾名・特徴の連鎖）を、書いた場所から解決する（`project` の後処理が使う）。
+///
+/// 図の要素はまだ無いので、修飾の無い名前は書いた場所から外へ、無ければ全体から書いた順で最初のものを探す。
+///
+/// # 引数
+///
+/// - `p`：読み終えた解析結果（別名を含む）
+/// - `refs`：`(参照, 書いた文の持ち主の宣言の番号)` の並び
+///
+/// # 戻り値
+///
+/// `refs` と同じ順の、見つかった宣言の番号（別名なら指す先）。見つからなければ None。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { part def A { part b; } alias C for A; }" のとき（P は 0 番）
+/// resolve_refs(p, [("A", Some(0)), ("A.b", Some(0)), ("C", Some(0)), ("Z", Some(0))])
+///   → [Some(A の番号), Some(b の番号), Some(A の番号), None]
+/// ```
+pub(crate) fn resolve_refs(
+    p: &ParseResult,
+    refs: &[(String, Option<usize>)],
+) -> Vec<Option<usize>> {
+    let b = Builder::new(p);
+    refs.iter().map(|(r, ctx)| b.resolve(r, *ctx)).collect()
+}
 
 /// 別名をたどる深さの上限（`alias A for B; alias B for A;` のような輪で止まらないように）。
 const MAX_ALIAS_DEPTH: usize = 8;

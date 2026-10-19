@@ -134,7 +134,8 @@ pub fn unquote(s: &str) -> &str {
         .unwrap_or(s)
 }
 
-/// 頭の修飾（暫定コアの MOD_RE）。`private`・`in` などを、後ろに空白が続く限り外す。（修飾, 残り）を返す。
+/// 頭の修飾（暫定コアの MOD_RE に、alpha.7 で `constant`・`variant`・`snapshot`・`timeslice` を足したもの）。
+/// `private`・`in` などを、後ろに空白が続く限り外す。（修飾, 残り）を返す。
 ///
 /// # 引数
 ///
@@ -148,6 +149,7 @@ pub fn unquote(s: &str) -> &str {
 ///
 /// ```text
 /// strip_mods("private in item x") → ("private in", "item x")
+/// strip_mods("constant attribute c : Real") → ("constant", "attribute c : Real")
 /// strip_mods("part x")            → ("", "part x")
 /// strip_mods("end")               → ("", "end")   // 後ろに空白が無い
 /// ```
@@ -166,6 +168,11 @@ pub fn strip_mods(head: &str) -> (String, &str) {
         "ref",
         "variation",
         "individual",
+        // UsagePrefix の isConstant・VariantUsageMember・PortionKind（8.2.2.6・8.2.2.9）
+        "constant",
+        "variant",
+        "snapshot",
+        "timeslice",
     ];
     let mut rest = head;
     let mut mods = Vec::new();
@@ -318,23 +325,25 @@ pub fn is_skipped(head: &str) -> bool {
             .is_some_and(|r| r.starts_with(is_word))
 }
 
-/// メタデータの本体の `key = Value`（`^([A-Za-z_]\w*)\s*=\s*([\w:]+)`）。（キー, 値）を返す。
+/// メタデータの本体の `key = 式`（MetadataBodyUsage の名前と値、8.2.2.27）。（キー, 値の式）を返す。
 ///
 /// # 引数
 ///
-/// - `head`：メタデータの本体の文（`;` の手前まで）
+/// - `head`：メタデータの本体の文（`;` の手前まで。空白をまとめたもの）
 ///
 /// # 戻り値
 ///
-/// `Some((キー, 値))`。値は `=` の後の、名前の文字と `:` が続く部分。キーが基本名でない、`==` である、
+/// `Some((キー, 値))`。値は `=` の後ろの式全体（前後の空白を除く）。キーが基本名でない、`==` である、
 /// 値が空のときは `None`。
 ///
 /// # 例
 ///
 /// ```text
 /// meta_assignment("stage = PhaseKind::X") → Some(("stage", "PhaseKind::X"))
+/// meta_assignment("k = 1 + 2")            → Some(("k", "1 + 2"))
+/// meta_assignment("a = (b)")              → Some(("a", "(b)"))
 /// meta_assignment("a == b")               → None
-/// meta_assignment("a = (b)")              → None   // 値が名前で始まらない
+/// meta_assignment("k =")                  → None   // 値が無い
 /// ```
 pub fn meta_assignment(head: &str) -> Option<(&str, &str)> {
     let (key, rest) = head.split_once('=')?;
@@ -342,11 +351,35 @@ pub fn meta_assignment(head: &str) -> Option<(&str, &str)> {
     if !is_basic_name(key) || rest.starts_with('=') {
         return None;
     }
-    let rest = rest.trim_start();
-    let len = rest
-        .find(|c: char| !(is_word(c) || c == ':'))
-        .unwrap_or(rest.len());
-    (len > 0).then(|| (key, &rest[..len]))
+    let value = rest.trim();
+    (!value.is_empty()).then_some((key, value))
+}
+
+/// メタデータの値として記録する文字列。列挙値などの修飾名（`E::V`）は最後の名前だけ、ほかの式は全体にする。
+///
+/// フェーズ（`stage = PhaseKind::X`）は列挙値の名前で比べるので、修飾名は最後の名前にする。
+///
+/// # 引数
+///
+/// - `value`：`meta_assignment` が返した値の式
+///
+/// # 戻り値
+///
+/// 修飾名（`is_qualified_basic_name`）なら最後の部分、それ以外は `value` そのもの。
+///
+/// # 例
+///
+/// ```text
+/// meta_value("PhaseKind::X") → "X"
+/// meta_value("1 + 2")        → "1 + 2"
+/// meta_value("\"a b\"")      → "\"a b\""
+/// ```
+pub fn meta_value(value: &str) -> &str {
+    if is_qualified_basic_name(value) {
+        last_segment(value)
+    } else {
+        value
+    }
 }
 
 /// 列挙値（`enum X`・`X`）。
@@ -442,7 +475,43 @@ mod tests {
             Some(("stage", "PhaseKind::X"))
         );
         assert_eq!(meta_assignment("a == b"), None);
-        assert_eq!(meta_assignment("a = (b)"), None);
+    }
+
+    #[test]
+    fn meta_assignment_keeps_the_whole_expression() {
+        // Arrange（同値クラス: 演算子を含む式・括弧の式、境界値: 値が空）
+        let cases = ["k = 1 + 2", "a = (b)", "k ="];
+        // Act
+        let got: Vec<_> = cases.iter().map(|h| meta_assignment(h)).collect();
+        // Assert
+        assert_eq!(got, [Some(("k", "1 + 2")), Some(("a", "(b)")), None]);
+    }
+
+    #[test]
+    fn meta_value_shortens_only_qualified_names() {
+        // Arrange（同値クラス: 修飾名・修飾の無い名前・式）
+        let cases = ["PhaseKind::X", "X", "1 + 2"];
+        // Act
+        let got: Vec<&str> = cases.iter().map(|v| meta_value(v)).collect();
+        // Assert
+        assert_eq!(got, ["X", "X", "1 + 2"]);
+    }
+
+    #[test]
+    fn strip_mods_takes_constant_variant_and_portion_kinds() {
+        // Arrange（alpha.7 で足した修飾）
+        let heads = ["constant attribute c", "variant part a", "timeslice t"];
+        // Act
+        let got: Vec<(String, &str)> = heads.iter().map(|h| strip_mods(h)).collect();
+        // Assert
+        assert_eq!(
+            got,
+            [
+                ("constant".to_owned(), "attribute c"),
+                ("variant".to_owned(), "part a"),
+                ("timeslice".to_owned(), "t"),
+            ]
+        );
     }
 
     #[test]
