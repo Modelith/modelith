@@ -268,9 +268,10 @@ export function browserScriptPlugins(plugins: readonly BrowserPlugin[], project:
  * @example
  * scriptOf({ id: "jp.y", name: "n", version: "1.0.0", runtime: "browser", commands: [c] }, "…")
  * // → { id: "jp.y", name: "n", version: "1.0.0", permissions: [], commands: [c], importers: [], exporters: [], code: "…" }
+ * scriptOf({ …, author: "山田 花子" }, "…") // → { …, author: "山田 花子", … }
  */
 function scriptOf(m: PluginInfo, code: string): ScriptPlugin {
-  return { id: m.id, name: m.name, version: m.version, permissions: m.permissions ?? [], commands: m.commands ?? [], importers: m.importers ?? [], exporters: m.exporters ?? [], code };
+  return { id: m.id, name: m.name, version: m.version, ...(m.author ? { author: m.author } : {}), permissions: m.permissions ?? [], commands: m.commands ?? [], importers: m.importers ?? [], exporters: m.exporters ?? [], code };
 }
 
 /**
@@ -460,6 +461,7 @@ export interface AddTarget {
  * addPrompt({ id: "jp.x", name: "トレーサビリティのチェック", version: "0.1.0", runtime: "rules" }, { project: { plugins: {} }, blocked: null, inProject: false, inBrowser: false })
  * // → { text: "「トレーサビリティのチェック」（ID：jp.x、バージョン 0.1.0）を追加します。チェックルールのプラグインです。…", initial: "project",
  * //      places: [{ id: "project", note: ".modelith/plugins/jp.x/ にコピーし、…", confirm: "追加する", … }, { id: "browser", note: "このブラウザだけに保存します。…", … }] }
+ * addPrompt({ …, author: "山田 花子" }, target) // → { text: "「…」（作者：山田 花子、ID：…、バージョン …）を追加します。…", … }
  * addPrompt(info, { project: null, blocked: "フォルダを開いていないため選べません。…", … }) // → { …, initial: "browser", places: [{ id: "project", disabled: true, … }, …] }
  * addPrompt({ name: "解析", runtime: "wasm-component", … }, target) // → { refused: "「解析」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。…" }
  */
@@ -470,7 +472,7 @@ export function addPrompt(info: PluginInfo, target: AddTarget): AddPrompt | { re
   const script = info.runtime === "browser";
   const permissions = info.permissions ?? [];
   const parts = [
-    `「${info.name}」（ID：${info.id}、バージョン ${info.version}）を追加します。`,
+    `「${info.name}」（${info.author ? `作者：${info.author}、` : ""}ID：${info.id}、バージョン ${info.version}）を追加します。`,
     info.description ? `説明：${info.description}` : "",
     script
       ? "画面に機能を追加するプラグイン（TypeScript）です。プログラムを含み、下の権限を使います。初めて実行する前に、実行してよいかを確認します。"

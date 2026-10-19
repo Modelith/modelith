@@ -352,6 +352,8 @@ export interface PluginInfo {
   version: string;
   runtime: PluginRuntime;
   description?: string;
+  /** 作者の名前（書いてあれば）。 */
+  author?: string;
   /** 宣言した権限（無ければ省く）。 */
   permissions?: Permission[];
   /** v1 のプラグインのプログラムのファイル（プラグインのフォルダからの相対パス）。 */

@@ -1,5 +1,5 @@
 // plugin-sdk の packages/typescript/src/generated/protocol.ts のコピー。編集しないこと。
-// 取得元: git+https://github.com/modelith/plugin-sdk?rev=9fb8f904670cec12f39e0576c24b09ee94738269#9fb8f904670cec12f39e0576c24b09ee94738269
+// 取得元: git+https://github.com/modelith/plugin-sdk?rev=89d1f326bb692ccbdf7f89c42497e5a838c460ae#89d1f326bb692ccbdf7f89c42497e5a838c460ae
 // 更新: Cargo.toml の plugin-sdk の rev を変えてから node web/tools/plugin-protocol-cli.ts sync（scripts/check.sh が古さを検出する）
 
 // 生成物。編集しないこと。定義元: crates/modelith-plugin-protocol
@@ -75,11 +75,18 @@ version: string,
  */
 apiVersion: string, runtime: Runtime, description?: string, 
 /**
+ * 作者の名前。権限を許可する画面などに出す。
+ */
+author?: string, 
+/**
  * SPDX ライセンス式。
  */
 license: string, 
 /**
- * エントリポイント（`browser`: ESM ファイル、`wasm-component`: .wasm ファイル）。`rules` では不要。
+ * エントリポイント。`rules` では不要。
+ * - `browser`: 1 つのファイルにまとめた従来型のスクリプト（例: ESM を IIFE にまとめたもの）。
+ *   モジュール形式（`import` / `export` を含むもの）は Chromium のサンドボックス化した iframe の中で動かせない（ADR-0018 §3.1）。
+ * - `wasm-component`: .wasm ファイル。
  */
 main?: string, 
 /**

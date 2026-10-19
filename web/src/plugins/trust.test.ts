@@ -119,20 +119,29 @@ describe("trustRecord・parseTrustStore（覚える形）", () => {
 });
 
 describe("trustPrompt（許可を尋ねるダイアログの中身）", () => {
-  const plugin = { name: "要求の ID の補完", id: "jp.example.fill", version: "1.0.0", permissions: ["model:read", "edits:propose"] as Permission[] };
+  const plugin = { name: "要求の ID の補完", author: "山田 花子", id: "jp.example.fill", version: "1.0.0", permissions: ["model:read", "edits:propose"] as Permission[] };
 
-  it("F-PLUG-6: 名前・ID・バージョンと、使う権限を示す", () => {
+  it("F-PLUG-6: 名前・作者・ID・バージョンと、使う権限を示す", () => {
     // Arrange・Act
     const got = trustPrompt(plugin, { kind: "ask", reason: "first", added: [] });
     // Assert
     expect(got).toEqual({
       title: "プラグインの実行の許可",
-      text: "プラグイン「要求の ID の補完」（ID：jp.example.fill、バージョン 1.0.0）を初めて実行します。このプラグインはプログラムを含みます。アプリとは切り離された場所で動き、開いているモデルのテキストを受け取って、次の権限だけを使えます。実行を許可しますか？",
+      text: "プラグイン「要求の ID の補完」（作者：山田 花子、ID：jp.example.fill、バージョン 1.0.0）を初めて実行します。このプラグインはプログラムを含みます。アプリとは切り離された場所で動き、開いているモデルのテキストを受け取って、次の権限だけを使えます。実行を許可しますか？",
       items: ["解析したモデル（要素と関係）を受け取り、問題一覧に結果を出す（model:read）", "モデルのテキストを変更する（変更は元に戻せます）（edits:propose）"],
       warning: undefined,
       confirm: "許可して実行",
       cancel: "許可しない",
     });
+  });
+
+  it("F-PLUG-6: 作者を書いていないプラグインは、作者を「記載なし」と示す", () => {
+    // Arrange
+    const { author: _, ...anonymous } = plugin;
+    // Act
+    const got = trustPrompt(anonymous, { kind: "ask", reason: "first", added: [] });
+    // Assert
+    expect(got.text).toMatch(/^プラグイン「要求の ID の補完」（作者：記載なし、ID：jp.example.fill、バージョン 1.0.0）を初めて実行します。/);
   });
 
   it("F-PLUG-6: 外部と通信できるプラグインは、モデルを外部に送信できることを示す", () => {
@@ -147,7 +156,7 @@ describe("trustPrompt（許可を尋ねるダイアログの中身）", () => {
     const grew = trustPrompt(plugin, { kind: "ask", reason: "permissions", added: ["edits:propose"] });
     const changed = trustPrompt({ ...plugin, permissions: ["network"] }, { kind: "ask", reason: "changed", added: [] });
     // Assert
-    expect(grew.text).toMatch(/^プラグイン「要求の ID の補完」（ID：jp.example.fill、バージョン 1.0.0）の使う権限が、前回許可したときより増えました（増えた権限：モデルのテキストを変更する（変更は元に戻せます））。/);
-    expect(changed.text).toMatch(/^外部と通信できるプラグイン「要求の ID の補完」（ID：jp.example.fill、バージョン 1.0.0）のバージョンかファイルが、前回許可したときから変わりました。/);
+    expect(grew.text).toMatch(/^プラグイン「要求の ID の補完」（作者：山田 花子、ID：jp.example.fill、バージョン 1.0.0）の使う権限が、前回許可したときより増えました（増えた権限：モデルのテキストを変更する（変更は元に戻せます））。/);
+    expect(changed.text).toMatch(/^外部と通信できるプラグイン「要求の ID の補完」（作者：山田 花子、ID：jp.example.fill、バージョン 1.0.0）のバージョンかファイルが、前回許可したときから変わりました。/);
   });
 });

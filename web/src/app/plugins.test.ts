@@ -222,14 +222,14 @@ describe("addPrompt（追加の確認と追加先、F-PLUG-8）", () => {
     expect(prompt).toEqual({ refused: "「解析」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインと、画面に機能を追加するプラグイン（TypeScript）です" });
   });
 
-  it("F-PLUG-6: 画面に機能を追加するプラグインは、プログラムを含むことと使う権限を示す（CLI では動かないので CI の共有は書かない）", () => {
+  it("F-PLUG-6: 画面に機能を追加するプラグインは、作者と、プログラムを含むことと使う権限を示す（CLI では動かないので CI の共有は書かない）", () => {
     // Arrange
-    const script: PluginInfo = { id: "jp.example.fill", name: "要求の ID の補完", version: "1.0.0", runtime: "browser", permissions: ["model:read", "edits:propose"] };
+    const script: PluginInfo = { id: "jp.example.fill", name: "要求の ID の補完", version: "1.0.0", runtime: "browser", author: "山田 花子", permissions: ["model:read", "edits:propose"] };
     // Act
     const prompt = addPrompt(script, target());
     // Assert
     if ("refused" in prompt) throw new Error(prompt.refused);
-    expect(prompt.text).toBe("「要求の ID の補完」（ID：jp.example.fill、バージョン 1.0.0）を追加します。画面に機能を追加するプラグイン（TypeScript）です。プログラムを含み、下の権限を使います。初めて実行する前に、実行してよいかを確認します。");
+    expect(prompt.text).toBe("「要求の ID の補完」（作者：山田 花子、ID：jp.example.fill、バージョン 1.0.0）を追加します。画面に機能を追加するプラグイン（TypeScript）です。プログラムを含み、下の権限を使います。初めて実行する前に、実行してよいかを確認します。");
     expect(prompt.items).toEqual(["解析したモデル（要素と関係）を受け取り、問題一覧に結果を出す（model:read）", "モデルのテキストを変更する（変更は元に戻せます）（edits:propose）"]);
     expect(prompt.places.map((p) => p.note)).toEqual([
       ".modelith/plugins/jp.example.fill/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員が同じプラグインを使えます。",

@@ -8,6 +8,8 @@ export interface ScriptPlugin {
   id: string;
   name: string;
   version: string;
+  /** 作者の名前（マニフェストに書いてあれば）。 */
+  author?: string;
   permissions: Permission[];
   commands: Command[];
   importers: Importer[];

@@ -125,6 +125,9 @@ pub struct ManifestInfo {
     /// 説明（書いてあれば）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// 作者の名前（書いてあれば）。権限を許可する画面に出す。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
     /// 宣言した権限（v1 のプラグインの許可に使う。ADR-0018 §5）。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<Permission>,
