@@ -30,10 +30,26 @@
 | 4 | `0.1.0-alpha.4` | Rust のモデル構築とテキスト編集。暫定 TS コアを差し替え、コアを Worker に移す（[ADR-0016](../adr/0016-rust-model-and-worker.md)）。図に出した package を枠として描く（F-VIEW-9。package を図の要素として扱うため、モデル構築を作り直すこのスプリントで入れる）（公開済み） |
 | 5 | `0.1.0-alpha.5` | プロジェクト（[ADR-0019](../adr/0019-projects.md)：`modelith.json`、F-PROJ-1・2）と、プラグインの仕組みの v0（[ADR-0018](../adr/0018-plugin-host.md)：YAML の検査ルール、画面での追加・一覧・足りないプラグインの案内、CLI の `check`。F-PLUG-1〜3・8・9）。利用者からの要望より先に入れる（メンテナの判断）（公開済み） |
 | 6 | `0.1.0-alpha.6` | プラグインの仕組みの v1（ADR-0018：TypeScript のプラグインを隔離して動かす、許可、コマンド・取り込み・書き出し、「このブラウザ」に入れる。F-PLUG-4〜7）（公開済み） |
-| 7 | `0.1.0-beta.1` | 起動時に前回の続きから始める（F-FILE-13。利用者からの要望で、プラグインの仕組みの後に入れる）。暫定コアを削除し機能を固定。以降は不具合の修正のみ |
+| 7 | `0.1.0-alpha.7` | SysML v2 の文法（1）：誤った表示をなくし、読める構文を増やす（下の「SysML v2 の文法への対応」） |
+| 8 | `0.1.0-alpha.8` | SysML v2 の文法（2）：構造の関係を図に描く |
+| 9 | `0.1.0-alpha.9` | SysML v2 の文法（3）：振る舞いの流れを描く |
+| 10 | `0.1.0-beta.1` | 起動時に前回の続きから始める（F-FILE-13。利用者からの要望で、プラグインの仕組みの後に入れる）。暫定コアを削除し機能を固定。以降は不具合の修正のみ |
 | — | `0.1.0-rc.1` → `0.1.0` | 1 週間、重大な報告がなければ正式版 |
 
 テストユーザーの報告次第で、スプリントの内容は入れ替える。
+alpha.7〜alpha.9 は、beta で機能を固定する前に、alpha で直せる文法の不足を埋めるために入れた（メンテナの判断、2026-10-19）。
+
+## SysML v2 の文法への対応
+
+[対応表](../reference/sysml-conformance.md)（2026-10-19 に Rust のコアで照合）の ×・△・⚠ を、次の順に埋める。項目ごとの予定は対応表の「予定」の列に書く。
+
+| リリース | 内容 |
+| --- | --- |
+| `0.1.0-alpha.7` | 誤った表示（⚠）をなくす：`rep`、`assert not constraint`・`assume constraint`、パッケージ直下の `verify`、`viewpoint` の中の `frame`、同じファイルの中の `alias` と修飾名（パッケージの階層をたどる）。まだ扱えない構文の `{ }` の中身が外に漏れないようにする。読める構文を増やす：`case`・`objective`・`actor`・`include use case`・`enum` の使用・`event occurrence`・`timeslice`・`snapshot`・`typed by`・`constant`・`variant`・`rendering`・`metadata … about`・利用者定義のキーワード（`#X def`）・`by` の無い `satisfy`・`not satisfy`・`assert satisfy`・`@M` の値の式。標準ライブラリの型名の判定を直す |
+| `0.1.0-alpha.8` | 構造の関係を図に描く：特殊化・部分集合・再定義・参照の線、多重度、`:=` と `default` の区別、`dependency` の線、`comment … about`・`rep` の本文、単独の `connect`・n 項の `connect`・`bind`・`binding`、`allocation`・`allocate`、`flow def`・名前付きのフロー。GeneralView・InterconnectionView の不足を埋める |
+| `0.1.0-alpha.9` | 振る舞いの流れを描く：継起（`first … then`・`succession`・`succession flow`）、`fork`・`join`・`merge`・`decide`、`send`・`accept`・`assign`・`terminate`、`if`・`while`・`for`、ActionFlowView。状態の `entry`・`do`・`exit`・`parallel`、遷移の線と省略形、StateTransitionView・SequenceView の不足。`render` の合成形、`filter` の論理式、3 段以上の特徴量の連鎖 |
+| `0.2.0` | パッケージやファイルをまたぐ名前の解決：`import`（フィルタ付きを含む）・別のファイルの `alias`・修飾名・可視性、`expose` で import を通した名前。「複数のファイルにまたがるモデル」（ADR-0019）とあわせて行う |
+| `0.3.0` 以降 | 新しい仕組みが要るもの：式の文法と評価・単位、KerML の文法、標準ライブラリの同梱、GeometryView・GridView・BrowserView、`asTextualNotation`・`asElementTable`、モデル交換（`.kpar`） |
 必要になってから作る（YAGNI）。利用者の声（Issues）が無い機能は、ここに先回りして入れない。オフライン利用（PWA）も、声が出てから判断する。
 
 ## 0.1.0 より先の方向
