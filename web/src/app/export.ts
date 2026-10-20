@@ -2,6 +2,7 @@
 
 import { $, esc } from "./dom";
 import type { ModelNode } from "../core";
+import { flowDetail, flowShape } from "./action-flow";
 import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, type Box, type NodeBox } from "./geometry";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
@@ -36,8 +37,10 @@ const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
  * drawioEdgeStyle("satisfy")    // → "dashed=1;endArrow=open;"
  * drawioEdgeStyle("bind")       // → "endArrow=none;"（結び付け・n 項の接続の線は矢印の無い実線）
  * drawioEdgeStyle("annotate")   // → "dashed=1;endArrow=none;"（メモから要素への線は矢印の無い破線）
+ * drawioEdgeStyle("succession") // → "endArrow=open;"（順序は実線と開いた矢印、8.2.3.17）
  */
 export function drawioEdgeStyle(kind: string): string {
+  if (kind === "succession") return "endArrow=open;";
   if (kind === "comp") return "startArrow=diamondThin;startFill=1;endArrow=none;";
   if (kind === "bind" || kind === "connect") return "endArrow=none;";
   if (kind === "annotate") return "dashed=1;endArrow=none;";
@@ -47,7 +50,32 @@ export function drawioEdgeStyle(kind: string): string {
 }
 
 /**
- * 現在のビューを draw.io の XML にする（F-EXP-2）。要素は配置の座標の箱に、ポートは小さな箱に、
+ * アクションの流れの図の要素（8.2.3.17）を、draw.io の図形の形と文字にする。開始は塗った丸、終了は draw.io の終了の記号、
+ * fork・join は塗った棒、decide・merge はひし形（名前は右）、send・accept は SysML の送信・受信の図形、ほかは角の丸い四角。
+ *
+ * @param n アクションの流れの図の要素
+ * @returns draw.io の style と、図形に書く文字（HTML）
+ * @example
+ * drawioFlowCell(start)            // → { style: "ellipse;html=1;fillColor=#1D2733;strokeColor=#1D2733;", value: "" }
+ * drawioFlowCell(decide d)         // → { style: "rhombus;html=1;…labelPosition=right;align=left;", value: "d" }
+ * drawioFlowCell(send S() to b)    // → { style: "shape=mxgraph.sysml.sendSigAct;html=1;whiteSpace=wrap;…", value: "«send»<br>S() to b" }
+ */
+export function drawioFlowCell(n: ModelNode): { style: string; value: string } {
+  const ink = LC("ink"), c = LC("k-beh"), bg = LC("k-beh-bg");
+  const shape = flowShape(n.kind);
+  if (shape === "start") return { style: `ellipse;html=1;fillColor=${ink};strokeColor=${ink};`, value: "" };
+  if (shape === "done") return { style: `ellipse;html=1;shape=endState;fillColor=${ink};strokeColor=${ink};`, value: "" };
+  if (shape === "bar") return { style: `html=1;fillColor=${ink};strokeColor=none;labelPosition=right;align=left;verticalLabelPosition=top;verticalAlign=bottom;`, value: esc(n.name) };
+  if (shape === "diamond") return { style: `rhombus;html=1;fillColor=${bg};strokeColor=${c};labelPosition=right;align=left;`, value: esc(n.name) };
+  const detail = flowDetail(n);
+  const plain = ["action", "perform action", "state"].includes(n.kind);
+  const lines = [plain ? "" : `«${n.kind}»`, n.name ? `<b>${esc(n.name + (plain && detail ? " " + detail : ""))}</b>` : "", !plain && detail ? esc(detail) : ""];
+  const base = shape === "send" ? "shape=mxgraph.sysml.sendSigAct;" : shape === "accept" ? "shape=mxgraph.sysml.accEvent;" : "rounded=1;arcSize=20;";
+  return { style: `${base}html=1;whiteSpace=wrap;fillColor=${bg};strokeColor=${c};`, value: lines.filter(Boolean).join("<br>") };
+}
+
+/**
+ * 現在のビューを draw.io の XML にする（F-EXP-2）。要素は配置の座標の箱（アクションの流れの図の要素は記号の図形）に、ポートは小さな箱に、
  * 線は経路の出口・入口を指定した直角の線にする。シーケンス図はライフラインとメッセージにする。
  *
  * @returns draw.io（app.diagrams.net）で読み込める mxfile の XML
@@ -97,6 +125,14 @@ export function drawioXml(): string {
       const nid = "n" + id++;
       map.set(n.key, nid);
       cells += `<mxCell id="${nid}" value="${q(n.name)}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+      continue;
+    }
+    if (n.flow) {
+      // アクションの流れの図の要素（8.2.3.17）は、記号ごとの図形
+      const nid = "n" + id++;
+      map.set(n.key, nid);
+      const cell = drawioFlowCell(n);
+      cells += `<mxCell id="${nid}" value="${q(cell.value)}" style="${cell.style}" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
       continue;
     }
     if (n.note) {
