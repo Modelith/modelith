@@ -3,7 +3,7 @@
 //!
 //! - 部品：対象の直下の部品は `u:a`。その中の部品（入れ子の 2 段目）は `u:a.b`。2 段目は、部品の本体に書いたものと、
 //!   線の端（`a.b.p`）が指す、部品の型の中の部品。
-//! - 線：対象と、直下の部品の本体に書いた流れ・接続・結び付け。2 項は `flow|端|端|ラベル#番号`・`bind|端|端|=#番号`、
+//! - 線：対象と、直下の部品の本体と、その型の定義の中に書いた流れ・接続・結び付け。2 項は `flow|端|端|ラベル#番号`・`bind|端|端|=#番号`、
 //!   n 項の接続（8.2.3.13 の n-ary-connection）は、点 `j:名前`（名前が無ければ `j:#番号`）から端ごとに `connect|点|端|#番号`。
 
 use super::Doc;
@@ -11,12 +11,12 @@ use super::ops::EdgeAt;
 use crate::model::flow_label;
 use crate::project::{Rel, RelKind, Span};
 
-/// 線の端を探す範囲（対象そのものか、直下の部品の本体）。
+/// 線の端を探す範囲（対象そのものか、直下の部品の本体か、その部品の型の定義の中）。
 #[derive(Debug, Clone, Copy)]
 struct Scope {
     /// 関係を書いた宣言（関係の `pe`）。
     owner: usize,
-    /// 直下の部品の本体なら、その部品。対象そのものなら `None`。
+    /// 直下の部品の本体か型の定義の中なら、その部品。対象そのものなら `None`。
     part: Option<usize>,
 }
 
@@ -114,7 +114,7 @@ fn inner_named(d: &Doc<'_>, u: usize, nm: &str) -> Option<usize> {
 /// 線の端の参照（`a.p`・`a.b.p` など）を、図の要素のキーにする。
 ///
 /// 対象そのものに書いた関係では、最初の段は直下の部品で、2 段目が入れ子の部品ならその部品（`u:a.b`）、
-/// そうでなければ直下の部品（`u:a`）。部品の本体に書いた関係では、最初の段が入れ子の部品ならその部品、
+/// そうでなければ直下の部品（`u:a`）。部品の本体・型の定義の中に書いた関係では、最初の段が入れ子の部品ならその部品、
 /// 1 段だけなら部品そのもの（部品のポート）。
 ///
 /// # 引数
@@ -234,7 +234,9 @@ fn rel_span(d: &Doc<'_>, r: &Rel) -> Span {
     )
 }
 
-/// 内部ブロック図の線を探す範囲（対象そのものと、直下の部品の本体）。
+/// 内部ブロック図の線を探す範囲（対象そのものと、直下の部品の本体と、その型の定義の中）。
+///
+/// 型の定義は、図の要素のうち、名前が部品の型と同じ定義（`inner_parts` と同じ）。対象そのものや部品自身なら除く。
 ///
 /// # 引数
 ///
@@ -243,24 +245,39 @@ fn rel_span(d: &Doc<'_>, r: &Rel) -> Span {
 ///
 /// # 戻り値
 ///
-/// 範囲の一覧（対象そのもの、続けて部品の順）。
+/// 範囲の一覧（対象そのもの、続けて部品ごとに本体・型の定義の順）。
 ///
 /// # 例
 ///
 /// ```text
-/// // "part def C { part a; part b; }" のとき
-/// scopes(d, C) → [{ owner: C, part: None }, { owner: a, part: Some(a) }, { owner: b, part: Some(b) }]
+/// // "part def A; part def C { part a : A; part b; }" のとき
+/// scopes(d, C) → [{ owner: C, part: None }, { owner: a, part: Some(a) }, { owner: A, part: Some(a) }, { owner: b, part: Some(b) }]
 /// ```
 fn scopes(d: &Doc<'_>, c: usize) -> Vec<Scope> {
-    std::iter::once(Scope {
+    let mut out = vec![Scope {
         owner: c,
         part: None,
-    })
-    .chain(parts(d, c).into_iter().map(|u| Scope {
-        owner: u,
-        part: Some(u),
-    }))
-    .collect()
+    }];
+    for u in parts(d, c) {
+        out.push(Scope {
+            owner: u,
+            part: Some(u),
+        });
+        let ty = &d.e(u).ty;
+        if let Some(t) =
+            d.m.nodes
+                .iter()
+                .find(|n| n.is_def && n.name == *ty)
+                .map(|n| n.entry)
+                .filter(|&t| t != c && t != u)
+        {
+            out.push(Scope {
+                owner: t,
+                part: Some(u),
+            });
+        }
+    }
+    out
 }
 
 /// 内部ブロック図の線 1 本（ID・範囲と関係）、または n 項の接続の点（キーと使用）。
@@ -296,52 +313,52 @@ pub(super) fn items(d: &Doc<'_>, c: usize) -> Vec<Item> {
     let mut anonymous = 0;
     let scopes = scopes(d, c);
     for (ri, r) in d.p.rels.iter().enumerate() {
-        let Some(&scope) = scopes.iter().find(|s| r.pe == Some(s.owner)) else {
-            continue;
-        };
-        let key = |path: &str| end_key(d, c, scope, path);
-        let at = EdgeAt {
-            src: rel_span(d, r),
-            rel: Some(ri),
-        };
-        let (kind, a, b, label) = match &r.kind {
-            RelKind::Connect { ends, usage, .. } if ends.len() > 2 => {
-                let name = &d.e(*usage).name;
-                let j = if name.is_empty() {
-                    anonymous += 1;
-                    format!("j:#{anonymous}")
-                } else {
-                    let prefix = scope
-                        .part
-                        .map_or(String::new(), |u| format!("{}.", d.e(u).name));
-                    format!("j:{prefix}{name}")
-                };
-                let found: Vec<String> = ends.iter().filter_map(|x| key(x)).collect();
-                if found.len() < 2 {
+        // 同じ型の部品が 2 つあれば、型の中の関係は部品ごとに描く
+        for &scope in scopes.iter().filter(|s| r.pe == Some(s.owner)) {
+            let key = |path: &str| end_key(d, c, scope, path);
+            let at = EdgeAt {
+                src: rel_span(d, r),
+                rel: Some(ri),
+            };
+            let (kind, a, b, label) = match &r.kind {
+                RelKind::Connect { ends, usage, .. } if ends.len() > 2 => {
+                    let name = &d.e(*usage).name;
+                    let j = if name.is_empty() {
+                        anonymous += 1;
+                        format!("j:#{anonymous}")
+                    } else {
+                        let prefix = scope
+                            .part
+                            .map_or(String::new(), |u| format!("{}.", d.e(u).name));
+                        format!("j:{prefix}{name}")
+                    };
+                    let found: Vec<String> = ends.iter().filter_map(|x| key(x)).collect();
+                    if found.len() < 2 {
+                        continue;
+                    }
+                    out.push(Item::Junction(j.clone(), *usage));
+                    for k in found {
+                        out.push(Item::Edge(ids.id(format!("connect|{j}|{k}|")), at));
+                    }
                     continue;
                 }
-                out.push(Item::Junction(j.clone(), *usage));
-                for k in found {
-                    out.push(Item::Edge(ids.id(format!("connect|{j}|{k}|")), at));
-                }
+                RelKind::Flow {
+                    a,
+                    b,
+                    item,
+                    name,
+                    ty,
+                    ..
+                } => ("flow", a, b, flow_label(name, ty, item)),
+                RelKind::Connect { a, b, item, .. } => ("flow", a, b, item.clone()),
+                RelKind::Bind { a, b, .. } => ("bind", a, b, "=".to_owned()),
+                _ => continue,
+            };
+            let (Some(ka), Some(kb)) = (key(a), key(b)) else {
                 continue;
-            }
-            RelKind::Flow {
-                a,
-                b,
-                item,
-                name,
-                ty,
-                ..
-            } => ("flow", a, b, flow_label(name, ty, item)),
-            RelKind::Connect { a, b, item, .. } => ("flow", a, b, item.clone()),
-            RelKind::Bind { a, b, .. } => ("bind", a, b, "=".to_owned()),
-            _ => continue,
-        };
-        let (Some(ka), Some(kb)) = (key(a), key(b)) else {
-            continue;
-        };
-        out.push(Item::Edge(ids.id(format!("{kind}|{ka}|{kb}|{label}")), at));
+            };
+            out.push(Item::Edge(ids.id(format!("{kind}|{ka}|{kb}|{label}")), at));
+        }
     }
     out
 }

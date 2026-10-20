@@ -283,15 +283,17 @@ fn internal_block_diagram_ids_cover_bindings_nary_connections_and_named_flows() 
 #[test]
 fn internal_block_diagram_ids_reach_parts_one_level_deeper() {
     // Arrange（入れ子の 2 段目：型の中の部品へ `a.x.p` で届く線と、部品の本体に書いた線）
-    let text = "package P { part def X { port p; } part def A { part x : X; } \
+    let text = "package P { part def X { port p; } part def A { port q; part x : X; part z : X; connect q to z.p; } \
                 part def C { part a : A { part y : X; connect x.p to y.p; connect p to y.p; } part b : X; \
-                connect a.x.p to b.p; } }";
+                part d : A; connect a.x.p to b.p; } }";
     // Act
     let ids = ibd_ids(text, "C");
-    // Assert
+    // Assert（型の中の接続は、同じ型の部品 a・d のそれぞれに描く）
     assert_eq!(
         ids,
         [
+            "flow|u:a|u:a.z|#1",
+            "flow|u:d|u:d.z|#1",
             "flow|u:a.x|u:a.y|#1",
             "flow|u:a|u:a.y|#1",
             "flow|u:a.x|u:b|#1"
