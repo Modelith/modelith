@@ -249,6 +249,13 @@ pub enum RelKind {
         ev: String,
         to: String,
     },
+    /// `allocate x to y;`・`allocation a : AD allocate x to y;`（AllocationUsage、8.2.2.15）。`a` を `b` に割り当てる。
+    Allocate {
+        a: String,
+        b: String,
+        /// 割り当ての使用（名前の無いものを含む。`ParseResult.entries` の番号）。
+        usage: usize,
+    },
     /// `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。両端は等しい値を持つ。
     Bind {
         a: String,

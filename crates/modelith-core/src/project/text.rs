@@ -311,7 +311,6 @@ pub fn is_skipped(head: &str) -> bool {
         "succession",
         "message",
         "dependency",
-        "allocate",
         "expose",
         "filter",
         "language",

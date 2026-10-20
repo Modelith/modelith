@@ -34,8 +34,8 @@ use text::*;
 /// ```text
 /// project("package P { part def A { part b : B; } }", …)
 ///   → entries: P・A・b（P.children = [A]、A.children = [b]、b.ty = "B"）
-/// project("package P { allocation def C; }\npart def Tail", …)
-///   → unsupported の head: ["allocation def C"]、Tail は entries に無い、errors は 1 件
+/// project("package P { send s; }\npart def Tail", …)
+///   → unsupported の head: ["send s"]、Tail は entries に無い、errors は 1 件
 /// ```
 pub fn project(source: &str, parse: &Parse) -> ParseResult {
     let mut c = Ctx::new(source, parse);
@@ -114,6 +114,7 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "interface def",
     "calc def",
     "connection def",
+    "allocation def",
     "use case def",
     "enum def",
     "view def",
@@ -139,6 +140,7 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "interface",
     "calc",
     "connection",
+    "allocation",
     "subject",
     "stakeholder",
     "view",
@@ -464,8 +466,8 @@ impl Ctx {
     /// classify(…, "in x : Real", …, Semi)  → Some(1)（kind "param"、dir "in"、ty "Real"）
     /// // "satisfy R by A;"
     /// classify(…, "satisfy R by A", …)     → None（rels に Satisfy { req: "R", by: "A" }）
-    /// // "allocation def C;"
-    /// classify(…, "allocation def C", …)   → None（unsupported に "allocation def C"）
+    /// // "send s;"
+    /// classify(…, "send s", …)             → None（unsupported に "send s"）
     /// ```
     #[allow(clippy::too_many_arguments)]
     fn classify(
@@ -1164,7 +1166,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// `timeslice`・`snapshot` の修飾だけの使用（PortionUsage）はその語を、`#X def H`（ExtendedDefinition）は `"def"`、
 /// 種類のキーワードの無い `#X h`（ExtendedUsage）は `"usage"`、`variant a`（VariantReference）は `"variant"`、
 /// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"`、`connect a to b`（`connection` の無い接続）は
-/// `"connection"`、`bind a = b`・`binding bb bind a = b` は `"binding"` にする。
+/// `"connection"`、`allocate x to y` は `"allocation"`、`bind a = b`・`binding bb bind a = b` は `"binding"` にする。
 ///
 /// # 引数
 ///
@@ -1216,6 +1218,8 @@ fn entry_kind(
         INCLUDE_USE_CASE_USAGE => Some(("include use case", false)),
         // `connect a to b;`（`connection` の無い ConnectionUsage、8.2.2.13.1）は名前の無い接続
         CONNECTION_USAGE if starts_with_word(h, "connect") => Some(("connection", false)),
+        // `allocate x to y;`（`allocation` の無い AllocationUsage、8.2.2.15）は名前の無い割り当て
+        ALLOCATION_USAGE if starts_with_word(h, "allocate") => Some(("allocation", false)),
         // `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）
         BINDING_CONNECTOR_AS_USAGE => Some(("binding", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
@@ -1632,7 +1636,7 @@ fn first_ref(n: &SyntaxNode) -> Option<String> {
         .map(|c| unquote(&compact(&c)).to_owned())
 }
 
-/// 接続の端を持つ使用（接続・インタフェース・結び付け）の、端の間の関係。
+/// 接続の端を持つ使用（接続・インタフェース・割り当て・結び付け）の、端の間の関係。
 ///
 /// # 引数
 ///
@@ -1643,13 +1647,15 @@ fn first_ref(n: &SyntaxNode) -> Option<String> {
 ///
 /// # 戻り値
 ///
-/// 接続・インタフェースで端が 2 つ以上なら `Connect`、結び付けで端が 2 つなら `Bind`。それ以外は `None`。
+/// 接続・インタフェースで端が 2 つ以上なら `Connect`、割り当てで端が 2 つなら `Allocate`、結び付けで端が 2 つなら `Bind`。
+/// それ以外（n 項の割り当てを含む）は `None`。
 ///
 /// # 例
 ///
 /// ```text
 /// connector_relation(CONNECTION_USAGE, ["a", "b", "c"], "C", 3) → Some(Connect { a: "a", b: "b", ends: [a, b, c], item: "C", usage: 3 })
 /// connector_relation(BINDING_CONNECTOR_AS_USAGE, ["x", "y"], "", 4) → Some(Bind { a: "x", b: "y", usage: 4 })
+/// connector_relation(ALLOCATION_USAGE, ["f", "c"], "AD", 5)        → Some(Allocate { a: "f", b: "c", usage: 5 })
 /// connector_relation(CONNECTION_USAGE, ["a"], "", 3)            → None   // 端が足りない
 /// connector_relation(PART_USAGE, [], "", 0)                     → None
 /// ```
@@ -1666,6 +1672,11 @@ fn connector_relation(
             item: ty.to_owned(),
             usage,
             ends: ends.clone(),
+        }),
+        (ALLOCATION_USAGE, [a, b]) => Some(RelKind::Allocate {
+            a: a.clone(),
+            b: b.clone(),
+            usage,
         }),
         (BINDING_CONNECTOR_AS_USAGE, [a, b]) => Some(RelKind::Bind {
             a: a.clone(),

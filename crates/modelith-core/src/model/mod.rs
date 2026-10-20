@@ -972,6 +972,7 @@ impl<'a> Builder<'a> {
                 }
                 // 結び付けは内部ブロック図だけに描く（web）
                 RelKind::Bind { .. } => {}
+                RelKind::Allocate { .. } => {}
                 RelKind::Transition { from, ev, to } => {
                     if let Some(a) = self.node_ancestor(pe) {
                         let ev = if ev.is_empty() {

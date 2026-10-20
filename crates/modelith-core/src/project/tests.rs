@@ -250,9 +250,51 @@ fn binding_without_its_second_end_has_no_relation() {
 }
 
 #[test]
+fn allocation_definitions_and_usages_are_entries_with_their_bodies() {
+    // Arrange（AllocationDefinition・AllocationUsage、8.2.2.15。本体は読む）
+    let text = "package P { allocation def AD { end f : F; } allocation a : AD allocate s.f to h.c { doc /* d */ } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (ad, a) = (entry(&r, "AD"), entry(&r, "a"));
+    assert_eq!((ad.kind.as_str(), ad.is_def), ("allocation def", true));
+    assert_eq!(entry(&r, "f").pe, Some(ad.idx));
+    assert_eq!((a.kind.as_str(), a.ty.as_str()), ("allocation", "AD"));
+    assert_eq!(a.doc.as_deref(), Some("d"));
+    assert_eq!(
+        r.rels.iter().map(|x| x.kind.clone()).collect::<Vec<_>>(),
+        [RelKind::Allocate {
+            a: "s.f".to_owned(),
+            b: "h.c".to_owned(),
+            usage: a.idx
+        }]
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn standalone_allocate_is_an_anonymous_allocation() {
+    // Arrange（`allocation` の無い `allocate x to y;`。同値分割：2 項・n 項）
+    let text = "package P { allocate x to y; allocate (x, y, z); }";
+    // Act
+    let r = run(text);
+    // Assert
+    let anonymous: Vec<&str> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "allocation")
+        .map(|e| e.name.as_str())
+        .collect();
+    assert_eq!(anonymous, ["", ""]);
+    // n 項の割り当ては、まだ関係にしない
+    assert_eq!(r.rels.len(), 1);
+    assert!(matches!(&r.rels[0].kind, RelKind::Allocate { a, b, .. } if a == "x" && b == "y"));
+}
+
+#[test]
 fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() {
     // Arrange（異常系: 末尾の「;」の無い文は、暫定コアと同じく読まない）
-    let text = "package P { allocation def C; }\npart def Tail";
+    let text = "package P { send s; }\npart def Tail";
     // Act
     let r = run(text);
     // Assert
@@ -261,7 +303,7 @@ fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() 
             .iter()
             .map(|u| u.head.as_str())
             .collect::<Vec<_>>(),
-        vec!["allocation def C"]
+        vec!["send s"]
     );
     assert!(r.entries.iter().all(|e| e.name != "Tail"));
     assert_eq!(r.errors.len(), 1);
@@ -340,7 +382,7 @@ fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
 fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
     // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [
-        "package P { allocation def AD { part x; } }",
+        "package P { join j { part x; } }",
         "package P { flow def F { part x; } }",
         "package P { part def H { send s { part x; } } }",
     ] {

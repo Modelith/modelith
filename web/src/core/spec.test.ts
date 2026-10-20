@@ -136,17 +136,17 @@ for (const [impl, parse, build] of PARSERS) {
     describe("まだ扱えない文（F-EDIT-5・C-6 の趣旨：黙って捨てない）", () => {
       it("知らない文は捨てずに「まだ扱えない」と知らせる", () => {
         // Arrange
-        const text = "package P { allocation def C; part def A; }";
+        const text = "package P { send s; part def A; }";
         // Act
         const M = build(parse(text));
         // Assert
         const info = M.problems.filter((p) => p.kind === "unsupported");
-        expect(info.map((p) => p.msg)).toEqual(["「allocation def C」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
+        expect(info.map((p) => p.msg)).toEqual(["「send s」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
       });
 
       it("まだ扱えない文は、エラーとして数えない", () => {
         // Arrange
-        const text = "package P { allocation def C; }";
+        const text = "package P { send s; }";
         // Act
         const errors = build(parse(text)).problems.filter((p) => !p.kind);
         // Assert
@@ -386,7 +386,7 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
 
     describe("まだ扱えない文の本体（F-EDIT-8）", () => {
       it.each([
-        ["allocation def AD { part x; }"],
+        ["join j { part x; }"],
         ["flow def F { part x; }"],
       ])("%s の中の宣言を、外側の package の中身として読まない", (stmt) => {
         // Arrange
@@ -739,6 +739,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         const ps = errors(text);
         // Assert
         expect(ps).toEqual(["「依存」関係の相手「Nope」が見つかりません（dependency）"]);
+      });
+    });
+
+    describe("割り当て（AllocationDefinition・AllocationUsage、8.2.2.15）", () => {
+      it("allocation def と allocation は要素になり、本体の中も読む", () => {
+        // Arrange
+        const text = "package P { allocation def AD { end f : F; } allocation a : AD allocate x to y; part def F; }";
+        // Act
+        const [ad, a, f] = [entry(text, "AD"), entry(text, "a"), entry(text, "f")];
+        // Assert
+        expect([ad?.kind, a?.kind, a?.type, f?.pe?.name]).toEqual(["allocation def", "allocation", "AD", "AD"]);
+        expect(build(parse(text)).problems.filter((p) => p.kind === "unsupported")).toEqual([]);
       });
     });
 

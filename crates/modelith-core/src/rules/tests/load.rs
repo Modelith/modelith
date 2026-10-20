@@ -115,6 +115,7 @@ fn element_kinds_are_the_kinds_drawn_as_elements() {
         "interface def",
         "calc def",
         "connection def",
+        "allocation def",
         "use case def",
         "enum def",
         "part",
