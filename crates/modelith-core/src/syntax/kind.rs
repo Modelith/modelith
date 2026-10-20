@@ -187,8 +187,13 @@ syntax_kinds! {
     REFERENCE_USAGE,
     MESSAGE_USAGE,
     TRANSITION_USAGE,
-    /// `first a then b;`・`then b;`（SuccessionAsUsage・TargetSuccessionMember）。
+    /// `first a then b;`・`then b;`・`succession s first a then b;`・`first a if g then b;`・`if g then b;`・`else b;`・
+    /// `first start;`（SuccessionAsUsage・TargetSuccessionMember・GuardedSuccession・DefaultTargetSuccession・InitialNodeMember）。
     SUCCESSION_AS_USAGE,
+    /// `succession flow f from a.x to b.y;`（SuccessionFlowUsage）。
+    SUCCESSION_FLOW_USAGE,
+    /// 継起のガード `if g`（GuardExpressionMember）。`first a if g then b;`・`if g then b;` の中に置く。
+    GUARD_EXPRESSION,
     /// `bind a = b;`（BindingConnectorAsUsage）。
     BINDING_CONNECTOR_AS_USAGE,
     /// `entry;`・`entry action a;`・`exit`・`do`（StateSubactionMembership）。

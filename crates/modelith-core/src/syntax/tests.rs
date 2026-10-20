@@ -948,3 +948,146 @@ fn individual_without_kind_keyword_is_an_occurrence() {
     );
     assert!(texts.iter().all(|t| errors(t).is_empty()));
 }
+
+// ---- alpha.9 で読むようにした形（アクションの流れ、8.2.2.14・8.2.2.17） ----
+
+#[test]
+fn successions_read_both_ends() {
+    // Arrange（同値分割：first … then（SuccessionAsUsage）・名前付きの succession・then だけ（TargetSuccessionMember）・
+    // 境界値：then の無い first（InitialNodeMember））
+    let texts = [
+        "first a then b;",
+        "succession s first a then b;",
+        "then b;",
+        "first start;",
+    ];
+    // Act
+    let kinds: Vec<Vec<SyntaxKind>> = texts.iter().map(|t| node_kinds(t)).collect();
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                CONNECTOR_END,
+                QUALIFIED_NAME,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                NAME,
+                CONNECTOR_END,
+                QUALIFIED_NAME,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+        ]
+    );
+    assert!(texts.iter().all(|t| errors(t).is_empty()));
+}
+
+#[test]
+fn guarded_successions_keep_the_guard_expression() {
+    // Arrange（GuardedSuccession・GuardedTargetSuccession・DefaultTargetSuccession、8.2.2.17）
+    let text = "first d if x > 0 and y then a; if x <= 0 then b; else c;";
+    // Act
+    let p = parse(text);
+    // Assert
+    let guards: Vec<String> = p
+        .syntax()
+        .descendants()
+        .filter(|n| n.kind() == GUARD_EXPRESSION)
+        .map(|n| n.text().to_string())
+        .collect();
+    assert_eq!(guards, ["if x > 0 and y", "if x <= 0"]);
+    assert_eq!(
+        node_kinds(text)
+            .iter()
+            .filter(|k| **k == SUCCESSION_AS_USAGE)
+            .count(),
+        3
+    );
+    assert!(p.errors().is_empty());
+}
+
+#[test]
+fn guarded_succession_tree() {
+    // ガードの式は then の手前まで（括弧の中は式として読む）
+    check(
+        "first d if f(x) then a;",
+        expect![[r#"
+            SOURCE_FILE@0..23
+              SUCCESSION_AS_USAGE@0..23
+                KEYWORD@0..5 "first"
+                WHITESPACE@5..6 " "
+                CONNECTOR_END@6..7
+                  QUALIFIED_NAME@6..7
+                    IDENT@6..7 "d"
+                WHITESPACE@7..8 " "
+                GUARD_EXPRESSION@8..15
+                  KEYWORD@8..10 "if"
+                  WHITESPACE@10..11 " "
+                  EXPRESSION@11..15
+                    IDENT@11..12 "f"
+                    L_PAREN@12..13 "("
+                    IDENT@13..14 "x"
+                    R_PAREN@14..15 ")"
+                WHITESPACE@15..16 " "
+                KEYWORD@16..20 "then"
+                WHITESPACE@20..21 " "
+                CONNECTOR_END@21..22
+                  QUALIFIED_NAME@21..22
+                    IDENT@21..22 "a"
+                SEMI@22..23 ";"
+        "#]],
+    );
+}
+
+#[test]
+fn succession_flow_is_one_kind_of_two_words() {
+    // Arrange（SuccessionFlowUsage、8.2.2.16）
+    let text = "succession flow f of T from a.x to b.y;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds[1], SUCCESSION_FLOW_USAGE);
+    assert!(kinds.contains(&NAME));
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn succession_without_first_or_guard_is_an_error() {
+    // Arrange（異常系：first が無い・ガードの式が無い）
+    let no_first = errors("succession s : S;");
+    let no_guard = errors("first a if then b;");
+    let bare_if = errors("if then b;");
+    // Act / Assert
+    assert_eq!(no_first, [(16, "「first」がありません".to_owned())]);
+    assert_eq!(no_guard, [(11, "条件の式がありません".to_owned())]);
+    assert_eq!(bare_if, [(3, "条件の式がありません".to_owned())]);
+}
+
+#[test]
+fn if_without_then_is_kept_as_unsupported() {
+    // Arrange（境界値：then の無い if は、継起ではない）
+    let text = "if x;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds[1], UNSUPPORTED_MEMBER);
+}

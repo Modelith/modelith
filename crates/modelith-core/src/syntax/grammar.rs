@@ -111,7 +111,7 @@ fn member_or_skip(p: &mut Parser<'_>) {
 
 /// 宣言の頭に来るキーワードのうち、種類を決めるもの。返り値は（キーワードの数、定義の節、使用の節）。
 ///
-/// 読み進めない。`event occurrence`・`use case` は 2 語で 1 つの種類とする。
+/// 読み進めない。`event occurrence`・`use case`・`succession flow` は 2 語で 1 つの種類とする。
 ///
 /// # 引数
 ///
@@ -127,6 +127,7 @@ fn member_or_skip(p: &mut Parser<'_>) {
 /// ```text
 /// kind_keyword("part def A", 0)         → Some((1, PART_DEFINITION, PART_USAGE))
 /// kind_keyword("event occurrence e", 0) → Some((2, OCCURRENCE_DEFINITION, OCCURRENCE_USAGE))
+/// kind_keyword("succession flow f", 0)  → Some((2, SUCCESSION_FLOW_USAGE, SUCCESSION_FLOW_USAGE))
 /// kind_keyword("use x", 0)              → None   // `use` の後に `case` が無い
 /// kind_keyword("a : T", 0)              → None   // キーワードでない
 /// ```
@@ -165,6 +166,10 @@ fn kind_keyword(p: &Parser<'_>, n: usize) -> Option<(usize, SyntaxKind, SyntaxKi
         "metadata" => pair(METADATA_DEFINITION, METADATA_KEYWORD_USAGE),
         "message" => pair(MESSAGE_USAGE, MESSAGE_USAGE),
         "transition" => pair(TRANSITION_USAGE, TRANSITION_USAGE),
+        // `succession flow f from a to b;`（SuccessionFlowUsage、8.2.2.16）は 2 語で 1 つの種類
+        "succession" if p.nth_at_kw(n + 1, "flow") => {
+            Some((2, SUCCESSION_FLOW_USAGE, SUCCESSION_FLOW_USAGE))
+        }
         "succession" => pair(SUCCESSION_AS_USAGE, SUCCESSION_AS_USAGE),
         "binding" => pair(BINDING_CONNECTOR_AS_USAGE, BINDING_CONNECTOR_AS_USAGE),
         _ => None,
@@ -334,6 +339,8 @@ fn member(p: &mut Parser<'_>) {
         let kind = if is_def { def } else { usage };
         if kind == METADATA_KEYWORD_USAGE {
             metadata_usage_tail(p, owner);
+        } else if kind == SUCCESSION_AS_USAGE {
+            succession_declaration(p, owner);
         } else if let Some(kw) = connector_keyword(kind) {
             // `allocation a\n    allocate x to y;` の改行の後の `allocate` は、新しい文ではなく続き
             let name = declaration_tail(p, true, false, Some(kw));
@@ -429,6 +436,8 @@ fn member(p: &mut Parser<'_>) {
 /// keyword_member("rep r language \"x\" /* … */") → TEXTUAL_REPRESENTATION
 /// keyword_member("import A::*::**;")   → IMPORT
 /// keyword_member("perform a;")         → PERFORM_ACTION_USAGE
+/// keyword_member("first a then b;")    → SUCCESSION_AS_USAGE
+/// keyword_member("if x > 0 then b;")   → SUCCESSION_AS_USAGE（GUARD_EXPRESSION を持つ）
 /// keyword_member("send x via p;")      → UNSUPPORTED_MEMBER   // 文法を持たない文
 /// ```
 fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
@@ -550,14 +559,26 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
                 declaration(p, owner, true, false);
                 usage
             } else {
-                declaration(p, owner, false, false);
+                // `then b;`（TargetSuccessionMember、8.2.2.17）：直前の要素から b への継起
+                connector_end(p);
+                end(p, owner, "", true);
                 SUCCESSION_AS_USAGE
             }
         }
+        // `first a then b;`・`first a if g then b;`・`first start;`（SuccessionAsUsage・GuardedSuccession・InitialNodeMember）
         "first" => {
-            declaration(p, owner, false, false);
+            succession_ends(p);
+            end(p, owner, "", true);
             SUCCESSION_AS_USAGE
         }
+        // `else b;`（DefaultTargetSuccession、8.2.2.17）：直前の判断から、ほかのガードに当たらないときの継起
+        "else" => {
+            p.bump();
+            connector_end(p);
+            end(p, owner, "", true);
+            SUCCESSION_AS_USAGE
+        }
+        "if" => guarded_target(p, owner),
         // `bind a = b;`・`connect a to b;`・`allocate a to b;`（名前の無い BindingConnectorAsUsage・
         // ConnectionUsage・AllocationUsage、8.2.2.13・8.2.2.15）
         "bind" => {
@@ -977,6 +998,141 @@ fn binding_part(p: &mut Parser<'_>) {
     }
 }
 
+/// `succession` の後ろ（SuccessionAsUsage・GuardedSuccession、8.2.2.14・8.2.2.17）。
+/// `UsageDeclaration? 'first' 端 ( 'if' 式 )? 'then' 端` と終わり（`;` か本体）を読む。
+///
+/// 名前・短い名前・型付けなどの関係は、`first` の手前まで読む。`first` が無ければ「「first」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`succession` の直後にいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（閉じていないブロックのエラーの位置）
+///
+/// # 例
+///
+/// ```text
+/// succession_declaration("s first a then b;", …)     → NAME(s)、CONNECTOR_END(a)・CONNECTOR_END(b)
+/// succession_declaration("first a if g then b;", …)  → CONNECTOR_END(a)、GUARD_EXPRESSION(if g)、CONNECTOR_END(b)
+/// succession_declaration("s : S;", …)                → NAME(s)、FEATURE_TYPING(S)、「「first」がありません」
+/// ```
+fn succession_declaration(p: &mut Parser<'_>, owner: usize) {
+    let label = if p.at_name() {
+        unquote(p.nth_text(0))
+    } else {
+        String::new()
+    };
+    identification(p);
+    loop {
+        match p.current() {
+            COLON => relationship(p, 1, FEATURE_TYPING),
+            COLON_GT => relationship(p, 1, SUBSETTING),
+            COLON_GT2 => relationship(p, 1, REDEFINITION),
+            COLON2_GT => relationship(p, 1, REFERENCE_SUBSETTING),
+            L_BRACK => bracketed(p, MULTIPLICITY),
+            KEYWORD if p.at_kw("defined") && p.nth_at_kw(1, "by") => {
+                relationship(p, 2, FEATURE_TYPING);
+            }
+            _ => break,
+        }
+    }
+    if p.at_kw("first") {
+        succession_ends(p);
+    } else {
+        p.error("「first」がありません");
+    }
+    end(p, owner, &label, true);
+}
+
+/// 継起の端とガード（`'first' 端 ( 'if' 式 )? ( 'then' 端 )?`、8.2.2.14・8.2.2.17）。終わりの `;` は読まない。
+///
+/// 端は `CONNECTOR_END`、ガードは `if` と条件の式を `GUARD_EXPRESSION` の節にする。`then` の無い `first start;` は、
+/// 最初の要素を決める文（InitialNodeMember）として読む。条件の式が無ければ「条件の式がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`first` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// succession_ends("first a then b;")      → CONNECTOR_END(a)・CONNECTOR_END(b)
+/// succession_ends("first d if x > 0 then b;") → CONNECTOR_END(d)・GUARD_EXPRESSION（式は "x > 0"）・CONNECTOR_END(b)
+/// succession_ends("first start;")         → CONNECTOR_END(start)
+/// succession_ends("first a if then b;")   → 「条件の式がありません」
+/// ```
+fn succession_ends(p: &mut Parser<'_>) {
+    if p.eat_kw("first") {
+        connector_end(p);
+    }
+    if p.at_kw("if") {
+        guard(p);
+    }
+    if p.eat_kw("then") {
+        connector_end(p);
+    }
+}
+
+/// 継起のガード（GuardExpressionMember、8.2.2.17）。`if` と、`then` の手前までの条件の式を `GUARD_EXPRESSION` の節にする。
+///
+/// 条件の式が無ければ「条件の式がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`if` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// guard("if x > 0 then b;") → GUARD_EXPRESSION { if, EXPRESSION("x > 0") }（then の手前で止まる）
+/// guard("if then b;")       → GUARD_EXPRESSION { if }、「条件の式がありません」
+/// ```
+fn guard(p: &mut Parser<'_>) {
+    let g = p.start();
+    p.bump();
+    if !expression_until(p, &["then"]) {
+        p.error("条件の式がありません");
+    }
+    g.complete(p, GUARD_EXPRESSION);
+}
+
+/// `if g then b;`（GuardedTargetSuccession、8.2.2.17）：直前の要素から、条件 g が成り立つときに b へ進む継起。
+///
+/// `then` の無い `if` は、段階 A では文法を持たない文（`UNSUPPORTED_MEMBER`）として残す（F-EDIT-8）。
+///
+/// # 引数
+///
+/// - `p`：`if` にいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（閉じていないブロックのエラーの位置）
+///
+/// # 戻り値
+///
+/// `then` があれば `SUCCESSION_AS_USAGE`、無ければ `UNSUPPORTED_MEMBER`。
+///
+/// # 例
+///
+/// ```text
+/// guarded_target("if x > 0 then b;", …) → SUCCESSION_AS_USAGE（GUARD_EXPRESSION と CONNECTOR_END(b)）
+/// guarded_target("if x;", …)            → UNSUPPORTED_MEMBER
+/// ```
+fn guarded_target(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
+    let g = p.start();
+    p.bump();
+    let any = expression_until(p, &["then"]);
+    if p.at_kw("then") {
+        if !any {
+            p.error("条件の式がありません");
+        }
+        g.complete(p, GUARD_EXPRESSION);
+        p.bump();
+        connector_end(p);
+        end(p, owner, "", true);
+        return SUCCESSION_AS_USAGE;
+    }
+    g.abandon();
+    declaration(p, owner, false, false);
+    UNSUPPORTED_MEMBER
+}
+
 /// 接続の端 1 つ（ConnectorEnd、8.2.2.13.1）。`[多重度]? (名前 ::>)? 参照` を `CONNECTOR_END` の節にする。
 ///
 /// 参照が無ければ「関係の相手の名前がありません」を置く（多重度も名前も無ければ節を作らない）。
@@ -1307,6 +1463,52 @@ fn bracketed(p: &mut Parser<'_>, kind: SyntaxKind) {
 /// expression(") a", false)          → false   // 対応の無い閉じ括弧
 /// ```
 fn expression(p: &mut Parser<'_>, stop_at_keyword: bool) -> bool {
+    expression_with(p, |p, any| any && stop_at_keyword && p.at(KEYWORD))
+}
+
+/// 式（段階 A）を、括弧の外の `stops` のキーワードの手前まで読む（`expression` と同じく、`;`・`{`・`}`・対応の無い閉じ括弧でも止まる）。
+/// 何か読んだら true。継起のガード（`if g then b`）・送る相手（`send x to y`）のように、キーワードで区切られた式に使う。
+///
+/// # 引数
+///
+/// - `p`：式の頭にいるパーサ
+/// - `stops`：括弧の外で着いたら止まるキーワード（式の先頭でも止まる）
+///
+/// # 戻り値
+///
+/// 1 つ以上のトークンを読んだら `true`。何も読まなかったら `false`（節も作らない）。
+///
+/// # 例
+///
+/// ```text
+/// expression_until("x > 0 and y then b;", &["then"]) → true（EXPRESSION は "x > 0 and y"）
+/// expression_until("f(a then b) then c", &["then"])  → true（括弧の中の then では止まらない）
+/// expression_until("then b;", &["then"])             → false
+/// ```
+fn expression_until(p: &mut Parser<'_>, stops: &[&str]) -> bool {
+    expression_with(p, |p, _| stops.iter().any(|k| p.at_kw(k)))
+}
+
+/// 式（段階 A）を読む本体。`;`・`{`・`}`・末尾・対応の無い閉じ括弧、改行の後の新しい要素の頭、括弧の外で `stop` が真になる所の手前で止まる。
+///
+/// 開いた括弧が閉じないまま止まったら「括弧が閉じていません」を置く。読んだトークンは `EXPRESSION` の節にする。
+///
+/// # 引数
+///
+/// - `p`：式の頭にいるパーサ
+/// - `stop`：括弧の外の今のトークンで止まるか（2 つ目の引数は、ここまでに何か読んだか）
+///
+/// # 戻り値
+///
+/// 1 つ以上のトークンを読んだら `true`。何も読まなかったら `false`（節も作らない）。
+///
+/// # 例
+///
+/// ```text
+/// expression_with("a + b;", |_, _| false)          → true（EXPRESSION は "a + b"）
+/// expression_with("to y;", |p, _| p.at_kw("to"))   → false
+/// ```
+fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool) -> bool {
     let m = p.start();
     let mut depth = 0usize;
     let mut any = false;
@@ -1317,7 +1519,7 @@ fn expression(p: &mut Parser<'_>, stop_at_keyword: bool) -> bool {
         if depth == 0 && any && p.newline_before() && at_member_start(p) {
             break;
         }
-        if depth == 0 && any && stop_at_keyword && p.at(KEYWORD) {
+        if depth == 0 && stop(p, any) {
             break;
         }
         match p.current() {
