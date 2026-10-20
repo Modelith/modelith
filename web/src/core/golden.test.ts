@@ -46,6 +46,27 @@ const RUST_EXTRA_ERRORS: Record<string, { reason: string; pos: (text: string) =>
   },
 };
 
+/**
+ * Rust のコアが、SysML v2 仕様に合わせて記録を増やした関係の種類（モックは記録しない。ADR-0002 の許容リスト、ADR-0015）。
+ * 比べる前に、Rust の結果の関係から取り除く。
+ */
+const RUST_EXTRA_RELS: Record<string, string> = {
+  succession: "継起（first … then・then b;・then action b;、8.2.2.14・8.2.2.17）を関係として記録する（モックは読み飛ばす）",
+};
+
+/**
+ * Rust だけが記録する種類の関係（RUST_EXTRA_RELS）を、結果から取り除く。
+ *
+ * @param v テストの結果（project の結果を JSON にしたもの）
+ * @returns rels から許容リストの種類を除いた結果
+ * @example
+ * withoutExtraRels({ rels: [{ rel: "flow" }, { rel: "succession" }] }) // → { rels: [{ rel: "flow" }] }
+ */
+function withoutExtraRels(v: unknown): unknown {
+  const o = v as { rels: { rel: string }[] };
+  return { ...o, rels: o.rels.filter((r) => !(r.rel in RUST_EXTRA_RELS)) };
+}
+
 function withoutAllowed(v: unknown, positions: number[]): unknown {
   type Located = { pos: number };
   const o = v as { errors: Located[]; model: { problems: Located[] } };
@@ -93,7 +114,8 @@ describe("暫定コアとゴールデンの一致", () => {
         const golden = Object.entries(goldens).find(([p]) => baseName(p) === name)?.[1];
         const allowed = impl === "Rust" ? (RUST_EXTRA_ERRORS[name]?.pos(text) ?? []) : [];
         // Act
-        const actual = JSON.parse(JSON.stringify({ case: name, ...project(text, parse, build) })) as unknown;
+        const projected = JSON.parse(JSON.stringify({ case: name, ...project(text, parse, build) })) as unknown;
+        const actual = impl === "Rust" ? withoutExtraRels(projected) : projected;
         // Assert
         expect(withoutWording(withoutAllowed(actual, allowed))).toEqual(withoutWording(golden));
         // 許容リストが古くなっていない（取り除いた位置に、本当にエラーがある）

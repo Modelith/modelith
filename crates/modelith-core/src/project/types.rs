@@ -294,6 +294,27 @@ pub enum RelKind {
         /// 割り当ての使用（名前の無いものを含む。`ParseResult.entries` の番号）。
         usage: usize,
     },
+    /// 継起（SuccessionAsUsage・TargetSuccessionMember・GuardedSuccession、8.2.2.14・8.2.2.17）。`a` が終わってから `b` を始める。
+    /// `first a then b;` は書いた相手、`then b;`・`if g then b;`・`else b;`・`then action b;` は、同じ本体の直前の要素（アクションの節、
+    /// または `first start;` で決めた要素）から。
+    Succession {
+        /// 元（書いた参照。直前の要素から引く継起では、その要素の名前。名前の無い要素なら空）。
+        a: String,
+        /// 先（書いた参照。`then action b;` などでは、その要素の名前。名前の無い要素なら空）。
+        b: String,
+        /// 元の宣言の番号（直前の要素から引く継起のとき）。書いた参照から探すときは `None`。名前の解決にだけ使い、TS には渡さない。
+        #[serde(skip)]
+        a_entry: Option<usize>,
+        /// 先の宣言の番号（`then action b;`・`then fork f;` のように、継起の後に要素を書いたとき）。TS には渡さない。
+        #[serde(skip)]
+        b_entry: Option<usize>,
+        /// ガード（`if` の条件の式。`else b;` は `else`）。無ければ空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        guard: String,
+        /// 名前（`succession s first a then b;` の `s`）。無ければ空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        name: String,
+    },
     /// `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。両端は等しい値を持つ。
     Bind {
         a: String,

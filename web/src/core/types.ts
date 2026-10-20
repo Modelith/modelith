@@ -141,7 +141,12 @@ export type Rel =
   /** `bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。Rust のコアだけが作る。 */
   | (RelBase & { rel: "bind"; a: string; b: string; usage: Entry })
   /** `allocate x to y;`（AllocationUsage、8.2.2.15）。Rust のコアだけが作る。 */
-  | (RelBase & { rel: "allocate"; a: string; b: string; usage: Entry });
+  | (RelBase & { rel: "allocate"; a: string; b: string; usage: Entry })
+  /**
+   * 継起（`first a then b;`・`then b;`・`if g then b;`・`else b;`、8.2.2.14・8.2.2.17）。`a` が終わってから `b` を始める。
+   * 直前の要素から引く継起では、`a` はその要素の名前（名前の無い要素なら空）。`guard` は `if` の条件（`else` は "else"）。Rust のコアだけが作る。
+   */
+  | (RelBase & { rel: "succession"; a: string; b: string; guard?: string; name?: string });
 
 export type FlowRel = Extract<Rel, { rel: "flow" | "connect" }>;
 export type MessageRel = Extract<Rel, { rel: "message" }>;

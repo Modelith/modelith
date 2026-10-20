@@ -903,6 +903,16 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
 
+      it("継起は、書いた端か直前の要素から、関係として記録する（first … then・then・if … then・else、8.2.2.14・8.2.2.17）", () => {
+        // Arrange
+        const text = "package P { action def A { first start; then decide d; if x > 0 then a; else b; first a then done; action a; action b; } }";
+        // Act
+        const rels = parse(text).rels.flatMap((r) => (r.rel === "succession" ? [[r.a, r.b, r.guard ?? ""]] : []));
+        // Assert
+        expect(rels).toEqual([["start", "d", ""], ["d", "a", "x > 0"], ["d", "b", "else"], ["a", "done", ""]]);
+        expect(problems(text)).toEqual([]);
+      });
+
       it("assign の := は、持ち主の式にしない（以前は持ち主の「式」に入っていた）", () => {
         // Arrange
         const text = "package P { action def A { assign x := 1; } }";

@@ -1281,3 +1281,123 @@ fn loops_keep_their_guard_and_body() {
     assert!(text[..r.entries[w].end].ends_with("until done;"));
     assert!(r.unsupported.is_empty());
 }
+
+/// 継起の関係 1 つ（元, 先, 元の番号, 先の番号, ガード）。
+type SuccessionRow = (String, String, Option<usize>, Option<usize>, String);
+
+/// 継起の関係を（元, 先, 元の番号, 先の番号, ガード）の組にする。
+fn successions(r: &ParseResult) -> Vec<SuccessionRow> {
+    r.rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Succession {
+                a,
+                b,
+                a_entry,
+                b_entry,
+                guard,
+                ..
+            } => Some((a.clone(), b.clone(), *a_entry, *b_entry, guard.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn successions_record_written_and_lexical_sources() {
+    // Arrange（同値分割：first … then・then の後の要素（SourceSuccessionMember）・then b（直前の要素から）・
+    // first start（継起の元を決める）、8.2.2.14・8.2.2.17）
+    let text = "action def A { first start; then action a; then action b; then c; first b then c; action c; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (a, b) = (
+        r.entries.iter().position(|e| e.name == "a"),
+        r.entries.iter().position(|e| e.name == "b"),
+    );
+    let s = |x: &str, y: &str, ae: Option<usize>, be: Option<usize>| {
+        (x.to_owned(), y.to_owned(), ae, be, String::new())
+    };
+    assert_eq!(
+        successions(&r),
+        [
+            s("start", "a", None, a),
+            s("a", "b", a, b),
+            s("b", "c", b, None),
+            s("b", "c", None, None),
+        ]
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn guarded_successions_start_from_the_preceding_decision() {
+    // Arrange（GuardedTargetSuccession・DefaultTargetSuccession・GuardedSuccession、8.2.2.17）
+    let text = "action def A { decide d; if x > 0 then a; else b; first d if y then c; action a; action b; action c; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let d = r.entries.iter().position(|e| e.name == "d");
+    let got: Vec<(String, String, Option<usize>, String)> = successions(&r)
+        .into_iter()
+        .map(|(a, b, ae, _, g)| (a, b, ae, g))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("d".to_owned(), "a".to_owned(), d, "x > 0".to_owned()),
+            ("d".to_owned(), "b".to_owned(), d, "else".to_owned()),
+            ("d".to_owned(), "c".to_owned(), None, "y".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn succession_from_then_covers_only_the_keyword() {
+    // Arrange（then action b; の継起を消すと、then だけが消える範囲）
+    let text = "action def A { action a; then action b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let rel = r
+        .rels
+        .iter()
+        .find(|x| matches!(x.kind, RelKind::Succession { .. }))
+        .map(|x| (x.start, x.end + 1));
+    assert_eq!(rel.map(|(s, e)| &text[s..e]), Some("then "));
+    assert_eq!(entry(&r, "b").head, "action b");
+}
+
+#[test]
+fn successions_count_sources_per_body() {
+    // Arrange（境界値：入れ子の本体の要素は、外の then の元にならない。本体の最初の then は元が無い）
+    let text = "action def A { action a { action x; } then b; } action def B { then c; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a = r.entries.iter().position(|e| e.name == "a");
+    let got: Vec<(String, Option<usize>)> = successions(&r)
+        .into_iter()
+        .map(|(x, _, ae, _, _)| (x, ae))
+        .collect();
+    assert_eq!(got, [("a".to_owned(), a), (String::new(), None)]);
+}
+
+#[test]
+fn named_succession_keeps_its_name() {
+    // Arrange（SuccessionAsUsage の名前、8.2.2.14）
+    let text = "action def A { action a; action b; succession s first a then b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let names: Vec<&str> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Succession { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, ["s"]);
+    assert!(r.entries.iter().all(|e| e.name != "s"));
+}
