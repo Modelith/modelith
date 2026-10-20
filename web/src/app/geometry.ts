@@ -1,6 +1,6 @@
 // 図の幾何計算（ノードの大きさ・接続点・線の経路・自動配置）。DOM に依存しない純粋関数。
 
-import type { ModelEdge, ModelNode, Port, PortDir } from "../core";
+import type { Entry, ModelEdge, ModelNode, Port, PortDir } from "../core";
 import type { Pos, Side, ViewLayout } from "./layout";
 import type { ViewDef } from "./views";
 
@@ -65,6 +65,37 @@ export function wrap(s: string, maxW = W - 18, maxLines = 3): string[] {
   return out.slice(0, maxLines);
 }
 
+/** 区画に書く、特殊化の種類の記号（テキスト記法と同じ。8.2.2.6）。 */
+const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>" };
+
+/**
+ * 区画に書く、属性・パラメータの 1 行（8.2.3 の usage-cp：テキスト記法の宣言と値）。
+ * 多重度も特殊化の相手も無ければ、これまでどおり `名前 = 値` か `名前 : 型` にする。
+ * あれば `名前 : 型 [多重度] :>> 相手 = 値` の順に書き、名前を書かずに再定義した特性（`:>> mass`）は名前を省く。
+ *
+ * @param c 属性かパラメータの宣言
+ * @returns 区画の 1 行
+ * @example
+ * featureText(attribute mass : Real)                 // → "mass : Real"
+ * featureText(attribute w : Wheel[4] ordered)        // → "w : Wheel [4] ordered"
+ * featureText(attribute :>> mass = 1500)             // → ":>> mass = 1500"（名前は再定義した特性から）
+ * featureText(attribute b : B :> a, c)               // → "b : B :> a :> c"
+ */
+export function featureText(c: Entry): string {
+  const specs = c.specs ?? [], m = c.multiplicity;
+  if (!specs.length && !m) return c.value ? `${c.name} = ${c.value}` : `${c.name} : ${c.type}`;
+  const first = specs[0];
+  const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
+  const parts = [unnamed ? "" : c.name];
+  if (c.type) parts.push(`: ${c.type}`);
+  if (m?.range) parts.push(`[${m.range}]`);
+  if (m?.ordered) parts.push("ordered");
+  if (m?.nonunique) parts.push("nonunique");
+  for (const s of specs) parts.push(`${SPEC_SYMBOL[s.op] ?? ":>"} ${s.target}`);
+  if (c.value) parts.push(`= ${c.value}`);
+  return parts.filter(Boolean).join(" ");
+}
+
 export interface Line {
   t: string;
   cls: "doc" | "expr" | "attr" | "more";
@@ -79,6 +110,8 @@ export interface Line {
  * @example
  * // part def で、属性 mass : Real を 1 つ持つ
  * compartment(n) // → [{ t: "mass : Real", cls: "attr" }]
+ * // part def で、名前を書かずに再定義した属性 :>> mass = 1500 を持つ
+ * compartment(n) // → [{ t: ":>> mass = 1500", cls: "attr" }]
  * // 要求で、説明「速く走る」と require 式 v > 10 を持つ
  * compartment(n) // → [{ t: "速く走る", cls: "doc" }, { t: "{ v > 10 }", cls: "expr" }]
  * // 中身の無い part def
@@ -94,7 +127,7 @@ export function compartment(n: ModelNode): Line[] {
   if (n.fam === "req") for (const x of e.exprs) if (x.via === "require" || !x.via) push(`{ ${x.text} }`, "expr");
   if (n.fam === "con") for (const x of e.exprs) push(x.text, "expr", 3);
   if (["part", "other"].includes(n.fam)) {
-    for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(c.value ? `${c.name} = ${c.value}` : `${c.name} : ${c.type}`, "attr", 1);
+    for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(featureText(c), "attr", 1);
   }
   if (n.kind === "state def") {
     const st = e.children.filter((c) => c.kind === "state").map((c) => c.name);

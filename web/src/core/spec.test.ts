@@ -741,5 +741,30 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(ps).toEqual(["「依存」関係の相手「Nope」が見つかりません（dependency）"]);
       });
     });
+
+    describe("多重度（MultiplicityPart、8.2.2.6）", () => {
+      it("[…] の中と ordered・nonunique を宣言に残し、部品として持つ線の端に書く", () => {
+        // Arrange
+        const text = "package P { part def W; part def V { part w : W[0..4] ordered; attribute n : Real nonunique; } }";
+        // Act
+        const [w, n] = [entry(text, "w"), entry(text, "n")];
+        const ends = build(parse(text)).edges.map((e) => e.endLabel);
+        // Assert
+        expect(w?.multiplicity).toEqual({ range: "0..4", ordered: true, nonunique: false });
+        expect(n?.multiplicity).toEqual({ range: "", ordered: false, nonunique: true });
+        expect(ends).toEqual(["[0..4] ordered"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("特殊化の相手は、記号の種類と書いた相手を宣言に残す", () => {
+        // Arrange
+        const text = "package P { part def A { attribute m; } part def B :> A { attribute :>> m = 1; } }";
+        // Act
+        const [b, m] = [entry(text, "B"), parse(text).entries.find((e) => e.pe?.name === "B")];
+        // Assert
+        expect(b?.specs?.map((s) => [s.op, s.target])).toEqual([["specializes", "A"]]);
+        expect(m?.specs?.map((s) => [s.op, s.target])).toEqual([["redefines", "m"]]);
+      });
+    });
   });
 }

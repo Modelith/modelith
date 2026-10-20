@@ -1,6 +1,7 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
-import { endLabelPos, packageRects, PKG_PAD, PKG_TAB, type Box, type RouteEnd } from "./geometry";
+import type { Entry } from "../core";
+import { endLabelPos, featureText, packageRects, PKG_PAD, PKG_TAB, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -63,5 +64,48 @@ describe("endLabelPos（8.2.3 の multiplicity：線の端の文字）", () => {
     // Assert
     expect(left).toEqual({ x: -6, y: 20, a: "end" });
     expect(right).toEqual({ x: 230, y: 20, a: "start" });
+  });
+});
+
+describe("featureText（8.2.3 の usage-cp：区画の属性の行）", () => {
+  /** 属性の宣言を、必要な項目だけ指定して作る。 */
+  const attr = (x: Partial<Entry>): Entry => ({
+    kind: "attribute", isDef: false, short: "", name: "", type: "", owner: null, pe: null, start: 0, headEnd: 0, end: 0, head: "", exprs: [], children: [], idx: 0, ...x,
+  });
+
+  it("多重度も特殊化の相手も無ければ、これまでどおり「名前 : 型」か「名前 = 値」", () => {
+    // Act
+    const [typed, valued] = [featureText(attr({ name: "mass", type: "Real" })), featureText(attr({ name: "mass", type: "Real", value: "1500" }))];
+    // Assert
+    expect(typed).toBe("mass : Real");
+    expect(valued).toBe("mass = 1500");
+  });
+
+  it("多重度は型の後ろに、ordered・nonunique を続けて書く", () => {
+    // Act
+    const t = featureText(attr({ name: "w", type: "Wheel", multiplicity: { range: "4", ordered: true, nonunique: false } }));
+    // Assert
+    expect(t).toBe("w : Wheel [4] ordered");
+  });
+
+  it("名前を書かずに再定義した特性は、名前を省いて「:>> 相手 = 値」にする", () => {
+    // Act
+    const t = featureText(attr({ name: "mass", value: "1500", specs: [{ op: "redefines", target: "mass", start: 0, end: 0 }] }));
+    // Assert
+    expect(t).toBe(":>> mass = 1500");
+  });
+
+  it("部分集合と参照は、相手ごとに記号を付けて並べる", () => {
+    // Act
+    const t = featureText(attr({ name: "b", type: "B", specs: [{ op: "subsets", target: "a", start: 0, end: 0 }, { op: "references", target: "x.y", start: 0, end: 0 }] }));
+    // Assert
+    expect(t).toBe("b : B :> a ::> x.y");
+  });
+
+  it("範囲の無い多重度（nonunique だけ）は、括弧を書かない（境界）", () => {
+    // Act
+    const t = featureText(attr({ name: "n", type: "N", multiplicity: { range: "", ordered: false, nonunique: true } }));
+    // Assert
+    expect(t).toBe("n : N nonunique");
   });
 });

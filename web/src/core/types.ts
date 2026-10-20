@@ -61,6 +61,26 @@ export interface Entry {
   render?: string;
   open?: number;
   close?: number;
+  /** 特殊化・部分集合・再定義・参照の相手（8.2.2.6）。Rust のコアだけが作る。 */
+  specs?: Spec[];
+  /** 多重度（MultiplicityPart、8.2.2.6）。Rust のコアだけが作る。 */
+  multiplicity?: Multiplicity;
+}
+
+/** 宣言の特殊化の相手 1 つ（SubclassificationPart・FeatureSpecializationPart、8.2.2.6）。 */
+export interface Spec extends Span {
+  /** 定義の `:>`・`specializes` は specializes、使用の `:>`・`subsets` は subsets、`:>>` は redefines、`::>` は references。 */
+  op: "specializes" | "subsets" | "redefines" | "references";
+  /** 相手（書いた修飾名・特徴の連鎖。空白を除き、引用符は残す）。 */
+  target: string;
+}
+
+/** 多重度と並びの性質（MultiplicityPart、8.2.2.6）。 */
+export interface Multiplicity {
+  /** `[` と `]` の中（`0..4`・`*`）。範囲を書いていなければ空文字列。 */
+  range: string;
+  ordered: boolean;
+  nonunique: boolean;
 }
 
 /** `expose` 1 つ（Expose、8.2.2.26.2）。 */
