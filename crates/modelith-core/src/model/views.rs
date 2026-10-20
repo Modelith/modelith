@@ -11,7 +11,7 @@ use crate::project::{Entry, Expose};
 const STANDARD_VIEWS: &[(&str, &str, Option<&str>)] = &[
     ("GeneralView", "gv", Some("general")),
     ("InterconnectionView", "iv", Some("interconnection")),
-    ("ActionFlowView", "afv", None),
+    ("ActionFlowView", "afv", Some("actionFlow")),
     ("StateTransitionView", "stv", Some("stateTransition")),
     ("SequenceView", "sv", Some("sequence")),
     ("GeometryView", "gev", None),

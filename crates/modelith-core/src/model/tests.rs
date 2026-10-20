@@ -202,6 +202,24 @@ fn view_reports_missing_target_and_unsupported_rendering() {
 }
 
 #[test]
+fn action_flow_view_is_drawn_without_a_notice() {
+    // Arrange（同値分割：名前・短い名前の ActionFlowView、9.2.20 の Table 34）
+    let text = "package P { action def A { action a; } view v : ActionFlowView { expose A; } view w : afv { expose A; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let kinds: Vec<(&str, Option<&str>)> = m.views.iter().map(|v| (v.kind, v.std)).collect();
+    assert_eq!(
+        kinds,
+        [
+            ("actionFlow", Some("ActionFlowView")),
+            ("actionFlow", Some("ActionFlowView"))
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
 fn standard_view_names_and_labels() {
     // 同値分割：名前・短い名前・標準でない名前
     assert!(views::is_standard_view("InterconnectionView"));
