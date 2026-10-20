@@ -131,6 +131,44 @@ pub struct ActionFlow {
     pub edges: Vec<Edge>,
 }
 
+/// 状態遷移の図（8.2.3.18）の要素 1 つ。状態と、本体ごとの開始（最初の遷移の元）・終了（`done`）の記号。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateNode {
+    /// 図の要素のキー（`s:名前`、入れ子は `s:外.中`。名前の無い状態は `s:頭#番号`、開始・終了は `s:頭#start`・`s:頭#done`）。
+    /// 配置はこのキーで覚える。
+    pub key: String,
+    /// 名前（名前の無い状態は空。開始・終了は `start`・`done`）。
+    pub name: String,
+    /// 種類（`state`・`exhibit state`。開始・終了は `start`・`done`）。
+    pub kind: String,
+    /// 宣言（`ParseResult.entries` の番号）。開始・終了は宣言を持たないので `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry: Option<usize>,
+    /// この要素を中に描く状態のキー（状態定義の直下の要素は `None`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container: Option<String>,
+    /// 並行の状態（中の状態を、破線で区切った領域に描く）か。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub parallel: bool,
+}
+
+/// 状態定義 1 つの、状態遷移の図（StateTransitionView、8.2.3.18）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateMachine {
+    /// 状態定義の、図の要素のキー。
+    pub key: String,
+    /// 状態定義の宣言（`ParseResult.entries` の番号）。
+    pub entry: usize,
+    /// 並行の状態定義（直下の状態を、破線で区切った領域に描く）か。
+    pub parallel: bool,
+    /// 要素（外の状態の直後に中の状態。本体ごとに、開始・書いた順の状態・終了の順）。
+    pub nodes: Vec<StateNode>,
+    /// 遷移（種類 `transition`）の線。端は `nodes` のキー。
+    pub edges: Vec<Edge>,
+}
+
 /// モデル。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -145,4 +183,6 @@ pub struct Model {
     pub notes: Vec<Note>,
     /// アクション定義ごとの、アクションの流れの図（図の要素の順）。
     pub action_flows: Vec<ActionFlow>,
+    /// 状態定義ごとの、状態遷移の図（図の要素の順）。
+    pub state_machines: Vec<StateMachine>,
 }

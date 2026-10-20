@@ -974,6 +974,15 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(rels).toEqual([["entryTransition", "idle"]]);
         expect(problems(text)).toEqual([]);
       });
+
+      it("遷移の相手が見つからなければ、問題として知らせる（以前は確かめなかった）", () => {
+        // Arrange
+        const text = "package P { state def S { state a; transition first a then nope; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["「遷移」の相手「nope」が見つかりません（transition）"]);
+      });
     });
 
     describe("状態の振る舞いと並行の状態（StateSubactionMembership・StateDefBody、8.2.2.18）", () => {

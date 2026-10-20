@@ -6,6 +6,7 @@
 
 mod flows;
 mod names;
+mod states;
 mod types;
 mod views;
 
@@ -275,6 +276,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.edge_ids();
     b.notes();
     b.action_flows();
+    b.state_machines();
     b.parse_problems();
     b.phases();
     views::build_views(&mut b);
