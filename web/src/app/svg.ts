@@ -1,6 +1,7 @@
 // 図の SVG マークアップを作る。画面表示と SVG 書き出しで共用し、色は関数 C で差し替える。
 
 import { family } from "../core";
+import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./dom";
 import { boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, textWidth, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
@@ -69,7 +70,7 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
 }
 
 /** 破線で描く線の種類。 */
-const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency", "allocate", "annotate"];
+const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency", "allocate", "annotate", "successionFlow"];
 /**
  * 矢印を付けない線の種類（結び付けと、n 項の接続の点から端への線は向きの無い実線、8.2.3.13 の binding-connection・n-ary-segment。
  * メモから要素への線は向きの無い破線、8.2.3.4 の annotation-link）。
@@ -90,6 +91,7 @@ const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri",
  * edgeStroke("comp")       // → ' marker-start="url(#mDiamond)"'
  * edgeStroke("bind")       // → ""（実線・矢印なし）
  * edgeStroke("annotate")   // → ' stroke-dasharray="6 4"'（破線・矢印なし）
+ * edgeStroke("succession") // → ' marker-end="url(#mOpen)"'（実線・開いた矢印、8.2.3.17）
  */
 export function edgeStroke(kind: string): string {
   const dash = DASHED_EDGES.includes(kind) ? ' stroke-dasharray="6 4"' : "";
@@ -98,7 +100,9 @@ export function edgeStroke(kind: string): string {
   return `${dash} marker-end="url(#${END_MARKER[kind] ?? "mOpen"})"`;
 }
 
-const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req", bind: "k-con", connect: "k-con" };
+const EDGE_COLOR: Record<string, string> = {
+  satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req", bind: "k-con", connect: "k-con", successionFlow: "k-con",
+};
 
 /**
  * 図に出した package の枠の位置を求める（F-VIEW-9）。外側の枠から順に並べ、内側の枠が上に重なるようにする。
@@ -238,6 +242,7 @@ function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, tex
 function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
   if (b.n.junction) return junctionMarkup(C, b, opts, F);
   if (b.n.note) return noteMarkup(C, b, opts, F);
+  if (b.n.flow) return flowNodeMarkup(C, b, opts, F, MONO);
   // 中に部品を描く部品は、区画の行を描かない（中の部品を描く場所にする）
   const n = b.n, fam = n.fam, L2 = b.holds ? [] : linesOf(n);
   const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
@@ -260,6 +265,81 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
     L2.forEach((ln, k) => {
       const mono = ln.cls === "expr" || ln.cls === "attr";
       s += `<text x="12" y="${HEAD + 17 + k * LH}" font-size="${mono ? 10.5 : 11}" fill="${ln.cls === "more" ? C("ink2") : C("ink")}" font-family="${mono ? MONO : F}">${esc(ln.t)}</text>`;
+    });
+  }
+  return s + "</g>";
+}
+
+/**
+ * アクションの流れの図の要素の形（8.2.3.17）を SVG のパスにする。送る（send）は右が尖った五角形、受ける（accept）は左がへこんだ五角形、
+ * ひし形（decide・merge）は辺の中央を頂点にした四角。
+ *
+ * @param shape 形（send・accept・diamond）
+ * @param w 幅
+ * @param h 高さ
+ * @returns パスの d 属性
+ * @example
+ * flowPath("send", 168, 44)   // → "M0,0 H152 L168,22 L152,44 H0 Z"
+ * flowPath("diamond", 34, 34) // → "M17,0 L34,17 L17,34 L0,17 Z"
+ */
+function flowPath(shape: "send" | "accept" | "diamond", w: number, h: number): string {
+  const tip = 16;
+  if (shape === "send") return `M0,0 H${w - tip} L${w},${h / 2} L${w - tip},${h} H0 Z`;
+  if (shape === "accept") return `M0,0 H${w} V${h} H0 L${tip},${h / 2} Z`;
+  return `M${w / 2},0 L${w},${h / 2} L${w / 2},${h} L0,${h / 2} Z`;
+}
+
+/**
+ * アクションの流れの図の要素（8.2.3.17）を SVG の文字列にする。開始は塗った丸、終了は丸の中の塗った丸、fork・join は太い棒、
+ * decide・merge はひし形（名前は右に書く）、send・accept は五角形、ほかは角の丸い四角に書く。
+ * 四角と五角形には、アクション以外は «種類» を書き、名前（無ければ中身）を太字で、名前と中身の両方があれば中身を下に書き、
+ * if・while などの本体のアクションを区画に書く。
+ *
+ * @param C 色の関数
+ * @param b 要素の矩形と、その要素
+ * @param opts 描き方（選択・光らせる要素・接続の候補）
+ * @param F 文字のフォント
+ * @param MONO 中身と区画のフォント
+ * @returns `<g class="node flow" data-key="キー" transform="translate(x,y)">…</g>` の文字列
+ * @example
+ * // (0, 0) にある開始
+ * flowNodeMarkup(CV, b, { view: "afv" }, "inherit", "var(--mono)") // → '<g class="node flow" data-key="a:start" …><circle class="body" cx="11" cy="11" r="11" …/></g>'
+ * // (0, 80) にある send S() to b
+ * flowNodeMarkup(CV, b, { view: "afv" }, "inherit", "var(--mono)") // → '…<path class="body" d="M0,0 H152 L168,22 L152,44 H0 Z" …/>…«send»…S() to b…'
+ */
+function flowNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
+  const n = b.n, shape = flowShape(n.kind), w = b.w, h = b.h;
+  const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
+  const stroke = isSel ? C("sel") : C("k-beh"), sw = isSel ? 2.6 : 1.3;
+  let s = `<g class="node flow${opts.pulse?.has(n.key) ? " pulse" : ""}" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})"${opts.dim?.has(n.key) ? ' opacity=".42"' : ""}>`;
+  if (opts.cands?.has(n.key)) s += `<rect x="-5" y="-5" width="${w + 10}" height="${h + 10}" rx="6" fill="none" stroke="${C("sel")}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  const side = (text: string, y: number): string =>
+    text ? `<text x="${w + 6}" y="${y}" font-size="10.5" fill="${C("ink2")}" font-family="${F}">${esc(text)}</text>` : "";
+  if (shape === "start") return s + `<circle class="body" cx="${w / 2}" cy="${h / 2}" r="${w / 2}" fill="${C("ink")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${sw}"/></g>`;
+  if (shape === "done")
+    return s + `<circle class="body" cx="${w / 2}" cy="${h / 2}" r="${w / 2}" fill="${C("panel")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${isSel ? 2.6 : 1.6}"/><circle cx="${w / 2}" cy="${h / 2}" r="${w / 2 - 5}" fill="${C("ink")}"/></g>`;
+  if (shape === "bar") return s + `<rect class="body" width="${w}" height="${h}" rx="2" fill="${C("ink")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${sw}"/>${side(n.name, -4)}</g>`;
+  if (shape === "diamond") return s + `<path class="body" d="${flowPath("diamond", w, h)}" fill="${C("k-beh-bg")}" stroke="${stroke}" stroke-width="${sw}"/>${side(n.name, h / 2 + 4)}</g>`;
+  const body = shape === "action" ? `<rect class="body" width="${w}" height="${h}" rx="10"` : `<path class="body" d="${flowPath(shape, w, h)}"`;
+  s += `${body} fill="${C("k-beh-bg")}" stroke="${stroke}" stroke-width="${sw}"/>`;
+  const detail = flowDetail(n);
+  const plain = ["action", "perform action", "state"].includes(n.kind);
+  const cut = (t: string): string => (t.length > 24 ? t.slice(0, 23) + "…" : t);
+  const cx = shape === "accept" ? w / 2 + 6 : shape === "send" ? w / 2 - 6 : w / 2;
+  if (plain && n.kind === "action") {
+    s += `<text x="${cx}" y="27" text-anchor="middle" font-size="12.5" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(cut(n.name + (detail ? " " + detail : "")))}</text>`;
+  } else {
+    s += `<text x="${cx}" y="16" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${n.kind}»`)}</text>`;
+    const main = plain ? n.name + (detail ? " " + detail : "") : n.name || detail;
+    s += `<text x="${cx}" y="33" text-anchor="middle" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${n.name || plain ? F : MONO}">${esc(cut(main))}</text>`;
+    if (!plain && n.name && detail) s += `<text x="${cx}" y="48" text-anchor="middle" font-size="10.5" fill="${C("ink")}" font-family="${MONO}">${esc(cut(detail))}</text>`;
+  }
+  const L = linesOf(n);
+  if (L.length) {
+    const top = h - L.length * LH - 12;
+    s += `<line x1="0" x2="${w}" y1="${top}" y2="${top}" stroke="${C("k-beh")}" stroke-opacity=".45"/>`;
+    L.forEach((ln, k) => {
+      s += `<text x="10" y="${top + 16 + k * LH}" font-size="10.5" fill="${C("ink")}" font-family="${MONO}">${esc(ln.t)}</text>`;
     });
   }
   return s + "</g>";
