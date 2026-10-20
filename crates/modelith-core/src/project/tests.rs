@@ -640,6 +640,50 @@ fn viewpoint_and_rendering_are_entries_distinct_from_view() {
 }
 
 #[test]
+fn composite_render_is_a_rendering_of_the_view_and_names_what_it_specializes() {
+    // Arrange（ViewRenderingUsage の合成形、8.2.2.26：特殊化の相手・再定義の相手（修飾名）・型だけ・名前も型も無いもの。
+    // 以前は、相手のある形を黙って捨て、再定義の形と型の形を「まだ扱えない」と知らせていた）
+    let text = "view a { render rendering r :> asInterconnectionDiagram; } \
+                view b { render rendering r2 redefines Views::asTreeDiagram { doc /* 木 */ } } \
+                view c { render rendering r3 : Foo; } view d { render rendering : Foo; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let renders: Vec<Option<&str>> = ["a", "b", "c", "d"]
+        .iter()
+        .map(|v| entry(&r, v).render.as_deref())
+        .collect();
+    assert_eq!(
+        renders,
+        [
+            Some("asInterconnectionDiagram"),
+            Some("asTreeDiagram"),
+            Some("r3"),
+            Some("Foo")
+        ]
+    );
+    let r2 = entry(&r, "r2");
+    assert_eq!(
+        (r2.kind.as_str(), r2.pe),
+        ("rendering", Some(entry(&r, "b").idx))
+    );
+    assert_eq!(r2.doc.as_deref(), Some("木"));
+    assert!(r.unsupported.is_empty(), "{:?}", r.unsupported);
+}
+
+#[test]
+fn reference_render_with_a_specialization_or_body_keeps_the_reference() {
+    // Arrange（境界値：参照形に特殊化・本体が続いても、参照した表し方の名前だけを記録し、宣言にしない）
+    let text = "view v { render Views::asTreeDiagram :> base { doc /* x */ } }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "v").render.as_deref(), Some("asTreeDiagram"));
+    assert_eq!(r.entries.len(), 1);
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
 fn metadata_about_writes_fields_to_each_annotated_element() {
     // Arrange（MetadataUsage の about、8.2.2.27。修飾名と特徴の連鎖の相手）
     let text = "package P { package Q { part def A; } part def B { part c; } \
