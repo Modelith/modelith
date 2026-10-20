@@ -57,8 +57,9 @@ pub enum Intent {
         #[serde(default)]
         ctx: Option<String>,
     },
-    /// from から to への関係を追加する。`rel` は comp・satisfy・verify・frame・derive・flow・succession
-    /// （succession は、アクションの流れの図の要素のキー `a:…` で指し、`ctx` はアクション定義）。
+    /// from から to への関係を追加する。`rel` は comp・satisfy・verify・frame・derive・flow・succession・transition
+    /// （succession は、アクションの流れの図の要素のキー `a:…` で指し、`ctx` はアクション定義。
+    /// transition は、状態遷移の図の要素のキー `s:…` で指し、`ctx` は状態定義）。
     Connect {
         rel: String,
         from: String,

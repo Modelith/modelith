@@ -142,6 +142,10 @@ pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
         Intent::RemoveFromView { view, key } => {
             more::remove_from_view(d, view, &d.find(key, None)?)
         }
+        // 遷移は、状態遷移の図の要素のキー（終了の記号を含む）でつなぐ
+        Intent::Connect {
+            rel, from, to, ctx, ..
+        } if rel == "transition" => super::states::add_transition(d, from, to, ctx.as_deref()),
         // 順序の線（継起）は、アクションの流れの図の要素のキー（開始・終了を含む）でつなぐ
         Intent::Connect {
             rel, from, to, ctx, ..

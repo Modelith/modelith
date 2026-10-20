@@ -1061,3 +1061,60 @@ fn unknown_transition_or_state_is_refused() {
     assert!(refused(STATES, line).contains("関係"));
     assert!(refused(STATES, node).contains("s:x"));
 }
+
+#[test]
+fn connect_transition_writes_it_in_the_body_of_both_states() {
+    // Arrange（同値分割：状態定義の直下どうし・同じ状態の中どうし・終了へ、8.2.2.18）
+    let top = r#"{"op":"connect","rel":"transition","from":"s:off","to":"s:on","ctx":"S"}"#;
+    let inner =
+        r#"{"op":"connect","rel":"transition","from":"s:on.low","to":"s:on.high","ctx":"S"}"#;
+    // Act
+    let (after_top, out) = run(STATES, top);
+    let (after_inner, _) = run(STATES, inner);
+    // Assert
+    assert!(
+        after_top.ends_with("then off;\n        transition first off then on;\n    }\n}\n"),
+        "{after_top}"
+    );
+    assert_eq!(
+        flashed(&after_top, &out).trim(),
+        "transition first off then on;"
+    );
+    assert!(
+        after_inner.contains(
+            "            state high;\n            transition first low then high;\n        }"
+        ),
+        "{after_inner}"
+    );
+}
+
+#[test]
+fn connect_transition_between_bodies_uses_the_path_from_the_definition() {
+    // Arrange（境界値：入れ子の状態から外の状態へ。名前の道のりで書く）
+    let id = r#"{"op":"connect","rel":"transition","from":"s:on.high","to":"s:off","ctx":"S"}"#;
+    // Act
+    let (after, _) = run(STATES, id);
+    // Assert
+    assert!(
+        after.contains("        transition first on.high then off;\n    }\n}\n"),
+        "{after}"
+    );
+}
+
+#[test]
+fn connect_transition_refuses_start_and_done_misuse_and_unnamed_states() {
+    // Arrange（異常系：開始へ・開始から・別の本体の終了へ・名前の無い状態）
+    let text = "package P {\n    state def S {\n        state a;\n        state;\n        state b { state x; transition first x then done; }\n    }\n}\n";
+    let into_start =
+        r#"{"op":"connect","rel":"transition","from":"s:off","to":"s:#start","ctx":"S"}"#;
+    let from_start =
+        r#"{"op":"connect","rel":"transition","from":"s:#start","to":"s:on","ctx":"S"}"#;
+    let other_done =
+        r#"{"op":"connect","rel":"transition","from":"s:a","to":"s:b#done","ctx":"S"}"#;
+    let unnamed = r#"{"op":"connect","rel":"transition","from":"s:a","to":"s:#1","ctx":"S"}"#;
+    // Act / Assert
+    assert!(refused(STATES, into_start).contains("開始の記号へ"));
+    assert!(refused(STATES, from_start).contains("開始の記号から"));
+    assert!(refused(text, other_done).contains("終了の記号へは"));
+    assert!(refused(text, unnamed).contains("名前の無い状態"));
+}
