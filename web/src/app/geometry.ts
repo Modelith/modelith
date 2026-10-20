@@ -70,7 +70,8 @@ const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", 
 
 /**
  * 区画に書く、属性・パラメータの 1 行（8.2.3 の usage-cp：テキスト記法の宣言と値）。
- * 多重度も特殊化の相手も無ければ、これまでどおり `名前 = 値` か `名前 : 型` にする。
+ * 多重度も特殊化の相手も無ければ、これまでどおり `名前 = 値` か `名前 : 型` にする。値は書いた記号のまま
+ * （初期値は `名前 := 値`、既定値は `名前 default 値`。8.2.2.6 の FeatureValue）。
  * あれば `名前 : 型 [多重度] :>> 相手 = 値` の順に書き、名前を書かずに再定義した特性（`:>> mass`）は名前を省く。
  *
  * @param c 属性かパラメータの宣言
@@ -80,10 +81,13 @@ const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", 
  * featureText(attribute w : Wheel[4] ordered)        // → "w : Wheel [4] ordered"
  * featureText(attribute :>> mass = 1500)             // → ":>> mass = 1500"（名前は再定義した特性から）
  * featureText(attribute b : B :> a, c)               // → "b : B :> a :> c"
+ * featureText(attribute m := 10)                     // → "m := 10"（初期値）
+ * featureText(attribute m : Real default 10)         // → "m default 10"（既定値。型は書かない）
  */
 export function featureText(c: Entry): string {
   const specs = c.specs ?? [], m = c.multiplicity;
-  if (!specs.length && !m) return c.value ? `${c.name} = ${c.value}` : `${c.name} : ${c.type}`;
+  const value = c.value ? `${c.valueOp ?? "="} ${c.value}` : "";
+  if (!specs.length && !m) return value ? `${c.name} ${value}` : `${c.name} : ${c.type}`;
   const first = specs[0];
   const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
   const parts = [unnamed ? "" : c.name];
@@ -92,7 +96,7 @@ export function featureText(c: Entry): string {
   if (m?.ordered) parts.push("ordered");
   if (m?.nonunique) parts.push("nonunique");
   for (const s of specs) parts.push(`${SPEC_SYMBOL[s.op] ?? ":>"} ${s.target}`);
-  if (c.value) parts.push(`= ${c.value}`);
+  parts.push(value);
   return parts.filter(Boolean).join(" ");
 }
 

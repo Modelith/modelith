@@ -102,6 +102,17 @@ describe("featureText（8.2.3 の usage-cp：区画の属性の行）", () => {
     expect(t).toBe("b : B :> a ::> x.y");
   });
 
+  it("初期値・既定値は、書いた記号（:=・default）のまま書く（8.2.2.6 の FeatureValue）", () => {
+    // Act
+    const [initial, byDefault, defaultInitial] = [
+      featureText(attr({ name: "m", type: "Real", value: "10", valueOp: ":=" })),
+      featureText(attr({ name: "m", type: "Real", value: "10", valueOp: "default" })),
+      featureText(attr({ name: "m", value: "10", valueOp: "default :=", multiplicity: { range: "1", ordered: false, nonunique: false } })),
+    ];
+    // Assert
+    expect([initial, byDefault, defaultInitial]).toEqual(["m := 10", "m default 10", "m [1] default := 10"]);
+  });
+
   it("範囲の無い多重度（nonunique だけ）は、括弧を書かない（境界）", () => {
     // Act
     const t = featureText(attr({ name: "n", type: "N", multiplicity: { range: "", ordered: false, nonunique: true } }));

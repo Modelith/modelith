@@ -829,6 +829,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
       });
     });
 
+    describe("値の種類（FeatureValue、8.2.2.6）", () => {
+      it("= は束縛、:= は初期値、default は既定値として、書いた記号を宣言に残す", () => {
+        // Arrange（FeatureValue: ( '=' | isInitial ?= ':=' | isDefault ?= 'default' ( '=' | isInitial ?= ':=' )? ) OwnedExpression）
+        const text = "package P { part def A { attribute b = 1; attribute i := 2; attribute d default 3; attribute di default := 4; } }";
+        // Act
+        const ops = ["b", "i", "d", "di"].map((n) => [entry(text, n)?.valueOp, entry(text, n)?.value]);
+        // Assert
+        expect(ops).toEqual([[undefined, "1"], [":=", "2"], ["default", "3"], ["default :=", "4"]]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
     describe("多重度（MultiplicityPart、8.2.2.6）", () => {
       it("[…] の中と ordered・nonunique を宣言に残し、部品として持つ線の端に書く", () => {
         // Arrange

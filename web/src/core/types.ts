@@ -48,6 +48,11 @@ export interface Entry {
   children: Entry[];
   idx: number;
   value?: string;
+  /**
+   * 値の書き方（FeatureValue、8.2.2.6）。`:=` は初期値、`default`・`default =`・`default :=` は既定値。
+   * `=`（束縛）のときは無い。Rust のコアだけが作る。
+   */
+  valueOp?: string;
   doc?: string;
   meta?: Record<string, Record<string, string>>;
   phaseVal?: Span;
