@@ -2,7 +2,7 @@
 
 import { family } from "../core";
 import { esc } from "./dom";
-import { computeRoutes, HEAD, LH, linesOf, nodeH, packageRects, pinPoint, pinsOf, textWidth, W, type Box, type NodeBox } from "./geometry";
+import { computeRoutes, endLabelPos, HEAD, LH, linesOf, nodeH, packageRects, pinPoint, pinsOf, textWidth, W, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
 import { phaseLabel, type ViewContent } from "./views";
 
@@ -181,12 +181,30 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
       `<g class="edge${sel}" data-edge="${esc(e.id)}"><path class="line" d="${path}" fill="none" stroke="${col}" stroke-width="${e.kind === "flow" ? 1.8 : 1.3}"${edgeStroke(e.kind)}/>` +
       (opts.interactive ? `<path class="hit" d="${path}"/>` : "") +
       (e.label ? `<text x="${lx}" y="${ly}" text-anchor="${la}" font-size="10.5" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${F}">${esc(e.label)}</text>` : "") +
+      (e.endLabel ? endLabelMarkup(C, endLabelPos(rt.to), e.endLabel, col, F) : "") +
       `</g>`;
   }
   let ns = "", ps = "";
   for (const [, b] of box) ns += nodeMarkup(C, b, opts, F, MONO);
   for (const [, b] of box) ps += pinsMarkup(C, b, opts, MONO);
   return { es, ns: ns + ps, box };
+}
+
+/**
+ * 線の端に書く文字（多重度など、8.2.3 の multiplicity）を SVG の文字列にする。
+ *
+ * @param C 色の関数
+ * @param at 文字の位置と揃え（`endLabelPos` の結果）
+ * @param text 書く文字
+ * @param col 文字の色（線と同じ色）
+ * @param F 文字のフォント
+ * @returns `<text class="end" …>文字</text>` の文字列
+ * @example
+ * endLabelMarkup(CV, { x: 104, y: 44, a: "start" }, "[4]", "var(--ink2)", "inherit")
+ * // → '<text class="end" x="104" y="44" text-anchor="start" font-size="10" …>[4]</text>'
+ */
+function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, text: string, col: string, F: string): string {
+  return `<text class="end" x="${at.x}" y="${at.y}" text-anchor="${at.a}" font-size="10" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${F}">${esc(text)}</text>`;
 }
 
 /**

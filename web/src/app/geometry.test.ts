@@ -1,6 +1,6 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
-import { packageRects, PKG_PAD, PKG_TAB, type Box } from "./geometry";
+import { endLabelPos, packageRects, PKG_PAD, PKG_TAB, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -37,5 +37,31 @@ describe("packageRects（F-VIEW-9）", () => {
     const rs = packageRects([{ keys: ["A"], inner: [1] }, { keys: ["B"], inner: [0] }], boxOf);
     // Assert
     expect(rs.every((r) => r !== null)).toBe(true);
+  });
+});
+
+describe("endLabelPos（8.2.3 の multiplicity：線の端の文字）", () => {
+  const end = (P: [number, number], N: [number, number]): RouteEnd => ({ P, N, side: "t", t: 0.5, pin: null });
+
+  it("上の辺の端では、線の右・辺の上に置く", () => {
+    // Act
+    const at = endLabelPos(end([100, 50], [0, -1]));
+    // Assert
+    expect(at).toEqual({ x: 104, y: 44, a: "start" });
+  });
+
+  it("下の辺の端では、線の右・辺の下に置く", () => {
+    // Act
+    const at = endLabelPos(end([100, 50], [0, 1]));
+    // Assert
+    expect(at).toEqual({ x: 104, y: 64, a: "start" });
+  });
+
+  it("左右の辺の端では、辺の外側に向けて揃え、線の上に置く", () => {
+    // Act
+    const [left, right] = [endLabelPos(end([0, 25], [-1, 0])), endLabelPos(end([224, 25], [1, 0]))];
+    // Assert
+    expect(left).toEqual({ x: -6, y: 20, a: "end" });
+    expect(right).toEqual({ x: 230, y: 20, a: "start" });
   });
 });

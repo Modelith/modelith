@@ -576,6 +576,22 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
   return out;
 }
 
+/**
+ * 線の端に書く文字（多重度など）の位置。端のある辺の外側に置き、線に重ならないよう線の横にずらす。
+ *
+ * @param end 線の端（位置 P と、辺の外向きの向き N）
+ * @returns 文字の位置（x・y はベースライン）と揃え
+ * @example
+ * endLabelPos({ P: [100, 50], N: [0, -1], … }) // → { x: 104, y: 44, a: "start" }（上の辺：線の右、辺の上）
+ * endLabelPos({ P: [100, 50], N: [0, 1], … })  // → { x: 104, y: 64, a: "start" }（下の辺：線の右、辺の下）
+ * endLabelPos({ P: [0, 25], N: [-1, 0], … })   // → { x: -6, y: 20, a: "end" }（左の辺：線の上、辺の左）
+ */
+export function endLabelPos(end: RouteEnd): { x: number; y: number; a: "start" | "end" } {
+  const [x, y] = end.P, [nx, ny] = end.N;
+  if (nx !== 0) return { x: x + nx * 6, y: y - 5, a: nx > 0 ? "start" : "end" };
+  return { x: x + 4, y: ny < 0 ? y - 6 : y + 14, a: "start" };
+}
+
 /** 自動配置で上から並べる順位。 */
 const RANK: Record<string, number> = {
   "concern def": 0, requirement: 1, "requirement def": 2, part: 3, "part def": 3, "verification def": 3, "attribute def": 5,

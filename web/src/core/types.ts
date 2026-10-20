@@ -173,6 +173,8 @@ export interface ModelEdge {
   idx?: number;
   /** メッセージのアイテム型。 */
   type?: string;
+  /** 終わりの端に書く文字（部品として持つ線の多重度と飾り。`[4]`・`ordered`・`redefines w` など。8.2.3）。Rust のコアだけが作る。 */
+  endLabel?: string;
 }
 
 export interface Problem {
