@@ -103,8 +103,8 @@ package ModelithRequirements {
         }
 
         // ---- ビュー ------------------------------------------------
-        requirement def <'F-VIEW-1'> SevenViewsReq {
-            doc /* トレーサビリティ・構造・制御ループ・内部ブロック図・振る舞い・シーケンス・すべて、の 7 つのビューを持つ */
+        requirement def <'F-VIEW-1'> BuiltInViewsReq {
+            doc /* トレーサビリティ・構造・制御ループ・内部ブロック図・振る舞い・シーケンス・アクションの流れ・すべて、の 8 つのビューを持つ */
         }
         requirement def <'F-VIEW-2'> ViewTabsReq {
             doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する */
@@ -118,7 +118,7 @@ package ModelithRequirements {
                    フォルダを開けないブラウザでは、保存でモデルと配置ファイルを両方ダウンロードし、開くときに 2 つを一緒に選べば配置も戻る */
         }
         requirement def <'F-VIEW-7'> StandardViewReq {
-            doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・StateTransitionView・SequenceView）から決める（ADR-0005）。
+            doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・ActionFlowView・StateTransitionView・SequenceView）から決める（ADR-0005）。
                    expose は要素（A）・中身（A::*）・入れ子すべて（A::**、A::*::**）と、[...] の絞り込みを扱い、filter は @メタクラス と @メタデータ で絞り込む。
                    render の asTreeDiagram・asInterconnectionDiagram は図の種類より優先する。扱えない図の種類・描き方・絞り込みは、黙って捨てずに問題一覧で知らせる */
         }
@@ -291,7 +291,7 @@ package ModelithRequirements {
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
         #derivation dependency from ParseParityReq to EditBothWaysNeed;
-        #derivation dependency from SevenViewsReq to ViewsNeed;
+        #derivation dependency from BuiltInViewsReq to ViewsNeed;
         #derivation dependency from ViewTabsReq to ViewsNeed;
         #derivation dependency from LayoutReq to ViewsNeed;
         #derivation dependency from UnsavedLayoutReq to SafetyNeed;
@@ -420,7 +420,7 @@ package ModelithRequirements {
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
         satisfy ParseParityReq by Core;
-        satisfy SevenViewsReq by DiagramUI;
+        satisfy BuiltInViewsReq by DiagramUI;
         satisfy ViewTabsReq by DiagramUI;
         satisfy LayoutReq by DiagramUI;
         satisfy UnsavedLayoutReq by Workspace;
@@ -594,7 +594,7 @@ package ModelithRequirements {
                 verify CreateViewReq;
                 verify StandardViewReq;
                 verify NoSilentDropReq;
-                verify SevenViewsReq;
+                verify BuiltInViewsReq;
                 verify ViewTabsReq;
                 verify CanvasReq;
                 verify TextToDiagramReq;
@@ -653,7 +653,7 @@ package ModelithRequirements {
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
-                verify SevenViewsReq;
+                verify BuiltInViewsReq;
                 verify NarrowScreenReq;
                 verify LookReq;
                 verify CanvasReq;
