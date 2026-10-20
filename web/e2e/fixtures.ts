@@ -105,9 +105,9 @@ export async function typeAtEnd(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text);
 }
 
-/** 図に描かれている要素のキー。 */
+/** 図に描かれている要素のキー（中に部品を描く部品は、線の下の層 #gEdges にある）。 */
 export const nodeKeys = (page: Page): Promise<string[]> =>
-  page.locator("#gNodes .node, #gNodes .lifeline").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset["key"] ?? ""));
+  page.locator("#gNodes .node, #gNodes .lifeline, #gEdges .node").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset["key"] ?? ""));
 
 /** このブラウザに追加したプラグイン（web/src/plugins/browser-store.ts の BrowserPlugin と同じ形）。 */
 export interface BrowserPluginRecord {

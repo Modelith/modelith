@@ -200,6 +200,64 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     await expect(page.locator('[data-edge="comp|Car|Wheel|wheels#1"] text.end')).toHaveText("[4]");
   });
 
+  test("F-VIEW-7: InterconnectionView に、結び付け・3 つ以上をつなぐ接続・部品の中の部品を SysML の記法で描く", async ({ page }) => {
+    // Arrange
+    const text = `package W {
+    port def Sig;
+    part def Impeller { port shaft : Sig; }
+    part def Pump { port pin : Sig; port rpm : Sig; part impeller : Impeller; connect pin to impeller.shaft; }
+    part def Motor { port pout : Sig; port rpm : Sig; }
+    part def Sensor { port sig : Sig; }
+    part def Plant {
+        part pump : Pump;
+        part motor : Motor;
+        part sensor : Sensor;
+        connect motor.pout to pump.impeller.shaft;
+        bind motor.rpm = pump.rpm;
+        connect (pump.pin, motor.pout, sensor.sig);
+    }
+    view iv : InterconnectionView { expose W::Plant; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="iv"]').click();
+    // Assert（部品の中の部品・3 つ以上をつなぐ接続の点・結び付けは矢印の無い線と「=」・部品の中へ届く接続）
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["j:#1", "u:motor", "u:pump", "u:pump.impeller", "u:sensor"]);
+    await expect(page.locator('[data-key="j:#1"] circle')).toBeVisible();
+    await expect(page.locator('[data-edge="connect|j:#1|u:sensor|#1"]')).toHaveCount(1);
+    await expect(page.locator('[data-edge="bind|u:motor|u:pump|=#1"] path.line')).not.toHaveAttribute("marker-end", /./);
+    await expect(page.locator('[data-edge="bind|u:motor|u:pump|=#1"] text')).toHaveText("=");
+    await expect(page.locator('[data-edge="flow|u:motor|u:pump.impeller|#1"]')).toHaveCount(1);
+    await expect(page.locator('[data-edge="flow|u:pump|u:pump.impeller|#1"]')).toHaveCount(1);
+  });
+
+  test("F-VIEW-7: GeneralView に、割り当ての線を «allocate» の破線と開いた矢印で描く", async ({ page }) => {
+    // Arrange
+    const text = `package A {
+    part def Pumping;
+    part def PumpUnit;
+    allocation def FunctionToPart;
+    allocation a : FunctionToPart allocate Pumping to PumpUnit;
+    view gv : GeneralView { expose A::*; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="gv"]').click();
+    // Assert
+    const line = page.locator('[data-edge="allocate|Pumping|PumpUnit|«allocate» a#1"]');
+    await expect(line.locator("path.line")).toHaveAttribute("stroke-dasharray", "6 4");
+    await expect(line.locator("path.line")).toHaveAttribute("marker-end", "url(#mOpen)");
+    await expect(line.locator("text")).toHaveText("«allocate» a");
+  });
+
   test("F-VIEW-7: テキストで expose を書き換えると、開いている図も変わる", async ({ page }) => {
     // Arrange
     await openView(page, "reqs");
