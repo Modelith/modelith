@@ -137,7 +137,13 @@ export type Rel =
   | (RelBase & { rel: "flow"; item: string; a: string; b: string; name?: string; type?: string; usage?: Entry })
   /** `ends` は端が 3 つ以上のときだけある（n 項の `connect (a, b, c)`、8.2.2.13.1）。Rust のコアだけが作る。 */
   | (RelBase & { rel: "connect"; a: string; b: string; item: string; usage: Entry; ends?: string[] })
-  | (RelBase & { rel: "transition"; from: string; ev: string; to: string })
+  /**
+   * 遷移（`transition t first a accept E via p if g do e then b;`、状態の中の `accept E then b;`・`if g then b;`・`then b;`、8.2.2.18）。
+   * 名前・`via`・ガード・効果は Rust のコアだけが記録する（暫定コアは `from`・`ev`・`to` だけ）。
+   */
+  | (RelBase & { rel: "transition"; from: string; ev: string; to: string; name?: string; via?: string; guard?: string; effect?: string })
+  /** 状態の本体の最初の遷移（`entry; then s;`・`entry; if g then s;`、EntryTransitionMember、8.2.2.18）。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "entryTransition"; to: string; guard?: string })
   /** `bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。Rust のコアだけが作る。 */
   | (RelBase & { rel: "bind"; a: string; b: string; usage: Entry })
   /** `allocate x to y;`（AllocationUsage、8.2.2.15）。Rust のコアだけが作る。 */

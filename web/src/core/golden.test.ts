@@ -53,19 +53,33 @@ const RUST_EXTRA_ERRORS: Record<string, { reason: string; pos: (text: string) =>
 const RUST_EXTRA_RELS: Record<string, string> = {
   succession: "継起（first … then・then b;・then action b;、8.2.2.14・8.2.2.17）を関係として記録する（モックは読み飛ばす）",
   successionFlow: "順序付きの流れ（succession flow、8.2.2.16）を関係として記録する（モックは読み飛ばす）",
+  entryTransition: "状態の本体の最初の遷移（entry; then s;、8.2.2.18）を関係として記録する（モックは読み飛ばす）",
 };
 
 /**
- * Rust だけが記録する種類の関係（RUST_EXTRA_RELS）を、結果から取り除く。
+ * Rust のコアが、SysML v2 仕様に合わせて関係に足した項目（モックは記録しない。ADR-0002 の許容リスト、ADR-0015）。
+ * 比べる前に、Rust の結果のその種類の関係から取り除く。
+ */
+const RUST_EXTRA_REL_FIELDS: Record<string, { fields: string[]; reason: string }> = {
+  transition: { fields: ["name", "via", "guard", "effect"], reason: "遷移の名前・via・ガード・効果（8.2.2.18）を記録する（モックは捨てる）" },
+};
+
+/**
+ * Rust だけが記録する種類の関係（RUST_EXTRA_RELS）と、関係に足した項目（RUST_EXTRA_REL_FIELDS）を、結果から取り除く。
  *
  * @param v テストの結果（project の結果を JSON にしたもの）
- * @returns rels から許容リストの種類を除いた結果
+ * @returns rels から許容リストの種類と項目を除いた結果
  * @example
- * withoutExtraRels({ rels: [{ rel: "flow" }, { rel: "succession" }] }) // → { rels: [{ rel: "flow" }] }
+ * withoutExtraRels({ rels: [{ rel: "flow" }, { rel: "succession" }] })          // → { rels: [{ rel: "flow" }] }
+ * withoutExtraRels({ rels: [{ rel: "transition", from: "a", name: "t" }] })    // → { rels: [{ rel: "transition", from: "a" }] }
  */
 function withoutExtraRels(v: unknown): unknown {
-  const o = v as { rels: { rel: string }[] };
-  return { ...o, rels: o.rels.filter((r) => !(r.rel in RUST_EXTRA_RELS)) };
+  const o = v as { rels: Record<string, unknown>[] };
+  const strip = (r: Record<string, unknown>): Record<string, unknown> => {
+    const extra = RUST_EXTRA_REL_FIELDS[String(r.rel)]?.fields ?? [];
+    return Object.fromEntries(Object.entries(r).filter(([k]) => !extra.includes(k)));
+  };
+  return { ...o, rels: o.rels.filter((r) => !(String(r.rel) in RUST_EXTRA_RELS)).map(strip) };
 }
 
 function withoutAllowed(v: unknown, positions: number[]): unknown {

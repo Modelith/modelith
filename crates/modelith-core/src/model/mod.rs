@@ -1033,7 +1033,9 @@ impl<'a> Builder<'a> {
                 }
                 // 継起と順序付きの流れは一般の図の線にしない（アクションの流れの図に描く）
                 RelKind::Succession { .. } | RelKind::SuccessionFlow { .. } => {}
-                RelKind::Transition { from, ev, to } => {
+                // 最初の遷移は、状態遷移の図にだけ描く
+                RelKind::EntryTransition { .. } => {}
+                RelKind::Transition { from, ev, to, .. } => {
                     if let Some(a) = self.node_ancestor(pe) {
                         let ev = if ev.is_empty() {
                             String::new()

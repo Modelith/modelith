@@ -943,5 +943,37 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(a?.exprs).toEqual([]);
       });
     });
+
+    describe("遷移（TransitionUsage・TargetTransitionUsage・EntryTransitionMember、8.2.2.18）", () => {
+      it("transition はトリガ・via・ガード・効果・名前も記録する（以前はガードと効果を捨てていた）", () => {
+        // Arrange
+        const text = "package P { state def S { state a; state b; transition t first a accept Go via p if x > 0 do beep then b; } }";
+        // Act
+        const rels = parse(text).rels.flatMap((r) => (r.rel === "transition" ? [[r.from, r.ev, r.to, r.name, r.via, r.guard, r.effect]] : []));
+        // Assert
+        expect(rels).toEqual([["a", "Go", "b", "t", "p", "x > 0", "beep"]]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("状態の中の accept E then b・if g then b・then b は、直前の状態からの遷移にする（以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { state def S { state a; accept Go then b; state b; if x then a; then a; } }";
+        // Act
+        const rels = parse(text).rels.flatMap((r) => (r.rel === "transition" ? [[r.from, r.ev, r.to, r.guard ?? ""]] : []));
+        // Assert
+        expect(rels).toEqual([["a", "Go", "b", ""], ["b", "", "a", "x"], ["b", "", "a", ""]]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("entry の直後の then s は、最初の遷移にする（継起にしない）", () => {
+        // Arrange
+        const text = "package P { state def S { entry; then idle; state idle; } }";
+        // Act
+        const rels = parse(text).rels.map((r) => [r.rel, r.rel === "entryTransition" ? r.to : ""]);
+        // Assert
+        expect(rels).toEqual([["entryTransition", "idle"]]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
   });
 }
