@@ -518,15 +518,16 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。ただし誤った表示の修正と alpha.7 以降に読むようにした構文のケースは、Rust だけで動かす（ADR-0015）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般ビューに、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクティビティ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/app/state-machine.test.ts：状態遷移図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクティビティ図・状態遷移図の draw.io の図形と線 */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel、then event occurrence の継起・ビューの filter の and・or・xor・not・括弧と istype・hastype・render の合成形と rendering の参照・シナリオの順序の見つからない相手と循環・3 段以上の特徴量の連鎖とその見つからない段）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。ただし誤った表示の修正と alpha.7 以降に読むようにした構文のケースは、Rust だけで動かす（ADR-0015）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般ビューに、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクティビティ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/app/state-machine.test.ts：状態遷移図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクティビティ図・状態遷移図の draw.io の図形と線。web/src/app/sequence.test.ts：シーケンス図の中身（ライフライン・段の順のメッセージ・イベントとその札・イベントの間の順序の線・段の数）と記法（白抜きの丸・破線と開いた矢印・丸の縁までのメッセージ、8.2.3.9）、draw.io のイベントの図形。ibd.test.ts と geometry.test.ts：3 段以上の連鎖の端の部品と、入れ子の部品の高さと幅 */
             objective {
                 verify StandardViewReq;
                 verify PackageFrameReq;
+                verify SequenceReq;
                 verify NoSilentDropReq;
             }
         }
         verification def RustSyntaxTest {
-            doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・依存の相手の並び・接続の端（2 項・n 項・bind・allocate）・種類のキーワードの無い individual・継起の端とガード・succession flow・アクションの節（制御の節・send・accept・assign・terminate・if・while・loop・for）とその引数と本体・遷移の元と先・トリガ・ガード・効果（本体を含む）と状態の中の省略形の遷移・parallel・ロスレス・途中で切った入力や深い入れ子でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置・接続・結び付け・割り当て・フローの宣言と関係・値の書き方（:=・default）・コメントの本文と注釈する相手・別の言語での表し方の言語と本文・individual・書いた語を種類にしたアクションの節・if と while の条件と本体（else の本体）・直前の要素から引く継起とガード・順序付きの流れ・遷移の名前・トリガ・via・ガード・効果と直前の状態から引く省略形の遷移・entry の直後の最初の遷移・状態の entry・do・exit と並行の状態）。web/src/core/rust.test.ts：コアが失敗しても例外を投げずに知らせる。ADR-0015 */
+            doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・依存の相手の並び・接続の端（2 項・n 項・bind・allocate）・種類のキーワードの無い individual・継起の端とガード・succession flow・アクションの節（制御の節・send・accept・assign・terminate・if・while・loop・for）とその引数と本体・遷移の元と先・トリガ・ガード・効果（本体を含む）と状態の中の省略形の遷移・parallel・then event の参照の形・render の合成形の名前・ロスレス・途中で切った入力や深い入れ子でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置・接続・結び付け・割り当て・フローの宣言と関係・値の書き方（:=・default）・コメントの本文と注釈する相手・別の言語での表し方の言語と本文・individual・書いた語を種類にしたアクションの節・if と while の条件と本体（else の本体）・直前の要素から引く継起とガード・順序付きの流れ・遷移の名前・トリガ・via・ガード・効果と直前の状態から引く省略形の遷移・entry の直後の最初の遷移・状態の entry・do・exit と並行の状態・then event occurrence の継起と、状態の本体ではイベントを継起の元にしないこと・render の合成形の rendering と、view の表し方の相手）。web/src/core/rust.test.ts：コアが失敗しても例外を投げずに知らせる。ADR-0015 */
             objective {
                 verify NoSilentDropReq;
                 verify ProblemsReq;
@@ -534,18 +535,19 @@ package ModelithRequirements {
             }
         }
         verification def RustModelTest {
-            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方・状態定義ごとの状態遷移の図の要素のキー（入れ子と開始・終了の記号）と線の ID とラベル・並行の状態・見つからない遷移の相手）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定と、alpha.9 で Rust だけが確かめる遷移の相手は比べない）。web/src/core/rust.test.ts：状態遷移の図を宣言の参照に戻す。ADR-0016 */
+            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方・状態定義ごとの状態遷移の図の要素のキー（入れ子と開始・終了の記号）と線の ID とラベル・並行の状態・見つからない遷移の相手・シナリオごとのシーケンス図のライフライン・イベント（入れ子の部品と型の中のもの）・メッセージの段と順序に合わせた段の決め方・イベントの間の順序の線・見つからない順序の相手と循環する順序・filter の論理式の読み方と優先順位・render がたどる rendering・3 段以上の特徴量の連鎖と見つからない段）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定と、alpha.9 で Rust だけが確かめる遷移の相手・特徴量の連鎖の段・シナリオの順序は比べない）。web/src/core/rust.test.ts：状態遷移の図とシーケンス図を宣言・関係の参照に戻す。ADR-0016 */
             objective {
                 verify ParseParityReq;
                 verify ProblemsReq;
                 verify PhaseReq;
                 verify TraceGapReq;
                 verify StandardViewReq;
+                verify SequenceReq;
                 verify RobustReq;
             }
         }
         verification def RustEditTest {
-            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）、状態遷移の図の遷移の削除（transition の文・省略形の遷移・最初の遷移）・入れ子の状態の削除と名前の変更・図からの遷移の追加（同じ本体・本体をまたぐ名前の道のり・終了の記号へ）・状態遷移の図の保存（StateTransitionView）も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
+            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）、状態遷移の図の遷移の削除（transition の文・省略形の遷移・最初の遷移）・入れ子の状態の削除と名前の変更・図からの遷移の追加（同じ本体・本体をまたぐ名前の道のり・終了の記号へ）・状態遷移の図の保存（StateTransitionView）、シーケンス図のイベントの間の順序の線の削除、3 段以上の連鎖の端の部品（u:a.x.v）の線の削除と名前の変更も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
             objective {
                 verify DiagramToTextReq;
                 verify RenameReq;
@@ -629,11 +631,12 @@ package ModelithRequirements {
             }
         }
         verification def ViewsE2E {
-            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般ビューの特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般ビューのメモとその削除・インスペクタのメモと別の言語での表し方、アクティビティ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置、状態遷移図の記号・入れ子と並行の領域・遷移のラベル・遷移の削除と追加・ツリーから開く（＋メニューの組み込みのビューは 8 つのまま）・状態定義ごとの配置・「振る舞い」の図の一般ビューとしての保存を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け・図の種類のツールチップ（＋メニュー・タブ・保存された図のサブバー）と狭い画面の＋メニューに添える SysML v2 の標準ビューの名前（Chromium で操作） */
+            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般ビューの特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般ビューのメモとその削除・インスペクタのメモと別の言語での表し方、アクティビティ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置、状態遷移図の記号・入れ子と並行の領域・遷移のラベル・遷移の削除と追加・ツリーから開く（＋メニューの組み込みのビューは 8 つのまま）・状態定義ごとの配置・「振る舞い」の図の一般ビューとしての保存、シーケンス図のイベント（入れ子の部品のものも）とイベントの間の順序の線・その選択と削除、filter の論理式と render の合成形の view、内部ブロック図の 3 段の連鎖の端と見つからない段を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け・図の種類のツールチップ（＋メニュー・タブ・保存された図のサブバー）と狭い画面の＋メニューに添える SysML v2 の標準ビューの名前（Chromium で操作） */
             objective {
                 verify PlainWordsReq;
                 verify CreateViewReq;
                 verify StandardViewReq;
+                verify SequenceReq;
                 verify NoSilentDropReq;
                 verify BuiltInViewsReq;
                 verify ViewTabsReq;
@@ -707,10 +710,11 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・シーケンス図（SequenceView のイベントと順序。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
+                verify SequenceReq;
                 verify BuiltInViewsReq;
                 verify NarrowScreenReq;
                 verify LookReq;
