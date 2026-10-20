@@ -101,6 +101,14 @@ package ModelithRequirements {
         requirement def <'F-EDIT-7'> NewPackageGuideReq {
             doc /* package の無いファイルで図から要素を置こうとしたら、断らずに新しい package を作るよう案内し、名前を決めて作ったうえで要素を置く */
         }
+        requirement def <'F-EDIT-9'> WordHelpReq {
+            doc /* テキストの語（SysML v2 のキーワード・標準ビューの名前・よく使う標準ライブラリの名前）の意味を、SysML v2 の構文を知らない人にも分かる言葉で示す（ADR-0014）。
+                   広い画面では、語にマウスを乗せるとツールチップで示し、カーソルのある語の意味をテキストの下の 1 行に示す。コメントと文字列の中の語は説明しない */
+        }
+        requirement def <'F-EDIT-10'> PhoneTextReq {
+            doc /* 狭い画面（幅 760px 以下）は、モデルを見る・確かめる画面とする。テキストは初めは読み取り専用で（触ってもキーボードが出ない）、
+                   「編集」ボタンで編集できるようにし、もう一度押すと読み取り専用に戻す。語をダブルタップすると、その語を選び、意味を示す（F-EDIT-9） */
+        }
 
         // ---- ビュー ------------------------------------------------
         requirement def <'F-VIEW-1'> BuiltInViewsReq {
@@ -287,6 +295,8 @@ package ModelithRequirements {
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
         #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
         #derivation dependency from NoSilentDropReq to EditBothWaysNeed;
+        #derivation dependency from WordHelpReq to EditBothWaysNeed;
+        #derivation dependency from PhoneTextReq to AnywhereNeed;
         #derivation dependency from RenameReq to EditBothWaysNeed;
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
@@ -360,7 +370,7 @@ package ModelithRequirements {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
         }
         part def TextEditor {
-            doc /* テキストの編集・色付け・問題一覧（web/src/app/editor.ts） */
+            doc /* テキストの編集・色付け・問題一覧・語の説明（web/src/app/editor.ts・glossary.ts・word-help.ts） */
         }
         part def Workspace {
             doc /* 開いているファイルと未保存の変更、保存・競合・自動保存（web/src/workspace） */
@@ -416,6 +426,8 @@ package ModelithRequirements {
         satisfy DiagramToTextReq by DiagramUI;
         satisfy NewPackageGuideReq by DiagramUI;
         satisfy NoSilentDropReq by Core;
+        satisfy WordHelpReq by TextEditor;
+        satisfy PhoneTextReq by TextEditor;
         satisfy RenameReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
@@ -550,11 +562,24 @@ package ModelithRequirements {
             }
         }
         verification def ViewNamesTest {
-            doc /* web/src/app/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・保存された図・タブ）、図の名前の候補の「〜の図」 */
+            doc /* web/src/app/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・保存された図・タブ）、標準ビュー定義の短い名前（afv など）の読み替え、図の名前の候補の「〜の図」 */
             objective {
                 verify PlainWordsReq;
                 verify BuiltInViewsReq;
                 verify StandardViewReq;
+            }
+        }
+        verification def GlossaryTest {
+            doc /* web/src/app/glossary.test.ts：テキストの位置にある語の説明（語の始まりと終わりの位置・空白・範囲外・表に無い語・コメントと文字列と引用名の中の語・2 語と 3 語のキーワード・主なキーワードの画面の言葉・8 つの標準ビューの名前と短い名前・標準ライブラリの型と単位） */
+            objective {
+                verify WordHelpReq;
+                verify PlainWordsReq;
+            }
+        }
+        verification def TapTest {
+            doc /* web/src/app/tap.test.ts：タップ（動きと時間の上限）とダブルタップ（間の時間と離れ方の上限）の判定 */
+            objective {
+                verify PhoneTextReq;
             }
         }
         verification def LocalFolderProviderTest {
@@ -626,6 +651,23 @@ package ModelithRequirements {
                 verify TextIsSourceReq;
             }
         }
+        verification def WordHelpE2E {
+            doc /* web/e2e/words.spec.ts：キーワードと標準ライブラリの型にマウスを乗せたときのツールチップ、コメントの中の語と利用者の付けた名前では出さないこと、クリックとキー操作で動かしたカーソルのある語の説明の行、幅 390px のテキストの読み取り専用と「編集」ボタンでの切り替え、画面の幅を変えたときの戻り方、ダブルタップの案内とダブルタップでの語の選択と説明（Chromium のタッチで操作） */
+            objective {
+                verify WordHelpReq;
+                verify PhoneTextReq;
+                verify NarrowScreenReq;
+                verify PlainWordsReq;
+            }
+        }
+        verification def MobileE2E {
+            doc /* web/e2e/mobile.spec.ts：iPhone（devices["iPhone 13"]、WebKit）と Android（devices["Pixel 5"]、Chromium）の端末の設定で、テキストの読み取り専用とダブルタップの案内、「編集」のタップでの切り替え、ダブルタップでの語の選択と説明（キーワードと標準ライブラリの型） */
+            objective {
+                verify PhoneTextReq;
+                verify WordHelpReq;
+                verify NarrowScreenReq;
+            }
+        }
         verification def FilesE2E {
             doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き・最後のファイルを閉じた後の画面、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
             objective {
@@ -658,7 +700,7 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
@@ -674,6 +716,8 @@ package ModelithRequirements {
                 verify PhaseReq;
                 verify TraceGapReq;
                 verify SourceOfferReq;
+                verify WordHelpReq;
+                verify PhoneTextReq;
             }
         }
         verification def LayoutTest {

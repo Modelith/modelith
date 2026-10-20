@@ -107,11 +107,12 @@
     </section>
     <div class="split" id="splitText" role="separator" aria-orientation="vertical" aria-label="テキストの幅を変更"></div>
     <section class="pane textpane" aria-label="SysML v2 テキスト">
-      <div class="panehead"><span id="docName" class="docname"></span><span id="textInfo">SysML v2 テキスト</span></div>
+      <div class="panehead"><span id="docName" class="docname"></span><span id="textInfo">SysML v2 テキスト</span><button id="btnEditText" class="editbtn" aria-pressed="false" title="テキストを編集できるようにする。もう一度押すと読み取り専用に戻す">編集</button></div>
       <div class="editor">
         <pre id="hl" aria-hidden="true"></pre>
         <textarea id="ed" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="SysML v2 テキスト"></textarea>
       </div>
+      <div class="wordline" id="wordLine" aria-live="polite"></div>
       <div class="problems" id="problems"></div>
     </section>
     <section class="nodoc" id="noDoc" hidden aria-labelledby="noDocTitle">
@@ -127,6 +128,7 @@
   </main>
 </div>
 <div class="ctx" id="ctx" role="menu" hidden></div>
+<div class="wordtip" id="wordTip" role="tooltip" hidden></div>
 <div class="modal" id="plugins" hidden role="dialog" aria-modal="true" aria-labelledby="pluginsTitle">
   <div class="box">
     <b id="pluginsTitle">プラグイン</b>

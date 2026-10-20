@@ -1,6 +1,7 @@
 // 統合テスト（e2e）。ビルドしたアプリをプレビューで配信し、Chromium で実際に操作する。
 // File System Access API を使う要求があるため、ほとんどのテストは Chromium だけで動かす。
 // v1 のプラグインの隔離（ADR-0018 §3.1）は、ブラウザごとに違いがあるので、Firefox と WebKit でも動かす（テスト名の「隔離」のまとまり）。
+// スマホ（F-EDIT-10）は、本物の端末の設定（画面の大きさ・タッチ・モバイルの表示）で、iPhone（WebKit）と Android（Chromium）でも動かす（e2e/mobile.spec.ts）。
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 4180;
@@ -34,12 +35,17 @@ export default defineConfig({
     toHaveScreenshot: { animations: "disabled", caret: "hide", scale: "css", threshold: 0.05 },
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1400, height: 900 } } },
+    { name: "chromium", testIgnore: "mobile.spec.ts", use: { ...devices["Desktop Chrome"], viewport: { width: 1400, height: 900 } } },
     ...(["firefox", "webkit"] as const).map((name) => ({
       name,
       testMatch: "script-plugins.spec.ts",
       grep: /隔離/,
       use: { ...devices[name === "firefox" ? "Desktop Firefox" : "Desktop Safari"], viewport: { width: 1400, height: 900 } },
+    })),
+    ...([["mobile-safari", "iPhone 13"], ["mobile-chrome", "Pixel 5"]] as const).map(([name, device]) => ({
+      name,
+      testMatch: "mobile.spec.ts",
+      use: { ...devices[device] },
     })),
   ],
   webServer: {

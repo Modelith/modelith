@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | 単体 | 1 つの関数・モジュール（I/O なし） | `web/src/**/*.test.ts`、`web/tools/**/*.test.ts`、Rust の `#[cfg(test)]` | Vitest、cargo test |
 | 結合 | モジュールの組み合わせ（コアとゴールデン、ワークスペースと偽のファイルシステム、要求仕様の検査） | 同上 | Vitest |
-| 統合（e2e） | ビルドしたアプリを Chromium で操作し、要求どおりに動くか（プラグインの隔離は Firefox・WebKit でも） | `web/e2e/*.spec.ts` | Playwright |
+| 統合（e2e） | ビルドしたアプリを Chromium で操作し、要求どおりに動くか（プラグインの隔離は Firefox・WebKit でも、スマホは iPhone・Android の端末の設定で） | `web/e2e/*.spec.ts` | Playwright |
 | 統合（UI） | 画面の見た目が変わっていないか（基準画像との比較） | `web/e2e/visual.spec.ts` と基準画像 `visual.spec.ts-snapshots/` | Playwright |
 
 `scripts/check.sh` がこの順に実行し、失敗した段階で止まる。CI も同じ。
@@ -50,6 +50,17 @@ Chromium に加えて Firefox と WebKit でも動かす（`playwright.config.ts
 - 追加でかかる時間は 1 分足らず（2026-10-19、クラウドの作業環境で計測。e2e 全体が Chromium だけで 4.4 分、3 つのブラウザで 5.0 分）。
 - WebKit（Linux）には OPFS が無いので、このまとまりはフォルダを開けないブラウザとして、「このブラウザ」に追加したプラグインで確かめる（`test.use({ fsAccess: false })`）。
 - 1 つのブラウザだけを動かすときは `scripts/e2e.sh --project firefox`（`chromium`・`webkit`）。
+
+### スマホは端末の設定で確かめる
+
+狭い画面のテキストの読み取り専用・「編集」ボタン・ダブルタップでの語の説明（F-EDIT-10）は、タッチとモバイルの表示に頼る。
+そのため `web/e2e/mobile.spec.ts` は、Playwright の端末の設定（画面の大きさ・タッチ・モバイルの表示）で、
+`mobile-safari`（`devices["iPhone 13"]`、WebKit）と `mobile-chrome`（`devices["Pixel 5"]`、Chromium）の 2 つのプロジェクトで動かす。
+ブラウザは、プラグインの隔離と同じく基準のブラウザのイメージのものを使う。`chromium` のプロジェクトは、このファイルを動かさない。
+
+- スマホのブラウザにはフォルダを開く API が無いので、フォルダを開けないブラウザとして動かす（`test.use({ fsAccess: false })`）。
+- ダブルタップは `page.touchscreen.tap` を 2 回続けて送り、ブラウザの `dblclick` に頼らずに確かめる。
+- スマホだけを動かすときは `scripts/e2e.sh --project mobile-safari --project mobile-chrome`。
 
 ## レポート（人が読むもの）
 

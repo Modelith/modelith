@@ -1,6 +1,6 @@
 // 画面に出す名前（ADR-0014、docs/development/ui-writing.md）。
 import { describe, expect, it } from "vitest";
-import { stdViewLabel } from "../core";
+import { standardViewName, stdViewLabel } from "../core";
 import { diagramName, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
 import { VIEWS } from "./views";
 
@@ -62,6 +62,35 @@ describe("stdViewLabel（標準ビューの、広く知られた名前。ui-writ
     const shown = stdViewLabel(std);
     // Assert
     expect(shown).toBe("一般ビュー");
+  });
+});
+
+describe("standardViewName（標準ビュー定義の名前にそろえる）", () => {
+  it("短い名前は、標準ビュー定義の名前にする", () => {
+    // Arrange
+    const short = "afv";
+    // Act
+    const std = standardViewName(short);
+    // Assert
+    expect(std).toBe("ActionFlowView");
+  });
+
+  it("標準ビュー定義の名前は、そのまま返す", () => {
+    // Arrange
+    const name = "StateTransitionView";
+    // Act
+    const std = standardViewName(name);
+    // Assert
+    expect(std).toBe("StateTransitionView");
+  });
+
+  it("標準ビュー定義でない名前は null（異常系。Object の持つ名前も含む）", () => {
+    // Arrange
+    const names = ["MyView", "toString", ""];
+    // Act
+    const std = names.map(standardViewName);
+    // Assert
+    expect(std).toEqual([null, null, null]);
   });
 });
 
