@@ -69,7 +69,7 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
 }
 
 /** 破線で描く線の種類。 */
-const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive"];
+const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency"];
 /** 終わりの端の矢印（マーカーの ID）。無い種類は開いた矢印（mOpen）。特殊化・部分集合は白抜きの三角、再定義は三角と縦棒、参照は三角と 2 つの点（8.2.3）。 */
 const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri", subset: "mTri", redefine: "mRedef", reference: "mRef" };
 

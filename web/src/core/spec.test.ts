@@ -711,5 +711,35 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("依存（Dependency、8.2.2.3・8.2.3.3 の binary-dependency）", () => {
+      it("dependency A, B to C; は、依存する側とされる側の組ごとに線になる", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; part def C; dependency A, B to C; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["dependency|A|C", "dependency|B|C"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("名前と、前に付けたメタデータ（#derivation 以外）は線のラベルになる", () => {
+        // Arrange
+        const text = "package P { metadata def trace; part def A; part def B; #trace dependency d from A to B; }";
+        // Act
+        const labels = build(parse(text)).edges.map((e) => e.label);
+        // Assert
+        expect(labels).toEqual(["«trace» d"]);
+      });
+
+      it("見つからない相手は、ほかの関係と同じ言い方で知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def A; dependency d from A to Nope; }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["「依存」関係の相手「Nope」が見つかりません（dependency）"]);
+      });
+    });
   });
 }

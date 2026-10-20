@@ -153,8 +153,10 @@ export interface ModelNode {
   typeKey?: string | null;
 }
 
-/** 線の種類。`specialize`・`subset`・`redefine`・`reference` は特殊化・部分集合・再定義・参照（8.2.3）で、Rust のコアだけが作る。 */
-export type EdgeKind = "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message" | "specialize" | "subset" | "redefine" | "reference";
+/** 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency` は特殊化・部分集合・再定義・参照・依存（8.2.3）で、Rust のコアだけが作る。 */
+export type EdgeKind =
+  | "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message"
+  | "specialize" | "subset" | "redefine" | "reference" | "dependency";
 
 /** 図に投影する関係。 */
 export interface ModelEdge {
