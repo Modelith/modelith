@@ -3,7 +3,7 @@
 Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示す。
 対象は、アプリが使う Rust のパーサ（`crates/modelith-core/src/syntax`・`project`、段階 A。ADR-0015）とモデル構築（`crates/modelith-core/src/model`。ADR-0016）と図（`web/src/app/`）。暫定の TS コア（`web/src/core/`）は、Rust のコアと同じテストで比べるために残している。
 
-- 照合日: 2026-10-19（Rust のコアで照合し直した。前回は 2026-10-13、暫定の TS コアで照合）
+- 照合日: 2026-10-20（アクションの流れの行を更新した。全体は 2026-10-19 に Rust のコアで照合し直した。その前は 2026-10-13、暫定の TS コアで照合）
 - 照合したコミット: `516deae`（dev）
 - 解析器や図を変えたら、この表も更新する。要求は [requirements.sysml](requirements.sysml) にだけ書き（ADR-0011）、この表は「仕様のどこまでに対応しているか」の記録とする。
 
@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 69・△ 15・× 12。⚠ は 0 件。
+件数：テキスト記法（2 章）96 項目のうち ○ 75・△ 14・× 7。⚠ は 0 件。
+
+alpha.9 の 1 回目の更新で、継起（`first … then`・`then`・ガード付き・`else`）・`succession flow`・制御の節（`fork`・`join`・`merge`・`decide`）・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` を読み、アクション定義の流れをアクションの流れ図（ActionFlowView）に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 69・△ 15・× 12 だった。
 
 alpha.8 の 3 回目の更新で、`:=`・`default` の値の種類・`individual`・`comment … about`・`rep … language` の本文を記録し、メモを一般の図に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 65・△ 17・× 14 だった。
 
@@ -138,24 +140,24 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 単独の `connect a to b;` | ○ | | 名前の無い接続（ConnectionUsage、8.2.2.13.1）として読み、`connection connect a to b;` と同じく内部ブロック図の線にする |
 | n 項の `connect (a, b, c)` | ○ | | 端をすべて残す（NaryConnectorPart、8.2.2.13.1）。内部ブロック図では、塗った点と、点から端ごとの矢印の無い線で描く（8.2.3.13 の n-ary-connection-dot・n-ary-segment）。一般の図には線にしない。見つからない端は「見つかりません」と示す |
 | `bind` / `binding` | ○ | | 名前の無いもの・名前付きのものを結び付けの使用として読み（BindingConnectorAsUsage、8.2.2.13.2）、親の「式」に入れない。内部ブロック図に、矢印の無い実線と「=」で描く（8.2.3.13 の binding-connection）。見つからない相手は「見つかりません」と示す |
-| `succession` / `first … then` | × | alpha.9 | 黙って捨てる |
+| `succession` / `first … then` | ○ | | 継起（SuccessionAsUsage、8.2.2.14）として記録する（名前付きの `succession s first a then b;` の名前も）。アクション定義の中の継起は、アクションの流れ図に実線と開いた矢印で描く（8.2.3.17）。見つからない相手は「見つかりません」と示す。状態定義の中の継起は記録するが、まだ線にしない（状態遷移は 2.7 の行） |
 | `interface def` / `interface … connect` | ○ | | |
 | `allocation def` / `allocation` / `allocate` | ○ | | 定義と使用（`allocation` の無い `allocate x to y;` は名前の無い使用）として本体ごと読み（8.2.2.15）、図に描く要素の間に «allocate» の破線と開いた矢印を描く（8.2.3.15 の allocate-relationship）。見つからない相手は「見つかりません」と示す。n 項の `allocate (a, b, c)` は線にしない |
 | `flow of F from a.p to b.p` | ○ | | |
 | `flow def`、名前付きのフロー | ○ | | `flow def` は定義、`flow f : FD from a.p to b.q;`・`flow f of I from … to …;` は使用として本体ごと読む（8.2.2.16）。名前付きのフローは名前の無いフローと同じ線にし、ラベルに `f : FD`・`f of I` を書く（8.2.3.16 の flow-label） |
-| `succession flow` | × | alpha.9 | 黙って捨てる |
+| `succession flow` | ○ | | 順序付きの流れ（SuccessionFlowUsage、8.2.2.16）として記録し、名前付きのものは使用にする。アクションの流れ図に、破線と開いた矢印、アイテム（名前付きは名前と型）のラベルで描く。一般の図・内部ブロック図には描かない |
 | `message` | ○ | | シーケンス図 |
 
 ### 2.7 アクション・状態（8.2.2.17〜18）
 
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
-| `action def` / `action` / `then action` | ○ | | 区画に手順として番号付きで並ぶ |
+| `action def` / `action` / `then action` | ○ | | 区画に手順として番号付きで並ぶ。アクションの流れ図には、角の丸い四角と継起の線で描く |
 | `perform action` | ○ | | |
-| アクションの継起 `first a1 then a2;` | × | alpha.9 | 流れの線を描かない |
-| `fork` / `join` / `merge` / `decide` | × | alpha.9 | 「まだ扱えない」と知らせる |
-| `if` / `while` / `for` | △ | alpha.9 | 中のアクションだけ取り出す。`for` は中身を出しているのに「まだ扱えない」と知らせる |
-| `send` / `accept` / `assign` / `terminate` | × | alpha.9 | `send`・`terminate` は知らせ、`accept` は黙って捨て、`assign` は親の「式」に入る |
+| アクションの継起 `first a1 then a2;` | ○ | | `first a then b;`・`then b;`（直前の要素から。続けて書いた `then` はどれも同じ要素から）・`then action b;`（`then` だけが継起）・`first start;`（続く継起の元）を読み、アクションの流れ図に描く。開始・終了（`start`・`done`）は塗った丸と、丸の中の塗った丸（8.2.3.17）。図から 2 つの要素の間に線を引くと `first a then b;` を書き、線を消すとその文（`then action b;` は `then` だけ）を消す |
+| `fork` / `join` / `merge` / `decide` | ○ | | 書いた語を種類にした使用（ControlNode、8.2.2.17）。fork・join は太い棒、merge・decide はひし形で描き、名前を横に書く（8.2.3.17）。`if g then b;`・`else b;`・`first d if g then b;`（GuardedSuccession）のガードは、線のラベル `[g]`・`[else]` |
+| `if` / `while` / `for` | ○ | | 書いた語（`loop` も）を種類にした使用（IfNode・WhileLoopNode・ForLoopNode、8.2.2.17）。条件（`for` は `x in xs`）と本体を記録し、`else` の本体と `else if` も本体に入れる。アクションの流れ図では «if» などの角の丸い四角に、条件と本体のアクションの名前（then と else を分ける）を書く。本体の中の継起は描かず、`until` の条件は記録しない |
+| `send` / `accept` / `assign` / `terminate` | ○ | | 書いた語を種類にした使用（SendNode・AcceptNode・AssignmentNode・TerminateNode、8.2.2.17）。`action s send x;` のように名前も付けられる。`assign` は親の「式」に入れない。アクションの流れ図では、send は右が尖った五角形、accept は左がへこんだ五角形、ほかは «assign»・«terminate» の角の丸い四角に、送るもの・受けるもの・代入を書く（8.2.3.17）。受けるものの型は確かめない |
 | `state def` / `state` / `exhibit state` | ○ | | |
 | `parallel` | △ | alpha.9 | 中の状態は読むが、並行であることを記録しない |
 | `entry` / `do` / `exit` | × | alpha.9 | 黙って捨てる |
@@ -227,7 +229,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- | --- |
 | GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
 | InterconnectionView | `iv` | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 2 段まで（部品の本体に書いた部品と、線の端 `a.b.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く）。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。3 段目より深い入れ子、対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
-| ActionFlowView | `afv` | ノードと線の図で代わりに描き、知らせる | × | alpha.9 |
+| ActionFlowView | `afv` | アクションの流れ図（expose した action def が対象。自動の図「アクションの流れ」とツリーの「アクションの流れで開く」でも開ける） | △ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータとその間のフロー、入れ子の本体の流れ、区画（swim lane）は無い | 0.3.0 以降 |
 | StateTransitionView | `stv` | 振る舞いの図（expose した要素） | △ 状態は描くが、遷移を線にしない | alpha.9 |
 | SequenceView | `sv` | シーケンス図（expose した occurrence def が対象） | △ メッセージだけ。イベント・継起・入れ子は無い | alpha.9 |
 | GeometryView | `gev` | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |
