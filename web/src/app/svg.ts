@@ -2,7 +2,7 @@
 
 import { family } from "../core";
 import { esc } from "./dom";
-import { computeRoutes, endLabelPos, HEAD, LH, linesOf, nodeH, packageRects, pinPoint, pinsOf, textWidth, W, type Box, type NodeBox } from "./geometry";
+import { boxesOf, computeRoutes, DOT, endLabelPos, HEAD, LH, linesOf, packageRects, pinPoint, pinsOf, textWidth, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
 import { phaseLabel, type ViewContent } from "./views";
 
@@ -70,8 +70,8 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
 
 /** 破線で描く線の種類。 */
 const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency", "allocate"];
-/** 矢印を付けない線の種類（結び付けは向きの無い実線、8.2.3.13 の binding-connection）。 */
-const UNDIRECTED_EDGES = ["bind"];
+/** 矢印を付けない線の種類（結び付けと、n 項の接続の点から端への線は向きの無い実線、8.2.3.13 の binding-connection・n-ary-segment）。 */
+const UNDIRECTED_EDGES = ["bind", "connect"];
 /** 終わりの端の矢印（マーカーの ID）。無い種類は開いた矢印（mOpen）。特殊化・部分集合は白抜きの三角、再定義は三角と縦棒、参照は三角と 2 つの点（8.2.3）。 */
 const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri", subset: "mTri", redefine: "mRedef", reference: "mRef" };
 
@@ -94,7 +94,7 @@ export function edgeStroke(kind: string): string {
   return `${dash} marker-end="url(#${END_MARKER[kind] ?? "mOpen"})"`;
 }
 
-const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req", bind: "k-con" };
+const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req", bind: "k-con", connect: "k-con" };
 
 /**
  * 図に出した package の枠の位置を求める（F-VIEW-9）。外側の枠から順に並べ、内側の枠が上に重なるようにする。
@@ -159,10 +159,11 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
   const { nodes, edges } = content;
   const F = opts.font || "inherit", MONO = opts.mono || "var(--mono)";
   const view = opts.view;
+  const rects = boxesOf(nodes, L.pos);
   const box = new Map<string, NodeBox>(
     nodes.map((n) => {
-      const p = L.pos[n.key] ?? [0, 0];
-      return [n.key, { x: p[0], y: p[1], w: W, h: nodeH(n), n, pins: pinsOf(n, L, view) }];
+      const r = rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
+      return [n.key, { ...r, n, pins: n.junction ? [] : pinsOf(n, L, view) }];
     }),
   );
   let es = "";
@@ -183,7 +184,7 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
     const col = ck ? C(ck) : C("ink2");
     const sel = opts.selEdge === e.id ? " sel" : "";
     es +=
-      `<g class="edge${sel}" data-edge="${esc(e.id)}"><path class="line" d="${path}" fill="none" stroke="${col}" stroke-width="${e.kind === "flow" ? 1.8 : 1.3}"${edgeStroke(e.kind)}/>` +
+      `<g class="edge${sel}" data-edge="${esc(e.id)}"><path class="line" d="${path}" fill="none" stroke="${col}" stroke-width="${e.kind === "flow" || e.kind === "connect" ? 1.8 : 1.3}"${edgeStroke(e.kind)}/>` +
       (opts.interactive ? `<path class="hit" d="${path}"/>` : "") +
       (e.label ? `<text x="${lx}" y="${ly}" text-anchor="${la}" font-size="10.5" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${F}">${esc(e.label)}</text>` : "") +
       (e.endLabel ? endLabelMarkup(C, endLabelPos(rt.to), e.endLabel, col, F) : "") +
@@ -228,6 +229,7 @@ function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, tex
  * // → '<g class="node" data-key="A" transform="translate(10,20)"><rect class="body" width="224" height="44" rx="0" …/>…«part def»…A…</g>'
  */
 function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
+  if (b.n.junction) return junctionMarkup(C, b, opts, F);
   const n = b.n, fam = n.fam, L2 = linesOf(n);
   const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
   const stroke = isSel ? C("sel") : C("k-" + fam);
@@ -252,6 +254,30 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
     });
   }
   return s + "</g>";
+}
+
+/**
+ * n 項の接続の点（8.2.3.13 の n-ary-connection-dot）を SVG の文字列にする。塗った丸で描き、名前があれば上に書く（cdot-label）。
+ *
+ * @param C 色の関数
+ * @param b 点の矩形（DOT 四方）と、その要素
+ * @param opts 描き方（選択・光らせる要素）
+ * @param F 文字のフォント
+ * @returns `<g class="node junction" data-key="キー" transform="translate(x,y)">…</g>` の文字列
+ * @example
+ * // (100, 40) にある名前 k の点、選択なし
+ * junctionMarkup(CV, b, { view: "ibd" }, "inherit")
+ * // → '<g class="node junction" data-key="j:k" transform="translate(100,40)"><circle class="body" cx="6" cy="6" r="6" …/><text …>k</text></g>'
+ */
+function junctionMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): string {
+  const n = b.n, r = DOT / 2;
+  const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
+  return (
+    `<g class="node junction${opts.pulse?.has(n.key) ? " pulse" : ""}" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})">` +
+    `<circle class="body" cx="${r}" cy="${r}" r="${r}" fill="${C("k-con")}" stroke="${isSel ? C("sel") : C("k-con")}" stroke-width="${isSel ? 2.6 : 1}"/>` +
+    (n.name ? `<text x="${r}" y="-6" text-anchor="middle" font-size="10.5" fill="${C("ink2")}" font-family="${F}">${esc(n.name)}</text>` : "") +
+    `</g>`
+  );
 }
 
 /**

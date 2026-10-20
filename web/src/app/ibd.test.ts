@@ -54,6 +54,33 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
     ]);
   });
 
+  it("端が 3 つ以上の接続は、点から端ごとに線を引く（8.2.3.13 の n-ary-connection）", () => {
+    // Arrange
+    const { M, c } = setup("package P { part def E { port o; } part def C { part a : E; part b : E; part e : E; connect (a.o, b, e); connection k connect (a, b, e); } }", "C");
+    // Act
+    const { nodes, edges } = ibdContentOf(M, c);
+    // Assert
+    expect(nodes.filter((n) => n.junction).map((n) => [n.key, n.kind])).toEqual([["j:#1", "connection"], ["j:k", "connection"]]);
+    expect(edges.map((e) => [e.id, e.kind, e.toPort])).toEqual([
+      ["connect|j:#1|u:a|#1", "connect", "port:o"],
+      ["connect|j:#1|u:b|#1", "connect", undefined],
+      ["connect|j:#1|u:e|#1", "connect", undefined],
+      ["connect|j:k|u:a|#1", "connect", undefined],
+      ["connect|j:k|u:b|#1", "connect", undefined],
+      ["connect|j:k|u:e|#1", "connect", undefined],
+    ]);
+  });
+
+  it("n 項の接続で、図の部品に当たる端が 2 つ未満なら点も線も描かない（境界値）", () => {
+    // Arrange
+    const { M, c } = setup("package P { part def E; part def C { part a : E; connect (a, x, y); } }", "C");
+    // Act
+    const { nodes, edges } = ibdContentOf(M, c);
+    // Assert
+    expect(nodes.map((n) => n.key)).toEqual(["u:a"]);
+    expect(edges).toEqual([]);
+  });
+
   it("端が図の部品に当たらない線は描かない（異常系）", () => {
     // Arrange
     const { M, c } = setup("package P { part def E; part def C { part a : E; flow from a to nope; } }", "C");
@@ -65,7 +92,7 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
 
   it("線の ID で、Rust のコアが同じ線を消せる（結合）", () => {
     // Arrange
-    const text = "package P { part def E { port o; port i; } flow def FD; part def C { part a : E; part b : E; flow from a.o to b.i; connect a.o to b.i; flow f : FD from a.o to b.i; bind a.o = b.i; } }";
+    const text = "package P { part def E { port o; port i; } flow def FD; part def C { part a : E; part b : E; flow from a.o to b.i; connect a.o to b.i; flow f : FD from a.o to b.i; bind a.o = b.i; connect (a, b, a.o); } }";
     const { M, c } = setup(text, "C");
     // Act
     const results = ibdContentOf(M, c).edges.map((e) => edit(text, { op: "deleteEdge", id: e.id, ctx: "C" }));

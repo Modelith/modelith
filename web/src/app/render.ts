@@ -3,7 +3,7 @@
 
 import { lineStart, type ModelNode } from "../core";
 import { $, esc } from "./dom";
-import { nodeH, pinPoint, pinsOf, W, type Box } from "./geometry";
+import { boxesOf, pinPoint, pinsOf, type Box } from "./geometry";
 import { relOptions } from "./relations";
 import { S, type EndSpec } from "./state";
 import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "./svg";
@@ -39,10 +39,10 @@ export function render(): void {
 }
 
 /**
- * 要素の矩形を、表示中のビューの配置から求める。
+ * 要素の矩形を、表示中のビューの配置から求める（`boxesOf` と同じ。n 項の接続の点は小さな正方形）。
  *
  * @param n 図の要素
- * @returns 左上の座標・幅（W = 224）・高さ（nodeH）。配置に座標が無ければ左上は (0, 0)
+ * @returns 左上の座標・幅・高さ（ふつうの要素は W = 224 と nodeH）。配置に座標が無ければ左上は (0, 0)
  * @example
  * // 表示中のビューで A が (100, 40) に置かれ、属性などの行が無いとき
  * boxOf(A) // → { x: 100, y: 40, w: 224, h: 44 }
@@ -50,8 +50,8 @@ export function render(): void {
  * boxOf(B) // → { x: 0, y: 0, w: 224, h: 44 }
  */
 export function boxOf(n: ModelNode): Box {
-  const p = curLayout().pos[n.key] ?? [0, 0];
-  return { x: p[0], y: p[1], w: W, h: nodeH(n) };
+  const nodes = CC().nodes;
+  return boxesOf(nodes.includes(n) ? nodes : [n], curLayout().pos).get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
 }
 
 /**
@@ -245,7 +245,8 @@ export function centerOn(key: string, onlyIfHidden = false): void {
   const n = nodeByKey(key);
   if (!p || !n) return;
   const r = $("#wrap").getBoundingClientRect();
-  const cx = p[0] + W / 2, cy = p[1] + nodeH(n) / 2;
+  const b = boxOf(n);
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
   const sx = cx * S.tf.s + S.tf.x, sy = cy * S.tf.s + S.tf.y;
   if (onlyIfHidden && sx > 40 && sx < r.width - 40 && sy > 40 && sy < r.height - 40) return;
   S.tf.x = r.width / 2 - cx * S.tf.s;
@@ -281,9 +282,10 @@ function miniGeom(): MiniGeom | null {
     const g = seqGeom(c);
     return { x0: g.x0, y0: g.y0, x1: g.x0 + g.w, y1: g.y0 + g.h, boxes: c.nodes.map((n, i) => ({ x: i * SEQ.dx, y: 0, w: SEQ.w, h: g.h - 20, fam: "part", key: n.key })), edges: [] };
   }
+  const rects = boxesOf(c.nodes, L);
   const bs = c.nodes.flatMap((n) => {
-    const p = L[n.key];
-    return p ? [{ x: p[0], y: p[1], w: W, h: nodeH(n), fam: n.fam as string, key: n.key }] : [];
+    const r = rects.get(n.key);
+    return L[n.key] && r ? [{ ...r, fam: n.fam as string, key: n.key }] : [];
   });
   if (!bs.length) return null;
   const at = new Map(bs.map((b) => [b.key, [b.x + b.w / 2, b.y + b.h / 2] as const]));

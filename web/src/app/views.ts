@@ -391,7 +391,7 @@ export function viewContent(M: Model, v: ViewDef): ViewContent {
 export const CC = (): ViewContent => viewContent(S.M, curView());
 
 /**
- * キーから要素を探す（`u:`・`l:` は現在のビューの部品・ライフライン）。
+ * キーから要素を探す（`u:`・`l:`・`j:` は現在のビューの部品・ライフライン・n 項の接続の点）。
  *
  * @param k 要素のキー
  * @returns 見つかった要素。k が空か、見つからなければ null
@@ -404,7 +404,7 @@ export const CC = (): ViewContent => viewContent(S.M, curView());
  */
 export function nodeByKey(k: string | null | undefined): ModelNode | null {
   if (!k) return null;
-  if (/^[ul]:/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
+  if (/^[ulj]:/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
   return S.M.nodes.find((n) => n.key === k) ?? null;
 }
 

@@ -1,7 +1,7 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelNode } from "../core";
-import { autoPlace, downward, endLabelPos, featureText, packageRects, PKG_PAD, PKG_TAB, type Box, type RouteEnd } from "./geometry";
+import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, packageRects, placeJunctions, PKG_PAD, PKG_TAB, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -132,5 +132,52 @@ describe("downward・autoPlace（構造の図で、一般な側を上に置く�
     autoPlace([node("B"), node("A")], [edge("specialize", "B", "A")], pos, { id: "structure", label: "構造", depth: true }, null);
     // Assert
     expect((pos["A"]?.[1] ?? NaN) < (pos["B"]?.[1] ?? NaN)).toBe(true);
+  });
+});
+
+describe("boxesOf・placeJunctions（内部ブロック図の n 項の接続の点、8.2.3.13 の n-ary-connection-dot）", () => {
+  const node = (key: string, junction = false): ModelNode => ({
+    key, name: key, short: "", kind: junction ? "connection" : "part", isDef: false, fam: "part", trans: [], ports: [], phase: null, phaseOwn: false,
+    ...(junction ? { junction: true } : {}),
+    entry: { kind: "part", isDef: false, short: "", name: key, type: "", owner: null, pe: null, start: 0, headEnd: 0, end: 0, head: "", exprs: [], children: [], idx: 0 },
+  });
+  const seg = (from: string, to: string): ModelEdge => ({ id: `connect|${from}|${to}|#1`, kind: "connect", from, to, label: "", src: { start: 0, end: 0 } });
+
+  it("点は DOT 四方、ほかの要素は幅 W の矩形にする", () => {
+    // Act
+    const boxes = boxesOf([node("u:a"), node("j:#1", true)], { "u:a": [10, 20], "j:#1": [300, 40] });
+    // Assert
+    expect(boxes.get("u:a")).toEqual({ x: 10, y: 20, w: W, h: 44 });
+    expect(boxes.get("j:#1")).toEqual({ x: 300, y: 40, w: DOT, h: DOT });
+  });
+
+  it("座標の無い点は、つながる要素の中心の平均に置く", () => {
+    // Arrange
+    const nodes = [node("u:a"), node("u:b"), node("j:#1", true)];
+    const pos: Record<string, [number, number]> = { "u:a": [0, 0], "u:b": [0, 400] };
+    // Act
+    placeJunctions(nodes, [seg("j:#1", "u:a"), seg("j:#1", "u:b")], pos);
+    // Assert
+    expect(pos["j:#1"]).toEqual([W / 2 - DOT / 2, (22 + 422) / 2 - DOT / 2]);
+  });
+
+  it("中心の平均が要素に重なるときは、つながる要素の下に置く", () => {
+    // Arrange（3 つが横に並び、平均が真ん中の要素の中に入る）
+    const nodes = [node("u:a"), node("u:b"), node("u:c"), node("j:#1", true)];
+    const pos: Record<string, [number, number]> = { "u:a": [0, 0], "u:b": [300, 0], "u:c": [600, 0] };
+    // Act
+    placeJunctions(nodes, [seg("j:#1", "u:a"), seg("j:#1", "u:b"), seg("j:#1", "u:c")], pos);
+    // Assert
+    expect(pos["j:#1"]).toEqual([300 + W / 2 - DOT / 2, 44 + 60 - DOT / 2]);
+  });
+
+  it("座標のある点と、つながる要素に座標の無い点は動かさない（境界値）", () => {
+    // Arrange
+    const nodes = [node("u:a"), node("j:#1", true), node("j:#2", true)];
+    const pos: Record<string, [number, number]> = { "j:#1": [5, 5] };
+    // Act
+    placeJunctions(nodes, [seg("j:#1", "u:a"), seg("j:#2", "u:a")], pos);
+    // Assert
+    expect(pos).toEqual({ "j:#1": [5, 5] });
   });
 });

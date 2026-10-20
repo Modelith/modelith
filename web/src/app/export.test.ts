@@ -18,9 +18,9 @@ describe("drawioEdgeStyle（F-EXP-2）", () => {
     expect(flow).toBe("endArrow=block;endFill=1;strokeWidth=2;");
   });
 
-  it("結び付けは矢印の無い実線にする", () => {
+  it.each([["bind"], ["connect"]])("結び付けと n 項の接続の線（%s）は矢印の無い実線にする", (kind) => {
     // Act
-    const style = drawioEdgeStyle("bind");
+    const style = drawioEdgeStyle(kind);
     // Assert
     expect(style).toBe("endArrow=none;");
   });

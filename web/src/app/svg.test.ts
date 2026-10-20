@@ -43,9 +43,9 @@ describe("edgeStroke（8.2.3 の線の記法）", () => {
     expect(attrs).toBe(' marker-start="url(#mDiamond)"');
   });
 
-  it("結び付けは、矢印の無い実線にする（8.2.3.13 の binding-connection）", () => {
+  it.each([["bind"], ["connect"]])("結び付けと n 項の接続の線（%s）は、矢印の無い実線にする（8.2.3.13 の binding-connection・n-ary-segment）", (kind) => {
     // Act
-    const attrs = edgeStroke("bind");
+    const attrs = edgeStroke(kind);
     // Assert
     expect(attrs).toBe("");
   });

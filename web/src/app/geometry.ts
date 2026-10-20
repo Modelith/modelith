@@ -189,6 +189,62 @@ export interface Box {
   h: number;
 }
 
+/** n 項の接続の点（8.2.3.13 の n-ary-connection-dot）の大きさ（四方）。 */
+export const DOT = 12;
+
+/**
+ * 図の要素の矩形を、配置の座標から求める。n 項の接続の点は DOT 四方、ほかは幅 W・高さ nodeH。
+ *
+ * @param nodes 図に描く要素
+ * @param pos 要素のキーから左上の座標への対応（座標の無い要素は (0, 0) に置く）
+ * @returns 要素のキーから矩形への対応（nodes の順）
+ * @example
+ * // A（行なし）が (10, 20)、点 j:#1 が (300, 40)
+ * boxesOf([A, J], pos) // → Map { "A" → { x: 10, y: 20, w: 224, h: 44 }, "j:#1" → { x: 300, y: 40, w: 12, h: 12 } }
+ * boxesOf([], pos)     // → Map {}
+ */
+export function boxesOf(nodes: readonly ModelNode[], pos: Record<string, Pos>): Map<string, Box> {
+  return new Map(
+    nodes.map((n) => {
+      const p = pos[n.key] ?? [0, 0];
+      return [n.key, n.junction ? { x: p[0], y: p[1], w: DOT, h: DOT } : { x: p[0], y: p[1], w: W, h: nodeH(n) }];
+    }),
+  );
+}
+
+/**
+ * n 項の接続の点の位置を、点につながる要素の中心の平均（重心）にする。重心が要素に重なるときは、つながる要素の下に 60 離して置く。
+ * 座標の無い点だけを pos に書き込む（pos を変更する）。
+ *
+ * @param nodes 図に描く要素（点を含む）
+ * @param edges 図の線（点から端への線で、つながる要素を決める）
+ * @param pos 要素のキーから左上の座標への対応。点の座標を書き込む
+ * @example
+ * // 点 j:#1 が A（0, 0）と B（400, 0）につながり、どちらも幅 224・高さ 44
+ * placeJunctions([A, B, J], edges, pos)    // → pos["j:#1"] = [306, 16]（中心の平均 (312, 22) から DOT の半分を引く）
+ * // A（0, 0）・B（300, 0）・C（600, 0）につながる
+ * placeJunctions([A, B, C, J], edges, pos) // → pos["j:#1"] = [406, 98]（中心の平均 (412, 22) は B に重なるので、下端 44 から 60 下）
+ * // 点につながる要素に座標が無い
+ * placeJunctions([J], edges, pos)       // → pos を変えない
+ */
+export function placeJunctions(nodes: readonly ModelNode[], edges: readonly ModelEdge[], pos: Record<string, Pos>): void {
+  const boxes = boxesOf(nodes, pos);
+  for (const j of nodes) {
+    if (!j.junction || pos[j.key]) continue;
+    const ends = edges.flatMap((e) => {
+      const other = e.from === j.key ? e.to : e.to === j.key ? e.from : null;
+      const b = other && pos[other] ? boxes.get(other) : undefined;
+      return b ? [b] : [];
+    });
+    if (!ends.length) continue;
+    const cx = ends.reduce((a, b) => a + b.x + b.w / 2, 0) / ends.length;
+    let cy = ends.reduce((a, b) => a + b.y + b.h / 2, 0) / ends.length;
+    const covered = [...boxes.entries()].some(([k, b]) => k !== j.key && pos[k] && cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h);
+    if (covered) cy = Math.max(...ends.map((b) => b.y + b.h)) + 60;
+    pos[j.key] = [Math.round(cx - DOT / 2), Math.round(cy - DOT / 2)];
+  }
+}
+
 export interface Pin {
   id: string;
   side: Side;

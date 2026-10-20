@@ -2,7 +2,7 @@
 
 import { lineOf, type CoreClient, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
-import { autoPlace, nodeH } from "./geometry";
+import { autoPlace, nodeH, placeJunctions } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
@@ -177,21 +177,23 @@ function refresh(fromText: boolean): void {
 
 /**
  * 表示中のビューで座標の無い要素を自動で並べる（S.layout を書き換える。F-VIEW-3）。
- * 既に置かれた要素があれば、その一番下から 80 下に並べる。シーケンス図では何もしない。
+ * 既に置かれた要素があれば、その一番下から 80 下に並べる。n 項の接続の点は、つながる要素の重心に置く。シーケンス図では何もしない。
  */
 export function ensureLayout(): void {
   if (S.view === "seq") return;
   const v = curView();
   const { nodes, edges } = viewContent(S.M, v);
   const L = curLayout().pos;
-  const missing = nodes.filter((n) => !L[n.key]);
-  if (!missing.length) return;
-  const placed = nodes.flatMap((n) => {
-    const p = L[n.key];
-    return p ? [p[1] + nodeH(n)] : [];
-  });
-  const oy = placed.length ? Math.max(...placed) + 80 : 0;
-  autoPlace(missing, edges, L, v, S.M.phases?.[0] ?? null, oy);
+  const missing = nodes.filter((n) => !L[n.key] && !n.junction);
+  if (missing.length) {
+    const placed = nodes.flatMap((n) => {
+      const p = L[n.key];
+      return p && !n.junction ? [p[1] + nodeH(n)] : [];
+    });
+    const oy = placed.length ? Math.max(...placed) + 80 : 0;
+    autoPlace(missing, edges, L, v, S.M.phases?.[0] ?? null, oy);
+  }
+  placeJunctions(nodes, edges, L);
 }
 
 // 確定した配置（配置ファイルの文字列）。自動で置いただけの座標は含めない。
