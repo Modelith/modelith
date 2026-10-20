@@ -193,6 +193,7 @@ fn missing(key: &str) -> Refusal {
 
 impl Doc<'_> {
     /// キーの要素。`u:名前`・`l:名前` は、ctx（部品定義・シナリオ）の中の部品・ライフライン。
+    /// `u:部品.部品`（入れ子の部品）と `j:…`（n 項の接続の点。接続の使用を指す）は、内部ブロック図の要素として探す。
     /// それ以外のキーは、図の要素のキー（同じ名前が 2 つ目なら `名前@持ち主`）として探す。
     ///
     /// # 引数
@@ -210,10 +211,18 @@ impl Doc<'_> {
     /// // d.text = "package P { part def E; part def C { part e : E; } }" のとき
     /// find("C", None)         → Ok(Found { entry: C の番号 })
     /// find("u:e", Some("C"))  → Ok(Found { entry: C の中の e の番号 })
+    /// find("u:e.x", Some("C")) → Ok(Found { entry: E の中の x の番号 })   // E に part x があるとき
     /// find("u:e", None)       → Err("操作する要素「」が見つかりません。…")   // 対象が無い
     /// find("Gone", None)      → Err("操作する要素「Gone」が見つかりません。…")
     /// ```
     pub(super) fn find(&self, key: &str, ctx: Option<&str>) -> Result<Found, Refusal> {
+        // 入れ子の部品（`u:a.b`）と n 項の接続の点（`j:…`）は、内部ブロック図と同じ決め方で探す
+        if key.starts_with("j:") || key.strip_prefix("u:").is_some_and(|k| k.contains('.')) {
+            let c = self.context(ctx.unwrap_or_default())?;
+            return super::ibd::entry_of(self, c, key)
+                .map(|entry| Found { entry })
+                .ok_or_else(|| missing(key));
+        }
         if let Some(name) = key.strip_prefix("u:").or_else(|| key.strip_prefix("l:")) {
             let c = self.context(ctx.unwrap_or_default())?;
             let child = self
@@ -767,7 +776,7 @@ pub(super) struct EdgeAt {
 
 /// 内部ブロック図・シーケンス図の関係の ID（UI の `web/src/app/views.ts` と同じ ID）。
 /// シナリオ（`occurrence def`）なら、メッセージを書いた順に `msg|順番|名前`。
-/// それ以外なら、対象の直下の部品どうしの流れ・接続に `flow|u:部品|u:部品|アイテム#番号`（同じ形の線は出てきた順に番号を付ける）。
+/// それ以外なら、内部ブロック図の線（`ibd::edges`。`flow|u:部品|u:部品|ラベル#番号`・`bind|…`・`connect|j:…|…`）。
 ///
 /// # 引数
 ///
@@ -808,46 +817,7 @@ pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
             })
             .collect();
     }
-    let part = |path: &str| {
-        let head = path.split('.').next().unwrap_or("");
-        ctx.children
-            .iter()
-            .copied()
-            .find(|&i| d.e(i).kind == "part" && !d.e(i).name.is_empty() && d.e(i).name == head)
-    };
-    let mut out = Vec::new();
-    let mut seen: Vec<(String, usize)> = Vec::new();
-    for (ri, r) in d.p.rels.iter().enumerate().filter(|(_, r)| r.pe == Some(c)) {
-        let (a, b, item, src) = match &r.kind {
-            RelKind::Flow { a, b, item } => (a, b, item, line(r)),
-            RelKind::Connect { a, b, item, usage } => (
-                a,
-                b,
-                item,
-                Span {
-                    start: d.e(*usage).start,
-                    end: d.e(*usage).end,
-                },
-            ),
-            _ => continue,
-        };
-        let (Some(pa), Some(pb)) = (part(a), part(b)) else {
-            continue;
-        };
-        let base = format!("flow|u:{}|u:{}|{item}", d.e(pa).name, d.e(pb).name);
-        let k = match seen.iter_mut().find(|(b, _)| *b == base) {
-            Some((_, k)) => {
-                *k += 1;
-                *k
-            }
-            None => {
-                seen.push((base.clone(), 1));
-                1
-            }
-        };
-        out.push((format!("{base}#{k}"), EdgeAt { src, rel: Some(ri) }));
-    }
-    out
+    super::ibd::edges(d, c)
 }
 
 /// シナリオのメッセージ（書いた順。`ParseResult.rels` の番号）。対象の直下に書いたものだけを集める。
@@ -1044,8 +1014,10 @@ fn connect(
                     "2 つの部品を両方持つ部品定義がないため、流れを書けません".to_owned()
                 })?,
             };
+            // 内部ブロック図の入れ子の部品は、対象の中から `a.b` で指す
             let end = |u: usize, p: Option<&str>| {
-                p.map_or_else(|| d.e(u).name.clone(), |p| format!("{}.{p}", d.e(u).name))
+                let path = super::ibd::path_of(d, parent, u);
+                p.map_or_else(|| path.clone(), |p| format!("{path}.{p}"))
             };
             (
                 d.target(parent),

@@ -1,7 +1,7 @@
 // 図の上のポインタ操作（選択・移動・線を引く・範囲選択・パン・ピンチ）と表示範囲の調整。
 
 import { $, closest } from "./dom";
-import { nearestBorder, nodeH, pinPoint, W } from "./geometry";
+import { boxesOf, nearestBorder, pinPoint, W } from "./geometry";
 import { renderInspector } from "./inspector";
 import { MSGOPS, OPS, selNodes, setSelection, toggleSel } from "./ops";
 import { openCtx, ctxItemsAt } from "./ctxmenu";
@@ -162,10 +162,14 @@ function onPointerDown(ev: PointerEvent): void {
     const L = curLayout().pos;
     const p = L[k] ?? [0, 0];
     const d: Drag = { type: "node", key: k, lx, ly, ox: p[0], oy: p[1], moved: false };
-    if (S.selSet.size > 1 && S.selSet.has(k)) d.group = selNodes().flatMap((n) => {
-      const q = L[n.key];
-      return q ? [{ key: n.key, p: [q[0], q[1]] as Pos }] : [];
-    });
+    const at = (key: string): { key: string; p: Pos }[] => {
+      const q = L[key];
+      return q ? [{ key, p: [q[0], q[1]] as Pos }] : [];
+    };
+    // 中に部品を描く部品（内部ブロック図の入れ子）は、中の部品ごと動かす
+    const withInner = (key: string): string[] => [key, ...CC().nodes.filter((n) => n.container === key).map((n) => n.key)];
+    const keys = S.selSet.size > 1 && S.selSet.has(k) ? selNodes().flatMap((n) => withInner(n.key)) : withInner(k);
+    if (keys.length > 1) d.group = [...new Set(keys)].flatMap(at);
     drag = d;
   } else if (eEl) drag = { type: "edge", id: eEl.dataset["edge"] ?? "", lx, ly, moved: false };
   else {
@@ -316,9 +320,10 @@ function onPointerUp(ev: PointerEvent): void {
     }
     if (b) {
       const L = curLayout().pos;
+      const rects = boxesOf(CC().nodes, L);
       const hit = CC().nodes.filter((n) => {
-        const p = L[n.key];
-        return !!p && p[0] < b.x1 && p[0] + W > b.x0 && p[1] < b.y1 && p[1] + nodeH(n) > b.y0;
+        const r = rects.get(n.key);
+        return !!L[n.key] && !!r && r.x < b.x1 && r.x + r.w > b.x0 && r.y < b.y1 && r.y + r.h > b.y0;
       });
       const keys = d.addTo ? [...new Set([...S.selSet, ...hit.map((n) => n.key)])] : hit.map((n) => n.key);
       setSelection(keys);
@@ -472,15 +477,14 @@ export function fit(): void {
     y1 = g.y0 + g.h + 20;
   } else {
     const fr = !!cc.frame;
+    const rects = boxesOf(cc.nodes, L);
+    const bs = placed.flatMap((q) => rects.get(q.n.key) ?? []);
     // package の枠（F-VIEW-9）も画面に入れる
-    const pk = packageBoxes(cc, (k) => {
-      const q = placed.find((x) => x.n.key === k);
-      return q ? { x: q.p[0], y: q.p[1], w: W, h: nodeH(q.n) } : undefined;
-    }).map((p) => p.r);
-    x0 = Math.min(...placed.map((q) => q.p[0]), ...pk.map((b) => b.x)) - (fr ? 80 : 60);
-    y0 = Math.min(...placed.map((q) => q.p[1]), ...pk.map((b) => b.y)) - (fr ? 100 : 40);
-    x1 = Math.max(...placed.map((q) => q.p[0] + W), ...pk.map((b) => b.x + b.w)) + (fr ? 80 : 60);
-    y1 = Math.max(...placed.map((q) => q.p[1] + nodeH(q.n)), ...pk.map((b) => b.y + b.h)) + (fr ? 70 : 40);
+    const pk = packageBoxes(cc, (k) => (L[k] ? rects.get(k) : undefined)).map((p) => p.r);
+    x0 = Math.min(...bs.map((b) => b.x), ...pk.map((b) => b.x)) - (fr ? 80 : 60);
+    y0 = Math.min(...bs.map((b) => b.y), ...pk.map((b) => b.y)) - (fr ? 100 : 40);
+    x1 = Math.max(...bs.map((b) => b.x + b.w), ...pk.map((b) => b.x + b.w)) + (fr ? 80 : 60);
+    y1 = Math.max(...bs.map((b) => b.y + b.h), ...pk.map((b) => b.y + b.h)) + (fr ? 70 : 40);
   }
   const r = wrapEl().getBoundingClientRect();
   const bottomPad = $("#insp").hidden ? 0 : 70;

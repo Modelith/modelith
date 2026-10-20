@@ -130,7 +130,8 @@ fn relations_read_their_ends_from_the_tree() {
                 a: "a.p".to_owned(),
                 b: "b.q".to_owned(),
                 item: "I".to_owned(),
-                usage: i
+                usage: i,
+                ends: vec!["a.p".to_owned(), "b.q".to_owned()],
             },
             RelKind::Satisfy {
                 req: "R".to_owned(),
@@ -144,10 +145,205 @@ fn relations_read_their_ends_from_the_tree() {
     );
 }
 
+/// 関係のうち、接続（`Connect`）の端と、接続の使用の番号。
+fn connections(r: &ParseResult) -> Vec<(Vec<&str>, usize)> {
+    r.rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Connect { ends, usage, .. } => {
+                Some((ends.iter().map(String::as_str).collect(), *usage))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn standalone_connect_is_an_anonymous_connection() {
+    // Arrange（`connection` の無い `connect a to b;`、8.2.2.13.1）
+    let text = "part def H { part a; part b; connect a.p to b.q; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let c = r
+        .entries
+        .iter()
+        .find(|e| e.kind == "connection")
+        .expect("名前の無い接続");
+    assert_eq!(
+        (c.name.as_str(), c.head.as_str()),
+        ("", "connect a.p to b.q")
+    );
+    assert_eq!(c.pe, Some(entry(&r, "H").idx));
+    assert_eq!(connections(&r), [(vec!["a.p", "b.q"], c.idx)]);
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn nary_connection_keeps_every_end() {
+    // Arrange（NaryConnectorPart、8.2.2.13.1。境界値：端が 3 つ）
+    let text = "part def H { connection c : C connect (a.p, b, [1] e ::> c.r); connect (x, y); }";
+    // Act
+    let r = run(text);
+    // Assert
+    let c = entry(&r, "c").idx;
+    let found = connections(&r);
+    assert_eq!(found[0], (vec!["a.p", "b", "c.r"], c));
+    assert_eq!(found[1].0, ["x", "y"]);
+    assert!(matches!(&r.rels[0].kind, RelKind::Connect { a, b, .. } if a == "a.p" && b == "b"));
+}
+
+#[test]
+fn connection_without_two_ends_has_no_relation() {
+    // Arrange（異常系：端が 1 つしかない）
+    let text = "part def H { connection c connect (a); }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(connections(&r).is_empty());
+    assert_eq!(entry(&r, "c").kind, "connection");
+}
+
+#[test]
+fn bind_is_a_binding_usage_and_not_an_expression_of_its_owner() {
+    // Arrange（同値分割：名前の無い `bind`・名前付きの `binding`、8.2.2.13.2）
+    let text = "part def H { part a; part b; bind a.x = b.y; binding bb bind a.z = b.w; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let h = entry(&r, "H");
+    assert!(h.exprs.is_empty(), "{:?}", h.exprs);
+    let bindings: Vec<(&str, usize)> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "binding")
+        .map(|e| (e.name.as_str(), e.idx))
+        .collect();
+    assert_eq!(bindings.iter().map(|b| b.0).collect::<Vec<_>>(), ["", "bb"]);
+    let rels: Vec<RelKind> = r.rels.iter().map(|x| x.kind.clone()).collect();
+    assert_eq!(
+        rels,
+        [
+            RelKind::Bind {
+                a: "a.x".to_owned(),
+                b: "b.y".to_owned(),
+                usage: bindings[0].1
+            },
+            RelKind::Bind {
+                a: "a.z".to_owned(),
+                b: "b.w".to_owned(),
+                usage: bindings[1].1
+            },
+        ]
+    );
+}
+
+#[test]
+fn binding_without_its_second_end_has_no_relation() {
+    // Arrange（異常系：`=` の右が無い）
+    let text = "part def H { bind a.x; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.rels.is_empty());
+    assert_eq!(r.errors.len(), 1);
+}
+
+#[test]
+fn allocation_definitions_and_usages_are_entries_with_their_bodies() {
+    // Arrange（AllocationDefinition・AllocationUsage、8.2.2.15。本体は読む）
+    let text = "package P { allocation def AD { end f : F; } allocation a : AD allocate s.f to h.c { doc /* d */ } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (ad, a) = (entry(&r, "AD"), entry(&r, "a"));
+    assert_eq!((ad.kind.as_str(), ad.is_def), ("allocation def", true));
+    assert_eq!(entry(&r, "f").pe, Some(ad.idx));
+    assert_eq!((a.kind.as_str(), a.ty.as_str()), ("allocation", "AD"));
+    assert_eq!(a.doc.as_deref(), Some("d"));
+    assert_eq!(
+        r.rels.iter().map(|x| x.kind.clone()).collect::<Vec<_>>(),
+        [RelKind::Allocate {
+            a: "s.f".to_owned(),
+            b: "h.c".to_owned(),
+            usage: a.idx
+        }]
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn standalone_allocate_is_an_anonymous_allocation() {
+    // Arrange（`allocation` の無い `allocate x to y;`。同値分割：2 項・n 項）
+    let text = "package P { allocate x to y; allocate (x, y, z); }";
+    // Act
+    let r = run(text);
+    // Assert
+    let anonymous: Vec<&str> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "allocation")
+        .map(|e| e.name.as_str())
+        .collect();
+    assert_eq!(anonymous, ["", ""]);
+    // n 項の割り当ては、まだ関係にしない
+    assert_eq!(r.rels.len(), 1);
+    assert!(matches!(&r.rels[0].kind, RelKind::Allocate { a, b, .. } if a == "x" && b == "y"));
+}
+
+#[test]
+fn flow_definitions_and_named_flows_are_entries() {
+    // Arrange（FlowDefinition・FlowUsage、8.2.2.16。同値分割：型付き・of 付き・名前の無いフロー）
+    let text = "part def H { flow def FD { end x : W; } flow f : FD from a.o to b.i; \
+                flow g of Water from a.o to b.i { } flow of Heat from a.o to b.i; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (fd, f, g) = (entry(&r, "FD"), entry(&r, "f"), entry(&r, "g"));
+    assert_eq!((fd.kind.as_str(), fd.is_def), ("flow def", true));
+    assert_eq!(entry(&r, "x").pe, Some(fd.idx));
+    assert_eq!((f.kind.as_str(), f.ty.as_str()), ("flow", "FD"));
+    let flows: Vec<(&str, &str, &str, Option<usize>)> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Flow {
+                item,
+                name,
+                ty,
+                usage,
+                ..
+            } => Some((item.as_str(), name.as_str(), ty.as_str(), *usage)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        flows,
+        [
+            ("", "f", "FD", Some(f.idx)),
+            ("Water", "g", "", Some(g.idx)),
+            ("Heat", "", "", None)
+        ]
+    );
+    assert_eq!(r.entries.iter().filter(|e| e.kind == "flow").count(), 2);
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn named_flow_without_ends_has_no_relation() {
+    // Arrange（境界値：端の無いフローの宣言）
+    let text = "flow def FD { } part def H { flow f : FD; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "f").kind, "flow");
+    assert!(r.rels.is_empty());
+}
+
 #[test]
 fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() {
     // Arrange（異常系: 末尾の「;」の無い文は、暫定コアと同じく読まない）
-    let text = "package P { allocation def C; }\npart def Tail";
+    let text = "package P { send s; }\npart def Tail";
     // Act
     let r = run(text);
     // Assert
@@ -156,7 +352,7 @@ fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() 
             .iter()
             .map(|u| u.head.as_str())
             .collect::<Vec<_>>(),
-        vec!["allocation def C"]
+        vec!["send s"]
     );
     assert!(r.entries.iter().all(|e| e.name != "Tail"));
     assert_eq!(r.errors.len(), 1);
@@ -235,8 +431,8 @@ fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
 fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
     // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [
-        "package P { allocation def AD { part x; } }",
-        "package P { flow def F { part x; } }",
+        "package P { join j { part x; } }",
+        "package P { merge m { part x; } }",
         "package P { part def H { send s { part x; } } }",
     ] {
         // Act

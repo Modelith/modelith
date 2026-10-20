@@ -197,7 +197,7 @@ function pinHtml(n: ModelNode, pin: Pin): string {
 }
 
 /**
- * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、使用・ライフラインなら型と「型の定義へ」を、
+ * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、n 項の接続の点なら接続の名前と「接続を削除」を、使用・ライフラインなら型と「型の定義へ」を、
  * 定義なら種類・テキストの行・（フェーズの定義があれば）フェーズの選択欄と、名前の変更・関係の追加・削除のボタンを出す。
  *
  * @param n 選んだ要素
@@ -214,6 +214,15 @@ function nodeHtml(n: ModelNode): string {
   }
   const e = n.entry;
   const line = lineOf(S.text, e.start);
+  if (n.junction) {
+    // n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。削除すると接続ごと消える
+    return (
+      `<div class="what"><small>3 つ以上をつなぐ接続（connect） テキスト ${line} 行目</small><b>${esc(n.name || "（名前なし）")}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
+      `<button data-act="goto">テキストで見る</button>` +
+      delBtn("del", "接続を削除") +
+      `</div>`
+    );
+  }
   if (n.usage || n.lifeline) {
     return (
       `<div class="what"><small>«${esc(n.kind)}» テキスト ${line} 行目${n.usage ? "・縁の＋から線を引けます" : "・ライフラインから横にドラッグでメッセージを追加"}</small><b>${esc(n.name)}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
@@ -239,7 +248,8 @@ function nodeHtml(n: ModelNode): string {
 const EDGE_NAME: Record<string, string> = {
   comp: "部品・特性として持つ", satisfy: "要求を満たす «satisfy»", verify: "要求を検証する «verify»", frame: "関心事を扱う «frame»", flow: "流れ・接続", defined: "型（定義）", derive: "要求の導出 «derive»",
   specialize: "定義を引き継ぐ（特殊化 :>）", subset: "一部になる（部分集合 subsets）", redefine: "置き換える（再定義 redefines）", reference: "参照する（references）",
-  dependency: "依存する（dependency）",
+  dependency: "依存する（dependency）", allocate: "割り当てる «allocate»", bind: "値を等しくする（結び付け bind）",
+  connect: "3 つ以上をつなぐ接続（connect）",
 };
 
 /**

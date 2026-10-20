@@ -35,6 +35,10 @@
 | 絞り込み | filter |
 | 満たす・検証する・扱う・導出・流れ | satisfy・verify・frame・derivation・flow |
 | 依存する | dependency |
+| 接続・3 つ以上をつなぐ接続 | connection・connect（n 項の `connect (a, b, c)`） |
+| 結び付け（値を等しくする） | binding・bind |
+| 割り当て・割り当てる | allocation・allocate |
+| 流れの定義・流れ | flow def・flow |
 | 定義を引き継ぐ（特殊化）・一部になる（部分集合）・置き換える（再定義）・参照する | specializes・subsets・redefines・references（`:>`・`:>>`・`::>`） |
 | 一般の図・内部ブロック図・状態遷移の図・シーケンス図 | GeneralView・InterconnectionView・StateTransitionView・SequenceView |
 

@@ -136,17 +136,17 @@ for (const [impl, parse, build] of PARSERS) {
     describe("まだ扱えない文（F-EDIT-5・C-6 の趣旨：黙って捨てない）", () => {
       it("知らない文は捨てずに「まだ扱えない」と知らせる", () => {
         // Arrange
-        const text = "package P { allocation def C; part def A; }";
+        const text = "package P { send s; part def A; }";
         // Act
         const M = build(parse(text));
         // Assert
         const info = M.problems.filter((p) => p.kind === "unsupported");
-        expect(info.map((p) => p.msg)).toEqual(["「allocation def C」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
+        expect(info.map((p) => p.msg)).toEqual(["「send s」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
       });
 
       it("まだ扱えない文は、エラーとして数えない", () => {
         // Arrange
-        const text = "package P { allocation def C; }";
+        const text = "package P { send s; }";
         // Act
         const errors = build(parse(text)).problems.filter((p) => !p.kind);
         // Assert
@@ -386,8 +386,8 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
 
     describe("まだ扱えない文の本体（F-EDIT-8）", () => {
       it.each([
-        ["allocation def AD { part x; }"],
-        ["flow def F { part x; }"],
+        ["join j { part x; }"],
+        ["merge m { part x; }"],
       ])("%s の中の宣言を、外側の package の中身として読まない", (stmt) => {
         // Arrange
         const text = `package P { ${stmt} }`;
@@ -739,6 +739,93 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         const ps = errors(text);
         // Assert
         expect(ps).toEqual(["「依存」関係の相手「Nope」が見つかりません（dependency）"]);
+      });
+    });
+
+    describe("接続と結び付け（ConnectionUsage・BindingConnectorAsUsage、8.2.2.13）", () => {
+      it("connection の無い connect a to b; は、名前の無い接続として connection connect と同じ線になる", () => {
+        // Arrange
+        const text = "package P { part def A { port p; } part def H { part a : A; part b : A; connect a.p to b.p; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.edges.filter((e) => e.kind === "flow").map((e) => `${e.from}|${e.to}|${e.fromPort}|${e.toPort}`)).toEqual(["A|A|port:p|port:p"]);
+        expect(M.problems).toEqual([]);
+      });
+
+      it("n 項の connect (a, b, c) は、すべての端を残し、一般の図の線にはしない", () => {
+        // Arrange
+        const text = "package P { part def A { port p; } part def H { part a : A; part b : A; part c : A; connect (a.p, b.p, c.p); } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.rels.map((r) => (r as { ends?: string[] }).ends)).toEqual([["a.p", "b.p", "c.p"]]);
+        expect(build(P).edges.filter((e) => e.kind === "flow")).toEqual([]);
+      });
+
+      it("bind a = b; は持ち主の式にならず、見つからない相手を知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def H { part a; bind a = gone; } }";
+        // Act
+        const [h, ps] = [entry(text, "H"), errors(text)];
+        // Assert
+        expect(h?.exprs).toEqual([]);
+        expect(ps).toEqual(["「結び付け」の相手「gone」が見つかりません（bind）"]);
+      });
+    });
+
+    describe("割り当て（AllocationDefinition・AllocationUsage、8.2.2.15）", () => {
+      it("allocation def と allocation は要素になり、本体の中も読む", () => {
+        // Arrange
+        const text = "package P { allocation def AD { end f : F; } allocation a : AD allocate x to y; part def F; }";
+        // Act
+        const [ad, a, f] = [entry(text, "AD"), entry(text, "a"), entry(text, "f")];
+        // Assert
+        expect([ad?.kind, a?.kind, a?.type, f?.pe?.name]).toEqual(["allocation def", "allocation", "AD", "AD"]);
+        expect(build(parse(text)).problems.filter((p) => p.kind === "unsupported")).toEqual([]);
+      });
+
+      it("allocate x to y は、図に描く要素の間の «allocate» の線になる（8.2.3.15 の allocate-relationship）", () => {
+        // Arrange
+        const text = "package P { part def Logical; part def Physical; allocation def AD; allocate Logical to Physical; allocation a : AD allocate Logical to Physical; }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.edges.map((e) => `${e.kind}|${e.from}|${e.to}|${e.label}`)).toEqual([
+          "allocate|Logical|Physical|«allocate»",
+          "allocate|Logical|Physical|«allocate» a",
+        ]);
+        expect(M.problems).toEqual([]);
+      });
+
+      it("見つからない相手は、ほかの関係と同じ言い方で知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def Logical; allocate Logical to Nope; }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["「割り当て」関係の相手「Nope」が見つかりません（allocate）"]);
+      });
+    });
+
+    describe("フロー（FlowDefinition・FlowUsage、8.2.2.16）", () => {
+      it("flow def は定義、名前付きのフローは使用になり、本体の中も読む", () => {
+        // Arrange
+        const text = "package P { item def Water; flow def FD { end x : Water; } part def H { flow f : FD from a.o to b.i; } }";
+        // Act
+        const [fd, f, x] = [entry(text, "FD"), entry(text, "f"), entry(text, "x")];
+        // Assert
+        expect([fd?.kind, f?.kind, f?.type, x?.pe?.name]).toEqual(["flow def", "flow", "FD", "FD"]);
+        expect(build(parse(text)).problems.filter((p) => p.kind === "unsupported")).toEqual([]);
+      });
+
+      it("名前付きのフローの線には、名前と型（of のアイテム）を書く（8.2.3.16 の flow-label）", () => {
+        // Arrange
+        const text = "package P { part def S { port o; } part def T { port i; } item def Water; flow def FD; part def H { part s : S; part t : T; flow f : FD from s.o to t.i; flow g of Water from s.o to t.i; } }";
+        // Act
+        const labels = build(parse(text)).edges.filter((e) => e.kind === "flow").map((e) => e.label);
+        // Assert
+        expect(labels).toEqual(["f : FD", "g of Water"]);
       });
     });
 

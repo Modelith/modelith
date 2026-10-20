@@ -110,9 +110,15 @@ export type Rel =
   | (RelBase & { rel: "satisfy"; req: string; by: string })
   | (RelBase & { rel: "verify"; req: string })
   | (RelBase & { rel: "frame"; name: string; type: string })
-  | (RelBase & { rel: "flow"; item: string; a: string; b: string })
-  | (RelBase & { rel: "connect"; a: string; b: string; item: string; usage: Entry })
-  | (RelBase & { rel: "transition"; from: string; ev: string; to: string });
+  /** 名前付きのフロー（`flow f : FD from a to b;`、8.2.2.16）は、名前・型・使用を持つ。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "flow"; item: string; a: string; b: string; name?: string; type?: string; usage?: Entry })
+  /** `ends` は端が 3 つ以上のときだけある（n 項の `connect (a, b, c)`、8.2.2.13.1）。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "connect"; a: string; b: string; item: string; usage: Entry; ends?: string[] })
+  | (RelBase & { rel: "transition"; from: string; ev: string; to: string })
+  /** `bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "bind"; a: string; b: string; usage: Entry })
+  /** `allocate x to y;`（AllocationUsage、8.2.2.15）。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "allocate"; a: string; b: string; usage: Entry });
 
 export type FlowRel = Extract<Rel, { rel: "flow" | "connect" }>;
 export type MessageRel = Extract<Rel, { rel: "message" }>;
@@ -168,15 +174,23 @@ export interface ModelNode {
   usage?: boolean;
   /** シーケンス図のライフライン。 */
   lifeline?: boolean;
+  /** 内部ブロック図の n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。`entry` は接続の使用。 */
+  junction?: boolean;
+  /** 内部ブロック図で、この部品を中に描く外の部品のキー（入れ子の 2 段目）。 */
+  container?: string;
   /** ポートを追加する先（使用の場合は型の定義）。 */
   portHost?: Entry;
   typeKey?: string | null;
 }
 
-/** 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency` は特殊化・部分集合・再定義・参照・依存（8.2.3）で、Rust のコアだけが作る。 */
+/**
+ * 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency`・`allocate` は特殊化・部分集合・再定義・参照・依存・
+ * 割り当て（8.2.3）で、Rust のコアだけが作る。`bind` は内部ブロック図の結び付け（8.2.3.13 の binding-connection）、
+ * `connect` は n 項の接続の点から端への線（8.2.3.13 の n-ary-segment）。
+ */
 export type EdgeKind =
   | "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message"
-  | "specialize" | "subset" | "redefine" | "reference" | "dependency";
+  | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate" | "bind" | "connect";
 
 /** 図に投影する関係。 */
 export interface ModelEdge {

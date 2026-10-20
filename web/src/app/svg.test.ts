@@ -29,11 +29,25 @@ describe("edgeStroke（8.2.3 の線の記法）", () => {
     expect(attrs).toBe(' stroke-dasharray="6 4" marker-end="url(#mOpen)"');
   });
 
+  it("割り当ては破線で、割り当て先に開いた矢印を付ける（8.2.3.15 の allocate-relationship）", () => {
+    // Act
+    const attrs = edgeStroke("allocate");
+    // Assert
+    expect(attrs).toBe(' stroke-dasharray="6 4" marker-end="url(#mOpen)"');
+  });
+
   it("部品として持つ線は、始まりの端にひし形を付ける", () => {
     // Act
     const attrs = edgeStroke("comp");
     // Assert
     expect(attrs).toBe(' marker-start="url(#mDiamond)"');
+  });
+
+  it.each([["bind"], ["connect"]])("結び付けと n 項の接続の線（%s）は、矢印の無い実線にする（8.2.3.13 の binding-connection・n-ary-segment）", (kind) => {
+    // Act
+    const attrs = edgeStroke(kind);
+    // Assert
+    expect(attrs).toBe("");
   });
 
   it("知らない種類は、開いた矢印にする（境界）", () => {

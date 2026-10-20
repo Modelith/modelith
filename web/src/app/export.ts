@@ -1,7 +1,8 @@
 // 書き出し（draw.io の XML・SVG）と、ファイルの読み込み・保存。
 
 import { $, esc } from "./dom";
-import { computeRoutes, linesOf, nodeH, pinPoint, pinsOf, W, type NodeBox } from "./geometry";
+import type { ModelNode } from "../core";
+import { boxesOf, computeRoutes, linesOf, pinPoint, pinsOf, type Box, type NodeBox } from "./geometry";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
 import { curLayout, curView, viewContent } from "./views";
@@ -33,9 +34,11 @@ const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
  * drawioEdgeStyle("comp")       // → "startArrow=diamondThin;startFill=1;endArrow=none;"
  * drawioEdgeStyle("specialize") // → "endArrow=block;endFill=0;"
  * drawioEdgeStyle("satisfy")    // → "dashed=1;endArrow=open;"
+ * drawioEdgeStyle("bind")       // → "endArrow=none;"（結び付け・n 項の接続の線は矢印の無い実線）
  */
 export function drawioEdgeStyle(kind: string): string {
   if (kind === "comp") return "startArrow=diamondThin;startFill=1;endArrow=none;";
+  if (kind === "bind" || kind === "connect") return "endArrow=none;";
   if (kind === "flow") return "endArrow=block;endFill=1;strokeWidth=2;";
   if (["specialize", "subset", "redefine", "reference"].includes(kind)) return "endArrow=block;endFill=0;";
   return "dashed=1;endArrow=open;";
@@ -77,25 +80,34 @@ export function drawioXml(): string {
     });
     return wrapXml("sd " + (cc.ctx ? cc.ctx.name : ""));
   }
-  const at = (key: string): [number, number] => L.pos[key] ?? [0, 0];
+  const rects = boxesOf(nodes, L.pos);
+  const rect = (n: ModelNode): Box => rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
   if (cc.frame && nodes.length) {
-    const x0 = Math.min(...nodes.map((n) => at(n.key)[0])) - 60, y0 = Math.min(...nodes.map((n) => at(n.key)[1])) - 80;
-    const x1 = Math.max(...nodes.map((n) => at(n.key)[0])) + W + 60, y1 = Math.max(...nodes.map((n) => at(n.key)[1] + nodeH(n))) + 50;
+    const x0 = Math.min(...nodes.map((n) => rect(n).x)) - 60, y0 = Math.min(...nodes.map((n) => rect(n).y)) - 80;
+    const x1 = Math.max(...nodes.map((n) => rect(n).x + rect(n).w)) + 60, y1 = Math.max(...nodes.map((n) => rect(n).y + rect(n).h)) + 50;
     cells += `<mxCell id="n${id++}" value="${q(`«${cc.frame.kind}»<br><b>${esc(cc.frame.title)}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;align=left;spacingLeft=10;rounded=0;fillColor=#F3F7FB;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" as="geometry"/></mxCell>`;
   }
   for (const n of nodes) {
     const c = LC("k-" + n.fam), bg = LC("k-" + n.fam + "-bg");
-    const p = at(n.key);
-    const lines = linesOf(n).map((x) => esc(x.t));
+    const r = rect(n);
+    if (n.junction) {
+      // n 項の接続の点（8.2.3.13 の n-ary-connection-dot）は、塗った小さな丸
+      const nid = "n" + id++;
+      map.set(n.key, nid);
+      cells += `<mxCell id="${nid}" value="${q(n.name)}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+      continue;
+    }
+    // 中に部品を描く部品（内部ブロック図の入れ子）は、区画の行を書かない
+    const lines = nodes.some((c) => c.container === n.key) ? [] : linesOf(n).map((x) => esc(x.t));
     const label =
       `«${n.kind}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? " : " + n.entry.type : ""))}</b>` +
       (lines.length ? `<hr><div style="text-align:left;font-size:10px">${lines.join("<br>")}</div>` : "");
     const nid = "n" + id++;
     map.set(n.key, nid);
-    cells += `<mxCell id="${nid}" value="${q(label)}" style="html=1;whiteSpace=wrap;verticalAlign=top;rounded=${n.isDef ? 0 : 1};arcSize=8;fillColor=${bg};strokeColor=${c};" vertex="1" parent="1"><mxGeometry x="${p[0]}" y="${p[1]}" width="${W}" height="${nodeH(n)}" as="geometry"/></mxCell>`;
+    cells += `<mxCell id="${nid}" value="${q(label)}" style="html=1;whiteSpace=wrap;verticalAlign=top;rounded=${n.isDef ? 0 : 1};arcSize=8;fillColor=${bg};strokeColor=${c};" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
     for (const pp of pinsOf(n, L, S.view)) {
       if (!pp.port) continue;
-      const pq = pinPoint({ x: 0, y: 0, w: W, h: nodeH(n) }, pp.side, pp.t);
+      const pq = pinPoint({ x: 0, y: 0, w: r.w, h: r.h }, pp.side, pp.t);
       const lp =
         pp.side === "l" ? "labelPosition=left;align=right;" : pp.side === "r" ? "labelPosition=right;align=left;" : pp.side === "t" ? "verticalLabelPosition=top;verticalAlign=bottom;" : "verticalLabelPosition=bottom;verticalAlign=top;";
       const pid = "n" + id++;
@@ -103,10 +115,7 @@ export function drawioXml(): string {
       cells += `<mxCell id="${pid}" value="${q(pp.port.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=${c};fontSize=9;${lp}" vertex="1" parent="${nid}"><mxGeometry x="${pq.x - 6}" y="${pq.y - 6}" width="12" height="12" as="geometry"/></mxCell>`;
     }
   }
-  const box = new Map<string, NodeBox>(nodes.map((n) => {
-    const p = at(n.key);
-    return [n.key, { x: p[0], y: p[1], w: W, h: nodeH(n), n, pins: pinsOf(n, L, S.view) }];
-  }));
+  const box = new Map<string, NodeBox>(nodes.map((n) => [n.key, { ...rect(n), n, pins: n.junction ? [] : pinsOf(n, L, S.view) }]));
   const routes = computeRoutes(box, edges, L, "ortho");
   const cp = (side: string, t: string, pre: string): string =>
     side === "l" ? `${pre}X=0;${pre}Y=${t};` : side === "r" ? `${pre}X=1;${pre}Y=${t};` : side === "t" ? `${pre}X=${t};${pre}Y=0;` : `${pre}X=${t};${pre}Y=1;`;
@@ -151,19 +160,17 @@ export function svgExport(): string {
     return svg(g.x0 - 10, g.y0 - 10, g.w + 20, g.h + 20, s);
   }
   const { es, ns } = svgMarkup(LC, content, L, { ...fonts, view: S.view, edgeStyle: S.edgeStyle, phases: !!S.M.phases });
-  const at = (key: string): [number, number] => L.pos[key] ?? [0, 0];
   const nodes = content.nodes;
   if (!nodes.length) return svg(0, 0, 100, 100, "");
+  const byKey = boxesOf(nodes, L.pos);
+  const rects = [...byKey.values()];
   const fpad = content.frame ? 60 : 0;
   // package の枠（F-VIEW-9）も切れないように含める
-  const pk = packageBoxes(content, (k) => {
-    const n = nodes.find((x) => x.key === k);
-    return n ? { x: at(k)[0], y: at(k)[1], w: W, h: nodeH(n) } : undefined;
-  }).map((p) => p.r);
-  const x0 = Math.min(...nodes.map((n) => at(n.key)[0]), ...pk.map((r) => r.x)) - 40 - fpad;
-  const y0 = Math.min(...nodes.map((n) => at(n.key)[1]), ...pk.map((r) => r.y)) - 40 - fpad - (fpad ? 20 : 0);
-  const x1 = Math.max(...nodes.map((n) => at(n.key)[0] + W), ...pk.map((r) => r.x + r.w)) + 40 + fpad;
-  const y1 = Math.max(...nodes.map((n) => at(n.key)[1] + nodeH(n)), ...pk.map((r) => r.y + r.h)) + 40 + fpad;
+  const pk = packageBoxes(content, (k) => byKey.get(k)).map((p) => p.r);
+  const x0 = Math.min(...rects.map((r) => r.x), ...pk.map((r) => r.x)) - 40 - fpad;
+  const y0 = Math.min(...rects.map((r) => r.y), ...pk.map((r) => r.y)) - 40 - fpad - (fpad ? 20 : 0);
+  const x1 = Math.max(...rects.map((r) => r.x + r.w), ...pk.map((r) => r.x + r.w)) + 40 + fpad;
+  const y1 = Math.max(...rects.map((r) => r.y + r.h), ...pk.map((r) => r.y + r.h)) + 40 + fpad;
   return svg(x0, y0, x1 - x0, y1 - y0, es + ns);
 }
 

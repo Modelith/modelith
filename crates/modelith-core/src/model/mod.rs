@@ -659,7 +659,7 @@ impl<'a> Builder<'a> {
     ///
     /// # 引数
     ///
-    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`・`dependency`・`specialize`・`subset`・`redefine`・`reference`）
+    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`・`dependency`・`allocate`・`specialize`・`subset`・`redefine`・`reference`）
     /// - `from`・`to`：線の両端の図の要素の番号（`model.nodes` の添字。範囲外なら panic する）
     /// - `label`：線のラベル（無ければ空文字列）
     /// - `src`：線のもとになった文の範囲（UTF-16 のオフセット）
@@ -832,7 +832,9 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 関係（satisfy・verify・frame・flow・connect・derivation・dependency・message・transition）を線や遷移にする。
+    /// 関係（satisfy・verify・frame・flow・connect・derivation・dependency・allocate・message・transition）を線や遷移にする。
+    /// 割り当ての線（8.2.3.15 の allocate-relationship）は、割り当ての使用の範囲を指す（線を消すと文ごと消える）。
+    /// n 項の接続と結び付けは、一般の図の線にしない（内部ブロック図に描く）が、相手が見つからなければ問題にする。
     /// 相手が見つからない関係は問題にする（モデルの `edges`・`nodes` の `trans`・`problems` を書き換える）。暫定コアの `build` の関係の処理と同じ。
     fn relations(&mut self) {
         let p = self.p;
@@ -905,10 +907,26 @@ impl<'a> Builder<'a> {
                         }
                     }
                 }
-                RelKind::Flow { item, a: ra, b: rb }
+                // n 項の接続（8.2.3.13 の n-ary-connection）は、一般の図には線にしない（内部ブロック図に描く）
+                RelKind::Connect { ends, .. } if ends.len() > 2 => {
+                    if let Some(who) = self.missing_end(ends, pe) {
+                        self.problem(
+                            r.start,
+                            format!("線の接続先「{who}」が見つかりません（connect）"),
+                            None,
+                        );
+                    }
+                }
+                RelKind::Flow {
+                    item, a: ra, b: rb, ..
+                }
                 | RelKind::Connect {
                     item, a: ra, b: rb, ..
                 } => {
+                    let label = match &r.kind {
+                        RelKind::Flow { name, ty, .. } => flow_label(name, ty, item),
+                        _ => item.clone(),
+                    };
                     let rel = if matches!(r.kind, RelKind::Connect { .. }) {
                         "connect"
                     } else {
@@ -918,16 +936,19 @@ impl<'a> Builder<'a> {
                     let pb: Vec<&str> = rb.split('.').collect();
                     let a = self.node_for(self.resolve(pa[0], pe));
                     let b = self.node_for(self.resolve(pb[0], pe));
-                    let s = match &r.kind {
-                        RelKind::Connect { usage, .. } => Span {
-                            start: p.entries[*usage].start,
-                            end: p.entries[*usage].end,
-                        },
-                        _ => src,
+                    // 接続と名前付きのフローは、使用の範囲（本体を含む）を指す
+                    let usage = match &r.kind {
+                        RelKind::Connect { usage, .. } => Some(*usage),
+                        RelKind::Flow { usage, .. } => *usage,
+                        _ => None,
                     };
+                    let s = usage.map_or(src, |u| Span {
+                        start: p.entries[u].start,
+                        end: p.entries[u].end,
+                    });
                     match (a, b) {
                         (Some(a), Some(b)) => {
-                            let ed = self.add_edge("flow", a, b, item.clone(), s);
+                            let ed = self.add_edge("flow", a, b, label, s);
                             self.model.edges[ed].rel = Some(ri);
                             self.port_end(ed, a, pa.get(1).copied(), true, r.start);
                             self.port_end(ed, b, pb.get(1).copied(), false, r.start);
@@ -968,6 +989,43 @@ impl<'a> Builder<'a> {
                             let owner = pe.map_or("", |pe| self.e(pe).name.as_str());
                             self.problem(r.start, format!("メッセージの相手「{seg}」が「{owner}」の中にありません（message）"), None);
                         }
+                    }
+                }
+                // 結び付けは内部ブロック図だけに描く（web）。ここでは相手があるかだけを確かめる
+                RelKind::Bind { a, b, .. } => {
+                    if let Some(who) = self.missing_end(&[a.clone(), b.clone()], pe) {
+                        self.problem(
+                            r.start,
+                            format!("「結び付け」の相手「{who}」が見つかりません（bind）"),
+                            None,
+                        );
+                    }
+                }
+                RelKind::Allocate {
+                    a: ra,
+                    b: rb,
+                    usage,
+                } => {
+                    let (ea, eb) = (self.resolve(ra, pe), self.resolve(rb, pe));
+                    if ea.is_none() || eb.is_none() {
+                        let who = if ea.is_none() { ra } else { rb };
+                        self.problem(
+                            r.start,
+                            format!("「割り当て」関係の相手「{who}」が見つかりません（allocate）"),
+                            None,
+                        );
+                        continue;
+                    }
+                    // 相手はあるが図の要素でない（package など）ときは、線にしない
+                    if let (Some(a), Some(b)) = (self.node_for(ea), self.node_for(eb))
+                        && a != b
+                    {
+                        let u = &p.entries[*usage];
+                        let s = Span {
+                            start: u.start,
+                            end: u.end,
+                        };
+                        self.add_edge("allocate", a, b, dependency_label(&u.name, "allocate"), s);
                     }
                 }
                 RelKind::Transition { from, ev, to } => {
@@ -1039,6 +1097,31 @@ impl<'a> Builder<'a> {
                 }
             }
         }
+    }
+
+    /// 接続の端（`a.p` など）のうち、最初の段（`a`）が見つからない最初のもの。
+    ///
+    /// # 引数
+    ///
+    /// - `ends`：端の参照（書いた順）
+    /// - `pe`：文の持ち主の宣言の番号（名前を探し始める場所）
+    ///
+    /// # 戻り値
+    ///
+    /// 見つからない端（書いたままの参照）。すべて見つかれば None。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def H { part a; part b; connect (a.p, b, c); }" の H の中で
+    /// missing_end(["a.p", "b"], Some(H の番号))      → None
+    /// missing_end(["a.p", "b", "c"], Some(H の番号)) → Some("c")
+    /// ```
+    fn missing_end<'s>(&self, ends: &'s [String], pe: Option<usize>) -> Option<&'s String> {
+        ends.iter().find(|x| {
+            let head = x.split('.').next().unwrap_or("");
+            self.resolve(head, pe).is_none()
+        })
     }
 
     /// 流れの端のポート（`a.p` の `p`）。要素にポートがあればそこにつなぎ、ポートでも中身でもなければ問題にする。
@@ -1224,7 +1307,8 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// 依存の線のラベル（8.2.3.3 の binary-dependency の名前）。前に付けたメタデータは «キーワード» にして名前の前に書く。
+/// 依存・割り当ての線のラベル（8.2.3.3 の binary-dependency の名前・8.2.3.15 の «allocate»）。
+/// 前に付けたメタデータ（割り当てでは `allocate`）は «キーワード» にして名前の前に書く。
 ///
 /// # 引数
 ///
@@ -1241,6 +1325,7 @@ impl<'a> Builder<'a> {
 /// dependency_label("d", "trace") → "«trace» d"
 /// dependency_label("", "trace")  → "«trace»"
 /// dependency_label("", "")       → ""
+/// dependency_label("a", "allocate") → "«allocate» a"
 /// ```
 fn dependency_label(name: &str, meta: &str) -> String {
     let keyword = (!meta.is_empty()).then(|| format!("«{meta}»"));
@@ -1249,6 +1334,41 @@ fn dependency_label(name: &str, meta: &str) -> String {
         .chain((!name.is_empty()).then(|| name.to_owned()))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// 流れの線のラベル（8.2.3.16 の flow-label：`UsageDeclaration? ('of' FlowPayloadFeatureMember)?`）。
+/// 名前の無いフローは、これまでどおりアイテムの型だけを書く。
+///
+/// # 引数
+///
+/// - `name`：フローの名前（名前の無いフローは空）
+/// - `ty`：フローの型の名前（無ければ空）
+/// - `item`：流れるアイテムの型の名前（`of` の後。無ければ空）
+///
+/// # 戻り値
+///
+/// ラベル。書くことが無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// flow_label("f", "FD", "")      → "f : FD"
+/// flow_label("g", "", "Water")   → "g of Water"
+/// flow_label("", "", "Heat")     → "Heat"   // 名前の無いフロー
+/// flow_label("", "", "")         → ""
+/// ```
+pub(crate) fn flow_label(name: &str, ty: &str, item: &str) -> String {
+    if name.is_empty() {
+        return item.to_owned();
+    }
+    let mut label = name.to_owned();
+    if !ty.is_empty() {
+        label.push_str(&format!(" : {ty}"));
+    }
+    if !item.is_empty() {
+        label.push_str(&format!(" of {item}"));
+    }
+    label
 }
 
 /// 部品として持つ線の、部品の側の端に書く文字（8.2.3 の multiplicity と c-adornment）。

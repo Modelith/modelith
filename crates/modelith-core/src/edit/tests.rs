@@ -246,6 +246,117 @@ fn delete_edge_in_internal_block_diagram_uses_context_ids() {
     );
 }
 
+/// 内部ブロック図の線の ID（図の対象 `ctx` の中）。
+fn ibd_ids(text: &str, ctx: &str) -> Vec<String> {
+    let d = Doc::new(text);
+    let c = d.context(ctx).expect("図の対象");
+    ops::context_edges(&d, c)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect()
+}
+
+#[test]
+fn internal_block_diagram_ids_cover_bindings_nary_connections_and_named_flows() {
+    // Arrange（結び付け 8.2.2.13.2・n 項の接続 8.2.3.13・名前付きのフロー 8.2.2.16。ID は UI の views.ts と同じ）
+    let text = "package P { part def E { port p; } flow def FD; part def C { part a : E; part b : E; part e : E; \
+                bind a.p = b.p; connect (a.p, b.p, e.p); connection k connect (a, b, e); \
+                flow f : FD from a.p to b.p; connect a.p to z.p; } }";
+    // Act
+    let ids = ibd_ids(text, "C");
+    // Assert（見つからない端 z の線は除く）
+    assert_eq!(
+        ids,
+        [
+            "bind|u:a|u:b|=#1",
+            "connect|j:#1|u:a|#1",
+            "connect|j:#1|u:b|#1",
+            "connect|j:#1|u:e|#1",
+            "connect|j:k|u:a|#1",
+            "connect|j:k|u:b|#1",
+            "connect|j:k|u:e|#1",
+            "flow|u:a|u:b|f : FD#1",
+        ]
+    );
+}
+
+#[test]
+fn internal_block_diagram_ids_reach_parts_one_level_deeper() {
+    // Arrange（入れ子の 2 段目：型の中の部品へ `a.x.p` で届く線と、部品の本体に書いた線）
+    let text = "package P { part def X { port p; } part def A { port q; part x : X; part z : X; connect q to z.p; } \
+                part def C { part a : A { part y : X; connect x.p to y.p; connect p to y.p; } part b : X; \
+                part d : A; connect a.x.p to b.p; } }";
+    // Act
+    let ids = ibd_ids(text, "C");
+    // Assert（型の中の接続は、同じ型の部品 a・d のそれぞれに描く）
+    assert_eq!(
+        ids,
+        [
+            "flow|u:a|u:a.z|#1",
+            "flow|u:d|u:d.z|#1",
+            "flow|u:a.x|u:a.y|#1",
+            "flow|u:a|u:a.y|#1",
+            "flow|u:a.x|u:b|#1"
+        ]
+    );
+}
+
+#[test]
+fn delete_edge_removes_a_binding_and_a_whole_nary_connection() {
+    // Arrange
+    let text = "package P { part def E { port p; } part def C { part a : E; part b : E; part e : E; \
+                bind a.p = b.p; connect (a.p, b.p, e.p) { } } }";
+    // Act
+    let (no_bind, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"bind|u:a|u:b|=#1","ctx":"C"}"#,
+    );
+    let (no_nary, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"connect|j:#1|u:e|#1","ctx":"C"}"#,
+    );
+    // Assert（n 項の接続は、どの端の線を消しても接続ごと消す）
+    assert!(
+        !no_bind.contains("bind") && no_bind.contains("connect ("),
+        "{no_bind}"
+    );
+    assert!(
+        !no_nary.contains("connect (") && no_nary.contains("bind"),
+        "{no_nary}"
+    );
+}
+
+#[test]
+fn nested_part_and_junction_keys_are_found_in_the_context() {
+    // Arrange（`u:a.x` は型の中の部品、`j:k` は n 項の接続の使用）
+    let text = "package P { part def X; part def A { part x : X; } part def C { part a : A; part b : X; \
+                part e : X; connection k connect (a, b, e); } }";
+    // Act
+    let (renamed, _) = run(
+        text,
+        r#"{"op":"rename","key":"u:a.x","name":"w","ctx":"C"}"#,
+    );
+    let (deleted, _) = run(text, r#"{"op":"delete","keys":["j:k"],"ctx":"C"}"#);
+    // Assert
+    assert!(renamed.contains("part w : X;"), "{renamed}");
+    assert!(!deleted.contains("connection k"), "{deleted}");
+    assert!(refused(text, r#"{"op":"delete","keys":["u:a.zz"],"ctx":"C"}"#).contains("u:a.zz"));
+}
+
+#[test]
+fn connect_flow_to_a_nested_part_writes_its_path() {
+    // Arrange（入れ子の部品 `u:a.x` へ、内部ブロック図で流れを引く）
+    let text = "package P { part def X { port i; } part def A { part x : X; } part def B { port o; } \
+                part def C { part a : A; part b : B; } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"flow","from":"u:b","to":"u:a.x","fromPort":"o","toPort":"i","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(after.contains("flow from b.o to a.x.i;"), "{after}");
+}
+
 #[test]
 fn delete_edge_with_unknown_id_is_refused() {
     assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));

@@ -18,9 +18,16 @@ describe("drawioEdgeStyle（F-EXP-2）", () => {
     expect(flow).toBe("endArrow=block;endFill=1;strokeWidth=2;");
   });
 
-  it("ほかの関係は破線と開いた矢印にする", () => {
+  it.each([["bind"], ["connect"]])("結び付けと n 項の接続の線（%s）は矢印の無い実線にする", (kind) => {
     // Act
-    const style = drawioEdgeStyle("derive");
+    const style = drawioEdgeStyle(kind);
+    // Assert
+    expect(style).toBe("endArrow=none;");
+  });
+
+  it.each([["derive"], ["allocate"]])("ほかの関係（%s）は破線と開いた矢印にする", (kind) => {
+    // Act
+    const style = drawioEdgeStyle(kind);
     // Assert
     expect(style).toBe("dashed=1;endArrow=open;");
   });

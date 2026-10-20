@@ -189,6 +189,125 @@ export interface Box {
   h: number;
 }
 
+/** n 項の接続の点（8.2.3.13 の n-ary-connection-dot）の大きさ（四方）。 */
+export const DOT = 12;
+/** 中に部品を描く部品（内部ブロック図の入れ子）の、中の部品の周りの余白（左右・下）と、見出しの分を含む上の余白。 */
+export const NEST_PAD = 20;
+export const NEST_TOP = HEAD + 10;
+/** 中に部品を描く部品の、中の部品どうしの縦の間隔。 */
+const NEST_GAP = 30;
+
+/**
+ * 図の要素の矩形を、配置の座標から求める。n 項の接続の点は DOT 四方、中に部品を描く部品（`container` で指される部品）は
+ * 中の部品をすべて囲む矩形（左右・下に NEST_PAD、上に見出しの分 NEST_TOP の余白）、ほかは幅 W・高さ nodeH。
+ *
+ * @param nodes 図に描く要素
+ * @param pos 要素のキーから左上の座標への対応（座標の無い要素は (0, 0) に置く）
+ * @returns 要素のキーから矩形への対応（nodes の順）
+ * @example
+ * // A（行なし）が (10, 20)、点 j:#1 が (300, 40)
+ * boxesOf([A, J], pos) // → Map { "A" → { x: 10, y: 20, w: 224, h: 44 }, "j:#1" → { x: 300, y: 40, w: 12, h: 12 } }
+ * // u:a の中の部品 u:a.x が (100, 100)
+ * boxesOf([a, ax], pos).get("u:a") // → { x: 80, y: 46, w: 264, h: 118 }（u:a 自身の座標は使わない）
+ * boxesOf([], pos)     // → Map {}
+ */
+export function boxesOf(nodes: readonly ModelNode[], pos: Record<string, Pos>): Map<string, Box> {
+  const own = (n: ModelNode): Box => {
+    const p = pos[n.key] ?? [0, 0];
+    return n.junction ? { x: p[0], y: p[1], w: DOT, h: DOT } : { x: p[0], y: p[1], w: W, h: nodeH(n) };
+  };
+  return new Map(
+    nodes.map((n) => {
+      const inner = nodes.filter((c) => c.container === n.key).map(own);
+      if (!inner.length) return [n.key, own(n)];
+      const x0 = Math.min(...inner.map((b) => b.x)) - NEST_PAD, y0 = Math.min(...inner.map((b) => b.y)) - NEST_TOP;
+      const x1 = Math.max(...inner.map((b) => b.x + b.w)) + NEST_PAD, y1 = Math.max(...inner.map((b) => b.y + b.h)) + NEST_PAD;
+      return [n.key, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
+    }),
+  );
+}
+
+/**
+ * 中に部品を描く部品の、自動で並べるときの高さ（中の部品を縦に積んだ高さ）。中に部品が無ければ nodeH。
+ *
+ * @param n 図の要素
+ * @param nodes 図に描く要素（中の部品を探す）
+ * @returns 高さ（図の座標の単位）
+ * @example
+ * // u:a の中に、行の無い部品が 2 つ
+ * stackedHeight(a, nodes) // → 54 + 44 + 30 + 44 + 20 = 192
+ * stackedHeight(b, nodes) // → 44（中に部品が無い）
+ */
+export function stackedHeight(n: ModelNode, nodes: readonly ModelNode[]): number {
+  const inner = nodes.filter((c) => c.container === n.key);
+  if (!inner.length) return nodeH(n);
+  return NEST_TOP + inner.reduce((h, c) => h + nodeH(c), 0) + NEST_GAP * (inner.length - 1) + NEST_PAD;
+}
+
+/**
+ * 座標の無い中の部品を、外の部品の中に縦に積んで置く（pos を変更する）。外の部品の中にすでに置いた部品があれば、その下に足す。
+ * 外の部品に座標が無ければ置かない（先に外の部品を並べること）。
+ *
+ * @param nodes 図に描く要素（中の部品は `container` を持つ）
+ * @param pos 要素のキーから左上の座標への対応。中の部品の座標を書き込む
+ * @example
+ * // u:a が (0, 0)、中の部品 u:a.x・u:a.y に座標が無い
+ * placeNested(nodes, pos) // → pos["u:a.x"] = [20, 54]、pos["u:a.y"] = [20, 128]（44 + 30 下）
+ * // u:a に座標が無い
+ * placeNested(nodes, pos) // → pos を変えない
+ */
+export function placeNested(nodes: readonly ModelNode[], pos: Record<string, Pos>): void {
+  for (const outer of nodes) {
+    const at = pos[outer.key];
+    const inner = nodes.filter((c) => c.container === outer.key);
+    if (!at || !inner.length) continue;
+    const placed = inner.flatMap((c) => {
+      const p = pos[c.key];
+      return p ? [p[1] + nodeH(c)] : [];
+    });
+    let y = placed.length ? Math.max(...placed) + NEST_GAP : at[1] + NEST_TOP;
+    const x = placed.length ? Math.min(...inner.flatMap((c) => (pos[c.key] ? [pos[c.key]?.[0] ?? 0] : []))) : at[0] + NEST_PAD;
+    for (const c of inner) {
+      if (pos[c.key]) continue;
+      pos[c.key] = [x, y];
+      y += nodeH(c) + NEST_GAP;
+    }
+  }
+}
+
+/**
+ * n 項の接続の点の位置を、点につながる要素の中心の平均（重心）にする。重心が要素に重なるときは、つながる要素の下に 60 離して置く。
+ * 座標の無い点だけを pos に書き込む（pos を変更する）。
+ *
+ * @param nodes 図に描く要素（点を含む）
+ * @param edges 図の線（点から端への線で、つながる要素を決める）
+ * @param pos 要素のキーから左上の座標への対応。点の座標を書き込む
+ * @example
+ * // 点 j:#1 が A（0, 0）と B（400, 0）につながり、どちらも幅 224・高さ 44
+ * placeJunctions([A, B, J], edges, pos)    // → pos["j:#1"] = [306, 16]（中心の平均 (312, 22) から DOT の半分を引く）
+ * // A（0, 0）・B（300, 0）・C（600, 0）につながる
+ * placeJunctions([A, B, C, J], edges, pos) // → pos["j:#1"] = [406, 98]（中心の平均 (412, 22) は B に重なるので、下端 44 から 60 下）
+ * // 点につながる要素に座標が無い
+ * placeJunctions([J], edges, pos)       // → pos を変えない
+ */
+export function placeJunctions(nodes: readonly ModelNode[], edges: readonly ModelEdge[], pos: Record<string, Pos>): void {
+  const boxes = boxesOf(nodes, pos);
+  for (const j of nodes) {
+    if (!j.junction || pos[j.key]) continue;
+    const ends = edges.flatMap((e) => {
+      const other = e.from === j.key ? e.to : e.to === j.key ? e.from : null;
+      const b = other && pos[other] ? boxes.get(other) : undefined;
+      return b ? [b] : [];
+    });
+    if (!ends.length) continue;
+    const cx = ends.reduce((a, b) => a + b.x + b.w / 2, 0) / ends.length;
+    let cy = ends.reduce((a, b) => a + b.y + b.h / 2, 0) / ends.length;
+    const covered = [...boxes.entries()].some(([k, b]) => k !== j.key && pos[k] && cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h);
+    if (covered) cy = Math.max(...ends.map((b) => b.y + b.h)) + 60;
+    pos[j.key] = [Math.round(cx - DOT / 2), Math.round(cy - DOT / 2)];
+  }
+}
+
 export interface Pin {
   id: string;
   side: Side;
@@ -199,6 +318,8 @@ export interface Pin {
 export interface NodeBox extends Box {
   n: ModelNode;
   pins: Pin[];
+  /** 中に部品を描く部品（内部ブロック図の入れ子）。線の経路で避けるブロックにしない。 */
+  holds?: boolean;
 }
 
 const DEF_SIDE: Record<PortDir, Side> = { in: "l", out: "r", inout: "b" };
@@ -563,7 +684,8 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
       else it.rec.tt = pos / len;
     });
   }
-  const obs: Rect[] = [...box.values()].map((b) => ({ x0: b.x - 6, y0: b.y - 6, x1: b.x + b.w + 6, y1: b.y + b.h + 6 }));
+  // 中に部品を描く部品は、中へ入る線が通れるよう、避けるブロックにしない
+  const obs: Rect[] = [...box.values()].filter((b) => !b.holds).map((b) => ({ x0: b.x - 6, y0: b.y - 6, x1: b.x + b.w + 6, y1: b.y + b.h + 6 }));
   const out = new Map<string, Route>();
   const endOf = (b: Box, pin: Pin | undefined, side: Side, t: number): RouteEnd => {
     if (pin) {
@@ -659,8 +781,9 @@ const RANK: Record<string, number> = {
  * @param v ビューの定義（depth が真なら線の深さで段を決める。control・ibd では信号の上流を左に置く）
  * @param firstPhase 最初の段階の名前。その段階の requirement def を requirement の上の段に置く。無ければ null
  * @param oy 最初の段の y 座標（既定 0。配置済みの要素の下端を渡す）
+ * @param heightOf 要素の高さ（既定 nodeH。中に部品を描く部品は、中の部品を積んだ高さを渡す）
  */
-export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<string, Pos>, v: ViewDef, firstPhase: string | null, oy = 0): void {
+export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<string, Pos>, v: ViewDef, firstPhase: string | null, oy = 0, heightOf: (n: ModelNode) => number = nodeH): void {
   const keys = new Set(list.map((n) => n.key));
   const layer = new Map<string, number>();
   if (v.depth) {
@@ -722,7 +845,7 @@ export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<str
       chunk.forEach((n, k) => {
         pos[n.key] = [Math.round((off + k * (W + GX)) / 10) * 10, y];
       });
-      y += Math.max(...chunk.map(nodeH)) + 110;
+      y += Math.max(...chunk.map(heightOf)) + 110;
     }
   }
 }

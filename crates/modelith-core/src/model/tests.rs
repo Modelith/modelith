@@ -110,7 +110,7 @@ fn flow_edge_points_to_its_relation_by_index() {
 fn unsupported_statement_head_is_shortened_to_40_utf16_units() {
     // Arrange（境界値：41 文字の頭）
     let name = "あ".repeat(41);
-    let text = format!("package P {{ allocation def {name}; }}");
+    let text = format!("package P {{ send {name}; }}");
     // Act
     let (_, m) = run(&text);
     // Assert
@@ -893,4 +893,94 @@ fn dependency_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
         ["「依存」関係の相手「Nope」が見つかりません（dependency）"]
     );
     assert!(m.edges.is_empty(), "{:?}", m.edges);
+}
+
+#[test]
+fn allocation_draws_a_line_between_drawn_elements() {
+    // Arrange（AllocationUsage 8.2.2.15・8.2.3.15 の allocate-relationship：名前の無い割り当てと名前付きの割り当て）
+    let text = "package P { part def L; part def Ph; allocation def AD; \
+                allocate L to Ph; allocation a : AD allocate L to Ph { } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let lines: Vec<String> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "allocate")
+        .map(|e| format!("{}|{}|{}", e.from, e.to, e.label))
+        .collect();
+    assert_eq!(lines, ["L|Ph|«allocate»", "L|Ph|«allocate» a"]);
+    let a = p.entries.iter().find(|e| e.name == "a").expect("a");
+    let named = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "allocate")
+        .nth(1)
+        .expect("線");
+    assert_eq!((named.src.start, named.src.end), (a.start, a.end));
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn allocation_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
+    // Arrange（異常系：見つからない相手。部品の中の特性への割り当ては、相手があるので知らせない）
+    let text = "package P { part def L { part f; } part def Ph; part l : L; \
+                allocate l.f to Ph; allocate L to Nope; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        ["「割り当て」関係の相手「Nope」が見つかりません（allocate）"]
+    );
+    assert!(m.edges.iter().all(|e| e.kind != "allocate"));
+}
+
+#[test]
+fn named_flow_is_labelled_with_its_declaration_and_points_to_its_usage() {
+    // Arrange（FlowUsage 8.2.2.16・8.2.3.16 の flow-label。同値分割：型付き・of 付き・名前の無いフロー）
+    let text = "package P { part def S { port o; } part def T { port i; } item def Water; flow def FD; \
+                part def H { part s : S; part t : T; flow f : FD from s.o to t.i { } \
+                flow g of Water from s.o to t.i; flow of Water from s.o to t.i; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let flows: Vec<&Edge> = m.edges.iter().filter(|e| e.kind == "flow").collect();
+    let labels: Vec<&str> = flows.iter().map(|e| e.label.as_str()).collect();
+    assert_eq!(labels, ["f : FD", "g of Water", "Water"]);
+    let f = p.entries.iter().find(|e| e.name == "f").expect("f");
+    assert_eq!((flows[0].src.start, flows[0].src.end), (f.start, f.end));
+    assert_eq!(flows[0].from_port.as_deref(), Some("port:o"));
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn nary_connection_and_binding_are_not_lines_of_the_general_view() {
+    // Arrange（n 項の接続 8.2.3.13・結び付け 8.2.2.13.2 は内部ブロック図だけに描く）
+    let text = "package P { part def A { port p; } part def H { part a : A; part b : A; part c : A; \
+                connect (a.p, b.p, c.p); bind a.p = b.p; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.edges.iter().all(|e| e.kind == "comp"), "{:?}", m.edges);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn nary_connection_and_binding_report_a_missing_end() {
+    // Arrange（異常系：端の最初の段が見つからない）
+    let text =
+        "package P { part def H { part a; part b; connect (a, b, nope.p); bind a = gone; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "線の接続先「nope.p」が見つかりません（connect）",
+            "「結び付け」の相手「gone」が見つかりません（bind）"
+        ]
+    );
 }

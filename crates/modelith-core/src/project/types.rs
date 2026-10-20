@@ -233,18 +233,65 @@ pub enum RelKind {
         item: String,
         a: String,
         b: String,
+        /// 名前付きのフロー（`flow f : FD from a to b;`、FlowUsage、8.2.2.16）の名前。名前の無いフローでは空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        name: String,
+        /// 名前付きのフローの型（`: FD` の `FD`）。無ければ空。
+        #[serde(default, rename = "type", skip_serializing_if = "String::is_empty")]
+        ty: String,
+        /// 名前付きのフローの使用（`ParseResult.entries` の番号）。名前の無いフローは宣言にしないので `None`。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<usize>,
     },
     Connect {
         a: String,
         b: String,
         item: String,
         usage: usize,
+        /// 端すべて（書いた順。2 つ以上）。`a`・`b` は最初の 2 つ。n 項の `connect (a, b, c)`（8.2.2.13.1）で 3 つ以上になる。
+        /// TS には 3 つ以上のときだけ渡す（2 つなら `a`・`b` と同じ）。
+        #[serde(skip_serializing_if = "is_binary")]
+        ends: Vec<String>,
     },
     Transition {
         from: String,
         ev: String,
         to: String,
     },
+    /// `allocate x to y;`・`allocation a : AD allocate x to y;`（AllocationUsage、8.2.2.15）。`a` を `b` に割り当てる。
+    Allocate {
+        a: String,
+        b: String,
+        /// 割り当ての使用（名前の無いものを含む。`ParseResult.entries` の番号）。
+        usage: usize,
+    },
+    /// `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。両端は等しい値を持つ。
+    Bind {
+        a: String,
+        b: String,
+        /// 結び付けの使用（名前の無いものを含む。`ParseResult.entries` の番号）。
+        usage: usize,
+    },
+}
+
+/// 接続の端が 2 つ以下か（2 項の接続。端の一覧を TS に渡さない）。
+///
+/// # 引数
+///
+/// - `ends`：接続の端の一覧
+///
+/// # 戻り値
+///
+/// 端が 2 つ以下なら `true`。
+///
+/// # 例
+///
+/// ```text
+/// is_binary(["a", "b"])      → true
+/// is_binary(["a", "b", "c"]) → false
+/// ```
+fn is_binary(ends: &[String]) -> bool {
+    ends.len() <= 2
 }
 
 /// 要素間の関係を表す文。

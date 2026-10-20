@@ -34,8 +34,8 @@ use text::*;
 /// ```text
 /// project("package P { part def A { part b : B; } }", …)
 ///   → entries: P・A・b（P.children = [A]、A.children = [b]、b.ty = "B"）
-/// project("package P { allocation def C; }\npart def Tail", …)
-///   → unsupported の head: ["allocation def C"]、Tail は entries に無い、errors は 1 件
+/// project("package P { send s; }\npart def Tail", …)
+///   → unsupported の head: ["send s"]、Tail は entries に無い、errors は 1 件
 /// ```
 pub fn project(source: &str, parse: &Parse) -> ParseResult {
     let mut c = Ctx::new(source, parse);
@@ -114,6 +114,8 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "interface def",
     "calc def",
     "connection def",
+    "allocation def",
+    "flow def",
     "use case def",
     "enum def",
     "view def",
@@ -139,6 +141,8 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "interface",
     "calc",
     "connection",
+    "allocation",
+    "flow",
     "subject",
     "stakeholder",
     "view",
@@ -464,8 +468,8 @@ impl Ctx {
     /// classify(…, "in x : Real", …, Semi)  → Some(1)（kind "param"、dir "in"、ty "Real"）
     /// // "satisfy R by A;"
     /// classify(…, "satisfy R by A", …)     → None（rels に Satisfy { req: "R", by: "A" }）
-    /// // "allocation def C;"
-    /// classify(…, "allocation def C", …)   → None（unsupported に "allocation def C"）
+    /// // "send s;"
+    /// classify(…, "send s", …)             → None（unsupported に "send s"）
     /// ```
     #[allow(clippy::too_many_arguments)]
     fn classify(
@@ -665,14 +669,14 @@ impl Ctx {
                     meta.entry(md, OrderedMap::default);
                 }
             }
-            if let Some((a, b)) = connect_ends(n) {
+            let flow = (n.kind() == FLOW_USAGE)
+                .then(|| flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx)))
+                .flatten();
+            if let Some(kind) =
+                flow.or_else(|| connector_relation(n.kind(), connector_ends(n), &e.ty, idx))
+            {
                 self.out.rels.push(Rel {
-                    kind: RelKind::Connect {
-                        a,
-                        b,
-                        item: e.ty.clone(),
-                        usage: idx,
-                    },
+                    kind,
                     pe,
                     start,
                     end,
@@ -1168,7 +1172,8 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// `decl_kind` で決まる種類に加え、alpha.7 で読むようにした形を見分ける。
 /// `timeslice`・`snapshot` の修飾だけの使用（PortionUsage）はその語を、`#X def H`（ExtendedDefinition）は `"def"`、
 /// 種類のキーワードの無い `#X h`（ExtendedUsage）は `"usage"`、`variant a`（VariantReference）は `"variant"`、
-/// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"` にする。
+/// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"`、`connect a to b`（`connection` の無い接続）は
+/// `"connection"`、`allocate x to y` は `"allocation"`、`bind a = b`・`binding bb bind a = b` は `"binding"` にする。
 ///
 /// # 引数
 ///
@@ -1189,6 +1194,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// entry_kind("timeslice part p;", "part p", "timeslice", …) → Some(("part", false))
 /// entry_kind("#X def H;", "def H", "", true)                → Some(("def", true))
 /// entry_kind("#X h : T;", "h : T", "", true)                → Some(("usage", false))
+/// entry_kind("connect a to b;", "connect a to b", "", false) → Some(("connection", false))
 /// entry_kind("in #X x : T;", "x : T", "in", true)           → None   // パラメータとして読む
 /// entry_kind("a = 1;", "a = 1", "", false)                  → None
 /// ```
@@ -1217,6 +1223,12 @@ fn entry_kind(
     let is_mod = |w: &str| mods.split(' ').any(|m| m == w);
     match n.kind() {
         INCLUDE_USE_CASE_USAGE => Some(("include use case", false)),
+        // `connect a to b;`（`connection` の無い ConnectionUsage、8.2.2.13.1）は名前の無い接続
+        CONNECTION_USAGE if starts_with_word(h, "connect") => Some(("connection", false)),
+        // `allocate x to y;`（`allocation` の無い AllocationUsage、8.2.2.15）は名前の無い割り当て
+        ALLOCATION_USAGE if starts_with_word(h, "allocate") => Some(("allocation", false)),
+        // `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）
+        BINDING_CONNECTOR_AS_USAGE => Some(("binding", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
         REFERENCE_USAGE if is_mod("variant") => Some(("variant", false)),
         REFERENCE_USAGE
@@ -1631,24 +1643,86 @@ fn first_ref(n: &SyntaxNode) -> Option<String> {
         .map(|c| unquote(&compact(&c)).to_owned())
 }
 
-/// `interface i : I connect a to b` の両端。
+/// 接続の端を持つ使用（接続・インタフェース・割り当て・結び付け）の、端の間の関係。
 ///
 /// # 引数
 ///
-/// - `n`：宣言の節
+/// - `kind`：使用の節の種類
+/// - `ends`：端の参照（`connector_ends` の結果。書いた順）
+/// - `ty`：使用の型の名前（接続の線のラベル。無ければ空）
+/// - `usage`：使用の宣言の番号
 ///
 /// # 戻り値
 ///
-/// `(connect の後の参照, to の後の参照)`。どちらかが無ければ `None`。
+/// 接続・インタフェースで端が 2 つ以上なら `Connect`、割り当てで端が 2 つなら `Allocate`、結び付けで端が 2 つなら `Bind`。
+/// それ以外（n 項の割り当てを含む）は `None`。
 ///
 /// # 例
 ///
 /// ```text
-/// connect_ends("interface i : I connect a.p to b.q;") → Some(("a.p", "b.q"))
-/// connect_ends("interface i : I;")                     → None
+/// connector_relation(CONNECTION_USAGE, ["a", "b", "c"], "C", 3) → Some(Connect { a: "a", b: "b", ends: [a, b, c], item: "C", usage: 3 })
+/// connector_relation(BINDING_CONNECTOR_AS_USAGE, ["x", "y"], "", 4) → Some(Bind { a: "x", b: "y", usage: 4 })
+/// connector_relation(ALLOCATION_USAGE, ["f", "c"], "AD", 5)        → Some(Allocate { a: "f", b: "c", usage: 5 })
+/// connector_relation(CONNECTION_USAGE, ["a"], "", 3)            → None   // 端が足りない
+/// connector_relation(PART_USAGE, [], "", 0)                     → None
 /// ```
-fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
-    Some((ref_after(n, "connect")?, ref_after(n, "to")?))
+fn connector_relation(
+    kind: SyntaxKind,
+    ends: Vec<String>,
+    ty: &str,
+    usage: usize,
+) -> Option<RelKind> {
+    match (kind, ends.as_slice()) {
+        (CONNECTION_USAGE | INTERFACE_USAGE, [a, b, ..]) => Some(RelKind::Connect {
+            a: a.clone(),
+            b: b.clone(),
+            item: ty.to_owned(),
+            usage,
+            ends: ends.clone(),
+        }),
+        (ALLOCATION_USAGE, [a, b]) => Some(RelKind::Allocate {
+            a: a.clone(),
+            b: b.clone(),
+            usage,
+        }),
+        (BINDING_CONNECTOR_AS_USAGE, [a, b]) => Some(RelKind::Bind {
+            a: a.clone(),
+            b: b.clone(),
+            usage,
+        }),
+        _ => None,
+    }
+}
+
+/// 接続の端（`CONNECTOR_END`、8.2.2.13.1）の参照を、書いた順に集める。
+///
+/// 端の名前（`e ::> a.p` の `e`）と多重度は除き、参照だけを空白を除いた文字列にする。
+///
+/// # 引数
+///
+/// - `n`：文の節（`connect`・`bind`・`allocate` を含む宣言）
+///
+/// # 戻り値
+///
+/// 端の参照の一覧。端が無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// connector_ends("connect (a.p, b, [1] e ::> c.r);") → ["a.p", "b", "c.r"]
+/// connector_ends("bind x = y.z;")                     → ["x", "y.z"]
+/// connector_ends("part a;")                           → []
+/// ```
+fn connector_ends(n: &SyntaxNode) -> Vec<String> {
+    n.children()
+        .filter(|c| c.kind() == CONNECTOR_END)
+        .filter_map(|end| {
+            end.children()
+                .filter(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+                .last()
+                .map(|c| compact(&c))
+        })
+        .collect()
 }
 
 /// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・遷移）。依存は `dependencies` で読む。
@@ -1715,13 +1789,7 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
                 path: t.path,
             })
         }
-        FLOW_USAGE if child(n, NAME).is_none() => Some(RelKind::Flow {
-            item: ref_after(n, "of")
-                .map(|s| last_segment(&s).to_owned())
-                .unwrap_or_default(),
-            a: ref_after(n, "from")?,
-            b: ref_after(n, "to")?,
-        }),
+        FLOW_USAGE if child(n, NAME).is_none() => flow_ends(n, String::new(), String::new(), None),
         TRANSITION_USAGE => Some(RelKind::Transition {
             from: ref_after(n, "first")?,
             ev: ref_after(n, "accept").unwrap_or_default(),
@@ -1729,6 +1797,39 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         }),
         _ => None,
     }
+}
+
+/// フロー（`flow of I from a to b`、FlowUsage、8.2.2.16）の流れの関係。
+///
+/// # 引数
+///
+/// - `n`：`FLOW_USAGE` の節
+/// - `name`：フローの名前（名前の無いフローは空）
+/// - `ty`：フローの型の名前（無ければ空）
+/// - `usage`：名前付きのフローの宣言の番号（名前の無いフローは `None`）
+///
+/// # 戻り値
+///
+/// 流れの関係（アイテムは `of` の後の型の最後の名前）。`from`・`to` の後の参照が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// flow_ends("flow of Heat from h.o to w.i;", "", "", None) → Some(Flow { item: "Heat", a: "h.o", b: "w.i", … })
+/// flow_ends("flow f : FD from a to b;", "f", "FD", Some(3)) → Some(Flow { item: "", a: "a", b: "b", name: "f", ty: "FD", usage: Some(3) })
+/// flow_ends("flow f : FD;", "f", "FD", Some(3))             → None
+/// ```
+fn flow_ends(n: &SyntaxNode, name: String, ty: String, usage: Option<usize>) -> Option<RelKind> {
+    Some(RelKind::Flow {
+        item: ref_after(n, "of")
+            .map(|s| last_segment(&s).to_owned())
+            .unwrap_or_default(),
+        a: ref_after(n, "from")?,
+        b: ref_after(n, "to")?,
+        name,
+        ty,
+        usage,
+    })
 }
 
 /// 依存（Dependency、8.2.2.3）を、依存する側とされる側の組ごとの関係にする。
