@@ -162,10 +162,14 @@ function onPointerDown(ev: PointerEvent): void {
     const L = curLayout().pos;
     const p = L[k] ?? [0, 0];
     const d: Drag = { type: "node", key: k, lx, ly, ox: p[0], oy: p[1], moved: false };
-    if (S.selSet.size > 1 && S.selSet.has(k)) d.group = selNodes().flatMap((n) => {
-      const q = L[n.key];
-      return q ? [{ key: n.key, p: [q[0], q[1]] as Pos }] : [];
-    });
+    const at = (key: string): { key: string; p: Pos }[] => {
+      const q = L[key];
+      return q ? [{ key, p: [q[0], q[1]] as Pos }] : [];
+    };
+    // 中に部品を描く部品（内部ブロック図の入れ子）は、中の部品ごと動かす
+    const withInner = (key: string): string[] => [key, ...CC().nodes.filter((n) => n.container === key).map((n) => n.key)];
+    const keys = S.selSet.size > 1 && S.selSet.has(k) ? selNodes().flatMap((n) => withInner(n.key)) : withInner(k);
+    if (keys.length > 1) d.group = [...new Set(keys)].flatMap(at);
     drag = d;
   } else if (eEl) drag = { type: "edge", id: eEl.dataset["edge"] ?? "", lx, ly, moved: false };
   else {

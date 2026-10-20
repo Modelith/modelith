@@ -81,6 +81,31 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
     expect(edges).toEqual([]);
   });
 
+  it("部品の本体の部品と、線の端（a.x.p）が指す型の中の部品を、中の部品として描く（入れ子の 2 段目）", () => {
+    // Arrange
+    const text = "package P { part def X { port p; } part def A { part x : X; part unused : X; } part def C { part a : A { part y : X; } part b : X; connect a.x.p to b.p; } }";
+    const { M, c } = setup(text, "C");
+    // Act
+    const { nodes, edges } = ibdContentOf(M, c);
+    // Assert（型の中の部品のうち、線の端が指さない unused は描かない）
+    expect(nodes.map((n) => [n.key, n.container])).toEqual([["u:a", undefined], ["u:a.y", "u:a"], ["u:a.x", "u:a"], ["u:b", undefined]]);
+    expect(edges.map((e) => [e.id, e.fromPort, e.toPort])).toEqual([["flow|u:a.x|u:b|#1", "port:p", "port:p"]]);
+  });
+
+  it("部品の型の中の線は、同じ型の部品ごとに、部品の中に描く", () => {
+    // Arrange
+    const text = "package P { part def X { port p; } part def A { port q; part x : X; connect q to x.p; } part def C { part a : A; part d : A; } }";
+    const { M, c } = setup(text, "C");
+    // Act
+    const { nodes, edges } = ibdContentOf(M, c);
+    // Assert
+    expect(nodes.map((n) => n.key)).toEqual(["u:a", "u:a.x", "u:d", "u:d.x"]);
+    expect(edges.map((e) => [e.id, e.fromPort, e.toPort])).toEqual([
+      ["flow|u:a|u:a.x|#1", "port:q", "port:p"],
+      ["flow|u:d|u:d.x|#1", "port:q", "port:p"],
+    ]);
+  });
+
   it("端が図の部品に当たらない線は描かない（異常系）", () => {
     // Arrange
     const { M, c } = setup("package P { part def E; part def C { part a : E; flow from a to nope; } }", "C");
@@ -91,8 +116,8 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
   });
 
   it("線の ID で、Rust のコアが同じ線を消せる（結合）", () => {
-    // Arrange
-    const text = "package P { part def E { port o; port i; } flow def FD; part def C { part a : E; part b : E; flow from a.o to b.i; connect a.o to b.i; flow f : FD from a.o to b.i; bind a.o = b.i; connect (a, b, a.o); } }";
+    // Arrange（2 項・名前付きのフロー・結び付け・n 項、入れ子の部品と型の中の線）
+    const text = "package P { part def E { port o; port i; part n : E2; connect o to n.p; } part def E2 { port p; } flow def FD; part def C { part a : E; part b : E; flow from a.o to b.i; connect a.o to b.i; flow f : FD from a.o to b.i; bind a.o = b.i; connect (a, b, a.o); connect a.n.p to b.i; } }";
     const { M, c } = setup(text, "C");
     // Act
     const results = ibdContentOf(M, c).edges.map((e) => edit(text, { op: "deleteEdge", id: e.id, ctx: "C" }));

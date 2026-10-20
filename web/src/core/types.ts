@@ -176,6 +176,8 @@ export interface ModelNode {
   lifeline?: boolean;
   /** 内部ブロック図の n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。`entry` は接続の使用。 */
   junction?: boolean;
+  /** 内部ブロック図で、この部品を中に描く外の部品のキー（入れ子の 2 段目）。 */
+  container?: string;
   /** ポートを追加する先（使用の場合は型の定義）。 */
   portHost?: Entry;
   typeKey?: string | null;

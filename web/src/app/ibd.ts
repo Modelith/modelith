@@ -1,7 +1,7 @@
 // 内部ブロック図（InterconnectionView）の中身を、モデルから作る。
 // 要素のキーと線の ID は、Rust のコアの図の操作（crates/modelith-core/src/edit/ibd.rs）と同じ決め方にする（ADR-0016）。
 
-import type { Model, ModelEdge, ModelNode } from "../core";
+import type { Entry, Model, ModelEdge, ModelNode } from "../core";
 
 /** 内部ブロック図に描く要素と線。 */
 export interface IbdContent {
@@ -51,75 +51,139 @@ function counter(): (base: string) => string {
 }
 
 /**
+ * 部品の中の部品（入れ子の 2 段目）になりうるもの。部品の本体に書いた部品、続けて型の定義の中の部品（同じ名前は本体を優先）。
+ * Rust のコアの `inner_parts` と同じ。
+ *
+ * @param M モデル（型の定義を、図の要素の定義から名前で探す）
+ * @param u 対象の直下の部品
+ * @returns 名前のある部品（本体の順、続けて型の定義の順）。無ければ空
+ * @example
+ * // part def A { part x; } と part def C { part a : A { part y; } } のとき
+ * innerParts(M, a).map((e) => e.name) // → ["y", "x"]
+ * // 型の無い部品 part b; のとき
+ * innerParts(M, b)                    // → []
+ */
+export function innerParts(M: Model, u: Entry): Entry[] {
+  const isPart = (e: Entry): boolean => e.kind === "part" && !!e.name;
+  const own = u.children.filter(isPart);
+  const def = M.nodes.find((n) => n.isDef && n.name === u.type)?.entry;
+  const inherited = (def?.children ?? []).filter((c) => isPart(c) && !own.some((o) => o.name === c.name));
+  return [...own, ...inherited];
+}
+
+/**
  * 内部ブロック図の内容を作る。対象の部品を `u:部品名` のノードにし、対象の中の flow・connect・bind を、
  * 部品の間の線（ポートが分かれば接続点つき）にする。名前付きのフローのラベルは名前と型（`flowLabel`）、
  * 結び付けは種類 `bind` でラベル `=`（8.2.3.13 の binding-connection）。
  * 端が 3 つ以上の接続（8.2.3.13 の n-ary-connection）は、点 `j:名前`（名前が無ければ `j:#番号`）を要素にし、
  * 点から端ごとに種類 `connect` の線を引く。
+ * 部品の中の部品（入れ子の 2 段目）は `u:部品.部品` のノード（`container` は外の部品）にする。描くのは、部品の本体に書いた部品と、
+ * 線の端（`a.x.p`）が指す型の中の部品。部品の本体と、部品の型の定義の中に書いた線も描く（端は部品の中から `x.p`・部品のポート `p` で指す。
+ * 同じ型の部品が 2 つあれば、型の中の線は部品ごとに描く）。
  * 線は、接続・結び付け・名前付きのフローなら使用（本体を含む）、名前の無いフローなら文の範囲を指す。
  * 要素のキーと線の ID は、Rust のコア（`edit/ibd.rs`）と同じ決め方にする。
  *
  * @param M モデル
  * @param ctx 図の対象（部品を持つ part def のノード）
- * @returns 部品・接続の点と線。部品が無ければ空
+ * @returns 部品（外の部品の直後に中の部品）・接続の点と線。部品が無ければ空
  * @example
  * // Vehicle が部品 engine・wheel を持ち、engine.out から wheel.in へ flow がある
  * ibdContentOf(M, Vehicle) // → { nodes: [u:engine, u:wheel], edges: [{ id: "flow|u:engine|u:wheel|#1", kind: "flow", … }] }
  * // さらに bind engine.rpm = wheel.rpm; と connect (engine, wheel, body); がある
  * ibdContentOf(M, Vehicle).edges.map((e) => e.id).slice(1)
  * // → ["bind|u:engine|u:wheel|=#1", "connect|j:#1|u:engine|#1", "connect|j:#1|u:wheel|#1", "connect|j:#1|u:body|#1"]
+ * // engine の型 Engine が part cyl を持ち、connect engine.cyl.p to wheel.in; がある
+ * ibdContentOf(M, Vehicle).nodes.map((n) => n.key) // → ["u:engine", "u:engine.cyl", "u:wheel", …]
  * // 部品を持たない part def
  * ibdContentOf(M, Engine)  // → { nodes: [], edges: [] }
  */
 export function ibdContentOf(M: Model, ctx: ModelNode): IbdContent {
   const typeNode = (tn: string): ModelNode | undefined => M.nodes.find((n) => n.isDef && n.name === tn);
-  const nodes: ModelNode[] = ctx.entry.children
-    .filter((c) => c.kind === "part" && c.name)
-    .map((u) => {
-      const tn = typeNode(u.type);
-      return {
-        key: "u:" + u.name, name: u.name, short: "", kind: "part", isDef: false, fam: "part", entry: u, trans: [],
-        ports: tn ? tn.ports : [], portHost: tn ? tn.entry : u, typeKey: tn ? tn.key : null, usage: true, phase: null, phaseOwn: false,
-      };
-    });
-  const byN = new Map(nodes.map((n) => [n.name, n]));
-  const endOf = (path: string): End | null => {
-    const [head, port] = path.split(".");
-    const node = byN.get(head ?? "");
-    if (!node) return null;
-    return port && node.ports.some((p) => p.name === port) ? { node, port: "port:" + port } : { node };
+  const usageNode = (u: Entry, key: string, container?: string): ModelNode => {
+    const tn = typeNode(u.type);
+    return {
+      key, name: u.name, short: "", kind: "part", isDef: false, fam: "part", entry: u, trans: [],
+      ports: tn ? tn.ports : [], portHost: tn ? tn.entry : u, typeKey: tn ? tn.key : null, usage: true, phase: null, phaseOwn: false,
+      ...(container ? { container } : {}),
+    };
   };
+  const parts = ctx.entry.children.filter((c) => c.kind === "part" && c.name);
+  const outer = new Map(parts.map((u) => [u.name, usageNode(u, "u:" + u.name)]));
+  const inner = new Map<string, ModelNode>();
+  // 部品の本体に書いた部品は、いつも描く
+  for (const u of parts) for (const c of u.children) if (c.kind === "part" && c.name) inner.set(`u:${u.name}.${c.name}`, usageNode(c, `u:${u.name}.${c.name}`, "u:" + u.name));
+  /** 中の部品のノード（無ければ作る）。 */
+  const nested = (u: Entry, name: string): ModelNode | null => {
+    const key = `u:${u.name}.${name}`;
+    const hit = inner.get(key);
+    if (hit) return hit;
+    const c = innerParts(M, u).find((e) => e.name === name);
+    if (!c) return null;
+    const n = usageNode(c, key, "u:" + u.name);
+    inner.set(key, n);
+    return n;
+  };
+  const at = (node: ModelNode, port: string | undefined): End =>
+    port && node.ports.some((p) => p.name === port) ? { node, port: "port:" + port } : { node };
+  /** 線の端の参照を、図の要素とポートにする。part は、関係を書いた部品の本体（対象そのものなら null）。 */
+  const endOf = (path: string, part: Entry | null): End | null => {
+    const segs = path.split(".");
+    const [s0 = "", s1, s2] = segs;
+    if (!part) {
+      const top = outer.get(s0);
+      if (!top) return null;
+      const deep = s1 ? nested(top.entry, s1) : null;
+      return deep ? at(deep, s2) : at(top, s1);
+    }
+    const deep = nested(part, s0);
+    if (deep) return at(deep, s1);
+    const top = outer.get(part.name);
+    return top && segs.length === 1 ? at(top, s0) : null;
+  };
+  // 線を探す範囲（関係を書いた宣言と、端を探す部品）。対象そのもの、続けて部品ごとに本体・型の定義の中
+  const scopes: [owner: Entry, part: Entry | null][] = [[ctx.entry, null]];
+  for (const u of parts) {
+    scopes.push([u, u]);
+    const t = typeNode(u.type)?.entry;
+    if (t && t !== ctx.entry && t !== u) scopes.push([t, u]);
+  }
   const edges: ModelEdge[] = [];
   const junctions: ModelNode[] = [];
   const id = counter();
   let anonymous = 0;
   for (const r of M.rels) {
-    if ((r.rel !== "flow" && r.rel !== "connect" && r.rel !== "bind") || r.pe !== ctx.entry) continue;
-    const src = r.usage ? { start: r.usage.start, end: r.usage.end } : { start: r.start, end: r.end + 1 };
-    if (r.rel === "connect" && r.ends && r.ends.length > 2) {
-      const key = r.usage.name ? `j:${r.usage.name}` : `j:#${++anonymous}`;
-      const found = r.ends.flatMap((x) => endOf(x) ?? []);
-      if (found.length < 2) continue;
-      junctions.push({
-        key, name: r.usage.name, short: "", kind: "connection", isDef: false, fam: "part", entry: r.usage, trans: [], ports: [],
-        junction: true, phase: null, phaseOwn: false,
-      });
-      for (const z of found) {
-        const e: ModelEdge = { id: id(`connect|${key}|${z.node.key}|`), kind: "connect", from: key, to: z.node.key, label: "", rel: r, src };
-        if (z.port) e.toPort = z.port;
-        edges.push(e);
+    if (r.rel !== "flow" && r.rel !== "connect" && r.rel !== "bind") continue;
+    // 同じ型の部品が 2 つあれば、型の中の関係は部品ごとに描く
+    for (const [owner, part] of scopes) {
+      if (r.pe !== owner) continue;
+      const src = r.usage ? { start: r.usage.start, end: r.usage.end } : { start: r.start, end: r.end + 1 };
+      if (r.rel === "connect" && r.ends && r.ends.length > 2) {
+        const key = r.usage.name ? `j:${part ? part.name + "." : ""}${r.usage.name}` : `j:#${++anonymous}`;
+        const found = r.ends.flatMap((x) => endOf(x, part) ?? []);
+        if (found.length < 2) continue;
+        junctions.push({
+          key, name: r.usage.name, short: "", kind: "connection", isDef: false, fam: "part", entry: r.usage, trans: [], ports: [],
+          junction: true, phase: null, phaseOwn: false,
+        });
+        for (const z of found) {
+          const e: ModelEdge = { id: id(`connect|${key}|${z.node.key}|`), kind: "connect", from: key, to: z.node.key, label: "", rel: r, src };
+          if (z.port) e.toPort = z.port;
+          edges.push(e);
+        }
+        continue;
       }
-      continue;
+      const A = endOf(r.a, part);
+      const B = endOf(r.b, part);
+      if (!A || !B) continue;
+      const kind = r.rel === "bind" ? "bind" : "flow";
+      const label = r.rel === "flow" ? flowLabel(r.name ?? "", r.type ?? "", r.item) : r.rel === "bind" ? "=" : r.item;
+      const e: ModelEdge = { id: id(`${kind}|${A.node.key}|${B.node.key}|${label}`), kind, from: A.node.key, to: B.node.key, label, rel: r, src };
+      if (A.port) e.fromPort = A.port;
+      if (B.port) e.toPort = B.port;
+      edges.push(e);
     }
-    const A = endOf(r.a);
-    const B = endOf(r.b);
-    if (!A || !B) continue;
-    const kind = r.rel === "bind" ? "bind" : "flow";
-    const label = r.rel === "flow" ? flowLabel(r.name ?? "", r.type ?? "", r.item) : r.rel === "bind" ? "=" : r.item;
-    const e: ModelEdge = { id: id(`${kind}|${A.node.key}|${B.node.key}|${label}`), kind, from: A.node.key, to: B.node.key, label, rel: r, src };
-    if (A.port) e.fromPort = A.port;
-    if (B.port) e.toPort = B.port;
-    edges.push(e);
   }
+  // 外の部品の直後に、その中の部品を（外の部品の枠の上に重ねて描くため）
+  const nodes = [...outer.values()].flatMap((n) => [n, ...[...inner.values()].filter((c) => c.container === n.key)]);
   return { nodes: [...nodes, ...junctions], edges };
 }

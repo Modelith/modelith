@@ -97,7 +97,8 @@ export function drawioXml(): string {
       cells += `<mxCell id="${nid}" value="${q(n.name)}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
       continue;
     }
-    const lines = linesOf(n).map((x) => esc(x.t));
+    // 中に部品を描く部品（内部ブロック図の入れ子）は、区画の行を書かない
+    const lines = nodes.some((c) => c.container === n.key) ? [] : linesOf(n).map((x) => esc(x.t));
     const label =
       `«${n.kind}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? " : " + n.entry.type : ""))}</b>` +
       (lines.length ? `<hr><div style="text-align:left;font-size:10px">${lines.join("<br>")}</div>` : "");

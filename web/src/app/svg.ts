@@ -142,7 +142,7 @@ function packageMarkup(C: ColorFn, name: string, r: Box, F: string): string {
 
 /**
  * ブロック図（ノードと線）の SVG マークアップを作る。画面表示と SVG 書き出しで共用する。
- * package の枠・対象の枠（内部ブロック図など）・線を `es` に、要素と接続点を `ns` に書く。座標の無い要素は (0, 0) に置く。
+ * package の枠・対象の枠（内部ブロック図など）・中に部品を描く部品・線を `es` に、要素と接続点を `ns` に書く。座標の無い要素は (0, 0) に置く。
  *
  * @param C 色の関数（画面は CV）
  * @param content 表示するビューの中身（要素・線・枠）
@@ -163,7 +163,8 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
   const box = new Map<string, NodeBox>(
     nodes.map((n) => {
       const r = rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
-      return [n.key, { ...r, n, pins: n.junction ? [] : pinsOf(n, L, view) }];
+      const holds = nodes.some((c) => c.container === n.key);
+      return [n.key, { ...r, n, pins: n.junction ? [] : pinsOf(n, L, view), ...(holds ? { holds } : {}) }];
     }),
   );
   let es = "";
@@ -175,6 +176,8 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
     es += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${C("k-part-bg")}" fill-opacity=".35" stroke="${C("k-part")}" stroke-width="1.6"/>`;
     es += `<text x="${x0 + 12}" y="${y0 + 18}" font-size="10" fill="${C("ink2")}" font-family="${F}">«${esc(content.frame.kind)}»</text><text x="${x0 + 12}" y="${y0 + 36}" font-size="14" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(content.frame.title)}</text>`;
   }
+  // 中に部品を描く部品は線の下に描く（中の部品へ入る線が隠れないように）
+  for (const [, b] of box) if (b.holds) es += nodeMarkup(C, b, opts, F, MONO);
   const routes = computeRoutes(box, edges, L, opts.edgeStyle || "ortho");
   for (const e of edges) {
     const rt = routes.get(e.id);
@@ -191,7 +194,7 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
       `</g>`;
   }
   let ns = "", ps = "";
-  for (const [, b] of box) ns += nodeMarkup(C, b, opts, F, MONO);
+  for (const [, b] of box) if (!b.holds) ns += nodeMarkup(C, b, opts, F, MONO);
   for (const [, b] of box) ps += pinsMarkup(C, b, opts, MONO);
   return { es, ns: ns + ps, box };
 }
@@ -230,7 +233,8 @@ function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, tex
  */
 function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
   if (b.n.junction) return junctionMarkup(C, b, opts, F);
-  const n = b.n, fam = n.fam, L2 = linesOf(n);
+  // 中に部品を描く部品は、区画の行を描かない（中の部品を描く場所にする）
+  const n = b.n, fam = n.fam, L2 = b.holds ? [] : linesOf(n);
   const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
   const stroke = isSel ? C("sel") : C("k-" + fam);
   const sw = isSel ? 2.6 : 1.3;
