@@ -5,7 +5,7 @@ import { fit, local, placeUsageAt, toCanvas } from "./canvas";
 import { $, closest, esc, isFormField, store } from "./dom";
 import { W } from "./geometry";
 import { act, renderInspector } from "./inspector";
-import { kindLabel } from "./labels";
+import { kindLabel, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
 import { addToView, canAddToView, editableView } from "./view-ops";
 import { deleteSel, OPS, PHASEOPS } from "./ops";
 import { PINOPS, selPinInfo } from "./pins";
@@ -184,7 +184,41 @@ function tabLabel(t: Tab): string {
 }
 
 /**
- * 表示中のタブに、今の対象（内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図）と工程の絞り込みを書き戻す。タブが無ければ何もしない。
+ * タブのツールチップを作る。図の種類の名前に、当たる SysML v2 の標準ビューを補足として添える（ADR-0014）。
+ *
+ * @param t タブ
+ * @returns ツールチップの文。知らないビューのタブなら、タブの名前だけ
+ * @example
+ * tabHint({ id: 1, view: "all", ctx: null, phase: "" })                  // → "すべて（SysML v2 では GeneralView で描く図）"
+ * tabHint({ id: 2, view: "ibd", ctx: "Vehicle", phase: "" })             // → "ibd Vehicle\n内部ブロック図（SysML v2 では InterconnectionView）"
+ * tabHint({ id: 3, view: "all", ctx: null, phase: "", mv: "Overview" })  // → "保存された図「Overview」\n一般ビュー（SysML v2 では GeneralView）"（view Overview : GeneralView のとき）
+ */
+function tabHint(t: Tab): string {
+  if (t.mv) return tabTitle(`保存された図「${t.mv}」`, savedViewHint(S.M.views.find((v) => v.name === t.mv)?.std ?? null));
+  const v = VIEWS.find((x) => x.id === t.view);
+  return v ? tabTitle(tabLabel(t), viewHint(v.label, v.std)) : tabLabel(t);
+}
+
+/**
+ * ＋メニューの、図を開く項目を作る。ツールチップに図の種類と SysML v2 の標準ビューを書き、
+ * ホバーの無い狭い画面のために、同じ補足を名前の下の小さな行にも書く（狭い画面でだけ見せる）。
+ *
+ * @param attr 項目を見分ける属性（`data-open="afv"` など。値はエスケープ済み）
+ * @param icon 図の種類のアイコン（SVG の文字列）
+ * @param name 項目の名前
+ * @param hint ツールチップの文
+ * @param note 名前の下の行の文
+ * @returns ボタンの HTML
+ * @example
+ * viewMenuItem('data-open="afv"', "", "アクティビティ図", "アクティビティ図（SysML v2 では ActionFlowView）", "SysML v2 では ActionFlowView")
+ * // → '<button data-open="afv" title="アクティビティ図（SysML v2 では ActionFlowView）"><span class="vname">アクティビティ図<small>SysML v2 では ActionFlowView</small></span></button>'
+ */
+function viewMenuItem(attr: string, icon: string, name: string, hint: string, note: string): string {
+  return `<button ${attr} title="${esc(hint)}">${icon}<span class="vname">${esc(name)}<small>${esc(note)}</small></span></button>`;
+}
+
+/**
+ * 表示中のタブに、今の対象（内部ブロック図・シーケンス図・アクティビティ図・状態遷移図）と工程の絞り込みを書き戻す。タブが無ければ何もしない。
  */
 function syncCurTab(): void {
   const t = curTab();
@@ -210,19 +244,18 @@ export function renderTabs(): void {
     S.tabs
       .map((t) => {
         const sel = t.id === S.tabId;
-        const title = t.mv ? `保存された図「${t.mv}」` : tabLabel(t);
         return (
-          `<div class="tab${t.mv ? " mv" : ""}" role="tab" aria-selected="${sel}" data-tab="${t.id}" tabindex="${sel ? 0 : -1}" title="${esc(title)}">${viewIcon(t.view)}<span>${esc(tabLabel(t))}</span>` +
+          `<div class="tab${t.mv ? " mv" : ""}" role="tab" aria-selected="${sel}" data-tab="${t.id}" tabindex="${sel ? 0 : -1}" title="${esc(tabHint(t))}">${viewIcon(t.view)}<span>${esc(tabLabel(t))}</span>` +
           (S.tabs.length > 1 ? `<button class="x" data-close="${t.id}" aria-label="タブを閉じる" title="タブを閉じる">×</button>` : "") +
           `</div>`
         );
       })
       .join("") +
     `<details class="menu tabadd"><summary aria-label="図を開く" title="図を開く">＋</summary><div class="pop pop-left">` +
-    VIEWS.filter((v) => !v.hidden).map((v) => `<button data-open="${v.id}">${viewIcon(v.id)}${esc(v.label)}</button>`).join("") +
+    VIEWS.filter((v) => !v.hidden).map((v) => viewMenuItem(`data-open="${v.id}"`, viewIcon(v.id), v.label, viewHint(v.label, v.std), v2ViewNote(v.label, v.std))).join("") +
     `<div class="phead">保存された図</div>` +
     (S.M.views.length
-      ? S.M.views.map((v) => `<button data-open-mv="${esc(v.name)}" title="${esc(stdViewLabel(v.std))}">${viewIcon(baseViewOf(v))}${esc(v.name)}</button>`).join("")
+      ? S.M.views.map((v) => viewMenuItem(`data-open-mv="${esc(v.name)}"`, viewIcon(baseViewOf(v)), v.name, savedViewHint(v.std), savedViewHint(v.std))).join("")
       : `<div class="pnote">保存された図はまだありません</div>`) +
     `</div></details>`;
 }
@@ -664,11 +697,11 @@ const pathOf = (e: Entry): string => {
  * // 部品を持つ part def Vehicle
  * openTarget(Vehicle)   // → { view: "ibd", ctx: "Vehicle", label: "内部ブロック図で開く" }
  * // 部品を持たない part def Engine
- * openTarget(Engine)    // → { view: "structure", label: "構造で開く" }
+ * openTarget(Engine)    // → { view: "structure", label: "ブロック定義図で開く" }
  * // action def Control
- * openTarget(Control)   // → { view: "afv", ctx: "Control", label: "アクションの流れで開く" }
+ * openTarget(Control)   // → { view: "afv", ctx: "Control", label: "アクティビティ図で開く" }
  * // state def KettleStates
- * openTarget(KettleStates) // → { view: "stm", ctx: "KettleStates", label: "状態の遷移で開く" }
+ * openTarget(KettleStates) // → { view: "stm", ctx: "KettleStates", label: "状態遷移図で開く" }
  * // attribute（定義でない属性）
  * openTarget(attr)      // → null
  */
@@ -679,9 +712,9 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
   if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: "シーケンス図で開く" };
   if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
   if (e.kind === "constraint def" || e.kind === "calc def") return { view: "control", label: "制御ループで開く" };
-  if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクションの流れで開く" };
-  if (e.kind === "state def") return { view: "stm", ctx: e.name, label: "状態の遷移で開く" };
-  if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "構造で開く" };
+  if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクティビティ図で開く" };
+  if (e.kind === "state def") return { view: "stm", ctx: e.name, label: "状態遷移図で開く" };
+  if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "ブロック定義図で開く" };
   return null;
 }
 
@@ -693,7 +726,7 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
  * @param e テキストの要素
  * @returns 図の要素のキー。当たる要素が無ければ null
  * @example
- * // part def Vehicle の中の attribute mass（構造の図）
+ * // part def Vehicle の中の attribute mass（ブロック定義図）
  * keyForEntry(mass)   // → "Vehicle"
  * // 内部ブロック図で Vehicle を表示中、Vehicle の部品 engine
  * keyForEntry(engine) // → "u:engine"
@@ -999,7 +1032,7 @@ export function renderSub(): void {
     const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : S.view === "stm" ? S.stateCtx : null;
     const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
     parts.push(
-      `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、保存された図の設定で決まります"}（view の expose・filter）">保存された図「${esc(S.modelView)}」：${esc(stdViewLabel(mv?.std ?? null))}${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
+      `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、保存された図の設定で決まります"}（view の expose・filter）">保存された図「${esc(S.modelView)}」：<span class="vkind" title="${esc(savedViewHint(mv?.std ?? null))}">${esc(stdViewLabel(mv?.std ?? null))}</span>${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
     );
   } else if (S.view === "ibd") {
     CC();

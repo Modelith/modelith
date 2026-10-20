@@ -21,16 +21,16 @@ async function openView(page: Page, view: string): Promise<void> {
 test.describe("UI: 図", () => {
   const views: [string, string][] = [
     ["trace", "トレーサビリティ"],
-    ["structure", "構造"],
+    ["structure", "ブロック定義図"],
     ["control", "制御ループ"],
     ["ibd", "内部ブロック図"],
     ["behavior", "振る舞い"],
-    ["seq", "シーケンス"],
-    ["afv", "アクションの流れ"],
+    ["seq", "シーケンス図"],
+    ["afv", "アクティビティ図"],
     ["all", "すべて"],
   ];
   for (const [view, label] of views) {
-    test(`F-VIEW-1: ${label}ビューの見た目`, async ({ page }) => {
+    test(`F-VIEW-1: 「${label}」の見た目`, async ({ page }) => {
       // Arrange
       await openApp(page);
       // Act
@@ -88,7 +88,7 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("no-open-files-narrow.png");
     });
 
-    test("F-VIEW-7・Q-2: 幅 390px の画面の状態遷移の図", async ({ page }) => {
+    test("F-VIEW-7・Q-2: 幅 390px の画面の状態遷移図", async ({ page }) => {
       // Arrange（狭い画面では、テキストと図はタブで切り替える）
       await openApp(page);
       await page.locator("#tabText").click();
@@ -115,6 +115,16 @@ test.describe("UI: 画面全体", () => {
       await settle(page);
       // Assert
       await expect(page).toHaveScreenshot("plugin-list-narrow.png");
+    });
+
+    test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面の「＋」メニュー（SysML v2 の名前の行つき）", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator(".tabadd summary").click();
+      await settle(page);
+      // Assert
+      await expect(page.locator(".tabadd .pop")).toHaveScreenshot("tab-menu-narrow.png");
     });
   });
 });
@@ -199,7 +209,7 @@ async function openScriptProject(page: Page, plugins: Record<string, unknown>, f
   await expect(page.locator("#dialogTitle")).toHaveText("プラグインの実行の許可");
 }
 
-/** 状態遷移の図の場面のモデル（入れ子の状態・並行の領域・最初の遷移・終了・ガードと効果のある遷移）。 */
+/** 状態遷移図の場面のモデル（入れ子の状態・並行の領域・最初の遷移・終了・ガードと効果のある遷移）。 */
 const LAMP_STATES =
   "package Lamp {\n    state def LampStates {\n        entry; then off;\n        state off;\n        accept PowerOn then on;\n" +
   "        state on parallel {\n            state light {\n                entry; then dim;\n                state dim { entry action fadeIn; }\n" +
@@ -210,7 +220,7 @@ const LAMP_STATES =
 
 const scenes: Scene[] = [
   {
-    title: "F-VIEW-7: アクションの流れ図（ActionFlowView、8.2.3.17 の記号）",
+    title: "F-VIEW-7: アクティビティ図（ActionFlowView、8.2.3.17 の記号）",
     shot: "action-flow",
     act: async (page) => {
       await page.locator("#ed").fill(
@@ -228,7 +238,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-VIEW-7: 状態遷移の図（StateTransitionView、8.2.3.18 の記号）",
+    title: "F-VIEW-7: 状態遷移図（StateTransitionView、8.2.3.18 の記号）",
     shot: "state-transition",
     act: async (page) => {
       await page.locator("#ed").fill(LAMP_STATES);

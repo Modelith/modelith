@@ -284,7 +284,7 @@ function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
  * @param ly 開いた位置の y（図の枠の中の座標、px）
  * @returns メニューの項目
  * @example
- * // 「構造」の図
+ * // ブロック定義図
  * itemsForCanvas(100, 80)[0] // → { head: "ここに要素を追加" }
  * // 内部ブロック図
  * itemsForCanvas(100, 80)[0] // → { head: "ここに部品を置く" }
@@ -320,7 +320,7 @@ function itemsForCanvas(lx: number, ly: number): CtxItem[] {
  * @example
  * // part def Vehicle の箱の上で、Vehicle だけが選ばれている
  * ctxItemsAt(el, x, y)[0] // → { head: "«part def» Vehicle" }
- * // 「構造」の図の何も無いところ
+ * // ブロック定義図の何も無いところ
  * ctxItemsAt(el, x, y)[0] // → { head: "ここに要素を追加" }
  */
 export function ctxItemsAt(target: Element, clientX: number, clientY: number): CtxItem[] {

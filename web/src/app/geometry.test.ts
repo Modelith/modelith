@@ -121,7 +121,7 @@ describe("featureText（8.2.3 の usage-cp：区画の属性の行）", () => {
   });
 });
 
-describe("downward・autoPlace（構造の図で、一般な側を上に置く）", () => {
+describe("downward・autoPlace（ブロック定義図で、一般な側を上に置く）", () => {
   const edge = (kind: ModelEdge["kind"], from: string, to: string): ModelEdge => ({ id: `${kind}|${from}|${to}`, kind, from, to, label: "", src: { start: 0, end: 0 } });
 
   it("特殊化の線は一般な側（終わり）を上に、部品として持つ線は持ち主（始まり）を上にする", () => {
@@ -140,7 +140,7 @@ describe("downward・autoPlace（構造の図で、一般な側を上に置く�
     });
     const pos: Record<string, [number, number]> = {};
     // Act
-    autoPlace([node("B"), node("A")], [edge("specialize", "B", "A")], pos, { id: "structure", label: "構造", depth: true }, null);
+    autoPlace([node("B"), node("A")], [edge("specialize", "B", "A")], pos, { id: "structure", label: "ブロック定義図", std: "GeneralView", depth: true }, null);
     // Assert
     expect((pos["A"]?.[1] ?? NaN) < (pos["B"]?.[1] ?? NaN)).toBe(true);
   });

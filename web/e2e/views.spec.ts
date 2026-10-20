@@ -33,7 +33,7 @@ test.describe("ビュー", () => {
     await page.reload();
     await page.locator("#gNodes .node").first().waitFor();
     // Assert
-    await expect(page.locator('.tab[aria-selected="true"]')).toContainText("構造");
+    await expect(page.locator('.tab[aria-selected="true"]')).toContainText("ブロック定義図");
   });
 
   test("F-VIEW-4: 拡大ボタンで図が大きくなり、空いた所のドラッグで範囲選択できる", async ({ page }) => {
@@ -52,6 +52,48 @@ test.describe("ビュー", () => {
     expect(await scale()).toBeGreaterThan(before);
     await expect(page.locator("#insp")).toContainText("個を選択中");
     await expect(page.locator("#mini")).toBeVisible();
+  });
+
+  test("F-VIEW-1・Q-4: ＋メニューの項目のツールチップに、当たる SysML v2 の標準ビューを添える", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator(".tabadd summary").click();
+    // Assert
+    await expect(page.locator('[data-open="afv"]')).toHaveAttribute("title", "アクティビティ図（SysML v2 では ActionFlowView）");
+    await expect(page.locator('[data-open="trace"]')).toHaveAttribute("title", "トレーサビリティ（SysML v2 では GeneralView で描く図）");
+  });
+
+  test("F-VIEW-1・Q-4: 広い画面では、＋メニューの項目の下に SysML v2 の名前の行を出さない（ツールチップで示す）", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator(".tabadd summary").click();
+    // Assert
+    await expect(page.locator('[data-open="afv"] small')).toBeHidden();
+  });
+
+  test.describe("狭い画面", () => {
+    test.use({ viewport: { width: 390, height: 800 } });
+    test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面では、＋メニューの項目の下に SysML v2 の名前を小さく出す", async ({ page }) => {
+      // Arrange（ツールチップが出ないので、名前の下の行で示す）
+      await openApp(page);
+      // Act
+      await page.locator(".tabadd summary").click();
+      // Assert
+      await expect(page.locator('[data-open="afv"] small')).toBeVisible();
+      await expect(page.locator('[data-open="afv"] small')).toHaveText("SysML v2 では ActionFlowView");
+    });
+  });
+
+  test("F-VIEW-2・Q-4: タブのツールチップに、図の種類と SysML v2 の標準ビューを出す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator(".tabadd summary").click();
+    // Act
+    await page.locator('[data-open="structure"]').click();
+    // Assert
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", "ブロック定義図（SysML v2 では GeneralView で描く図）");
   });
 });
 
@@ -168,7 +210,7 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     // Assert
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Car", "Engine", "Wheel"]);
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/structure/);
-    await expect(page.locator("#subbar")).toContainText("保存された図「structure」：一般の図");
+    await expect(page.locator("#subbar")).toContainText("保存された図「structure」：一般ビュー");
   });
 
   test("F-VIEW-7: InterconnectionView は、expose した part def の内部ブロック図として描く", async ({ page }) => {
@@ -177,6 +219,25 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     // Assert
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["u:e", "u:w"]);
     await expect(page.locator("#subbar")).toContainText("（Car）");
+  });
+
+  test("F-VIEW-7・Q-4: 保存された図のサブバーとタブのツールチップに、SysML v2 の標準ビューを添える", async ({ page }) => {
+    // Arrange・Act
+    await openView(page, "inside");
+    // Assert
+    await expect(page.locator("#subbar .vkind")).toHaveAttribute("title", "内部ブロック図（SysML v2 では InterconnectionView）");
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", "保存された図「inside」\n内部ブロック図（SysML v2 では InterconnectionView）");
+  });
+
+  test("F-VIEW-7・Q-4: 型の無い view は、＋メニューのツールチップで一般ビュー（GeneralView）と示す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#ed").fill(MODEL);
+    await page.waitForTimeout(400); // 入力の反映でタブのメニューが描き直されるので、反映を待ってから開く
+    // Act
+    await page.locator(".tabadd summary").click();
+    // Assert
+    await expect(page.locator('[data-open-mv="reqs"]')).toHaveAttribute("title", "一般ビュー（SysML v2 では GeneralView）");
   });
 
   test("F-VIEW-7: GeneralView に、特殊化・依存の線と部品の多重度を SysML の記法で描く", async ({ page }) => {
@@ -362,7 +423,7 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
   });
 });
 
-test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.17）", () => {
+test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17）", () => {
   const FLOW = `package Kettle {
     item def Water;
     action def Boil {
@@ -386,7 +447,7 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     view boilFlow : ActionFlowView { expose Kettle::Boil; }
 }
 `;
-  /** モデルを書き、＋メニューの「保存された図」からアクションの流れ図を開く。 */
+  /** モデルを書き、＋メニューの「保存された図」からアクティビティ図を開く。 */
   async function openFlow(page: import("@playwright/test").Page): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(FLOW);
@@ -395,7 +456,7 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await page.locator('[data-open-mv="boilFlow"]').click();
   }
 
-  test("F-VIEW-7: ActionFlowView は、expose した action def をアクションの流れとして SysML の記号で描き、「まだ扱えない」と知らせない", async ({ page }) => {
+  test("F-VIEW-7: ActionFlowView は、expose した action def をアクティビティ図として SysML の記号で描き、「まだ扱えない」と知らせない", async ({ page }) => {
     // Arrange・Act
     await openFlow(page);
     // Assert（開始は塗った丸、fork は棒、decide はひし形、送信は五角形。ガードは [ ] のラベル、順序付きの流れは破線）
@@ -411,11 +472,11 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await expect(guarded.locator("path.line")).not.toHaveAttribute("stroke-dasharray", /./);
     await expect(guarded.locator("text")).toHaveText("[temperature >= 100]");
     await expect(page.locator('[data-edge="successionFlow|a:fill|a:heat|Water#1"] path.line')).toHaveAttribute("stroke-dasharray", "6 4");
-    await expect(page.locator("#subbar")).toContainText("保存された図「boilFlow」：アクションの流れ図（Boil）");
+    await expect(page.locator("#subbar")).toContainText("保存された図「boilFlow」：アクティビティ図（Boil）");
     await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
   });
 
-  test("F-VIEW-1: action def をツリーから開くと、アクションの流れのタブになる", async ({ page }) => {
+  test("F-VIEW-1: action def をツリーから開くと、アクティビティ図のタブになる", async ({ page }) => {
     // Arrange
     await openApp(page);
     await page.locator("#ed").fill(FLOW);
@@ -423,9 +484,9 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await page.locator("#sideModel").click();
     await page.locator("#treeSearch").fill("Boil");
     // Act
-    const row = page.locator('#tree .ti:has([title="アクションの流れで開く"])');
+    const row = page.locator('#tree .ti:has([title="アクティビティ図で開く"])');
     await row.hover();
-    await row.locator('[title="アクションの流れで開く"]').click();
+    await row.locator('[title="アクティビティ図で開く"]').click();
     // Assert
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/act Boil/);
     await expect.poll(() => nodeKeys(page)).toContain("a:notify");
@@ -458,7 +519,7 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await expect(page.locator('[data-edge="succession|a:warmCup|a:notify|#1"]')).toHaveCount(1);
   });
 
-  test("F-VIEW-3: アクションの流れ図で要素を動かして保存すると、アクション定義ごとの配置として配置ファイルに書く", async ({ page }) => {
+  test("F-VIEW-3: アクティビティ図で要素を動かして保存すると、アクション定義ごとの配置として配置ファイルに書く", async ({ page }) => {
     // Arrange
     await openApp(page);
     await putFiles(page, { "a.sysml": FLOW });
@@ -479,7 +540,7 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
   });
 });
 
-test.describe("状態遷移の図（StateTransitionView、F-VIEW-7、8.2.3.18）", () => {
+test.describe("状態遷移図（StateTransitionView、F-VIEW-7、8.2.3.18）", () => {
   const LAMP = `package Lamp {
     state def LampStates {
         entry; then off;
@@ -501,7 +562,7 @@ test.describe("状態遷移の図（StateTransitionView、F-VIEW-7、8.2.3.18）
     view lampStates : StateTransitionView { expose Lamp::LampStates; }
 }
 `;
-  /** モデルを書き、＋メニューの「保存された図」から状態遷移の図を開く。 */
+  /** モデルを書き、＋メニューの「保存された図」から状態遷移図を開く。 */
   async function openStates(page: import("@playwright/test").Page): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(LAMP);
@@ -527,19 +588,19 @@ test.describe("状態遷移の図（StateTransitionView、F-VIEW-7、8.2.3.18）
     await expect(labelled.locator("path.line")).toHaveAttribute("marker-end", "url(#mOpen)");
     await expect(labelled.locator("text")).toHaveText("PowerOff / beep");
     await expect(page.locator('[data-edge="transition|s:on.light.bright|s:on.light.dim|Dimmer [level > 1]#1"] text')).toHaveText("Dimmer [level > 1]");
-    await expect(page.locator("#subbar")).toContainText("保存された図「lampStates」：状態遷移の図（LampStates）");
+    await expect(page.locator("#subbar")).toContainText("保存された図「lampStates」：状態遷移図（LampStates）");
     await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
   });
 
-  test("F-VIEW-1: state def をツリーから開くと状態の遷移のタブになり、＋メニューの組み込みのビューは 8 つのまま", async ({ page }) => {
+  test("F-VIEW-1: state def をツリーから開くと状態遷移図のタブになり、＋メニューの組み込みのビューは 8 つのまま", async ({ page }) => {
     // Arrange
     await openApp(page);
     await page.locator("#sideModel").click();
     await page.locator("#treeSearch").fill("KettleStates");
     // Act
-    const row = page.locator('#tree .ti:has([title="状態の遷移で開く"])').first();
+    const row = page.locator('#tree .ti:has([title="状態遷移図で開く"])').first();
     await row.hover();
-    await row.locator('[title="状態の遷移で開く"]').click();
+    await row.locator('[title="状態遷移図で開く"]').click();
     // Assert
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/stm KettleStates/);
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["s:#start", "s:fault", "s:heating", "s:idle", "s:keepWarm"]);
@@ -576,7 +637,7 @@ test.describe("状態遷移の図（StateTransitionView、F-VIEW-7、8.2.3.18）
     await expect(page.locator('[data-edge="transition|s:on.light.dim|s:on.light.bright|#1"]')).toHaveCount(1);
   });
 
-  test("F-VIEW-3: 状態遷移の図で状態を動かして保存すると、状態定義ごとの配置として配置ファイルに書く", async ({ page }) => {
+  test("F-VIEW-3: 状態遷移図で状態を動かして保存すると、状態定義ごとの配置として配置ファイルに書く", async ({ page }) => {
     // Arrange
     await openApp(page);
     await putFiles(page, { "a.sysml": LAMP });
@@ -596,7 +657,7 @@ test.describe("状態遷移の図（StateTransitionView、F-VIEW-7、8.2.3.18）
     expect(await readFile(page, "a.sysml")).toBe(LAMP);
   });
 
-  test("F-VIEW-8: 「振る舞い」の図を保存すると、並べた要素のまま一般の図（GeneralView）として書く", async ({ page }) => {
+  test("F-VIEW-8: 「振る舞い」の図を保存すると、並べた要素のまま一般ビュー（GeneralView）として書く", async ({ page }) => {
     // Arrange
     await openApp(page);
     await page.locator("#ed").fill(LAMP);

@@ -6,6 +6,7 @@ import { renderInspector } from "./inspector";
 import { centerOn, highlight, render, scrollEditorTo, syncScroll } from "./render";
 import { cancelConnect, S } from "./state";
 import { reparse, notifyTextChange, setSync, toast } from "./sync";
+import { diagramName } from "./labels";
 import { CC, curView, viewContent } from "./views";
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -39,7 +40,7 @@ function caretToNode(): void {
   renderInspector();
   if (!key || !best) return;
   const v = curView();
-  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${v.label}」の図には出ていません`);
+  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${diagramName(v.label)}」には出ていません`);
   else centerOn(key, true);
 }
 

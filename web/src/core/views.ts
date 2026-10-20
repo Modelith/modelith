@@ -20,20 +20,20 @@ for (const [name, short, kind] of [
 
 /** 標準ビュー定義の、画面での名前（ADR-0014）。 */
 const STD_LABEL: Record<string, string> = {
-  GeneralView: "一般の図", InterconnectionView: "内部ブロック図", ActionFlowView: "アクションの流れ図", StateTransitionView: "状態遷移の図",
-  SequenceView: "シーケンス図", GeometryView: "形状の図", GridView: "表の図", BrowserView: "一覧の図",
+  GeneralView: "一般ビュー", InterconnectionView: "内部ブロック図", ActionFlowView: "アクティビティ図", StateTransitionView: "状態遷移図",
+  SequenceView: "シーケンス図", GeometryView: "ジオメトリビュー", GridView: "グリッドビュー", BrowserView: "ブラウザビュー",
 };
 /**
  * 図の種類の、画面での名前（ADR-0014）。
  *
  * @param std 標準ビュー定義の名前（`GeneralView` など）。型の無い図は null
- * @returns 画面での名前。null なら「一般の図」、知らない名前ならその名前のまま
+ * @returns 画面での名前。null なら「一般ビュー」、知らない名前ならその名前のまま
  * @example
  * stdViewLabel("SequenceView") // → "シーケンス図"
- * stdViewLabel(null)           // → "一般の図"
+ * stdViewLabel(null)           // → "一般ビュー"
  * stdViewLabel("MyView")       // → "MyView"（知らない名前）
  */
-export const stdViewLabel = (std: string | null): string => (std ? (STD_LABEL[std] ?? std) : "一般の図");
+export const stdViewLabel = (std: string | null): string => (std ? (STD_LABEL[std] ?? std) : "一般ビュー");
 
 /**
  * 標準ビュー定義の名前か（型が見つからないことを問題にしない）。短い名前（`gv` など）も含む。
@@ -143,7 +143,7 @@ function exposed(x: Expose, target: Entry): Entry[] {
  * @param v view の宣言
  * @param byName 名前から、その名前の宣言の一覧への対応（view def を探す）
  * @returns 標準ビュー定義の名前と描き方、集めた filter、render。標準ビュー定義にたどり着かなければ
- *   `{ std: null, kind: "general" }`（一般の図として描く）。専用の描き方が無い標準ビュー定義は kind が null
+ *   `{ std: null, kind: "general" }`（一般ビューとして描く）。専用の描き方が無い標準ビュー定義は kind が null
  * @example
  * // v が「view v : iv;」のとき
  * viewType(v, byName) // → { std: "InterconnectionView", kind: "interconnection", filters: [] }
@@ -199,7 +199,7 @@ export function buildViews(
     if (v.kind !== "view" || !v.name) continue;
     const t = viewType(v, byName);
     let kind = t.kind;
-    if (!kind) unsupported(v.start, `図「${v.name}」の種類（${stdViewLabel(t.std)}）の描き方はまだ無いため、一般の図として描きます（${t.std}）`);
+    if (!kind) unsupported(v.start, `図「${v.name}」の種類（${stdViewLabel(t.std)}）の描き方はまだ無いため、一般ビューとして描きます（${t.std}）`);
     if (t.render !== undefined) {
       const r = RENDERINGS[t.render];
       if (r) kind = r;

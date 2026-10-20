@@ -15,6 +15,9 @@
 8. **SysML の用語以外は、一般的なソフトウェアの言葉を使う（和語に言い換えない）。** 言い換えるのは、SysML v2 を知らない人が戸惑う用語だけ。
    「バージョン」「エラー」「コピー」「有効」のような言葉は、利用者がほかのソフトウェアで見慣れているので、言い換えるとかえって読みにくい。
    文も、ふつうのソフトウェアの画面として自然な語順と動詞（追加する・削除する・有効にする・読み込む・保存する）で書く。
+9. **図の種類は、広く知られた図の名前で呼ぶ。** 内部ブロック図・シーケンス図・状態遷移図・アクティビティ図のように、SysML v1 や UML で定着した名前があれば、それを使う（「アクションの流れ」のような言い換えにしない）。
+   SysML v2 の標準ビューの名前（ActionFlowView など）は補足にする。図の種類のツールチップに「アクティビティ図（SysML v2 では ActionFlowView）」のように添え、
+   ホバーの無い狭い画面では、＋メニューの項目の下に小さく書く。Modelith 独自の図（トレーサビリティなど）は「SysML v2 では GeneralView で描く図」と書く。
 
 ## 言葉の対応
 
@@ -40,7 +43,9 @@
 | 割り当て・割り当てる | allocation・allocate |
 | 流れの定義・流れ | flow def・flow |
 | 定義を引き継ぐ（特殊化）・一部になる（部分集合）・置き換える（再定義）・参照する | specializes・subsets・redefines・references（`:>`・`:>>`・`::>`） |
-| 一般の図・内部ブロック図・状態遷移の図・シーケンス図・アクションの流れ図 | GeneralView・InterconnectionView・StateTransitionView・SequenceView・ActionFlowView |
+| 一般ビュー・内部ブロック図・状態遷移図・シーケンス図・アクティビティ図 | GeneralView・InterconnectionView・StateTransitionView・SequenceView・ActionFlowView |
+| ジオメトリビュー・グリッドビュー・ブラウザビュー | GeometryView・GridView・BrowserView |
+| ブロック定義図（自動の図） | GeneralView で描く図（SysML v1 の bdd に当たる） |
 | 順序・順序付きの流れ | succession・succession flow（`first a then b`・`then b`） |
 | 開始・終了 | start・done |
 | 分岐（並行）・合流（並行）・分岐（条件）・合流（条件） | fork・join・decide・merge |

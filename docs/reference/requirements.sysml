@@ -104,7 +104,7 @@ package ModelithRequirements {
 
         // ---- ビュー ------------------------------------------------
         requirement def <'F-VIEW-1'> BuiltInViewsReq {
-            doc /* トレーサビリティ・構造・制御ループ・内部ブロック図・振る舞い・シーケンス・アクションの流れ・すべて、の 8 つのビューを持つ */
+            doc /* トレーサビリティ・ブロック定義図・制御ループ・内部ブロック図・振る舞い・シーケンス図・アクティビティ図・すべて、の 8 つのビューを持つ */
         }
         requirement def <'F-VIEW-2'> ViewTabsReq {
             doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する */
@@ -499,7 +499,7 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。ただし誤った表示の修正と alpha.7 以降に読むようにした構文のケースは、Rust だけで動かす（ADR-0015）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般の図に、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクションの流れ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/app/state-machine.test.ts：状態遷移の図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクションの流れ図・状態遷移の図の draw.io の図形と線 */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。ただし誤った表示の修正と alpha.7 以降に読むようにした構文のケースは、Rust だけで動かす（ADR-0015）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般ビューに、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクティビティ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/app/state-machine.test.ts：状態遷移図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクティビティ図・状態遷移図の draw.io の図形と線 */
             objective {
                 verify StandardViewReq;
                 verify PackageFrameReq;
@@ -549,6 +549,14 @@ package ModelithRequirements {
                 verify NewPackageGuideReq;
             }
         }
+        verification def ViewNamesTest {
+            doc /* web/src/app/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・保存された図・タブ）、図の名前の候補の「〜の図」 */
+            objective {
+                verify PlainWordsReq;
+                verify BuiltInViewsReq;
+                verify StandardViewReq;
+            }
+        }
         verification def LocalFolderProviderTest {
             doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す（偽のファイルシステムで） */
             objective {
@@ -589,8 +597,9 @@ package ModelithRequirements {
             }
         }
         verification def ViewsE2E {
-            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般の図の特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般の図のメモとその削除・インスペクタのメモと別の言語での表し方、アクションの流れ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置、状態遷移の図の記号・入れ子と並行の領域・遷移のラベル・遷移の削除と追加・ツリーから開く（＋メニューの組み込みのビューは 8 つのまま）・状態定義ごとの配置・「振る舞い」の図の一般の図としての保存を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
+            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般ビューの特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般ビューのメモとその削除・インスペクタのメモと別の言語での表し方、アクティビティ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置、状態遷移図の記号・入れ子と並行の領域・遷移のラベル・遷移の削除と追加・ツリーから開く（＋メニューの組み込みのビューは 8 つのまま）・状態定義ごとの配置・「振る舞い」の図の一般ビューとしての保存を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け・図の種類のツールチップ（＋メニュー・タブ・保存された図のサブバー）と狭い画面の＋メニューに添える SysML v2 の標準ビューの名前（Chromium で操作） */
             objective {
+                verify PlainWordsReq;
                 verify CreateViewReq;
                 verify StandardViewReq;
                 verify NoSilentDropReq;
@@ -649,7 +658,7 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクションの流れ図（ActionFlowView）・状態遷移の図（StateTransitionView。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
