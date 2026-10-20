@@ -197,6 +197,12 @@ pub enum RelKind {
     Dependency {
         a: String,
         b: String,
+        /// 依存の名前（`dependency d from …` の `d`）。無ければ空。図のラベルにだけ使い、TS には渡さない。
+        #[serde(skip)]
+        name: String,
+        /// 前に付けたメタデータの名前（`#trace dependency …` の `trace`）。無ければ空。図のラベルにだけ使い、TS には渡さない。
+        #[serde(skip)]
+        meta: String,
     },
     Message {
         name: String,

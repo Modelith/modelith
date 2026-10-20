@@ -735,3 +735,65 @@ fn multiplicity_keeps_range_and_order_keywords() {
     assert_eq!(m("p"), None);
     assert_eq!(entry(&r, "s").ty, "S");
 }
+
+/// `RelKind::Dependency` を短く作る。
+fn dependency(a: &str, b: &str, name: &str, meta: &str) -> RelKind {
+    RelKind::Dependency {
+        a: a.to_owned(),
+        b: b.to_owned(),
+        name: name.to_owned(),
+        meta: meta.to_owned(),
+    }
+}
+
+#[test]
+fn dependency_becomes_one_relation_per_client_and_supplier() {
+    // Arrange（Dependency、8.2.2.3：メタデータの無い依存と、複数の依存する側・される側）
+    let text = "package P { dependency A, B to C, D; }";
+    // Act
+    let r = run(text);
+    // Assert（組ごと。宣言にはしない）
+    let kinds: Vec<_> = r.rels.iter().map(|x| x.kind.clone()).collect();
+    assert_eq!(
+        kinds,
+        [
+            dependency("A", "C", "", ""),
+            dependency("A", "D", "", ""),
+            dependency("B", "C", "", ""),
+            dependency("B", "D", "", ""),
+        ]
+    );
+    assert_eq!(r.entries.len(), 1);
+}
+
+#[test]
+fn dependency_keeps_name_and_metadata_and_derivation_stays_derive() {
+    // Arrange（名前とメタデータ付き・#derivation）
+    let text =
+        "package P { #trace dependency d from x.y to B; #derivation dependency from R2 to R1; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let kinds: Vec<_> = r.rels.iter().map(|x| x.kind.clone()).collect();
+    assert_eq!(
+        kinds,
+        [
+            dependency("x.y", "B", "d", "trace"),
+            RelKind::Derive {
+                a: "R2".to_owned(),
+                b: "R1".to_owned()
+            },
+        ]
+    );
+}
+
+#[test]
+fn dependency_without_supplier_makes_no_relation() {
+    // Arrange（異常系：to が無い。構文エラーはパーサが出す）
+    let text = "package P { dependency from A; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.rels.is_empty());
+    assert_eq!(r.errors.len(), 1);
+}

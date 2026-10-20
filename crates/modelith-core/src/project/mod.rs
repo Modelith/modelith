@@ -511,6 +511,18 @@ impl Ctx {
                 .push(v.to_owned());
             return None;
         }
+        // 依存（依存する側とされる側の組ごとに 1 つの関係にする。8.2.2.3）
+        if n.kind() == DEPENDENCY {
+            for kind in dependencies(n) {
+                self.out.rels.push(Rel {
+                    kind,
+                    pe,
+                    start,
+                    end,
+                });
+            }
+            return None;
+        }
         // 関係
         if let Some(kind) = relation(n, h) {
             self.out.rels.push(Rel {
@@ -1639,9 +1651,9 @@ fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
     Some((ref_after(n, "connect")?, ref_after(n, "to")?))
 }
 
-/// 関係を表す文（依存・メッセージ・満たす・検証する・扱う・流れ・遷移）。
+/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・遷移）。依存は `dependencies` で読む。
 ///
-/// 依存は前置メタデータ（`#derivation` なら導出）の付いたものだけ、流れは名前の無いものだけを関係にする。
+/// 流れは名前の無いものだけを関係にする。
 ///
 /// # 引数
 ///
@@ -1666,19 +1678,6 @@ fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
 fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
     let name = || child(n, NAME).map(|c| unquote(&compact(&c)).to_owned());
     match n.kind() {
-        DEPENDENCY => {
-            let pm = child(n, PREFIX_METADATA)?;
-            if !h.starts_with('#') {
-                return None;
-            }
-            let md = tokens(&pm).find(|t| t.kind() == IDENT || t.kind() == QUOTED_NAME)?;
-            let (a, b) = (ref_after(n, "from")?, ref_after(n, "to")?);
-            Some(if md.text() == "derivation" {
-                RelKind::Derive { a, b }
-            } else {
-                RelKind::Dependency { a, b }
-            })
-        }
         MESSAGE_USAGE => Some(RelKind::Message {
             name: name().unwrap_or_default(),
             item: ref_after(n, "of")
@@ -1730,6 +1729,70 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         }),
         _ => None,
     }
+}
+
+/// 依存（Dependency、8.2.2.3）を、依存する側とされる側の組ごとの関係にする。
+///
+/// 前置メタデータが `#derivation` なら導出、それ以外（メタデータが無いものを含む）は依存にする。
+///
+/// # 引数
+///
+/// - `n`：`DEPENDENCY` の節
+///
+/// # 戻り値
+///
+/// 組ごとの関係（依存する側の順、その中でされる側の順）。どちらかの側が無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// dependencies("dependency A, B to C;")              → [Dependency { a: "A", b: "C" }, Dependency { a: "B", b: "C" }]
+/// dependencies("#trace dependency d from A to B;")   → [Dependency { a: "A", b: "B", name: "d", meta: "trace" }]
+/// dependencies("#derivation dependency from B to A;") → [Derive { a: "B", b: "A" }]
+/// dependencies("dependency from A;")                 → []（される側が無い）
+/// ```
+fn dependencies(n: &SyntaxNode) -> Vec<RelKind> {
+    let meta = child(n, PREFIX_METADATA)
+        .and_then(|pm| tokens(&pm).find(|t| matches!(t.kind(), IDENT | QUOTED_NAME)))
+        .map(|t| unquote(t.text()).to_owned())
+        .unwrap_or_default();
+    let name = child(n, NAME)
+        .map(|c| unquote(&compact(&c)).to_owned())
+        .unwrap_or_default();
+    let (mut clients, mut suppliers) = (Vec::new(), Vec::new());
+    let mut after_to = false;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "to" => {
+                after_to = true;
+            }
+            rowan::NodeOrToken::Node(c) if matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) => {
+                if after_to {
+                    suppliers.push(compact(&c));
+                } else {
+                    clients.push(compact(&c));
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for a in &clients {
+        for b in &suppliers {
+            let (a, b) = (a.clone(), b.clone());
+            out.push(if meta == "derivation" {
+                RelKind::Derive { a, b }
+            } else {
+                RelKind::Dependency {
+                    a,
+                    b,
+                    name: name.clone(),
+                    meta: meta.clone(),
+                }
+            });
+        }
+    }
+    out
 }
 
 /// 修飾の付いた `name : Type`（パラメータ）。修飾があるかは呼び出し側が確かめる。
