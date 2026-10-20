@@ -670,5 +670,46 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("特殊化・部分集合・再定義・参照の線（SubclassificationPart・FeatureSpecializationPart 8.2.2.6、8.2.3 の type-relationship）", () => {
+      it("定義の :> A, B と specializes は、相手ごとに特殊化の線になる", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; part def C :> A, B; part def D specializes C; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["specialize|C|A", "specialize|C|B", "specialize|D|C"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("特殊化の線を消すと、その相手だけがテキストから消える範囲を指す", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; part def C :> A, B; }";
+        // Act
+        const srcs = build(parse(text)).edges.map((e) => text.slice(e.src.start, e.src.end));
+        // Assert
+        expect(srcs).toEqual(["A, ", ", B"]);
+      });
+
+      it("package の直下の部品どうしの :>・:>>・::> は、部分集合・再定義・参照の線になる", () => {
+        // Arrange
+        const text = "package P { part def A; part a : A; part b :> a; part c redefines a; part d references a; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["defined|a|A", "subset|b|a", "redefine|c|a", "reference|d|a"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("標準ライブラリの定義や、定義の中の特性への関係は、線にも問題にもしない（異常系）", () => {
+        // Arrange
+        const text = "package P { part def A :> Part { attribute m; } part def B :> A { attribute :>> m = 1; part x :> nope; } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["specialize|B|A"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
   });
 }

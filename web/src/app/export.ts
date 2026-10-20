@@ -25,6 +25,23 @@ const LIGHT: Record<string, string> = {
 const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
 
 /**
+ * 線の種類から、draw.io の線の形（矢印・破線）を決める。draw.io に無い再定義・参照の印は、特殊化と同じ白抜きの三角にする。
+ *
+ * @param kind 線の種類（`comp`・`flow`・`specialize` など）
+ * @returns draw.io の style に足す文字列
+ * @example
+ * drawioEdgeStyle("comp")       // → "startArrow=diamondThin;startFill=1;endArrow=none;"
+ * drawioEdgeStyle("specialize") // → "endArrow=block;endFill=0;"
+ * drawioEdgeStyle("satisfy")    // → "dashed=1;endArrow=open;"
+ */
+export function drawioEdgeStyle(kind: string): string {
+  if (kind === "comp") return "startArrow=diamondThin;startFill=1;endArrow=none;";
+  if (kind === "flow") return "endArrow=block;endFill=1;strokeWidth=2;";
+  if (["specialize", "subset", "redefine", "reference"].includes(kind)) return "endArrow=block;endFill=0;";
+  return "dashed=1;endArrow=open;";
+}
+
+/**
  * 現在のビューを draw.io の XML にする（F-EXP-2）。要素は配置の座標の箱に、ポートは小さな箱に、
  * 線は経路の出口・入口を指定した直角の線にする。シーケンス図はライフラインとメッセージにする。
  *
@@ -94,7 +111,7 @@ export function drawioXml(): string {
   const cp = (side: string, t: string, pre: string): string =>
     side === "l" ? `${pre}X=0;${pre}Y=${t};` : side === "r" ? `${pre}X=1;${pre}Y=${t};` : side === "t" ? `${pre}X=${t};${pre}Y=0;` : `${pre}X=${t};${pre}Y=1;`;
   for (const e of edges) {
-    const st = e.kind === "comp" ? "startArrow=diamondThin;startFill=1;endArrow=none;" : e.kind === "flow" ? "endArrow=block;endFill=1;strokeWidth=2;" : "dashed=1;endArrow=open;";
+    const st = drawioEdgeStyle(e.kind);
     let src = map.get(e.from), dst = map.get(e.to), extra = "";
     const rt = routes.get(e.id);
     if (rt) {
@@ -125,7 +142,7 @@ export function drawioXml(): string {
 export function svgExport(): string {
   const content = viewContent(S.M, curView());
   const L = curLayout();
-  const defs = DEFS.replace(/var\(--ink2\)/g, LIGHT["ink2"] ?? "").replace(/var\(--k-con\)/g, LIGHT["k-con"] ?? "").replace(/var\(--ink\)/g, LIGHT["ink"] ?? "");
+  const defs = DEFS.replace(/var\(--ink2\)/g, LIGHT["ink2"] ?? "").replace(/var\(--k-con\)/g, LIGHT["k-con"] ?? "").replace(/var\(--ink\)/g, LIGHT["ink"] ?? "").replace(/var\(--paper\)/g, LIGHT["paper"] ?? "");
   const svg = (x0: number, y0: number, w: number, h: number, body: string): string =>
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${w} ${h}" width="${w}" height="${h}"><defs>${defs}</defs><rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="#FFFFFF"/>${body}</svg>`;
   const fonts = { font: "Noto Sans JP, sans-serif", mono: "monospace" };
