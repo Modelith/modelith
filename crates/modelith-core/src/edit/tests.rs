@@ -140,6 +140,32 @@ fn rename_definition_changes_every_reference_but_not_comments_or_longer_names() 
 }
 
 #[test]
+fn rename_definition_keeps_value_operators_and_renames_comment_targets() {
+    // Arrange（FeatureValue の `:=`・`default`、Comment の `about`。本文の中の名前は変えない）
+    let text = "package P {\n    part def T;\n    part def C { attribute m : T := 1; attribute d : T default 2; }\n    comment about T /* T の説明 */\n}";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"T","name":"U"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def U;\n    part def C { attribute m : U := 1; attribute d : U default 2; }\n    comment about U /* T の説明 */\n}"
+    );
+}
+
+#[test]
+fn rename_usage_keeps_initial_and_default_operators() {
+    // Arrange（境界値: 名前のすぐ後が `default`。初期値の式の中の参照も変える）
+    let text = "package P { part def E; part def C { part e := f; part f : E default e; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:f","ctx":"C","name":"g"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def E; part def C { part e := g; part g : E default e; } }"
+    );
+}
+
+#[test]
 fn rename_usage_changes_declaration_and_paths_only() {
     // Arrange（使用の名前は、宣言と「名前.」の参照だけを変える。型の名前や a.e の e は変えない）
     let text = "package P { part def E { port e; } part def C { part e : E; part f : E; flow from e.e to f.e; } }";
