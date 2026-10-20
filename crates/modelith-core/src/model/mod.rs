@@ -1202,7 +1202,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 構文解析のエラー、`metadata … about` の見つからない相手、まだ扱えない構文を問題一覧に加える（モデルの `problems` を書き換える）。
+    /// 構文解析のエラー、`metadata … about`・`comment … about` の見つからない相手、まだ扱えない構文を問題一覧に加える（モデルの `problems` を書き換える）。
     /// まだ扱えない構文は、頭を UTF-16 で 40 単位までに切って示し、種類を `unsupported` にする。
     fn parse_problems(&mut self) {
         let p = self.p;
@@ -1214,6 +1214,16 @@ impl<'a> Builder<'a> {
                 m.pos,
                 format!(
                     "メタデータを付ける相手「{}」が見つかりません（metadata about）",
+                    m.name
+                ),
+                None,
+            );
+        }
+        for m in &p.missing_comment_about {
+            self.problem(
+                m.pos,
+                format!(
+                    "メモを付ける相手「{}」が見つかりません（comment about）",
                     m.name
                 ),
                 None,

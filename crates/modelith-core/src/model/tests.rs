@@ -1029,3 +1029,25 @@ fn comment_about_undrawn_elements_has_no_note() {
     let keys: Vec<&str> = m.notes.iter().map(|n| n.key.as_str()).collect();
     assert_eq!(keys, ["note:n", "note:n#2"]);
 }
+
+#[test]
+fn comment_about_missing_target_is_a_problem() {
+    // Arrange（異常系: 相手が無い）
+    let text = "package P { part def A; comment about A, Nope /* x */ }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<(&str, Option<&str>)> = m
+        .problems
+        .iter()
+        .map(|p| (p.msg.as_str(), p.kind))
+        .collect();
+    assert_eq!(
+        msgs,
+        [(
+            "メモを付ける相手「Nope」が見つかりません（comment about）",
+            None
+        )]
+    );
+    assert_eq!(m.notes.len(), 1);
+}
