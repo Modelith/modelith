@@ -371,6 +371,10 @@ fn member(p: &mut Parser<'_>) {
             succession_declaration(p, owner);
         } else if kind == TRANSITION_USAGE {
             transition_declaration(p, owner);
+        } else if kind == INTERFACE_USAGE && interface_part_follows(p) {
+            // `interface x.p to y.p;`・`interface (a, b, c);`（`connect` を省いた BinaryInterfacePart・NaryInterfacePart、8.2.2.14）
+            connector_ends_part(p);
+            end(p, owner, "", true);
         } else if let Some(kw) = connector_keyword(kind) {
             // `allocation a\n    allocate x to y;` の改行の後の `allocate` は、新しい文ではなく続き
             let name = declaration_tail(p, true, false, Some(kw));
@@ -1466,6 +1470,38 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<
     name
 }
 
+/// `interface` の直後に、`connect` を省いた端の並び（BinaryInterfacePart・NaryInterfacePart、8.2.2.14）が続くか。読み進めない。
+///
+/// # 引数
+///
+/// - `p`：`interface` の直後にいるパーサ
+///
+/// # 戻り値
+///
+/// `(` か、参照（修飾名・特徴の連鎖）の直後の `to` なら `true`。名前で始まる宣言（`interface i : I …`）なら `false`。
+///
+/// # 例
+///
+/// ```text
+/// interface_part_follows("x.p to y.p;")        → true
+/// interface_part_follows("(a, b, c);")         → true
+/// interface_part_follows("i : I connect a to b;") → false
+/// interface_part_follows("i x.p to y.p;")      → false   // 名前の後の端（BNF に無い形）
+/// ```
+fn interface_part_follows(p: &Parser<'_>) -> bool {
+    if p.at(L_PAREN) {
+        return true;
+    }
+    if !p.at_name() {
+        return false;
+    }
+    let mut i = qualified_name_len(p, 0);
+    while p.nth_at(i, DOT) && p.nth_at_name(i + 1) {
+        i += 1 + qualified_name_len(p, i + 1);
+    }
+    p.nth_at_kw(i, "to")
+}
+
 /// 接続の端を持つ使用の種類（`allocation`・`binding`）の、端の前に来るキーワード（8.2.2.13.2・8.2.2.15）。
 ///
 /// # 引数
@@ -1508,6 +1544,26 @@ fn connector_keyword(kind: SyntaxKind) -> Option<&'static str> {
 /// ```
 fn connector_part(p: &mut Parser<'_>) {
     p.bump();
+    connector_ends_part(p);
+}
+
+/// 接続の端の並び（ConnectorPart・InterfacePart、8.2.2.13〜14）。2 項の `a to b` か、n 項の `( a, b, c )`。
+///
+/// 端は 1 つずつ `CONNECTOR_END` の節にする。2 項で `to` が無ければ「「to」がありません」、
+/// n 項で `)` が無ければ「「)」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：最初の端か `(` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// connector_ends_part("a.p to b.q;") → CONNECTOR_END(a.p)・CONNECTOR_END(b.q)
+/// connector_ends_part("(a, b, c);")  → CONNECTOR_END が 3 つ
+/// connector_ends_part("a;")          → 「「to」がありません」
+/// ```
+fn connector_ends_part(p: &mut Parser<'_>) {
     if p.eat(L_PAREN) {
         loop {
             connector_end(p);

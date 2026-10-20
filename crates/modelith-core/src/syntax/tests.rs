@@ -617,6 +617,50 @@ fn flow_payload_without_anything_is_an_error() {
 }
 
 #[test]
+fn interface_without_connect_reads_its_ends() {
+    // Arrange（同値分割：2 項・n 項。BinaryInterfacePart・NaryInterfacePart、8.2.2.14）
+    for (text, ends) in [
+        ("interface x.p to y.p;", 2),
+        ("interface (a.p, b.p, c.p);", 3),
+    ] {
+        // Act
+        let kinds = node_kinds(text);
+        // Assert
+        assert_eq!(kinds[1], INTERFACE_USAGE, "{text}");
+        assert_eq!(
+            kinds.iter().filter(|k| **k == CONNECTOR_END).count(),
+            ends,
+            "{text}"
+        );
+        assert!(errors(text).is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn named_interface_is_still_a_declaration() {
+    // Arrange（境界値：名前で始まる interface は、端の並びではなく宣言）
+    let text = "interface i : I connect a.p to b.p;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&NAME));
+    assert_eq!(kinds.iter().filter(|k| **k == CONNECTOR_END).count(), 2);
+}
+
+#[test]
+fn interface_without_connect_and_its_second_end_is_an_error() {
+    // Arrange（異常系：to の後の端が無い）
+    let text = "interface x.p to ;";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(
+        actual,
+        vec![(17, "関係の相手の名前がありません".to_owned())]
+    );
+}
+
+#[test]
 fn name_followed_by_short_name_is_still_a_declaration() {
     // Arrange（境界値：`x <s> …` は宣言のまま）
     let text = "part def A { x <s> : T; }";

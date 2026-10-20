@@ -1379,5 +1379,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("connect を省いたインタフェース（BinaryInterfacePart・NaryInterfacePart、8.2.2.14）", () => {
+      it("interface x.p to y.p; は、interface connect x.p to y.p; と同じ接続の線にする（以前は要素だけで線が無かった）", () => {
+        // Arrange
+        const text = "package P { port def Pt; part def X { port p : Pt; } part def Y { port p : ~Pt; } part def H { part x : X; part y : Y; interface x.p to y.p; } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.rels.filter((r) => r.rel === "connect").map((r) => (r.rel === "connect" ? `${r.a}|${r.b}` : ""))).toEqual(["x.p|y.p"]);
+        expect(edges(text).filter((e) => e.startsWith("flow|"))).toEqual(["flow|X|Y"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
   });
 }

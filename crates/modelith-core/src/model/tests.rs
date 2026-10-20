@@ -1639,6 +1639,33 @@ fn flow_without_from_to_a_missing_end_is_reported() {
 }
 
 #[test]
+fn interface_without_connect_is_a_connection_like_the_long_form() {
+    // Arrange（BinaryInterfacePart、8.2.2.14：`interface x.p to y.p;` は `interface connect x.p to y.p;` と同じ）
+    let text = "package P { port def Pt; part def X { port p : Pt; } part def Y { port p : ~Pt; } \
+        part def H { part x : X; part y : Y; interface x.p to y.p; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let connects: Vec<(&str, &str)> = p
+        .rels
+        .iter()
+        .filter_map(|r| match &r.kind {
+            RelKind::Connect { a, b, .. } => Some((a.as_str(), b.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(connects, [("x.p", "y.p")]);
+    let lines: Vec<String> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "flow")
+        .map(|e| format!("{}|{}", e.from, e.to))
+        .collect();
+    assert_eq!(lines, ["X|Y"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
 fn succession_flow_is_a_labelled_line() {
     // Arrange（SuccessionFlowUsage、8.2.3.17：名前の無いものはアイテム、名前付きは名前と型）
     let text = "package P { item def W; action def A { action a; action b; succession flow of W from a.o to b.i; \
