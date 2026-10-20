@@ -9,6 +9,7 @@ const KIND_LABEL: Record<string, string> = {
   "exhibit state": "状態", "perform action": "アクション",
   "occurrence def": "シナリオ", occurrence: "出来事", "interface def": "インタフェース定義", "connection def": "接続定義",
   "allocation def": "割り当て定義", allocation: "割り当て", connection: "接続", binding: "結び付け",
+  "flow def": "流れの定義", flow: "流れ",
   "use case def": "ユースケース定義", "enum def": "列挙定義", "metadata def": "メタデータ定義", "view def": "図の定義", view: "保存された図",
   package: "パッケージ",
   // alpha.7 で読むようにした種類（ツリーとツールチップに出る）
@@ -26,6 +27,7 @@ const KIND_LABEL: Record<string, string> = {
  * @example
  * kindLabel("part def")  // → "部品定義"
  * kindLabel("view")      // → "保存された図"
- * kindLabel("flow def")  // → "flow def"（表に無い種類）
+ * kindLabel("flow def")  // → "流れの定義"
+ * kindLabel("send")      // → "send"（表に無い種類）
  */
 export const kindLabel = (kind: string): string => KIND_LABEL[kind] ?? kind;
