@@ -2598,6 +2598,8 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
 /// relation("satisfy R;", "satisfy R")            → Some(Satisfy { req: "R", by: "", negated: false })
 /// relation("not satisfy R by A;", …)             → Some(Satisfy { req: "R", by: "A", negated: true })
 /// relation("verify R;", "verify R")              → Some(Verify { req: "R" })
+/// relation("satisfy requirement s : R by A;", …) → Some(Satisfy { req: "R", by: "A", negated: false })
+/// relation("verify requirement R;", …)           → Some(Verify { req: "R" })  // 型の無い宣言する形は書いた名前
 /// relation("succession flow of W from a.o to b.i;", …) → Some(SuccessionFlow { item: "W", a: "a.o", b: "b.i", … })
 /// relation("part a;", "part a")                  → None
 /// ```
@@ -2610,17 +2612,20 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
             a: ref_after(n, "from")?,
             b: ref_after(n, "to")?,
         }),
-        // `satisfy R by X`・`satisfy R;`（持ち主が満たす）・`assert satisfy`・`not satisfy`（8.2.2.21）
+        // `satisfy R by X`・`satisfy R;`（持ち主が満たす）・`assert satisfy`・`not satisfy`・
+        // `satisfy requirement r : R by X;`（宣言する形。満たすのは型の R）（8.2.2.21）
         SATISFY_REQUIREMENT_USAGE
             if ["satisfy", "assert", "not"]
                 .iter()
                 .any(|w| starts_with_word(h, w)) =>
         {
-            let req = name().or_else(|| {
+            let req = if has_keyword(n, "requirement") {
+                declared_requirement(n)
+            } else {
                 n.children()
                     .find(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
-                    .map(|c| compact(&c))
-            })?;
+                    .map(|c| compact(&c))?
+            };
             let negated = n
                 .children_with_tokens()
                 .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == "not"));
@@ -2630,7 +2635,14 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
                 negated,
             })
         }
-        REQUIREMENT_VERIFICATION_USAGE => Some(RelKind::Verify { req: first_ref(n)? }),
+        // `verify R;`・`verify requirement r : R;`（宣言する形。検証するのは型の R）（8.2.2.24）
+        REQUIREMENT_VERIFICATION_USAGE => Some(RelKind::Verify {
+            req: if has_keyword(n, "requirement") {
+                declared_requirement(n)
+            } else {
+                first_ref(n)?
+            },
+        }),
         FRAMED_CONCERN_USAGE => {
             let t = child(n, FEATURE_TYPING).and_then(|c| type_of(&c))?;
             Some(RelKind::Frame {
@@ -2645,6 +2657,45 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         }
         _ => None,
     }
+}
+
+/// 宣言する形の `satisfy requirement r : R …`・`verify requirement r : R;`（SatisfyRequirementUsage・
+/// RequirementVerificationUsage の 'requirement' UsageDeclaration、8.2.2.21・8.2.2.24）が満たす・検証する要求。
+/// 新しい要求の使用 `r` の型（無ければ特殊化・部分集合・再定義・参照の最初の相手）にする。
+/// 型も相手も無い `satisfy requirement R by X;` は、これまでどおり（モックとも同じく）書いた名前の要求を指すとみなす。
+///
+/// # 引数
+///
+/// - `n`：`SATISFY_REQUIREMENT_USAGE`・`REQUIREMENT_VERIFICATION_USAGE` の節（`requirement` を書いたもの）
+///
+/// # 戻り値
+///
+/// 要求の参照（空白を除いたもの）。型も相手も名前も無ければ空文字列（満たす・検証するのは、新しい要求の使用そのもの）。
+///
+/// # 例
+///
+/// ```text
+/// declared_requirement("satisfy requirement sr : Q::R by v;") → "Q::R"
+/// declared_requirement("verify requirement r2 :> r1;")        → "r1"
+/// declared_requirement("verify requirement SpeedReq;")        → "SpeedReq"   // 型も相手も無い
+/// declared_requirement("verify requirement;")                 → ""
+/// ```
+fn declared_requirement(n: &SyntaxNode) -> String {
+    n.children()
+        .filter(|c| {
+            matches!(
+                c.kind(),
+                FEATURE_TYPING | SUBSETTING | REDEFINITION | REFERENCE_SUBSETTING
+            )
+        })
+        .min_by_key(|c| c.kind() != FEATURE_TYPING)
+        .and_then(|rel| {
+            rel.children()
+                .find(|t| matches!(t.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+        })
+        .map(|t| compact(&t))
+        .or_else(|| child(n, NAME).map(|c| unquote(&compact(&c)).to_owned()))
+        .unwrap_or_default()
 }
 
 /// フロー（`flow of I from a to b`、FlowUsage、8.2.2.16）の流れの関係。

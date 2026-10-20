@@ -684,6 +684,29 @@ fn flow_payload_name_is_not_its_type() {
 }
 
 #[test]
+fn declaring_satisfy_and_verify_point_to_the_requirement_type() {
+    // Arrange（同値分割：型・部分集合・名前だけ・名前も無い。'requirement' UsageDeclaration、8.2.2.21・8.2.2.24）
+    let text = "satisfy requirement sr : R by v; verify requirement r2 : Q::R; \
+        verify requirement r3 :> r1; verify requirement R4; verify requirement;";
+    // Act
+    let r = run(text);
+    // Assert
+    let reqs: Vec<(&str, &str)> = r
+        .rels
+        .iter()
+        .map(|x| match &x.kind {
+            RelKind::Satisfy { req, by, .. } => (req.as_str(), by.as_str()),
+            RelKind::Verify { req } => (req.as_str(), ""),
+            _ => ("?", "?"),
+        })
+        .collect();
+    assert_eq!(
+        reqs,
+        [("R", "v"), ("Q::R", ""), ("r1", ""), ("R4", ""), ("", "")]
+    );
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";

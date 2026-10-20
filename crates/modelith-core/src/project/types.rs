@@ -256,6 +256,7 @@ pub enum RelKind {
         b: String,
     },
     Satisfy {
+        /// 満たされる要求（書いた参照）。宣言する形で型も相手も名前も無ければ空（描かない）。
         req: String,
         /// 満たす要素。`by` の無い `satisfy R;` では空（持ち主が満たす。8.2.2.21）。
         by: String,
@@ -264,6 +265,7 @@ pub enum RelKind {
         negated: bool,
     },
     Verify {
+        /// 検証される要求（書いた参照）。宣言する形で型も相手も名前も無ければ空（描かない）。
         req: String,
     },
     Frame {

@@ -1296,5 +1296,45 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(ps).toEqual(["線の接続先「t.x」の「x」が見つかりません（flow）"]);
       });
     });
+
+    describe("宣言する形の satisfy・verify と視点の satisfy（SatisfyRequirementUsage 8.2.2.21・RequirementVerificationUsage 8.2.2.24・ViewDefinition 8.2.2.26）", () => {
+      it("satisfy requirement sr : R by v; は、新しい使用の名前 sr ではなく型 R を満たす線にする", () => {
+        // Arrange
+        const text = "package P { requirement def R; part v; satisfy requirement sr : R by v; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["satisfy|v|R"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("verify requirement r2 : R; は、型 R を検証する線にする", () => {
+        // Arrange
+        const text = "package P { requirement def R; verification def T { objective { verify requirement r2 : R; } } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["verify|T|R"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("view def の中の satisfy vp;（視点を満たす）は、誤って「見つかりません」と言わない", () => {
+        // Arrange
+        const text = "package P { viewpoint def VP; viewpoint vp : VP; view def VD { satisfy vp; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+
+      it("宣言する形でも、型が見つからなければ知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part v; satisfy requirement sr : Nope by v; }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["「満たす」関係の相手「Nope」が見つかりません（satisfy）"]);
+      });
+    });
   });
 }

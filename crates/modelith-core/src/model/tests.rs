@@ -1027,6 +1027,46 @@ fn missing_feature_of_an_untyped_part_end_is_reported() {
 }
 
 #[test]
+fn declaring_satisfy_and_verify_draw_to_the_requirement_type() {
+    // Arrange（SatisfyRequirementUsage・RequirementVerificationUsage の宣言する形、8.2.2.21・8.2.2.24）
+    let text = "package P { requirement def R; part v; satisfy requirement sr : R by v; \
+        verification def T { objective { verify requirement r2 : R; verify requirement; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(edge_list(&m), ["satisfy|v|R", "verify|T|R"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn satisfying_a_viewpoint_in_a_view_definition_is_not_a_missing_target() {
+    // Arrange（view def の `satisfy vp;`：視点は図に描かないので線にしないが、見つかっている）
+    let text = "package P { viewpoint def VP; viewpoint vp : VP; view def VD { satisfy vp; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert!(m.edges.is_empty());
+}
+
+#[test]
+fn declaring_satisfy_with_a_missing_type_or_subject_is_reported() {
+    // Arrange（異常系：型も満たす要素も見つからない）
+    let text = "package P { part v; satisfy requirement s1 : Nope by v; requirement def R; satisfy requirement s2 : R by gone; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "「満たす」関係の相手「Nope」が見つかりません（satisfy）",
+            "「満たす」関係の相手「gone」が見つかりません（satisfy）"
+        ]
+    );
+}
+
+#[test]
 fn dependency_draws_a_line_per_client_and_supplier_with_its_label() {
     // Arrange（Dependency、8.2.2.3・8.2.3.3 の binary-dependency：名前・メタデータ・複数の相手）
     let text = "package P { part def A; part def B; part def C; metadata def trace; \

@@ -854,46 +854,54 @@ impl<'a> Builder<'a> {
             };
             let pe = r.pe;
             match &r.kind {
+                // 型も名前も無い宣言する形（`verify requirement;`）は、新しい要求の使用そのものなので描かない
+                RelKind::Satisfy { req, .. } | RelKind::Verify { req } if req.is_empty() => {}
                 RelKind::Satisfy { req, by, negated } => {
-                    // `by` の無い `satisfy R;` は、持ち主（使用なら型の定義）が満たす（8.2.2.21）
-                    let a = if by.is_empty() {
-                        self.node_for(pe).or_else(|| self.owner_node(pe))
+                    // 相手は名前で探し、見つからないときだけ知らせる（図の要素でない相手、視点 viewpoint なども見つかればよい）
+                    let er = self.resolve(req, pe);
+                    let eb = (!by.is_empty()).then(|| self.resolve(by, pe));
+                    let missing = if er.is_none() {
+                        Some(req)
+                    } else if eb == Some(None) {
+                        Some(by)
                     } else {
-                        self.node_for(self.resolve(by, pe))
+                        None
                     };
-                    let b = self.node_for(self.resolve(req, pe));
-                    match (a, b) {
-                        // 否定の充足（not satisfy）は線にせず、トレースの抜けの検出にも数えない
-                        (_, Some(_)) if *negated => {}
-                        (Some(a), Some(b)) => {
-                            self.add_edge("satisfy", a, b, "«satisfy»".into(), src);
-                        }
-                        // 相手はあるが、満たす持ち主が図に無い（`by` の無い文）。相手が無いとは言わない
-                        (None, Some(_)) if by.is_empty() => {}
-                        _ => {
-                            let who = if b.is_none() { req } else { by };
-                            self.problem(
-                                r.start,
-                                format!("「満たす」関係の相手「{who}」が見つかりません（satisfy）"),
-                                None,
-                            );
-                        }
+                    if let Some(who) = missing {
+                        self.problem(
+                            r.start,
+                            format!("「満たす」関係の相手「{who}」が見つかりません（satisfy）"),
+                            None,
+                        );
+                        continue;
+                    }
+                    // 否定の充足（not satisfy）は線にせず、トレースの抜けの検出にも数えない
+                    if *negated {
+                        continue;
+                    }
+                    // `by` の無い `satisfy R;` は、持ち主（使用なら型の定義）が満たす（8.2.2.21）
+                    let a = match eb {
+                        Some(e) => self.node_for(e),
+                        None => self.node_for(pe).or_else(|| self.owner_node(pe)),
+                    };
+                    // 満たす側・満たされる側が図に無い（視点、型の無い使用の中など）ときは、線にしない
+                    if let (Some(a), Some(b)) = (a, self.node_for(er)) {
+                        self.add_edge("satisfy", a, b, "«satisfy»".into(), src);
                     }
                 }
                 RelKind::Verify { req } => {
-                    let a = self.owner_node(pe);
-                    let b = self.node_for(self.resolve(req, pe));
-                    match (a, b) {
-                        (Some(a), Some(b)) => {
-                            self.add_edge("verify", a, b, "«verify»".into(), src);
-                        }
-                        // 相手はあるが、線を引く元が図に無い（型の無い使用の中など）。相手が無いとは言わない
-                        (None, Some(_)) => {}
-                        _ => self.problem(
+                    let er = self.resolve(req, pe);
+                    if er.is_none() {
+                        self.problem(
                             r.start,
                             format!("「検証する」関係の相手「{req}」が見つかりません（verify）"),
                             None,
-                        ),
+                        );
+                        continue;
+                    }
+                    // 線を引く元か相手が図に無い（型の無い使用の中など）ときは、線にしない
+                    if let (Some(a), Some(b)) = (self.owner_node(pe), self.node_for(er)) {
+                        self.add_edge("verify", a, b, "«verify»".into(), src);
                     }
                 }
                 RelKind::Frame { ty, path, .. } => {
