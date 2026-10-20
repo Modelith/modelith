@@ -41,6 +41,7 @@ pub fn project(source: &str, parse: &Parse) -> ParseResult {
     let mut c = Ctx::new(source, parse);
     c.members(&parse.syntax(), None, None);
     c.apply_about_annotations();
+    c.apply_comment_abouts();
     c.resolve_extended_kinds();
     c.out.errors = parse
         .errors()
@@ -190,6 +191,18 @@ struct Annotation {
     fields: Vec<(String, String)>,
 }
 
+/// `comment c about A, B /* … */`（相手は読み終えてから、書いた場所から解決する）。
+struct CommentAbout {
+    /// コメントの宣言の番号。
+    entry: usize,
+    /// 相手の参照（修飾名・特徴の連鎖）。
+    about: Vec<String>,
+    /// 文を書いた宣言の番号（名前を探し始める場所）。
+    pe: Option<usize>,
+    /// 文の位置（UTF-16 のオフセット。相手が見つからないときの問題の位置）。
+    pos: usize,
+}
+
 /// 文の終わり。
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Term {
@@ -212,6 +225,8 @@ struct Ctx {
     annotations: Vec<Annotation>,
     /// 利用者定義のキーワードで書いた宣言の番号（基の種類を読み終えてから決める）。
     extended: Vec<usize>,
+    /// `about` の付いたコメント（書いた順）。相手は読み終えてから解決する。
+    comment_abouts: Vec<CommentAbout>,
 }
 
 impl Ctx {
@@ -264,6 +279,7 @@ impl Ctx {
             open_meta: None,
             annotations: Vec::new(),
             extended: Vec::new(),
+            comment_abouts: Vec::new(),
         }
     }
 
@@ -363,8 +379,12 @@ impl Ctx {
     /// - `pe`：要素を含む、いちばん近い宣言の番号。無ければ `None`
     fn statement(&mut self, n: &SyntaxNode, owner: Option<Scope>, pe: Option<usize>) {
         match n.kind() {
+            COMMENT => {
+                self.comment(n, owner, pe);
+                return;
+            }
             // テキストでの表し方（rep）は、まだ図にもツリーにも出さない（本文を残すのは後の版）
-            COMMENT | TEXTUAL_REPRESENTATION => return,
+            TEXTUAL_REPRESENTATION => return,
             DOCUMENTATION => {
                 if let (Some(pe), Some(body)) = (
                     pe,
@@ -666,6 +686,8 @@ impl Ctx {
                 close: None,
                 specs: self.specs(n, is_def),
                 multiplicity: multiplicity(n),
+                body: None,
+                about: Vec::new(),
             };
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
@@ -726,6 +748,8 @@ impl Ctx {
                 close: None,
                 specs: Vec::new(),
                 multiplicity: None,
+                body: None,
+                about: Vec::new(),
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -936,6 +960,116 @@ impl Ctx {
                 for (k, v) in &a.fields {
                     // 要素自身に書いた値（`@M { k = … }`）を優先する
                     meta.entry(k, || v.clone());
+                }
+            }
+        }
+    }
+
+    /// コメント（Comment、8.2.2.4）を、種類 `comment` の宣言にする。`comment` か `locale` を書いたものだけを読み、
+    /// キーワードの無い `/* … */` はこれまでどおり読み飛ばす（コードの注釈に使われることが多いため）。
+    ///
+    /// `about` が無ければ持ち主の宣言 `pe` を注釈する（ファイルの直下なら何も注釈しない）。あれば相手を読み終えてから
+    /// 解決するよう `comment_abouts` に足す。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：`COMMENT` の節
+    /// - `owner`：コメントの持ち主（宣言か無名ブロックの番号）。ファイルの直下なら `None`
+    /// - `pe`：コメントを含む、いちばん近い宣言の番号。無ければ `None`
+    fn comment(&mut self, n: &SyntaxNode, owner: Option<Scope>, pe: Option<usize>) {
+        let is_element = n.children_with_tokens().any(|e| {
+            e.kind() == KEYWORD
+                && e.as_token()
+                    .is_some_and(|t| matches!(t.text(), "comment" | "locale"))
+        });
+        let body = n
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| t.kind() == REGULAR_COMMENT);
+        let (true, Some(body)) = (is_element, body) else {
+            return;
+        };
+        let range = n.text_range();
+        let (hs, be): (usize, usize) = (range.start().into(), body.text_range().start().into());
+        let idx = self.out.entries.len();
+        let parts = decl_parts(n, false);
+        let about: Vec<String> = n
+            .children()
+            .filter(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+            .map(|c| compact(&c))
+            .collect();
+        let start = self.utf16(hs);
+        let e = Entry {
+            kind: "comment".to_owned(),
+            is_def: false,
+            short: parts.short,
+            name: parts.name,
+            conj: None,
+            ty: String::new(),
+            ty_path: String::new(),
+            owner,
+            pe,
+            start,
+            head_end: self.utf16(be),
+            end: self.utf16(range.end().into()),
+            head: self.head_text(hs, be),
+            mods: None,
+            dir: None,
+            exprs: Vec::new(),
+            children: Vec::new(),
+            idx,
+            value: None,
+            value_op: None,
+            doc: None,
+            meta: None,
+            phase_val: None,
+            phase_block: None,
+            enum_values: None,
+            exposes: None,
+            filters: None,
+            render: None,
+            open: None,
+            close: None,
+            specs: Vec::new(),
+            multiplicity: None,
+            body: Some(comment_body(body.text())),
+            about: if about.is_empty() {
+                pe.into_iter().collect()
+            } else {
+                Vec::new()
+            },
+        };
+        self.push_entry(e, pe);
+        if !about.is_empty() {
+            self.comment_abouts.push(CommentAbout {
+                entry: idx,
+                about,
+                pe,
+                pos: start,
+            });
+        }
+    }
+
+    /// `comment c about A, B` の相手を、文を書いた場所から解決し（`model` の名前の解決、修飾名と別名を含む）、
+    /// 見つかった宣言の番号をコメントの `about` に書いた順で入れる。見つからない相手は `missing_comment_about` に足す。
+    fn apply_comment_abouts(&mut self) {
+        if self.comment_abouts.is_empty() {
+            return;
+        }
+        let refs: Vec<(String, Option<usize>)> = self
+            .comment_abouts
+            .iter()
+            .flat_map(|c| c.about.iter().map(|r| (r.clone(), c.pe)))
+            .collect();
+        let mut found = crate::model::resolve_refs(&self.out, &refs).into_iter();
+        for c in std::mem::take(&mut self.comment_abouts) {
+            for r in &c.about {
+                match found.next().flatten() {
+                    Some(i) => self.out.entries[c.entry].about.push(i),
+                    None => self.out.missing_comment_about.push(MissingRef {
+                        pos: c.pos,
+                        name: r.clone(),
+                    }),
                 }
             }
         }

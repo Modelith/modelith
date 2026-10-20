@@ -90,6 +90,39 @@ pub fn normalize(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// コメントの本文（REGULAR_COMMENT の中身、8.2.2.4）。`/*`・`*/` を外し、各行の頭の空白と `*`（`/** … */` や、
+/// 行の頭に並べた `*`）と、行末の空白を除く。前後の空の行は捨て、行は改行でつなぐ。
+///
+/// # 引数
+///
+/// - `raw`：`/*` から `*/` までのコメント（閉じていなければ末尾まで）
+///
+/// # 戻り値
+///
+/// 本文。中身が空白だけなら空文字列。
+///
+/// # 例
+///
+/// ```text
+/// comment_body("/* 安全のため */")             → "安全のため"
+/// comment_body("/**\n * 1 行目\n * 2 行目\n */") → "1 行目\n2 行目"
+/// comment_body("/*   */")                      → ""
+/// ```
+pub fn comment_body(raw: &str) -> String {
+    let inner = raw.strip_prefix("/*").unwrap_or(raw);
+    let inner = inner.strip_suffix("*/").unwrap_or(inner);
+    let lines: Vec<&str> = inner
+        .lines()
+        .map(|l| l.trim_start().trim_start_matches('*').trim())
+        .collect();
+    let first = lines.iter().position(|l| !l.is_empty());
+    let last = lines.iter().rposition(|l| !l.is_empty());
+    match (first, last) {
+        (Some(a), Some(b)) => lines[a..=b].join("\n"),
+        _ => String::new(),
+    }
+}
+
 /// 修飾名の最後の部分（`A::B` → `B`）。
 ///
 /// # 引数
@@ -510,6 +543,21 @@ mod tests {
                 ("timeslice".to_owned(), "t"),
             ]
         );
+    }
+
+    #[test]
+    fn comment_body_drops_markers_and_leading_stars_on_each_line() {
+        // Arrange（同値クラス: 1 行・`/** */` の複数行・空。境界値: 閉じていない）
+        let cases = [
+            "/* 安全のため */",
+            "/**\n   * 1 行目\n   *   2 行目  \n   */",
+            "/*   */",
+            "/* 閉じていない",
+        ];
+        // Act
+        let got: Vec<String> = cases.iter().map(|c| comment_body(c)).collect();
+        // Assert
+        assert_eq!(got, ["安全のため", "1 行目\n2 行目", "", "閉じていない"]);
     }
 
     #[test]

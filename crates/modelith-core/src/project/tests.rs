@@ -1026,3 +1026,80 @@ fn default_without_expression_has_no_value_kind() {
     assert_eq!(entry(&r, "d").value, None);
     assert_eq!(entry(&r, "d").value_op, None);
 }
+
+// ---- コメント（Comment、8.2.2.4） ----
+
+#[test]
+fn comment_about_keeps_its_body_and_annotated_elements() {
+    // Arrange（`about` の相手が 2 つ。修飾名と特徴の連鎖）
+    let text = "package P { package Q { part def A; } part def B { part c; } \
+                comment note about Q::A, B.c /* 安全のため\n * 二重にする */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let note = entry(&r, "note");
+    assert_eq!(note.kind, "comment");
+    assert_eq!(note.body.as_deref(), Some("安全のため\n二重にする"));
+    assert_eq!(note.about, [entry(&r, "A").idx, entry(&r, "c").idx]);
+    assert_eq!(note.pe, Some(entry(&r, "P").idx));
+    assert_eq!(note.head, "comment note about Q::A, B.c");
+    assert!(r.missing_comment_about.is_empty());
+}
+
+#[test]
+fn comment_without_about_annotates_its_owner() {
+    // Arrange（`about` の無い `comment /* … */`・`comment c locale "ja" /* … */`、名前の無いもの）
+    let text = "part def A { comment /* 1 つ目 */ comment c locale \"ja\" /* 2 つ目 */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a = entry(&r, "A").idx;
+    let comments: Vec<(&str, Option<&str>, &[usize])> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "comment")
+        .map(|e| (e.name.as_str(), e.body.as_deref(), e.about.as_slice()))
+        .collect();
+    assert_eq!(
+        comments,
+        [
+            ("", Some("1 つ目"), &[a][..]),
+            ("c", Some("2 つ目"), &[a][..])
+        ]
+    );
+    assert_eq!(entry(&r, "A").children.len(), 2);
+}
+
+#[test]
+fn plain_comment_and_top_level_comment_without_about_annotate_nothing() {
+    // Arrange（境界値: キーワードの無い `/* … */` は読み飛ばす。ファイルの直下の `comment` は持ち主が無い）
+    let text = "/* 見出し */ comment /* ファイルのメモ */ part def A { /* 注記 */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let comments: Vec<(&str, &[usize])> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "comment")
+        .map(|e| (e.body.as_deref().unwrap_or(""), e.about.as_slice()))
+        .collect();
+    assert_eq!(comments, [("ファイルのメモ", &[][..])]);
+    assert!(entry(&r, "A").children.is_empty());
+}
+
+#[test]
+fn comment_about_missing_target_is_recorded() {
+    // Arrange（異常系: 相手の 1 つが無い）
+    let text = "package P { part def A; comment about A, Nope /* x */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let names: Vec<&str> = r
+        .missing_comment_about
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect();
+    assert_eq!(names, ["Nope"]);
+    let c = r.entries.iter().find(|e| e.kind == "comment");
+    assert_eq!(c.map(|c| c.about.clone()), Some(vec![entry(&r, "A").idx]));
+}
