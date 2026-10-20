@@ -438,6 +438,9 @@ impl Ctx {
                     e.close = Some(c);
                     e.end = c + 1;
                 }
+                if matches!(n.kind(), IF_NODE | WHILE_LOOP_NODE) {
+                    self.branches(n, i);
+                }
             }
             None => {
                 let b = self.out.blocks.len();
@@ -460,6 +463,75 @@ impl Ctx {
                     blk.end = Some(c + 1);
                 }
             }
+        }
+    }
+
+    /// `if` のアクションの `else` の後（本体か `else if …`）と、`while` の後ろの `until c;` を読む（IfNode・WhileLoopNode、8.2.2.17）。
+    ///
+    /// `else` の本体は、キーワード `else` の無名ブロックにして中を読む（中の宣言の `pe` は `if` のアクション）。`else if …` は、
+    /// `if` のアクションの中の `if` のアクションにする。宣言の終わり（`end`）は、`else` の本体や `until c;` まで広げる。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：`IF_NODE` か `WHILE_LOOP_NODE` の節
+    /// - `i`：その節の宣言の番号（最初の本体は読み終えていること）
+    fn branches(&mut self, n: &SyntaxNode, i: usize) {
+        let bodies: Vec<SyntaxNode> = n.children().filter(|c| c.kind() == BODY).collect();
+        if let Some(body) = bodies.get(1) {
+            let at = n
+                .children_with_tokens()
+                .find(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == "else"))
+                .map_or(body.text_range().start(), |e| e.text_range().start());
+            let b = self.out.blocks.len();
+            let close = body
+                .last_token()
+                .filter(|t| t.kind() == R_BRACE)
+                .map(|t| self.utf16(t.text_range().start().into()));
+            self.out.blocks.push(Block {
+                kw: "else".to_owned(),
+                head: "else".to_owned(),
+                start: self.utf16(at.into()),
+                owner: Some(Scope::Entry(i)),
+                open: Some(self.utf16(body.text_range().start().into())),
+                close,
+                end: close.map(|c| c + 1),
+            });
+            self.members(body, Some(Scope::Block(b)), Some(i));
+        }
+        if let Some(nested) = child(n, IF_NODE) {
+            self.statement(&nested, Some(Scope::Entry(i)), Some(i));
+        }
+        self.out.entries[i].end = self.utf16(n.text_range().end().into());
+    }
+
+    /// `if`・`while` のアクションの条件、`for` のアクションの `変数 in 列`（IfNode・WhileLoopNode・ForLoopNode、8.2.2.17）。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：文の節
+    ///
+    /// # 戻り値
+    ///
+    /// 条件の式（空白をまとめたもの）。`for` は `x : T in xs` の形。ほかの節や、条件の無い `loop` なら `None`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// guard("if x  > 0 { … }")         → Some("x > 0")
+    /// guard("for x : T in xs { … }")   → Some("x : T in xs")
+    /// guard("loop { … } until done;") → None   // until の条件は記録しない
+    /// guard("part p;")                 → None
+    /// ```
+    fn guard(&self, n: &SyntaxNode) -> Option<String> {
+        let cond = child(n, EXPRESSION).map(|x| self.node_head(&x));
+        match n.kind() {
+            IF_NODE => cond.filter(|c| !c.is_empty()),
+            WHILE_LOOP_NODE if !has_keyword(n, "loop") => cond.filter(|c| !c.is_empty()),
+            FOR_LOOP_NODE => {
+                let var = child(n, NODE_PARAMETER).map(|v| self.node_head(&v))?;
+                Some(format!("{var} in {}", cond.unwrap_or_default()))
+            }
+            _ => None,
         }
     }
 
@@ -702,7 +774,9 @@ impl Ctx {
                 body: None,
                 about: Vec::new(),
                 reps: Vec::new(),
+                guard: None,
             };
+            e.guard = self.guard(n);
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
                 for md in prefix_meta {
@@ -765,6 +839,7 @@ impl Ctx {
                 body: None,
                 about: Vec::new(),
                 reps: Vec::new(),
+                guard: None,
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -1054,6 +1129,7 @@ impl Ctx {
                 Vec::new()
             },
             reps: Vec::new(),
+            guard: None,
         };
         self.push_entry(e, pe);
         if !about.is_empty() {
@@ -1413,13 +1489,15 @@ fn entry_kind(
 ///
 /// # 戻り値
 ///
-/// `fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate` のどれか。アクションの節でなければ `None`。
+/// `fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`loop`・`for` のどれか。
+/// アクションの節でなければ `None`。
 ///
 /// # 例
 ///
 /// ```text
 /// action_node_kind("decide d;")        → Some("decide")
 /// action_node_kind("accept e : E;")    → Some("accept")
+/// action_node_kind("loop { … }")       → Some("loop")
 /// action_node_kind("accept Go then b;") → None   // 状態の中の省略形の遷移
 /// action_node_kind("part p;")          → None
 /// ```
@@ -1433,8 +1511,34 @@ fn action_node_kind(n: &SyntaxNode) -> Option<&'static str> {
         ACCEPT_NODE if child(n, CONNECTOR_END).is_none() => Some("accept"),
         ASSIGNMENT_NODE => Some("assign"),
         TERMINATE_NODE => Some("terminate"),
+        IF_NODE => Some("if"),
+        WHILE_LOOP_NODE if has_keyword(n, "loop") => Some("loop"),
+        WHILE_LOOP_NODE => Some("while"),
+        FOR_LOOP_NODE => Some("for"),
         _ => None,
     }
+}
+
+/// 節の直下に、キーワード `kw` のトークンがあるか（孫より深くは見ない）。
+///
+/// # 引数
+///
+/// - `n`：節
+/// - `kw`：探すキーワード
+///
+/// # 戻り値
+///
+/// 直下にあれば `true`。
+///
+/// # 例
+///
+/// ```text
+/// has_keyword("loop { … }" の WHILE_LOOP_NODE, "loop")       → true
+/// has_keyword("while x { loop { } }" の WHILE_LOOP_NODE, "loop") → false   // 本体の中は見ない
+/// ```
+fn has_keyword(n: &SyntaxNode, kw: &str) -> bool {
+    n.children_with_tokens()
+        .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == kw))
 }
 
 /// メタデータの定義の本体の式 `:>> baseType = … meta SysML::PartUsage` から、基のメタクラスの名前を取り出す

@@ -144,6 +144,10 @@ pub struct Entry {
     /// 別の言語での表し方（`rep r language "x" /* … */`、TextualRepresentation、8.2.2.4）。書いた順。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub reps: Vec<Rep>,
+    /// `if`・`while` のアクションの条件、`for` のアクションの `変数 in 列`（IfNode・WhileLoopNode・ForLoopNode、8.2.2.17）。
+    /// 空白をまとめて書いたとおりに持つ。ほかの宣言と、条件の無い `loop` では `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guard: Option<String>,
 }
 
 /// 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。

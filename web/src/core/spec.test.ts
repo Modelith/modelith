@@ -889,6 +889,20 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
 
+      it("if・while・loop・for は、条件と本体を持つ使用になり、for も「まだ扱えない」と知らせない（IfNode・WhileLoopNode・ForLoopNode）", () => {
+        // Arrange
+        const text = "package P { action def A { if x > 0 { action a; } else { action b; } while i < 3 { action c; } for v in vs { action d; } } }";
+        // Act
+        const nodes = parse(text).entries.filter((e) => e.pe?.name === "A");
+        // Assert
+        expect(nodes.map((e) => [e.kind, e.guard, e.children.map((c) => c.name)])).toEqual([
+          ["if", "x > 0", ["a", "b"]],
+          ["while", "i < 3", ["c"]],
+          ["for", "v in vs", ["d"]],
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
       it("assign の := は、持ち主の式にしない（以前は持ち主の「式」に入っていた）", () => {
         // Arrange
         const text = "package P { action def A { assign x := 1; } }";

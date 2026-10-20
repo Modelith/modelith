@@ -76,6 +76,8 @@ export interface Entry {
   about?: Entry[];
   /** 別の言語での表し方（`rep … language "x" /* … *\/`、TextualRepresentation、8.2.2.4）。Rust のコアだけが作る。 */
   reps?: Rep[];
+  /** `if`・`while` のアクションの条件、`for` のアクションの `変数 in 列`（8.2.2.17）。Rust のコアだけが作る。 */
+  guard?: string;
 }
 
 /** 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。 */

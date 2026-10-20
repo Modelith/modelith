@@ -1228,3 +1228,56 @@ fn accept_shorthand_transition_is_still_skipped() {
     assert!(r.entries.iter().all(|e| e.kind != "accept"));
     assert!(r.unsupported.is_empty());
 }
+
+#[test]
+fn if_action_keeps_its_guard_and_both_branches() {
+    // Arrange（IfNode、8.2.2.17：then の本体・else の本体・else if）
+    let text = "action def A { if x > 0 { action a; } else if y { action b; } else { action c; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let ifs: Vec<&Entry> = r.entries.iter().filter(|e| e.kind == "if").collect();
+    assert_eq!(
+        ifs.iter().map(|e| e.guard.as_deref()).collect::<Vec<_>>(),
+        [Some("x > 0"), Some("y")]
+    );
+    let outer = r.entries.iter().position(|e| e.kind == "if").unwrap_or(0);
+    let inner = r.entries.iter().rposition(|e| e.kind == "if").unwrap_or(0);
+    assert_eq!(entry(&r, "a").pe, Some(outer));
+    assert_eq!(r.entries[inner].pe, Some(outer));
+    assert_eq!(entry(&r, "b").pe, Some(inner));
+    assert_eq!(entry(&r, "c").pe, Some(inner));
+    assert!(matches!(entry(&r, "c").owner, Some(Scope::Block(b)) if r.blocks[b].kw == "else"));
+    assert!(text[..r.entries[outer].end].ends_with("else { action c; }"));
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn loops_keep_their_guard_and_body() {
+    // Arrange（同値分割：while … until・loop・for、8.2.2.17）
+    let text = "action def A { while i < 3 { action a; } until done; loop { action b; } for x : T in xs { action c; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let loops: Vec<(&str, Option<&str>, usize)> = r
+        .entries
+        .iter()
+        .filter(|e| matches!(e.kind.as_str(), "while" | "loop" | "for"))
+        .map(|e| (e.kind.as_str(), e.guard.as_deref(), e.children.len()))
+        .collect();
+    assert_eq!(
+        loops,
+        [
+            ("while", Some("i < 3"), 1),
+            ("loop", None, 1),
+            ("for", Some("x : T in xs"), 1)
+        ]
+    );
+    let w = r
+        .entries
+        .iter()
+        .position(|e| e.kind == "while")
+        .unwrap_or(0);
+    assert!(text[..r.entries[w].end].ends_with("until done;"));
+    assert!(r.unsupported.is_empty());
+}
