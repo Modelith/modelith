@@ -1,6 +1,7 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。
 
 import type { EdgeKind, Entry, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
+import { ibdContentOf } from "./ibd";
 import { emptyView, type ViewLayout } from "./layout";
 import { S } from "./state";
 
@@ -218,8 +219,7 @@ export function defaultIbdContext(M: Model): ModelNode | null {
 }
 
 /**
- * 内部ブロック図の内容を作る。対象（S.ibdCtx）の部品を `u:部品名` のノードにし、対象の中の flow・connect を、
- * 部品の間の線（ポートが分かれば接続点つき）にする。
+ * 内部ブロック図の内容を作る。対象（S.ibdCtx）の部品と、その間の線（`ibdContentOf`）に、対象の枠を付ける。
  *
  * @param M モデル
  * @returns 部品・線・対象の枠。対象が無ければ空で、作り方の案内（empty）を付ける
@@ -232,39 +232,7 @@ export function defaultIbdContext(M: Model): ModelNode | null {
 function ibdContent(M: Model): ViewContent {
   const ctx = ibdContexts(M).find((n) => n.key === S.ibdCtx);
   if (!ctx) return { nodes: [], edges: [], empty: "中に部品を持つ部品定義がまだありません。「構造」の図で、部品定義から別の部品定義へ線を引き、「部品として持つ」を選ぶと作れます。" };
-  const typeNode = (tn: string): ModelNode | undefined => M.nodes.find((n) => n.isDef && n.name === tn);
-  const nodes: ModelNode[] = ctx.entry.children
-    .filter((c) => c.kind === "part" && c.name)
-    .map((u) => {
-      const tn = typeNode(u.type);
-      return {
-        key: "u:" + u.name, name: u.name, short: "", kind: "part", isDef: false, fam: "part", entry: u, trans: [],
-        ports: tn ? tn.ports : [], portHost: tn ? tn.entry : u, typeKey: tn ? tn.key : null, usage: true, phase: null, phaseOwn: false,
-      };
-    });
-  const byN = new Map(nodes.map((n) => [n.name, n]));
-  const edges: ModelEdge[] = [];
-  const seen = new Map<string, number>();
-  for (const r of M.rels) {
-    if ((r.rel !== "flow" && r.rel !== "connect") || r.pe !== ctx.entry) continue;
-    const pa = r.a.split(".");
-    const pb = r.b.split(".");
-    const A = byN.get(pa[0] ?? "");
-    const B = byN.get(pb[0] ?? "");
-    if (!A || !B) continue;
-    const label = r.item || "";
-    const base = `flow|${A.key}|${B.key}|${label}`;
-    const k = (seen.get(base) ?? 0) + 1;
-    seen.set(base, k);
-    const e: ModelEdge = {
-      id: base + "#" + k, kind: "flow", from: A.key, to: B.key, label, rel: r,
-      src: r.rel === "connect" ? { start: r.usage.start, end: r.usage.end } : { start: r.start, end: r.end + 1 },
-    };
-    if (pa[1] && A.ports.some((p) => p.name === pa[1])) e.fromPort = "port:" + pa[1];
-    if (pb[1] && B.ports.some((p) => p.name === pb[1])) e.toPort = "port:" + pb[1];
-    edges.push(e);
-  }
-  return { nodes, edges, frame: { kind: "part def", title: ctx.name }, ctx };
+  return { ...ibdContentOf(M, ctx), frame: { kind: "part def", title: ctx.name }, ctx };
 }
 
 /**
