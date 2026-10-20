@@ -211,15 +211,20 @@ export const OPS = {
     S.sel = null;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(`「${n.name}」を削除しました`);
+    toast(n.note ? "メモを削除しました" : `「${n.name}」を削除しました`);
   },
 
   /**
    * 関係（線）をテキストから削除する（意図 `deleteEdge`）。線の選択を外し、トーストで知らせる。コアが断ったときは何も変えない。
+   * メモの線（annotate）は削除せず、メモごと削除するよう案内する。
    *
    * @param ed 削除する関係
    */
   async deleteEdge(ed: ModelEdge): Promise<void> {
+    if (ed.kind === "annotate") {
+      toast("メモの線だけは削除できません。メモを選んで削除してください");
+      return;
+    }
     const r = await perform({ op: "deleteEdge", id: ed.id, ctx: ctxKey() });
     if (!r) return;
     S.selEdge = null;

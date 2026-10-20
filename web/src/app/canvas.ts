@@ -53,7 +53,7 @@ export function local(cx: number, cy: number): [number, number] {
 export const toCanvas = (lx: number, ly: number): [number, number] => [(lx - S.tf.x) / S.tf.s, (ly - S.tf.y) / S.tf.s];
 
 /**
- * 図の座標に最も近い、表示中の要素の縁を探す（近くに接続点があればそれ）。線を引くときの端を決めるのに使う。
+ * 図の座標に最も近い、表示中の要素の縁を探す（近くに接続点があればそれ。メモは除く）。線を引くときの端を決めるのに使う。
  *
  * @param cx 図の座標の x
  * @param cy 図の座標の y
@@ -70,7 +70,8 @@ function borderHit(cx: number, cy: number, tolPx = 10, allowInside = false, excl
   const tol = tolPx / S.tf.s;
   let best: (EndSpec & { d: number }) | null = null;
   for (const n of visibleNodes()) {
-    if (n.key === exclude) continue;
+    // メモからは線を引かない（線の端にもしない）
+    if (n.key === exclude || n.note) continue;
     const b = boxOf(n);
     const inside = cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h;
     if (!inside && (cx < b.x - tol || cx > b.x + b.w + tol || cy < b.y - tol || cy > b.y + b.h + tol)) continue;

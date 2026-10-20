@@ -2,7 +2,7 @@
 
 import { lineOf, type CoreClient, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
-import { autoPlace, placeJunctions, placeNested, stackedHeight } from "./geometry";
+import { autoPlace, placeJunctions, placeNested, placeNotes, stackedHeight } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
@@ -178,7 +178,7 @@ function refresh(fromText: boolean): void {
 /**
  * 表示中のビューで座標の無い要素を自動で並べる（S.layout を書き換える。F-VIEW-3）。
  * 既に置かれた要素があれば、その一番下から 80 下に並べる。中の部品（内部ブロック図の入れ子）は外の部品の中に縦に積み、
- * n 項の接続の点は、つながる要素の重心に置く。シーケンス図では何もしない。
+ * n 項の接続の点は、つながる要素の重心に、メモは注釈する要素の近くに置く。シーケンス図では何もしない。
  */
 export function ensureLayout(): void {
   if (S.view === "seq") return;
@@ -186,7 +186,7 @@ export function ensureLayout(): void {
   const { nodes, edges } = viewContent(S.M, v);
   const L = curLayout().pos;
   const heightOf = (n: (typeof nodes)[number]): number => stackedHeight(n, nodes);
-  const missing = nodes.filter((n) => !L[n.key] && !n.junction && !n.container);
+  const missing = nodes.filter((n) => !L[n.key] && !n.junction && !n.container && !n.note);
   if (missing.length) {
     const placed = nodes.flatMap((n) => {
       const p = L[n.key];
@@ -197,6 +197,7 @@ export function ensureLayout(): void {
   }
   placeNested(nodes, L);
   placeJunctions(nodes, edges, L);
+  placeNotes(nodes, edges, L);
 }
 
 // 確定した配置（配置ファイルの文字列）。自動で置いただけの座標は含めない。

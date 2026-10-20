@@ -3,6 +3,7 @@
 import type { EdgeKind, Entry, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
 import { ibdContentOf } from "./ibd";
 import { emptyView, type ViewLayout } from "./layout";
+import { withNotes } from "./notes";
 import { S } from "./state";
 
 export interface ViewDef {
@@ -316,7 +317,7 @@ function packageFrames(mv: ModelView, shown: Set<string>): PackageFrame[] {
 }
 
 /**
- * テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）を作る。
+ * テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）を作る。一般の図（general）には、要素を注釈するメモも足す。
  * 内部ブロック図・シーケンス図の view では、expose の対象を S.ibdCtx・S.seqCtx に書き込んでから作る。
  *
  * @param M モデル
@@ -344,8 +345,23 @@ function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
     return { nodes, edges: [], empty: `図「${mv.name}」に、${where}図に出せる要素がありません。` };
   }
   const content = phaseFilter(M, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
-  return { ...content, packages: packageFrames(mv, new Set(content.nodes.map((n) => n.key))) };
+  const framed = { ...content, packages: packageFrames(mv, new Set(content.nodes.map((n) => n.key))) };
+  return mv.kind === "general" ? withNotes(M.notes, framed) : framed;
 }
+
+/**
+ * 一般の図（「すべて」の自動の図）なら、メモと、メモから要素への線を足す（8.2.3.4）。ほかの自動の図はそのまま返す。
+ *
+ * @param M モデル
+ * @param v ビューの定義
+ * @param c 図の内容
+ * @returns メモを足した内容（一般の図のとき）か、c そのもの
+ * @example
+ * // A を注釈するメモ note:#1 がある
+ * generalNotes(M, viewDef("all"), { nodes: [A], edges: [] }).nodes.map((n) => n.key)       // → ["A", "note:#1"]
+ * generalNotes(M, viewDef("structure"), { nodes: [A], edges: [] }).nodes.map((n) => n.key) // → ["A"]
+ */
+const generalNotes = (M: Model, v: ViewDef, c: ViewContent): ViewContent => (v.id === "all" ? withNotes(M.notes, c) : c);
 
 let cache: { M: Model | null; k: string | null; v: ViewContent | null } = { M: null, k: null, v: null };
 
@@ -375,7 +391,7 @@ export function viewContent(M: Model, v: ViewDef): ViewContent {
   if (cache.M === M && cache.k === k && cache.v) return cache.v;
   const r = S.modelView
     ? modelViewContent(M, modelView())
-    : v.id === "ibd" ? ibdContent(M) : v.id === "seq" ? seqContent(M) : phaseFilter(M, baseContent(M, v));
+    : v.id === "ibd" ? ibdContent(M) : v.id === "seq" ? seqContent(M) : generalNotes(M, v, phaseFilter(M, baseContent(M, v)));
   cache = { M, k, v: r };
   return r;
 }
@@ -391,7 +407,7 @@ export function viewContent(M: Model, v: ViewDef): ViewContent {
 export const CC = (): ViewContent => viewContent(S.M, curView());
 
 /**
- * キーから要素を探す（`u:`・`l:`・`j:` は現在のビューの部品・ライフライン・n 項の接続の点）。
+ * キーから要素を探す（`u:`・`l:`・`j:`・`note:` は現在のビューの部品・ライフライン・n 項の接続の点・メモ）。
  *
  * @param k 要素のキー
  * @returns 見つかった要素。k が空か、見つからなければ null
@@ -404,7 +420,7 @@ export const CC = (): ViewContent => viewContent(S.M, curView());
  */
 export function nodeByKey(k: string | null | undefined): ModelNode | null {
   if (!k) return null;
-  if (/^[ulj]:/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
+  if (/^(?:[ulj]|note):/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
   return S.M.nodes.find((n) => n.key === k) ?? null;
 }
 

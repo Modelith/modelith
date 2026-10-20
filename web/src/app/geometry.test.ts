@@ -1,7 +1,7 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelNode } from "../core";
-import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, keywordOf, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, PKG_PAD, PKG_TAB, stackedHeight, W, type Box, type RouteEnd } from "./geometry";
+import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -255,5 +255,58 @@ describe("keywordOf（見出しのキーワード、8.2.2.9 の individual）", 
     const [plain, other] = [keywordOf(node("part def", "abstract")), keywordOf(node("part", "individualish"))];
     // Assert
     expect([plain, other]).toEqual(["part def", "part"]);
+  });
+});
+
+describe("メモ（8.2.3.4 の comment）", () => {
+  /** メモの図の要素を、名前と本文だけ指定して作る。 */
+  const note = (key: string, name: string, body: string): ModelNode => ({
+    key, name, short: "", kind: "comment", isDef: false, fam: "other", trans: [], ports: [], phase: null, phaseOwn: false, note: true,
+    entry: { kind: "comment", isDef: false, short: "", name, type: "", owner: null, pe: null, start: 0, headEnd: 0, end: 0, head: "", exprs: [], children: [], idx: 0, body },
+  });
+  /** 幅 W・高さ 44 の要素。 */
+  const block = (key: string): ModelNode => ({
+    key, name: key, short: "", kind: "part def", isDef: true, fam: "part", trans: [], ports: [], phase: null, phaseOwn: false,
+    entry: { kind: "part def", isDef: true, short: "", name: key, type: "", owner: null, pe: null, start: 0, headEnd: 0, end: 0, head: "", exprs: [], children: [], idx: 0 },
+  });
+  const annotate = (from: string, to: string): ModelEdge => ({ id: `annotate|${from}|${to}`, kind: "annotate", from, to, label: "", src: { start: 0, end: 0 } });
+
+  it("noteLines は本文の改行を保ち、6 行を超えたら最後の行を「…」で切る", () => {
+    // Act
+    const [two, many, empty] = [noteLines("1 行目\n2 行目"), noteLines("a\nb\nc\nd\ne\nf\ng"), noteLines("")];
+    // Assert
+    expect(two.map((l) => l.t)).toEqual(["1 行目", "2 行目"]);
+    expect(many.map((l) => l.t)).toEqual(["a", "b", "c", "d", "e", "…"]);
+    expect(empty).toEqual([]);
+  });
+
+  it("nodeH は、名前の無いメモは本文だけ、名前のあるメモは名前の行の分だけ高い", () => {
+    // Act
+    const [unnamed, named] = [nodeH(note("note:#1", "", "x")), nodeH(note("note:c", "c", "x"))];
+    // Assert
+    expect([unnamed, named]).toEqual([33, 51]);
+  });
+
+  it("placeNotes は、座標の無いメモを注釈する要素の右に置き、右がふさがっていれば上に置く", () => {
+    // Arrange
+    const [A, B, N] = [block("A"), block("B"), note("note:#1", "", "x")];
+    const free: Record<string, [number, number]> = { A: [0, 0] };
+    const blocked: Record<string, [number, number]> = { A: [0, 0], B: [264, 0] };
+    // Act
+    placeNotes([A, N], [annotate("note:#1", "A")], free);
+    placeNotes([A, B, N], [annotate("note:#1", "A")], blocked);
+    // Assert
+    expect(free["note:#1"]).toEqual([W + 40, 0]);
+    expect(blocked["note:#1"]).toEqual([0, -73]);
+  });
+
+  it("placeNotes は、相手に座標が無ければ置かず、置いたメモは動かさない（境界）", () => {
+    // Arrange
+    const [A, N, M] = [block("A"), note("note:#1", "", "x"), note("note:#2", "", "y")];
+    const pos: Record<string, [number, number]> = { "note:#2": [5, 5] };
+    // Act
+    placeNotes([A, N, M], [annotate("note:#1", "A"), annotate("note:#2", "A")], pos);
+    // Assert
+    expect(pos).toEqual({ "note:#2": [5, 5] });
   });
 });

@@ -198,7 +198,8 @@ function pinHtml(n: ModelNode, pin: Pin): string {
 }
 
 /**
- * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、n 項の接続の点なら接続の名前と「接続を削除」を、使用・ライフラインなら型と「型の定義へ」を、
+ * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、n 項の接続の点なら接続の名前と「接続を削除」を、メモなら注釈する相手・本文と「メモを削除」を、
+ * 使用・ライフラインなら型と「型の定義へ」を、
  * 定義なら種類・テキストの行・（フェーズの定義があれば）フェーズの選択欄と、名前の変更・関係の追加・削除のボタンを出す。
  * 使用と定義では、要素に付けたメモと別の言語での表し方（comment・rep）も下に並べる。
  *
@@ -223,6 +224,16 @@ function nodeHtml(n: ModelNode): string {
       `<button data-act="goto">テキストで見る</button>` +
       delBtn("del", "接続を削除") +
       `</div>`
+    );
+  }
+  if (n.note) {
+    // メモ（8.2.3.4 の comment）。注釈する要素と本文を見せ、削除するとコメントごと消える
+    const about = (e.about ?? []).map((a) => a.name || "（名前なし）").join("、");
+    return (
+      `<div class="what"><small>メモ テキスト ${line} 行目</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
+      `<button data-act="goto">テキストで見る</button>` +
+      delBtn("del", "メモを削除") +
+      `</div><div class="notes"><div class="note"><small>メモを付ける相手</small><p>${esc(about)}</p></div><div class="note"><small>本文</small><p>${esc(e.body ?? "")}</p></div></div>`
     );
   }
   if (n.usage || n.lifeline) {
@@ -253,12 +264,12 @@ const EDGE_NAME: Record<string, string> = {
   comp: "部品・特性として持つ", satisfy: "要求を満たす «satisfy»", verify: "要求を検証する «verify»", frame: "関心事を扱う «frame»", flow: "流れ・接続", defined: "型（定義）", derive: "要求の導出 «derive»",
   specialize: "定義を引き継ぐ（特殊化 :>）", subset: "一部になる（部分集合 subsets）", redefine: "置き換える（再定義 redefines）", reference: "参照する（references）",
   dependency: "依存する（dependency）", allocate: "割り当てる «allocate»", bind: "値を等しくする（結び付け bind）",
-  connect: "3 つ以上をつなぐ接続（connect）",
+  connect: "3 つ以上をつなぐ接続（connect）", annotate: "メモを付ける（comment about）",
 };
 
 /**
  * 選んだ関係（線）の HTML を作る。シーケンス図のメッセージなら番号・送り手と受け手・順番の入れ替え・編集を、
- * ほかの関係なら種類の画面の言葉と両端の名前、削除のボタンを出す。
+ * ほかの関係なら種類の画面の言葉と両端の名前、削除のボタンを出す（メモの線には削除のボタンを出さない）。
  *
  * @param ed 選んだ関係
  * @returns 関係の HTML
@@ -289,9 +300,10 @@ function edgeHtml(ed: ModelEdge): string {
     );
   }
   return (
-    `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && ed.kind === "comp" ? "：" + esc(ed.label) : ""}</small><b>${esc(nodeByKey(ed.from)?.name ?? "?")} → ${esc(nodeByKey(ed.to)?.name ?? "?")}</b></div><div class="acts">` +
+    `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && ed.kind === "comp" ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : (nodeByKey(ed.from)?.name ?? "?"))} → ${esc(nodeByKey(ed.to)?.name ?? "?")}</b></div><div class="acts">` +
     `<button data-act="goto">テキストで見る</button>` +
-    delBtn("delEdge", "関係を削除") +
+    // メモの線だけを削除する操作は無い（メモごと削除する）
+    (ed.kind === "annotate" ? "" : delBtn("delEdge", "関係を削除")) +
     `</div>`
   );
 }

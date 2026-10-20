@@ -178,6 +178,7 @@ export interface RawModel {
   problems: Problem[];
   phases: string[] | null;
   phaseEnum: string | null;
+  notes?: { key: string; entry: number; targets: string[] }[];
 }
 
 /**
@@ -238,8 +239,9 @@ function toModel(raw: RawModel, P: ParseResult): Model {
     }
     return null;
   };
+  const notes = (raw.notes ?? []).map((n) => ({ ...n, entry: entry(n.entry) }));
   return {
-    nodes, views, edges, problems: raw.problems, nodeOf, byName, rels: P.rels, phases: raw.phases, phaseEnum: raw.phaseEnum, phaseOf,
+    nodes, views, edges, problems: raw.problems, nodeOf, byName, rels: P.rels, phases: raw.phases, phaseEnum: raw.phaseEnum, phaseOf, notes,
   };
 }
 

@@ -85,7 +85,7 @@ const selectOnly = (k: string): void => {
 
 /**
  * 要素の上で開くメニューの項目を作る。複数選択の中の要素なら、整列・工程の一括設定・一括削除を並べる。
- * そうでなければ、テキストで見る・名前の変更・関係の追加・定義を開く・工程・削除（保存された図では
+ * メモなら itemsForNote の項目にする。そうでなければ、テキストで見る・名前の変更・関係の追加・定義を開く・工程・削除（保存された図では
  * 「この図から外す」と「モデルから削除」を分ける。F-VIEW-8）を並べる。
  *
  * @param n 要素
@@ -115,6 +115,7 @@ function itemsForNode(n: ModelNode): CtxItem[] {
     items.push({ sep: true }, { label: `${S.selSet.size} 個をまとめて削除`, act: deleteSel });
     return items;
   }
+  if (n.note) return itemsForNote(n);
   items.push({ head: `«${n.kind}» ${n.name}` }, {
     label: "テキストで見る",
     act: () => {
@@ -140,7 +141,25 @@ function itemsForNode(n: ModelNode): CtxItem[] {
 }
 
 /**
- * 線の上で開くメニューの項目を作る。メッセージなら、名前・型の編集と順番の移動も並べる。
+ * メモの上で開くメニューの項目を作る。テキストで見る・メモを削除だけを並べる（メモから線は引けず、名前も図では変えない）。
+ *
+ * @param n メモ（`note` の図の要素）
+ * @returns メニューの項目
+ * @example
+ * itemsForNote(note).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["メモ", "テキストで見る", "—", "メモを削除"]
+ */
+function itemsForNote(n: ModelNode): CtxItem[] {
+  return [
+    { head: `メモ${n.name ? " " + n.name : ""}` },
+    { label: "テキストで見る", act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } },
+    { sep: true },
+    { label: "メモを削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } },
+  ];
+}
+
+/**
+ * 線の上で開くメニューの項目を作る。メッセージなら、名前・型の編集と順番の移動も並べる。メモの線には「関係を削除」を出さない。
  *
  * @param ed 線
  * @returns メニューの項目
@@ -175,7 +194,8 @@ function itemsForEdge(ed: ModelEdge): CtxItem[] {
       { label: "下へ移動", disabled: i === CC().edges.length - 1, act: () => MSGOPS.move(ed, 1) },
     );
   }
-  items.push({ sep: true }, { label: "関係を削除", act: () => { clearSel(); S.selEdge = ed.id; OPS.deleteEdge(ed); } });
+  // メモの線だけを削除する操作は無い（メモごと削除する）
+  if (ed.kind !== "annotate") items.push({ sep: true }, { label: "関係を削除", act: () => { clearSel(); S.selEdge = ed.id; OPS.deleteEdge(ed); } });
   return items;
 }
 

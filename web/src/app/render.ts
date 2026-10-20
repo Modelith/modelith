@@ -79,7 +79,7 @@ function handleMarkup(h: EndSpec, R: number): string {
 
 /**
  * 線を引くための＋ハンドルと、描きかけの線を、図の上の重ね描きの層（#gOver）に描き直す。
- * 選択中の要素の上下左右（既に接続点がある向きを除く）と、ポインタが乗っている縁にハンドルを出す。シーケンス図では描きかけのメッセージだけを描く。
+ * 選択中の要素の上下左右（既に接続点がある向きを除く。メモには出さない）と、ポインタが乗っている縁にハンドルを出す。シーケンス図では描きかけのメッセージだけを描く。
  */
 export function renderOverlay(): void {
   const g = $("#gOver");
@@ -103,7 +103,7 @@ export function renderOverlay(): void {
   const vis = new Set(visibleNodes().map((n) => n.key));
   const hs: EndSpec[] = [];
   const seln = S.sel && vis.has(S.sel) ? nodeByKey(S.sel) : null;
-  if (seln && S.mode !== "connect" && !w) {
+  if (seln && !seln.note && S.mode !== "connect" && !w) {
     const pins = pinsOf(seln, curLayout(), S.view);
     for (const side of ["t", "r", "b", "l"] as const) {
       if (!pins.some((p) => p.side === side && Math.abs(p.t - 0.5) < 0.12)) hs.push({ node: seln.key, side, t: 0.5, pin: null });
