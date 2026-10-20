@@ -727,6 +727,15 @@ impl Ctx {
             VIEW_RENDERING_USAGE => h.strip_prefix("render ").unwrap_or(h),
             _ => h,
         };
+        // KerML の宣言（`classifier C { … }` など）は、まだ扱えない文として知らせ、本体を外側の中身にしない（F-EDIT-8）
+        if n.kind() == UNSUPPORTED_MEMBER && crate::syntax::is_kerml_keyword(first_word(h)) {
+            self.out.unsupported.push(Unsupported {
+                start,
+                end,
+                head: h.to_owned(),
+            });
+            return None;
+        }
         if n.kind() == ALIAS {
             if let Some(a) = alias(n, pe) {
                 self.out.aliases.push(a);

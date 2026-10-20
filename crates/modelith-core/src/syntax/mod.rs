@@ -8,7 +8,7 @@ mod kind;
 mod lexer;
 mod parser;
 
-pub use kind::{KEYWORDS, SyntaxKind, is_keyword};
+pub use kind::{KEYWORDS, SyntaxKind, is_kerml_keyword, is_keyword};
 
 pub use lexer::{Token, tokenize};
 use parser::{ErrorAt, Event, Input, Parser};

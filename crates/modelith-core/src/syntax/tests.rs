@@ -532,6 +532,31 @@ fn unclosed_body_expression_is_an_error() {
 }
 
 #[test]
+fn kerml_declaration_is_one_unsupported_member_with_its_body() {
+    // Arrange（KerML の宣言は SysML の字句では名前で始まる。KerML 8.2.3〜8.2.5）
+    let text = "classifier C { part p : X; } composite feature f;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            UNSUPPORTED_MEMBER,
+            NAME,
+            BODY,
+            PART_USAGE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME,
+            UNSUPPORTED_MEMBER,
+            NAME
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
 fn name_followed_by_short_name_is_still_a_declaration() {
     // Arrange（境界値：`x <s> …` は宣言のまま）
     let text = "part def A { x <s> : T; }";

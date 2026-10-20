@@ -481,6 +481,48 @@ fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
 }
 
 #[test]
+fn kerml_declarations_are_unsupported_and_keep_their_body() {
+    // Arrange（同値分割：KerML の分類子・関数・前に付く語・本体の無い宣言。KerML 8.2.3〜8.2.5）
+    for (text, head) in [
+        ("package K { classifier C { part p : X; } }", "classifier C"),
+        ("package K { function F { in x : Real; } }", "function F"),
+        ("package K { abstract struct S { feature f; } }", "struct S"),
+        (
+            "package K { composite feature f : T; }",
+            "composite feature f : T",
+        ),
+        (
+            "package K { part def H { feature g { part q; } } }",
+            "feature g",
+        ),
+    ] {
+        // Act
+        let r = run(text);
+        // Assert
+        let names: Vec<&str> = r.entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.iter().all(|n| !["p", "x", "f", "q"].contains(n)),
+            "{text}: {names:?}"
+        );
+        let heads: Vec<&str> = r.unsupported.iter().map(|u| u.head.as_str()).collect();
+        assert_eq!(heads, [head], "{text}");
+        assert!(r.errors.is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn feature_named_like_a_kerml_keyword_is_not_kerml() {
+    // Arrange（境界値：KerML の語を名前にした特性 `type : T;`・`feature = 1;`）
+    let text = "part def A { type : T; feature = 1; part step; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.unsupported.is_empty());
+    assert!(r.errors.is_empty());
+    assert_eq!(entry(&r, "step").kind, "part");
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";

@@ -5,6 +5,7 @@
 //! どの入力でも止まらず、読めない部分は `ERROR` か `UNSUPPORTED_MEMBER` に入れて続きを読む。
 
 use super::kind::SyntaxKind::{self, *};
+use super::kind::{KERML_DECLARATION_KEYWORDS, KERML_PREFIX_KEYWORDS};
 use super::parser::{ErrorAt, Parser};
 
 /// ファイル全体（RootNamespace）。入力の末尾まで要素を読み、`SOURCE_FILE` の節にする。
@@ -340,6 +341,15 @@ fn member(p: &mut Parser<'_>) {
     }
     let owner = m.token;
 
+    if let Some(n) = kerml_declaration_head(p) {
+        // KerML の宣言（`classifier C { … }`・`function F { … }`）。まだ扱わないので、本体ごと 1 つの文として残す（F-EDIT-8）
+        for _ in 0..n {
+            p.bump();
+        }
+        declaration(p, owner, true, false);
+        m.complete(p, UNSUPPORTED_MEMBER);
+        return;
+    }
     if p.at_kw("action") && action_node_follows(p, 1) {
         // `action s send x;`・`action a accept E;`（ActionNodeUsageDeclaration、8.2.2.17）
         p.bump();
@@ -434,6 +444,41 @@ fn member(p: &mut Parser<'_>) {
     } else {
         m.abandon();
     }
+}
+
+/// KerML だけの宣言の頭（`classifier C`・`composite feature f`・`assoc struct A` など、KerML 8.2.3〜8.2.5）の語の数。読み進めない。
+///
+/// KerML の予約語は SysML の字句では名前（`IDENT`）なので、前に付く語（`composite` など）の後に宣言の頭の語があり、
+/// その後に名前・短い名前・本体が続くときだけ KerML の宣言とみなす（`type : T;` のような、名前が `type` の特性は除く）。
+///
+/// # 引数
+///
+/// - `p`：要素の頭（SysML の前置きの語の後）にいるパーサ
+///
+/// # 戻り値
+///
+/// KerML の宣言なら、頭の語（前に付く語と宣言の頭の語）の数。そうでなければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// kerml_declaration_head("classifier C { … }")      → Some(1)
+/// kerml_declaration_head("composite feature f : T;") → Some(2)
+/// kerml_declaration_head("inv { x > 0 }")            → Some(1)
+/// kerml_declaration_head("type : T;")                → None   // 名前が type の特性
+/// kerml_declaration_head("part p;")                  → None
+/// ```
+fn kerml_declaration_head(p: &Parser<'_>) -> Option<usize> {
+    let is = |i: usize, words: &[&str]| p.nth_at(i, IDENT) && words.contains(&p.nth_text(i));
+    let mut i = 0;
+    while is(i, KERML_PREFIX_KEYWORDS) {
+        i += 1;
+    }
+    if !is(i, KERML_DECLARATION_KEYWORDS) {
+        return None;
+    }
+    let next = i + 1;
+    (p.nth_at_name(next) || p.nth_at(next, LT) || p.nth_at(next, L_BRACE)).then_some(next)
 }
 
 /// 式の頭になるキーワード（KerML 8.2.5 の LiteralBoolean・NullExpression・単項の `not`・InstantiationExpression の `new`）。

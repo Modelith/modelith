@@ -1168,5 +1168,21 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(entry(text, "A")?.exprs).toEqual([]);
       });
     });
+
+    describe("KerML の宣言（KerML 8.2.3〜8.2.5。KerML は 0.3.0 以降）", () => {
+      it("classifier C { part p : X; }・function F { in x : Real; } は、まだ扱えないと知らせ、本体の中身を package の要素にしない", () => {
+        // Arrange
+        const text = "package K { classifier C { part p : X; } function F { in x : Real; } part def Ok; }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.nodes.map((n) => n.key)).toEqual(["Ok"]);
+        expect(M.problems.map((p) => p.msg)).toEqual([
+          "「classifier C」は Modelith ではまだ扱えないため、図とツリーに出ません",
+          "「function F」は Modelith ではまだ扱えないため、図とツリーに出ません",
+        ]);
+        expect(entry(text, "p")).toBeUndefined();
+      });
+    });
   });
 }
