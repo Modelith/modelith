@@ -56,13 +56,12 @@
 
 ## SysML v2 の対応状況
 
-SysML v2 のテキストの書き方のうち、よく使う部分から対応しています（**0.1.0-alpha.9 時点**、2026-10-20 に [SysML v2 の規格](https://github.com/Systems-Modeling/SysML-v2-Release) と照合）。
+SysML v2 のテキストの書き方のうち、よく使う部分から対応しています（**0.1.0-alpha.10 時点**、2026-10-20 に [SysML v2 の規格](https://github.com/Systems-Modeling/SysML-v2-Release) と照合）。
 
 | 印 | 意味 |
 | --- | --- |
 | ✅ | 使える |
 | 🟡 | 一部だけ使える |
-| ⚠️ | 書き方によっては、誤ったエラーや表示が出る（alpha.10 で直す） |
 | ❌ | まだ使えない |
 
 | 分類 | 書き方 | 状況 | 足りないところ | 対応の予定 |
@@ -72,20 +71,20 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 | 名前 | 引用名 `'Fuel Tank'`・短い名前 `<R1>`・修飾名 `A::B`・`alias` | 🟡 | 同じファイルの中だけ解決する | 0.2.0 |
 | 構造 | `part`・`item`・`attribute`・`port`・`enum`・`occurrence` の定義と使用、`event occurrence`・`timeslice`・`snapshot`・`individual` | ✅ | | |
 | | 型付け `:`・特殊化 `:>`・再定義 `:>>`・参照 `::>`・多重度 `[0..4]`・値 `=`・`:=`・`default`・向き `in`・`out` | ✅ | `: A, B` は先頭の型だけ | — |
-| | キーワードの無い特性 `x : Real;`、型の無い `ref r;`、`crosses`・`=>`、`'~Pt'` の共役ポート | ⚠️ | 捨てるか、読み違える | alpha.10 |
-| つながり | `connection`・`connect`（3 つ以上をつなぐ形を含む）・`interface`・`bind`・`allocate`・`dependency` | ✅ | | |
-| | `flow`・`flow def`・`message`・`succession flow` | 🟡 | `flow a to b;` など `from`・`first` の無い短い形を捨てる。定義の中の型の無い部品を端にすると「見つかりません」と出る | alpha.10 |
+| | キーワードの無い特性 `x : Real;`・`ref r;`・交差 `=>`・`crosses`・共役ポート `~Pt` | ✅ | | |
+| つながり | `connection`・`connect`（3 つ以上をつなぐ形を含む）・`interface`（`connect` を省いた形を含む）・`bind`・`allocate`・`dependency` | ✅ | | |
+| | `flow`・`flow def`・`message`・`succession flow`（`from` を省いた短い形を含む） | ✅ | | |
 | 振る舞い | `action`・順序 `first … then`・`fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` | ✅ | アクションのパラメータとその間のフローを図に描かない | 0.3.0 以降 |
 | | `state`・遷移 `transition`（トリガ・ガード・効果と省略形）・`entry`・`do`・`exit`・`parallel` | ✅ | 状態の使用の中の遷移を図に描かない | 0.3.0 以降 |
-| | `perform`・`exhibit` | 🟡 | 既存の要素を指す形 `perform x.y;`・`exhibit s;` を読まない | alpha.10 |
-| | `calc`・`constraint` | ⚠️ | 本体が `true`・`false`・`not` で始まると、誤った構文エラーが出る | alpha.10 |
+| | `perform`・`exhibit`（既存の要素を指す `perform x.y;`・`exhibit s;` を含む）、`calc`・`constraint` | ✅ | | |
 | 要求と検証 | `requirement`・`subject`・`stakeholder`・`actor`・`concern`・`case`・`analysis`・`verification`・`use case`・`#derivation dependency` | ✅ | | |
-| | `satisfy`・`verify`・`frame` | ⚠️ | 宣言する形 `satisfy requirement r : R by x;` で誤った「見つかりません」が出る。`frame c;` を読まない | alpha.10 |
+| | `satisfy`（`by` の無い形・宣言する形を含む）・`frame` | ✅ | | |
+| | `verify` | 🟡 | 型の無い検証の使用の中では線を引かない | — |
 | | `objective`・`assert constraint`・`assert not` | 🟡 | 中身を親の要素に入れる | 0.3.0 以降 |
 | 図（ビュー） | `view`・`view def`・`expose`・`filter`（`and`・`or`・`not` などの式）・`render` | 🟡 | メタデータの値を比べる `filter`、表や文字の形の `render` は使えない | 0.3.0 以降 |
-| 注釈 | `doc`・`comment … about`（メモ）・`rep`・`metadata def`・`#M`・`metadata … about`・自分で決めたキーワード | ⚠️ | `@M { :>> x = 1; }` の値と、関係の本体の `doc` を読み違える | alpha.10 |
-| 式 | 式・単位 `1500 [kg]` | 🟡 | 文字列として持つだけで、計算しない。`->collect{ … }` で誤った構文エラーが出る | alpha.10・0.3.0 以降 |
-| その他 | KerML、標準ライブラリ、モデル交換の形式（`.kpar`） | ❌ | KerML の宣言の中身が外に漏れて表示される | alpha.10・0.3.0 以降 |
+| 注釈 | `doc`・`comment … about`（メモ）・`rep`・`metadata def`・`#M`・`metadata … about`・自分で決めたキーワード | ✅ | 関係（`dependency`・`alias`）の本体の `doc` は記録しない | — |
+| 式 | 式・単位 `1500 [kg]`・`->collect{ … }` | 🟡 | 文字列として持つだけで、計算しない | 0.3.0 以降 |
+| その他 | KerML、標準ライブラリ、モデル交換の形式（`.kpar`） | ❌ | KerML の宣言は「まだ扱えない」と知らせる | 0.3.0 以降 |
 
 | 図の種類（SysML v2 の標準ビュー） | 状況 | 足りないところ | 対応の予定 |
 | --- | :---: | --- | --- |
@@ -104,7 +103,6 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 
 | 版 | 内容 |
 | --- | --- |
-| 0.1.0-alpha.10 | 誤った表示をなくす（上の表の ⚠️） |
 | 0.1.0-beta.1 | 起動時に前回の続きから始める。機能を固定し、以降は不具合の修正だけにする |
 | 0.1.0 | 正式版 |
 | 0.2.0 | `import` と、複数のファイルにまたがるモデル |
