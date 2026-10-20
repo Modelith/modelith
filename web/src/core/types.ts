@@ -231,7 +231,14 @@ export interface ModelNode {
    * 開始・終了の `entry` は、図の対象のアクション定義。
    */
   flow?: boolean;
-  /** 内部ブロック図で、この部品を中に描く外の部品のキー（入れ子の 2 段目）。 */
+  /**
+   * 状態遷移の図の要素（8.2.3.18）。状態は角の丸い四角、開始は塗った丸、終了は丸の中の塗った丸。
+   * 開始・終了の `entry` は、図の対象の状態定義。
+   */
+  state?: boolean;
+  /** 並行の状態（状態遷移の図で、中の状態を破線で区切った領域に描く、8.2.3.18）。 */
+  parallel?: boolean;
+  /** この要素を中に描く外の要素のキー（内部ブロック図の入れ子の 2 段目の部品、状態遷移の図の入れ子の状態）。 */
   container?: string;
   /** ポートを追加する先（使用の場合は型の定義）。 */
   portHost?: Entry;
@@ -242,12 +249,12 @@ export interface ModelNode {
  * 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency`・`allocate` は特殊化・部分集合・再定義・参照・依存・
  * 割り当て（8.2.3）で、Rust のコアだけが作る。`bind` は内部ブロック図の結び付け（8.2.3.13 の binding-connection）、
  * `connect` は n 項の接続の点から端への線（8.2.3.13 の n-ary-segment）。`annotate` はメモから注釈する要素への破線（8.2.3.4 の annotation-link）。
- * `succession`・`successionFlow` はアクションの流れの図の継起と順序付きの流れ（8.2.3.17）。
+ * `succession`・`successionFlow` はアクションの流れの図の継起と順序付きの流れ（8.2.3.17）。`transition` は状態遷移の図の遷移（8.2.3.18）。
  */
 export type EdgeKind =
   | "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message"
   | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate" | "bind" | "connect" | "annotate"
-  | "succession" | "successionFlow";
+  | "succession" | "successionFlow" | "transition";
 
 /** 図に投影する関係。 */
 export interface ModelEdge {
@@ -324,6 +331,38 @@ export interface Model {
   notes?: ModelNote[];
   /** アクション定義ごとの、アクションの流れの図（ActionFlowView、8.2.3.17）。Rust のコアだけが作る。 */
   actionFlows?: ModelActionFlow[];
+  /** 状態定義ごとの、状態遷移の図（StateTransitionView、8.2.3.18）。Rust のコアだけが作る。 */
+  stateMachines?: ModelStateMachine[];
+}
+
+/** 状態遷移の図の要素 1 つ（状態と、本体ごとの開始・終了の記号）。 */
+export interface ModelStateNode {
+  /** 図の要素のキー（`s:名前`・入れ子は `s:外.中`・`s:頭#番号`・開始と終了は `s:頭#start`・`s:頭#done`）。 */
+  key: string;
+  /** 名前（名前の無い状態は空文字列。開始・終了は `start`・`done`）。 */
+  name: string;
+  /** 種類（`state`・`exhibit state`。開始・終了は `start`・`done`）。 */
+  kind: string;
+  /** 宣言。開始・終了は宣言を持たないので null。 */
+  entry: Entry | null;
+  /** この要素を中に描く状態のキー。状態定義の直下なら無い。 */
+  container?: string;
+  /** 並行の状態か。 */
+  parallel?: boolean;
+}
+
+/** 状態定義 1 つの、状態遷移の図（8.2.3.18）。 */
+export interface ModelStateMachine {
+  /** 状態定義の、図の要素のキー。 */
+  key: string;
+  /** 状態定義の宣言。 */
+  entry: Entry;
+  /** 並行の状態定義か。 */
+  parallel: boolean;
+  /** 要素（外の状態の直後に中の状態。本体ごとに、開始・書いた順の状態・終了の順）。 */
+  nodes: ModelStateNode[];
+  /** 遷移（transition）の線。端は nodes のキー。ラベルは `トリガ [ガード] / 効果`。 */
+  edges: ModelEdge[];
 }
 
 /** アクションの流れの図の要素 1 つ（アクション・制御の節・送受信などと、暗黙の開始・終了）。 */
