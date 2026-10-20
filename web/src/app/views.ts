@@ -10,6 +10,8 @@ import { S } from "./state";
 export interface ViewDef {
   id: string;
   label: string;
+  /** この図に当たる SysML v2 の標準ビュー定義（`GeneralView` など）。ツールチップの補足に出す（ADR-0014）。 */
+  std: string;
   /** 表示する要素の種類（null はすべて）。 */
   kinds?: string[] | null;
   /** この関係でつながる要素も表示する。 */
@@ -42,14 +44,14 @@ export interface ViewContent {
 }
 
 export const VIEWS: ViewDef[] = [
-  { id: "trace", label: "トレーサビリティ", kinds: ["concern def", "requirement def", "requirement", "verification def", "analysis def"], pull: ["satisfy"], edges: ["satisfy", "verify", "frame", "comp", "defined", "derive"] },
-  { id: "structure", label: "ブロック定義図", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined", "specialize", "subset", "redefine", "reference"], depth: true },
-  { id: "control", label: "制御ループ", kinds: ["constraint def", "calc def"], pull: ["flow"], edges: ["flow", "comp"] },
-  { id: "ibd", label: "内部ブロック図" },
-  { id: "behavior", label: "振る舞い", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },
-  { id: "seq", label: "シーケンス図" },
-  { id: "afv", label: "アクティビティ図", layer: flowLayers },
-  { id: "all", label: "すべて", kinds: null, edges: null },
+  { id: "trace", label: "トレーサビリティ", std: "GeneralView", kinds: ["concern def", "requirement def", "requirement", "verification def", "analysis def"], pull: ["satisfy"], edges: ["satisfy", "verify", "frame", "comp", "defined", "derive"] },
+  { id: "structure", label: "ブロック定義図", std: "GeneralView", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined", "specialize", "subset", "redefine", "reference"], depth: true },
+  { id: "control", label: "制御ループ", std: "GeneralView", kinds: ["constraint def", "calc def"], pull: ["flow"], edges: ["flow", "comp"] },
+  { id: "ibd", label: "内部ブロック図", std: "InterconnectionView" },
+  { id: "behavior", label: "振る舞い", std: "GeneralView", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },
+  { id: "seq", label: "シーケンス図", std: "SequenceView" },
+  { id: "afv", label: "アクティビティ図", std: "ActionFlowView", layer: flowLayers },
+  { id: "all", label: "すべて", std: "GeneralView", kinds: null, edges: null },
 ];
 
 const PHASE_LABEL: Record<string, string> = {

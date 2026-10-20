@@ -1,6 +1,8 @@
 // 画面に出す種類の名前（ADR-0014、docs/development/ui-writing.md）。
 // 利用者は SysML v2 の構文を覚えていないので、画面では図の言葉を使い、キーワードは補足にする。
 
+import { stdViewLabel } from "../core";
+
 const KIND_LABEL: Record<string, string> = {
   "part def": "部品定義", part: "部品", "attribute def": "属性定義", attribute: "属性", "port def": "ポート定義", port: "ポート",
   "item def": "アイテム定義", item: "アイテム", "requirement def": "要求", requirement: "要求", "concern def": "関心事", concern: "関心事",
@@ -52,3 +54,54 @@ export const kindLabel = (kind: string): string => KIND_LABEL[kind] ?? kind;
  * diagramName("")                 // → "の図"（空の名前）
  */
 export const diagramName = (label: string): string => (label.endsWith("図") ? label : `${label}の図`);
+
+/**
+ * 図の種類に当たる SysML v2 の標準ビューを、補足の一言にする（ui-writing の決まり 9）。
+ * 画面の名前がその標準ビューの名前と同じなら標準ビューの名前だけを、Modelith 独自の図なら「〜で描く図」と書く。
+ *
+ * @param label 図の種類の、画面での名前（「アクティビティ図」・「トレーサビリティ」など）
+ * @param std 当たる標準ビュー定義の名前（`ActionFlowView`・`GeneralView` など）
+ * @returns 補足の一言
+ * @example
+ * v2ViewNote("アクティビティ図", "ActionFlowView") // → "SysML v2 では ActionFlowView"
+ * v2ViewNote("トレーサビリティ", "GeneralView")     // → "SysML v2 では GeneralView で描く図"（独自の図）
+ */
+export const v2ViewNote = (label: string, std: string): string =>
+  stdViewLabel(std) === label ? `SysML v2 では ${std}` : `SysML v2 では ${std} で描く図`;
+
+/**
+ * 図の種類のツールチップ。画面の名前に、SysML v2 の標準ビューの補足を括弧で添える（ui-writing の決まり 3・9）。
+ *
+ * @param label 図の種類の、画面での名前
+ * @param std 当たる標準ビュー定義の名前
+ * @returns ツールチップの文
+ * @example
+ * viewHint("アクティビティ図", "ActionFlowView") // → "アクティビティ図（SysML v2 では ActionFlowView）"
+ * viewHint("すべて", "GeneralView")              // → "すべて（SysML v2 では GeneralView で描く図）"
+ */
+export const viewHint = (label: string, std: string): string => `${label}（${v2ViewNote(label, std)}）`;
+
+/**
+ * 保存された図（テキストの view）の種類のツールチップ。型の無い view は一般ビュー（GeneralView）として描くので、そう書く。
+ *
+ * @param std view の標準ビュー定義の名前。型の無い view は null
+ * @returns ツールチップの文
+ * @example
+ * savedViewHint("InterconnectionView") // → "内部ブロック図（SysML v2 では InterconnectionView）"
+ * savedViewHint(null)                  // → "一般ビュー（SysML v2 では GeneralView）"（型の無い view）
+ */
+export const savedViewHint = (std: string | null): string => viewHint(stdViewLabel(std), std ?? "GeneralView");
+
+/**
+ * タブのツールチップ。タブの名前が図の種類の名前と同じなら補足つきの文だけを、違えば（対象や工程が付く、保存された図）
+ * タブの名前の下の行に補足つきの文を出す。
+ *
+ * @param name タブの名前（「ibd Vehicle」・「保存された図「概要」」など）
+ * @param hint 図の種類のツールチップ（viewHint・savedViewHint）
+ * @returns タブのツールチップの文
+ * @example
+ * tabTitle("すべて", "すべて（SysML v2 では GeneralView で描く図）")  // → "すべて（SysML v2 では GeneralView で描く図）"
+ * tabTitle("ibd Vehicle", "内部ブロック図（SysML v2 では InterconnectionView）")
+ * // → "ibd Vehicle\n内部ブロック図（SysML v2 では InterconnectionView）"
+ */
+export const tabTitle = (name: string, hint: string): string => (hint.startsWith(`${name}（`) ? hint : `${name}\n${hint}`);

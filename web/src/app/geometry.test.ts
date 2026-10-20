@@ -140,7 +140,7 @@ describe("downward・autoPlace（ブロック定義図で、一般な側を上�
     });
     const pos: Record<string, [number, number]> = {};
     // Act
-    autoPlace([node("B"), node("A")], [edge("specialize", "B", "A")], pos, { id: "structure", label: "ブロック定義図", depth: true }, null);
+    autoPlace([node("B"), node("A")], [edge("specialize", "B", "A")], pos, { id: "structure", label: "ブロック定義図", std: "GeneralView", depth: true }, null);
     // Assert
     expect((pos["A"]?.[1] ?? NaN) < (pos["B"]?.[1] ?? NaN)).toBe(true);
   });

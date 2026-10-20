@@ -206,7 +206,7 @@ describe("flowLayers・autoPlace（アクションの流れの図を上から並
     const { nodes, edges } = flowContentOf(M, c);
     const pos: Record<string, [number, number]> = {};
     // Act
-    autoPlace(nodes, edges, pos, { id: "afv", label: "", layer: flowLayers }, null, 0, (n) => flowSize(n).h, nodeW);
+    autoPlace(nodes, edges, pos, { id: "afv", label: "", std: "ActionFlowView", layer: flowLayers }, null, 0, (n) => flowSize(n).h, nodeW);
     // Assert
     const ys = ["a:start", "a:a", "a:f", "a:b", "a:c"].map((k) => pos[k]?.[1]);
     expect(ys[0]).toBeLessThan(ys[1] ?? 0);

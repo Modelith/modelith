@@ -549,6 +549,14 @@ package ModelithRequirements {
                 verify NewPackageGuideReq;
             }
         }
+        verification def ViewNamesTest {
+            doc /* web/src/app/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・保存された図・タブ）、図の名前の候補の「〜の図」 */
+            objective {
+                verify PlainWordsReq;
+                verify BuiltInViewsReq;
+                verify StandardViewReq;
+            }
+        }
         verification def LocalFolderProviderTest {
             doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す（偽のファイルシステムで） */
             objective {
