@@ -1197,5 +1197,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("メタデータの本体の再定義の形（MetadataBodyUsage、8.2.2.27）", () => {
+      it("@M { :>> x = 1; redefines y = 2; } は、値をメタデータに残し、持ち主の式にしない", () => {
+        // Arrange
+        const text = "package P { metadata def M { attribute x : Integer; attribute y : Integer; } requirement def R { @M { :>> x = 1; redefines y = 2; } } }";
+        // Act
+        const r = entry(text, "R");
+        // Assert
+        expect(r?.meta).toEqual({ M: { x: "1", y: "2" } });
+        expect(r?.exprs).toEqual([]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
   });
 }

@@ -462,7 +462,10 @@ impl Ctx {
         // 依存・別名の本体（RelationshipBody、8.2.2.2）は関係への注釈（doc・comment・@M）だけを持つ。関係への注釈は
         // まだ記録しないので読まない（外側の宣言の説明やメタデータと取り違えないように）
         let is_relationship_body = matches!(n.kind(), DEPENDENCY | ALIAS);
-        if term != Term::Open || is_unsupported || is_relationship_body {
+        // メタデータの本体の文の本体（`@M { :>> x { … } }`）も、持ち主の中身にしない
+        let in_metadata_body =
+            matches!(owner, Some(Scope::Block(b)) if self.meta_blocks.contains_key(&b));
+        if term != Term::Open || is_unsupported || is_relationship_body || in_metadata_body {
             return;
         }
         let Some(body) = child(n, BODY) else { return };
@@ -625,17 +628,21 @@ impl Ctx {
         let (mods, h) = strip_mods(raw);
         let (start, end) = (self.utf16(hs), self.utf16(end_pos));
 
-        // メタデータの本体（@Phase { stage = PhaseKind::X; }・metadata M about A { k = 1 + 2; }）
+        // メタデータの本体（@Phase { stage = PhaseKind::X; }・metadata M about A { k = 1 + 2; }・@M { :>> x = 1; }）。
+        // 本体の文はメタデータの特性（MetadataBodyUsage、8.2.2.27）なので、値の無いものも持ち主の宣言や式にしない
         if let Some(Scope::Block(b)) = owner
             && let Some(mb) = self.meta_blocks.get(&b).cloned()
-            && let Some((key, val)) = meta_assignment(h)
         {
-            match mb.target {
-                MetaTarget::Owner(Some(pe)) => self.set_owner_meta(pe, b, &mb.md, key, val, hs),
-                MetaTarget::Owner(None) => {}
-                MetaTarget::About(a) => self.annotations[a]
-                    .fields
-                    .push((key.to_owned(), meta_value(val).to_owned())),
+            if let Some((key, val)) = metadata_body_assignment(h) {
+                match mb.target {
+                    MetaTarget::Owner(Some(pe)) => {
+                        self.set_owner_meta(pe, b, &mb.md, key, val, hs);
+                    }
+                    MetaTarget::Owner(None) => {}
+                    MetaTarget::About(a) => self.annotations[a]
+                        .fields
+                        .push((key.to_owned(), meta_value(val).to_owned())),
+                }
             }
             return None;
         }
@@ -1426,7 +1433,7 @@ impl Ctx {
     /// - `pe`：書き込む宣言の番号
     /// - `b`：メタデータの本体の無名ブロックの番号
     /// - `md`：メタデータの定義の名前
-    /// - `key`・`val`：本体の文の名前と値の式（`meta_assignment` の結果）
+    /// - `key`・`val`：本体の文の名前と値の式（`metadata_body_assignment` の結果）
     /// - `hs`：本体の文の始まり（バイトオフセット。値の位置を探し始める所）
     fn set_owner_meta(&mut self, pe: usize, b: usize, md: &str, key: &str, val: &str, hs: usize) {
         let at = self

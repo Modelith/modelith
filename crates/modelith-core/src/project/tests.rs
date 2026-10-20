@@ -551,6 +551,36 @@ fn doc_in_the_package_body_is_still_the_package_doc() {
 }
 
 #[test]
+fn metadata_body_redefinitions_keep_their_value_on_the_metadata() {
+    // Arrange（同値分割：:>>・redefines・値の無い再定義・入れ子の本体。MetadataBodyUsage、8.2.2.27）
+    let text = "package P { metadata def M { attribute x : Integer; attribute y : Integer; } \
+        requirement def R { @M { :>> x = 1; redefines y = E::V; } } \
+        part def Q { @M { :>> x; :>> y { :>> z = 3; } } } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (rq, q) = (entry(&r, "R"), entry(&r, "Q"));
+    let fields = |e: &Entry| -> Vec<(String, String)> {
+        e.meta
+            .iter()
+            .flat_map(|m| m.0.iter())
+            .flat_map(|(_, f)| f.0.iter().cloned())
+            .collect()
+    };
+    assert_eq!(
+        fields(rq),
+        [
+            ("x".to_owned(), "1".to_owned()),
+            ("y".to_owned(), "V".to_owned())
+        ]
+    );
+    assert!(fields(q).is_empty());
+    assert!(rq.exprs.is_empty() && q.exprs.is_empty());
+    assert!(r.entries.iter().all(|e| e.name != "z"));
+    assert!(r.errors.is_empty());
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";
