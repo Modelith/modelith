@@ -2,6 +2,7 @@
 
 import type { ModelEdge, ModelNode } from "../core";
 import { flowName } from "./action-flow";
+import { isPseudoState, stateName } from "./state-machine";
 import { local, placeUsageAt, fit, toCanvas } from "./canvas";
 import { $, closest, esc } from "./dom";
 import type { Pin } from "./geometry";
@@ -119,6 +120,7 @@ function itemsForNode(n: ModelNode): CtxItem[] {
   }
   if (n.note) return itemsForNote(n);
   if (n.flow) return itemsForFlowNode(n);
+  if (n.state) return itemsForStateNode(n);
   items.push({ head: `«${n.kind}» ${n.name}` }, {
     label: "テキストで見る",
     act: () => {
@@ -180,6 +182,27 @@ function itemsForFlowNode(n: ModelNode): CtxItem[] {
   if (!implicit && n.name) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } });
   if (n.kind !== "done") items.push({ label: "順序の線を追加…", act: () => { selectOnly(n.key); act("connect"); } });
   if (!implicit) items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  return items;
+}
+
+/**
+ * 状態遷移の図の要素（8.2.3.18）の上で開くメニューの項目を作る。テキストで見る・名前を変更・遷移を追加・削除を並べる。
+ * 開始・終了の記号はテキストに宣言が無いので、名前だけを出す。名前の無い状態からは遷移を引けないので、追加を出さない。
+ *
+ * @param n 状態遷移の図の要素
+ * @returns メニューの項目
+ * @example
+ * itemsForStateNode(off).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["状態 off", "テキストで見る", "名前を変更", "遷移を追加…", "—", "削除"]
+ * itemsForStateNode(start).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["開始"]
+ */
+function itemsForStateNode(n: ModelNode): CtxItem[] {
+  if (isPseudoState(n)) return [{ head: stateName(n) }];
+  const items: CtxItem[] = [{ head: n.name ? `${kindLabel(n.kind)} ${n.name}` : stateName(n) }];
+  items.push({ label: "テキストで見る", act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } });
+  if (n.name) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } }, { label: "遷移を追加…", act: () => { selectOnly(n.key); act("connect"); } });
+  items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   return items;
 }
 

@@ -98,3 +98,38 @@ export const isPseudoState = (n: ModelNode): boolean => !!n.state && (n.kind ===
  * stateName(state;)     // → "状態"（名前が無い）
  */
 export const stateName = (n: ModelNode): string => (isPseudoState(n) || !n.name ? kindLabel(n.kind) : n.name);
+
+/**
+ * 遷移（8.2.2.18）を a から b へ引けるか。両方が状態遷移の図の別の要素で、開始・終了の記号から始まらず、開始の記号へ向かわず、
+ * 名前の無い状態（テキストで参照できない）を含まず、終了の記号へは同じ状態の中の状態から向かうときに引ける。
+ *
+ * @param a 線の元
+ * @param b 線の先
+ * @returns 引けるなら true
+ * @example
+ * canTransition(off, on)        // → true
+ * canTransition(off, start)     // → false（開始の記号へは向かわない）
+ * canTransition(on.low, done)   // → false（終了の記号は別の本体）
+ * canTransition(off, 名前の無い状態) // → false
+ */
+export const canTransition = (a: ModelNode, b: ModelNode): boolean =>
+  !!a.state && !!b.state && a.key !== b.key && !isPseudoState(a) && b.kind !== "start" &&
+  !!a.name && (isPseudoState(b) || !!b.name) && (b.kind !== "done" || a.container === b.container);
+
+/**
+ * 状態の名前を変えたときの、図の要素のキーの付け替え（配置を新しいキーに移すのに使う）。状態のキーの最後の名前を変え、
+ * 中の要素（`s:外.中`・`s:外#start` など）のキーの頭も変える。
+ *
+ * @param key 名前を変える状態のキー（`s:on`・`s:on.low`）
+ * @param name 新しい名前
+ * @param keys 図の要素のキー
+ * @returns （古いキー, 新しいキー）の組。先頭は名前を変える状態
+ * @example
+ * renamedStateKeys("s:on", "run", ["s:on", "s:on.low", "s:on#start", "s:off"]) // → [["s:on", "s:run"], ["s:on.low", "s:run.low"], ["s:on#start", "s:run#start"]]
+ * renamedStateKeys("s:on.low", "dim", ["s:on.low"])                           // → [["s:on.low", "s:on.dim"]]
+ */
+export function renamedStateKeys(key: string, name: string, keys: readonly string[]): [string, string][] {
+  const renamed = key.replace(/(^s:|\.)[^.]*$/, (_, head: string) => head + name);
+  const inner = keys.filter((k) => k.startsWith(key + ".") || k.startsWith(key + "#"));
+  return [[key, renamed], ...inner.map((k): [string, string] => [k, renamed + k.slice(key.length)])];
+}

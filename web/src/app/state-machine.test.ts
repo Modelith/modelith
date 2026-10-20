@@ -4,7 +4,8 @@ import { build, parse, type Model, type ModelNode } from "../core";
 import { boxesOf, compartment, layoutStates, nodeH, nodeW, placeStates, regionSeparators, stateColumns, stateSize, type NodeBox } from "./geometry";
 import type { Pos } from "./layout";
 import { emptyView } from "./layout";
-import { defaultStateContext, isPseudoState, stateActionLines, stateContentOf, stateContexts, stateName } from "./state-machine";
+import { relOptions } from "./relations";
+import { canTransition, defaultStateContext, isPseudoState, renamedStateKeys, stateActionLines, stateContentOf, stateContexts, stateName } from "./state-machine";
 import { CV, edgeStroke, svgMarkup } from "./svg";
 
 const TEXT =
@@ -312,5 +313,55 @@ describe("状態遷移の図の画面の言葉（ADR-0014）", () => {
     const names = nodes.map(stateName);
     // Assert
     expect(names).toEqual(["開始", "a", "状態", "終了"]);
+  });
+});
+
+describe("図から遷移を引く・名前を変える（canTransition・relOptions・renamedStateKeys）", () => {
+  const { M, c } = setup(
+    "package P { state def S { entry; then off; state off; state; state on { state low; transition first low then done; } transition first off then done; } }",
+    "S",
+  );
+  const { nodes } = stateContentOf(M, c);
+  const n = (k: string): ModelNode => nodeOf(nodes, k);
+
+  it("名前のある状態どうし・同じ本体の終了の記号へは、遷移を引ける", () => {
+    // Act
+    const ok = [canTransition(n("s:off"), n("s:on")), canTransition(n("s:on.low"), n("s:off")), canTransition(n("s:off"), n("s:#done"))];
+    // Assert
+    expect(ok).toEqual([true, true, true]);
+    expect(relOptions(n("s:off"), n("s:on"))).toEqual([{ rel: "transition", label: "この状態から遷移する（transition）" }]);
+  });
+
+  it("開始の記号へ・開始と終了の記号から・別の本体の終了の記号へ・名前の無い状態とは、遷移を引けない（異常系）", () => {
+    // Act
+    const ng = [
+      canTransition(n("s:off"), n("s:#start")),
+      canTransition(n("s:#start"), n("s:off")),
+      canTransition(n("s:#done"), n("s:off")),
+      canTransition(n("s:on.low"), n("s:#done")),
+      canTransition(n("s:off"), n("s:#1")),
+      canTransition(n("s:off"), n("s:off")),
+    ];
+    // Assert
+    expect(ng).toEqual([false, false, false, false, false, false]);
+    expect(relOptions(n("s:off"), n("s:#start"))).toEqual([]);
+  });
+
+  it("状態の名前を変えると、そのキーと中の要素のキーを付け替える", () => {
+    // Act
+    const moves = renamedStateKeys("s:on", "run", nodes.map((x) => x.key));
+    // Assert
+    expect(moves).toEqual([
+      ["s:on", "s:run"],
+      ["s:on.low", "s:run.low"],
+      ["s:on#done", "s:run#done"],
+    ]);
+  });
+
+  it("入れ子の状態の名前を変えると、最後の名前だけを変える（境界値）", () => {
+    // Act
+    const moves = renamedStateKeys("s:on.low", "dim", ["s:on.low"]);
+    // Assert
+    expect(moves).toEqual([["s:on.low", "s:on.dim"]]);
   });
 });
