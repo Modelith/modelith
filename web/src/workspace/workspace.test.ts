@@ -131,9 +131,9 @@ describe("Workspace: 無題の文書と名前を付けて保存（F-FILE-3・10�
     s.ws.setText(doc.key, "package U2;");
     const next = new Workspace(new ProviderRegistry([s.local, s.browser]), s.drafts);
     // Act
-    const n = next.restoreDrafts();
+    const start = next.restoreDrafts();
     // Assert
-    expect(n).toBe(1);
+    expect(start).toBe("drafts");
     expect(next.list()[0]?.text).toBe("package U2;");
   });
 
@@ -148,7 +148,7 @@ describe("Workspace: 無題の文書と名前を付けて保存（F-FILE-3・10�
     expect((s.root.entries.get("models") as FakeDir).entries.get("u.sysml")).toMatchObject({ content: "package U;" });
     expect(doc.ref?.path).toBe("models/u.sysml");
     expect(s.ws.isDirty(doc)).toBe(false);
-    expect(s.drafts.load()).toEqual([]);
+    expect(s.drafts.load().drafts).toEqual([]);
     expect(fileIn(s.ws.folder()!.entries, "models/u.sysml")).toBeTruthy();
   });
 
@@ -417,18 +417,166 @@ describe("kvDraftStore", () => {
     // Arrange
     const store = kvDraftStore({ get: () => "{not json", set: () => {} });
     // Act
-    const drafts = store.load();
+    const state = store.load();
     // Assert
-    expect(drafts).toEqual([]);
+    expect(state).toEqual({ drafts: [], closedAll: false });
   });
 
   it("形の合わない項目は捨てる", () => {
     // Arrange
-    const store = kvDraftStore({ get: () => JSON.stringify([{ name: "a", text: "x" }, { name: 1 }, null]), set: () => {} });
+    const store = kvDraftStore({ get: (k) => (k === "modelith-drafts-v1" ? JSON.stringify([{ name: "a", text: "x" }, { name: 1 }, null]) : null), set: () => {} });
     // Act
-    const drafts = store.load();
+    const state = store.load();
     // Assert
-    expect(drafts).toEqual([{ name: "a", text: "x" }]);
+    expect(state.drafts).toEqual([{ name: "a", text: "x" }]);
+  });
+
+  it("まだ何も置いていなければ、下書きは無く、すべて閉じて終えたことにもならない（境界）", () => {
+    // Arrange
+    const store = kvDraftStore({ get: () => null, set: () => {} });
+    // Act
+    const state = store.load();
+    // Assert
+    expect(state).toEqual({ drafts: [], closedAll: false });
+  });
+
+  it("置いた下書きと、すべて閉じて終えたことを読み戻せる（F-FILE-14）", () => {
+    // Arrange
+    const kv = new Map<string, string>();
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
+    // Act
+    store.save({ drafts: [], closedAll: true });
+    // Assert
+    expect(store.load()).toEqual({ drafts: [], closedAll: true });
+  });
+
+  it("下書きは以前の版と同じ形（配列）で置く", () => {
+    // Arrange
+    const kv = new Map<string, string>();
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
+    // Act
+    store.save({ drafts: [{ name: "a", text: "x" }], closedAll: false });
+    // Assert
+    expect(JSON.parse(kv.get("modelith-drafts-v1") ?? "")).toEqual([{ name: "a", text: "x" }]);
+  });
+});
+
+describe("Workspace: すべて閉じた状態と中身の無い下書き（F-FILE-11・F-FILE-14）", () => {
+  /**
+   * 同じ下書きの保存先で、次に開いたときのワークスペースを作る。
+   *
+   * @param s setup() の結果
+   * @returns 新しいワークスペース
+   */
+  const nextStart = (s: ReturnType<typeof setup>): Workspace => new Workspace(new ProviderRegistry([s.local, s.browser]), s.drafts);
+
+  it("初めて開いたときはサンプルを出す", () => {
+    // Arrange
+    const s = setup();
+    // Act
+    const start = s.ws.restoreDrafts();
+    // Assert
+    expect(start).toBe("sample");
+  });
+
+  it("最後の文書を閉じても、新しい文書は作らない", () => {
+    // Arrange
+    const s = setup();
+    const doc = s.ws.newUntitled("u.sysml", "package U;");
+    // Act
+    s.ws.close(doc.key);
+    // Assert
+    expect(s.ws.list()).toEqual([]);
+    expect(s.ws.active()).toBeNull();
+  });
+
+  it("すべて閉じて終えたら、次は何も開かずに始める", () => {
+    // Arrange
+    const s = setup();
+    const doc = s.ws.newUntitled("u.sysml", "package U;");
+    s.ws.close(doc.key);
+    // Act
+    const start = nextStart(s).restoreDrafts();
+    // Assert
+    expect(start).toBe("nothing");
+  });
+
+  it("フォルダのファイルを最後に閉じても、すべて閉じたことを残す", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()!.entries, "a.sysml"));
+    // Act
+    s.ws.close(doc.key);
+    // Assert
+    expect(nextStart(s).restoreDrafts()).toBe("nothing");
+  });
+
+  it("すべて閉じた後にファイルを開いたら、次はサンプルを出す（すべて閉じたことを消す）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const untitled = s.ws.newUntitled("u.sysml", "package U;");
+    s.ws.close(untitled.key);
+    // Act
+    await s.ws.openRef(fileIn(s.ws.folder()!.entries, "a.sysml"));
+    // Assert
+    expect(nextStart(s).restoreDrafts()).toBe("sample");
+  });
+
+  it("中身の無い無題の文書は下書きに残さず、次はサンプルを出す", () => {
+    // Arrange
+    const s = setup();
+    s.ws.newUntitled("untitled-1.sysml", "");
+    // Act
+    const start = nextStart(s).restoreDrafts();
+    // Assert
+    expect(start).toBe("sample");
+    expect(s.drafts.load().drafts).toEqual([]);
+  });
+
+  it("空白だけの無題の文書も、中身が無いとみなす（境界）", () => {
+    // Arrange
+    const s = setup();
+    const doc = s.ws.newUntitled("untitled-1.sysml", "package U;");
+    // Act
+    s.ws.setText(doc.key, " \n\t");
+    // Assert
+    expect(s.drafts.load().drafts).toEqual([]);
+  });
+
+  it("1 文字でも中身があれば下書きに残す（境界）", () => {
+    // Arrange
+    const s = setup();
+    const doc = s.ws.newUntitled("untitled-1.sysml", "");
+    // Act
+    s.ws.setText(doc.key, "p");
+    // Assert
+    expect(s.drafts.load().drafts).toEqual([{ name: "untitled-1.sysml", text: "p" }]);
+  });
+
+  it("以前の版が残した中身の無い下書きは戻さず、サンプルを出す（異常系）", () => {
+    // Arrange
+    const s = setup();
+    s.kv.set("modelith-drafts-v1", JSON.stringify([{ name: "untitled-1.sysml", text: "" }]));
+    // Act
+    const start = s.ws.restoreDrafts();
+    // Assert
+    expect(start).toBe("sample");
+    expect(s.ws.list()).toEqual([]);
+  });
+
+  it("中身のある下書きだけを戻す", () => {
+    // Arrange
+    const s = setup();
+    s.kv.set("modelith-drafts-v1", JSON.stringify([{ name: "untitled-1.sysml", text: "" }, { name: "u.sysml", text: "package U;" }]));
+    // Act
+    const start = s.ws.restoreDrafts();
+    // Assert
+    expect(start).toBe("drafts");
+    expect(s.ws.list().map((d) => d.name)).toEqual(["u.sysml"]);
   });
 });
 

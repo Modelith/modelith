@@ -46,11 +46,34 @@ export interface Draft {
   layout?: string;
 }
 
+/** 下書きの保存先に置く、前回の終わりの状態。 */
+export interface DraftState {
+  /** 無題の文書の下書き（中身の無いものは置かない）。 */
+  drafts: Draft[];
+  /** すべての文書を閉じて終えたか（F-FILE-14）。 */
+  closedAll: boolean;
+}
+
 /** 下書きの保存先（ブラウザでは localStorage）。 */
 export interface DraftStore {
-  load(): Draft[];
-  save(drafts: Draft[]): void;
+  load(): DraftState;
+  save(state: DraftState): void;
 }
+
+/** 起動したときに表示するもの。drafts は戻した下書き、nothing は何も開かない（F-FILE-14）、sample はサンプル。 */
+export type StartWith = "drafts" | "nothing" | "sample";
+
+/**
+ * 下書きに残す中身があるか（空白だけのテキストは中身が無いとみなす。F-FILE-11）。
+ *
+ * @param d 文書か下書き
+ * @returns テキストに空白以外の文字があれば true
+ * @example
+ * hasContent({ text: "package P;" }) // → true
+ * hasContent({ text: " \n" })        // → false（空白だけ）
+ * hasContent({ text: "" })           // → false
+ */
+const hasContent = (d: { text: string }): boolean => d.text.trim() !== "";
 
 export type SaveOutcome = "saved" | "conflict" | "cancelled";
 
@@ -239,18 +262,22 @@ export class Workspace {
   }
 
   /**
-   * 前回の下書きから無題の文書を戻す（F-FILE-11）。戻したら変更を知らせる。
+   * 前回の下書きから無題の文書を戻し、起動したときに何を表示するかを決める（F-FILE-11・F-FILE-14）。
+   * 中身の無い下書き（以前の版が残したもの）は戻さない。戻したら変更を知らせる。
    *
-   * @returns 戻した文書の数。下書きが無ければ 0
+   * @returns 下書きを戻したら "drafts"。戻すものが無く、前回すべての文書を閉じて終えたなら "nothing"、それ以外は "sample"
    * @example
-   * ws.restoreDrafts() // → 1（前回、無題の文書を 1 つ残したとき）
-   * ws.restoreDrafts() // → 0（下書きが無い・壊れている）
+   * ws.restoreDrafts() // → "drafts"（前回、無題の文書を 1 つ残したとき）
+   * ws.restoreDrafts() // → "nothing"（前回、すべて閉じて終えたとき）
+   * ws.restoreDrafts() // → "sample"（初めて開いた・下書きが壊れている・中身の無い下書きしか無い）
    */
-  restoreDrafts(): number {
-    const ds = this.drafts.load();
-    for (const d of ds) this.add({ ref: null, name: d.name, text: d.text, savedText: d.text, version: null, ...this.noLayoutHome(d.layout ?? "") });
-    if (ds.length) this.changed();
-    return ds.length;
+  restoreDrafts(): StartWith {
+    const { drafts, closedAll } = this.drafts.load();
+    const kept = drafts.filter(hasContent);
+    for (const d of kept) this.add({ ref: null, name: d.name, text: d.text, savedText: d.text, version: null, ...this.noLayoutHome(d.layout ?? "") });
+    if (!kept.length) return closedAll ? "nothing" : "sample";
+    this.changed();
+    return "drafts";
   }
 
   /**
@@ -289,6 +316,8 @@ export class Workspace {
     const { text, version } = await this.readable(ref).read(ref);
     const doc = this.add({ ref, name: ref.name, text, savedText: text, version, ...(await this.readLayout(ref)) });
     this.activeKey = doc.key;
+    // すべて閉じた後に開いたら、「すべて閉じて終えた」の記録を消す
+    if (this.docs.length === 1) this.persistDrafts();
     this.changed();
     return doc;
   }
@@ -468,8 +497,8 @@ export class Workspace {
   }
 
   /**
-   * 文書を閉じる。閉じたのが表示中なら隣の文書（後ろ、無ければ前）に切り替え、最後の 1 つなら表示中を無くす。
-   * 無題の文書なら下書きからも消す。key の文書が無ければ何もしない。
+   * 文書を閉じる。閉じたのが表示中なら隣の文書（後ろ、無ければ前）に切り替え、最後の 1 つなら表示中を無くす（新しい文書は作らない。F-FILE-14）。
+   * 無題の文書なら下書きからも消す。最後の 1 つなら、すべて閉じたことを下書きの保存先に残す。key の文書が無ければ何もしない。
    *
    * @param key 文書のキー
    */
@@ -478,7 +507,7 @@ export class Workspace {
     const doc = this.docs[i];
     if (!doc) return;
     this.docs.splice(i, 1);
-    if (!doc.ref) this.persistDrafts();
+    if (!doc.ref || !this.docs.length) this.persistDrafts();
     if (this.activeKey === key) this.activeKey = (this.docs[i] ?? this.docs[i - 1])?.key ?? null;
     this.changed();
   }
@@ -744,9 +773,13 @@ export class Workspace {
     return p;
   }
 
-  /** 無題の文書すべてを下書きの保存先に書く（配置があれば一緒に）。 */
+  /**
+   * 中身のある無題の文書すべてを、下書きの保存先に書く（配置があれば一緒に。F-FILE-11）。
+   * 開いている文書が 1 つも無ければ、すべて閉じたことも書く（F-FILE-14）。
+   */
   private persistDrafts(): void {
-    this.drafts.save(this.docs.filter((d) => !d.ref).map((d) => ({ name: d.name, text: d.text, ...(d.layout ? { layout: d.layout } : {}) })));
+    const drafts = this.docs.filter((d) => !d.ref && hasContent(d)).map((d) => ({ name: d.name, text: d.text, ...(d.layout ? { layout: d.layout } : {}) }));
+    this.drafts.save({ drafts, closedAll: !this.docs.length });
   }
 }
 

@@ -819,7 +819,7 @@ export function initFiles(sample: { name: string; text: string; layout: string }
     if (ws.hasUnsavedFiles()) ev.preventDefault();
   });
   window.addEventListener("focus", () => void checkExternal());
-  if (!ws.restoreDrafts()) ws.newUntitled(sample.name, sample.text, sample.layout);
+  if (ws.restoreDrafts() !== "drafts") ws.newUntitled(sample.name, sample.text, sample.layout);
   ensureDoc();
   renderFiles();
   void local?.recentFolder().then((name) => {
