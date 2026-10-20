@@ -498,31 +498,50 @@ function pinsMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, MONO: string): str
 export const SEQ = { dx: 200, w: 170, h: 46, first: 40, gap: 54 };
 
 /**
- * シーケンス図の外枠の位置と大きさを、ライフラインとメッセージの数から求める（SEQ の寸法を使う）。
+ * シーケンス図の段の、上下の位置（メッセージの線とイベントの丸の中心）。
  *
- * @param c シーケンス図の中身（nodes がライフライン、edges がメッセージ）
+ * @param row 段（上から何段目か。0 から）
+ * @returns 図の座標の y
+ * @example
+ * seqRowY(0) // → 86
+ * seqRowY(2) // → 194
+ */
+export const seqRowY = (row: number): number => SEQ.h + SEQ.first + row * SEQ.gap;
+
+/**
+ * シーケンス図の外枠の位置と大きさを、ライフラインと段の数から求める（SEQ の寸法を使う）。段の数が無ければ、線の数を段の数にする。
+ *
+ * @param c シーケンス図の中身（nodes がライフライン、rows が段の数）
  * @returns 外枠の左上（x0, y0）・幅（w）・高さ（h）と、ライフラインの下端（H）。数が 0 でも 1 つ分の大きさにする
  * @example
- * seqGeom({ nodes: [a, b], edges: [m], … }) // → { x0: -24, y0: -60, w: 418, h: 244, H: 160 }
- * seqGeom({ nodes: [], edges: [], … })      // → { x0: -24, y0: -60, w: 218, h: 244, H: 160 }（境界値）
+ * seqGeom({ nodes: [a, b], edges: [m], rows: 1, … }) // → { x0: -24, y0: -60, w: 418, h: 244, H: 160 }
+ * seqGeom({ nodes: [a, b], edges: [m], rows: 3, … }) // → { x0: -24, y0: -60, w: 418, h: 352, H: 268 }（メッセージの端でないイベント 2 つ）
+ * seqGeom({ nodes: [], edges: [], … })               // → { x0: -24, y0: -60, w: 218, h: 244, H: 160 }（境界値）
  */
 export function seqGeom(c: ViewContent): { x0: number; y0: number; w: number; h: number; H: number } {
-  const n = c.nodes.length, m = c.edges.length;
+  const n = c.nodes.length, m = c.rows ?? c.edges.length;
   const H = SEQ.h + SEQ.first + Math.max(1, m) * SEQ.gap + 20;
   return { x0: -24, y0: -60, w: Math.max(1, n) * SEQ.dx - (SEQ.dx - SEQ.w) + 48, h: H + 84, H };
 }
 
+/** イベントの丸の半径（8.2.3.9 の sq-proxy）。 */
+const EVENT_R = 5;
+
 /**
- * シーケンス図の SVG マークアップを作る。外枠と `sd 名前` の札、ライフライン（頭の箱と点線）、上から順に番号付きのメッセージを描く。
- * 自分自身へのメッセージは折り返しの線にする。両端のライフラインが見つからないメッセージは描かない。
+ * シーケンス図の SVG マークアップを作る。外枠と `sd 名前` の札、ライフライン（頭の箱と点線）、ライフラインの上のイベント
+ * （白抜きの丸と `.ev` の札、8.2.3.9 の sq-proxy）、段の位置に番号付きのメッセージ（実線と塗った矢印、端にイベントがあれば丸の縁まで）、
+ * 別のライフラインのイベントの間の順序（破線と開いた矢印、8.2.3.9 の sq-succession。ラベルは名前）を描く。
+ * 自分自身へのメッセージは折り返しの線にする。両端のライフライン・イベントが見つからない線は描かない。
  *
  * @param C 色の関数（画面は CV）
- * @param c シーケンス図の中身（対象・ライフライン・メッセージ）
+ * @param c シーケンス図の中身（対象・ライフライン・線・イベント・段の数）
  * @param opts 描き方（フォント・操作できるか・選択）。省くと既定の描き方
  * @returns マークアップ（s）と、外枠の寸法（g。seqGeom の結果）
  * @example
- * // 対象 K に、ライフライン a・b と、a から b へのメッセージ ping があるとき
+ * // 対象 K に、ライフライン a・b と、a から b へのメッセージ ping（段 0）があるとき
  * seqMarkup(CV, c) // → { s: '<rect …/>…sd K…<g class="lifeline" data-key="a">…</g>…1. ping…', g: { x0: -24, y0: -60, w: 418, h: 244, H: 160 } }
+ * // ping の送り手の端がイベント a.e のとき
+ * seqMarkup(CV, c).s // → 上に加え、'<g class="event" data-key="e:a.e" …><circle cx="85" cy="86" r="5" …/><text …>.e</text></g>'
  * // ライフラインもメッセージも無いとき
  * seqMarkup(CV, c) // → { s: 外枠と札だけ, g: { x0: -24, y0: -60, w: 218, h: 244, H: 160 } }
  */
@@ -531,6 +550,9 @@ export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "vi
   const g = seqGeom(c);
   const X = (i: number): number => i * SEQ.dx + SEQ.w / 2;
   const idx = new Map(c.nodes.map((l, i) => [l.key, i]));
+  const events = c.events ?? [];
+  const at = new Map(events.flatMap((e) => (idx.has(e.lifeline) ? [[e.key, { i: idx.get(e.lifeline) ?? 0, row: e.row }] as const] : [])));
+  const hasEvent = (lifeline: number, row: number): boolean => [...at.values()].some((p) => p.i === lifeline && p.row === row);
   let s = `<rect x="${g.x0}" y="${g.y0}" width="${g.w}" height="${g.h}" fill="none" stroke="${C("k-beh")}" stroke-width="1.3"/>`;
   const title = "sd " + (c.ctx ? c.ctx.name : "");
   s += `<path d="M${g.x0},${g.y0} h${title.length * 7.6 + 24} v14 l-10,10 H${g.x0} Z" fill="${C("k-beh-bg")}" stroke="${C("k-beh")}" stroke-width="1.1"/>`;
@@ -547,18 +569,24 @@ export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "vi
       `<text x="${X(i)}" y="36" text-anchor="middle" font-size="${l.name.length + l.entry.type.length > 20 ? 10.5 : 12.5}" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(label)}</text></g>`;
   });
   c.edges.forEach((e, k) => {
+    if (e.kind !== "message") return;
     const a = idx.get(e.from), b = idx.get(e.to);
     if (a == null || b == null) return;
-    const y = SEQ.h + SEQ.first + k * SEQ.gap;
+    const row = e.row ?? k;
+    const y = seqRowY(row);
     const sel = opts.selEdge === e.id;
     const col = sel ? C("sel") : C("ink");
-    const lab = `${k + 1}. ${e.label || "（名前なし）"}${e.type ? " : " + e.type : ""}`;
+    const lab = `${(e.idx ?? k) + 1}. ${e.label || "（名前なし）"}${e.type ? " : " + e.type : ""}`;
     let d: string, lx: number;
     if (a === b) {
       d = `M${X(a)},${y} h46 v20 h-44`;
       lx = X(a) + 52;
     } else {
-      d = `M${X(a)},${y} L${X(b) + (b > a ? -2 : 2)},${y}`;
+      // 端にイベントがあれば、丸の縁から縁まで引く
+      const dir = b > a ? 1 : -1;
+      const x1 = X(a) + (hasEvent(a, row) ? dir * EVENT_R : 0);
+      const x2 = X(b) - dir * (hasEvent(b, row) ? EVENT_R + 1 : 2);
+      d = `M${x1},${y} L${x2},${y}`;
       lx = (X(a) + X(b)) / 2;
     }
     s +=
@@ -566,6 +594,35 @@ export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "vi
       (opts.interactive ? `<path class="hit" d="${d}"/>` : "") +
       `<text x="${lx}" y="${y - 7}" text-anchor="${a === b ? "start" : "middle"}" font-size="11" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${MONO}">${esc(lab)}</text></g>`;
   });
+  for (const e of c.edges) {
+    if (e.kind !== "succession") continue;
+    const p = at.get(e.from), q = at.get(e.to);
+    if (!p || !q) continue;
+    const sel = opts.selEdge === e.id;
+    const col = sel ? C("sel") : C("ink2");
+    const [x1, y1, x2, y2] = [X(p.i), seqRowY(p.row), X(q.i), seqRowY(q.row)];
+    // 丸の縁から縁まで。同じ段の 2 つのイベントの間は、メッセージと重ならないよう下にふくらませる
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+    const [sx, sy, ex, ey] = [x1 + ux * EVENT_R, y1 + uy * EVENT_R, x2 - ux * (EVENT_R + 1), y2 - uy * (EVENT_R + 1)];
+    const d = p.row === q.row ? `M${sx},${sy + 3} Q${(sx + ex) / 2},${sy + 26} ${ex},${ey + 3}` : `M${sx},${sy} L${ex},${ey}`;
+    // 名前は、メッセージの名前（線の中ほど）と重ならないよう、元の端の近く（3 割の位置）に書く
+    const [mx, my] = p.row === q.row ? [(sx + ex) / 2, sy + 30] : [sx + (ex - sx) * 0.3, sy + (ey - sy) * 0.3 - 6];
+    s +=
+      `<g class="edge${sel ? " sel" : ""}" data-edge="${esc(e.id)}"><path class="line" d="${d}" fill="none" stroke="${col}" stroke-width="${sel ? 2.4 : 1.3}" stroke-dasharray="6 4" marker-end="url(#mOpen)"/>` +
+      (opts.interactive ? `<path class="hit" d="${d}"/>` : "") +
+      (e.label ? `<text x="${mx}" y="${my}" text-anchor="middle" font-size="11" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${MONO}">${esc(e.label)}</text>` : "") +
+      `</g>`;
+  }
+  // イベント（8.2.3.9 の sq-proxy）は線の上に描く。ライフラインからメッセージを引く操作を妨げないよう、ポインタは通す
+  for (const ev of events) {
+    const p = at.get(ev.key);
+    if (!p) continue;
+    const [x, y] = [X(p.i), seqRowY(p.row)];
+    s +=
+      `<g class="event" data-key="${esc(ev.key)}" pointer-events="none"><circle cx="${x}" cy="${y}" r="${EVENT_R}" fill="${C("paper")}" stroke="${C("ink")}" stroke-width="1.3"/>` +
+      `<text x="${x + EVENT_R + 4}" y="${y + 15}" font-size="10" fill="${C("ink2")}" stroke="${C("paper")}" stroke-width="3" paint-order="stroke" font-family="${MONO}">${esc(ev.label)}</text></g>`;
+  }
   return { s, g };
 }
 

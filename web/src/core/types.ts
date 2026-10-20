@@ -269,6 +269,8 @@ export interface ModelEdge {
   toPort?: string;
   /** シーケンス図のメッセージの順番。 */
   idx?: number;
+  /** シーケンス図のメッセージの段（上から何段目か。0 から）。 */
+  row?: number;
   /** メッセージのアイテム型。 */
   type?: string;
   /** 終わりの端に書く文字（部品として持つ線の多重度と飾り。`[4]`・`ordered`・`redefines w` など。8.2.3）。Rust のコアだけが作る。 */
