@@ -832,7 +832,7 @@ pub(super) struct EdgeAt {
 /// ```text
 /// // d.text = "package P { part def E; part def C { part a : E; part b : E; flow from a to b; } occurrence def S { part x : E; message m1 from x to x; } }" のとき
 /// context_edges(d, C の番号) → [("flow|u:a|u:b|#1", …)]
-/// context_edges(d, S の番号) → [("msg|0|m1", …)]
+/// context_edges(d, S の番号) → [("msg|0|m1", …)]（イベントの間の順序があれば、続けて "succession|e:a.e|e:b.r|#1" など）
 /// context_edges(d, E の番号) → []
 /// ```
 pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
@@ -848,7 +848,7 @@ pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
         return super::states::edges(d, c);
     }
     if ctx.kind == "occurrence def" {
-        return messages(d, c)
+        let mut out: Vec<(String, EdgeAt)> = messages(d, c)
             .into_iter()
             .enumerate()
             .filter_map(|(i, ri)| match &d.p.rels[ri].kind {
@@ -862,6 +862,16 @@ pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
                 _ => None,
             })
             .collect();
+        // イベントの間の順序の線（ID はモデルのシーケンス図が決めたもの）
+        let lines = d.m.sequences.iter().filter(|s| s.entry == c);
+        out.extend(lines.flat_map(|s| &s.successions).map(|e| {
+            let at = EdgeAt {
+                src: e.src,
+                rel: None,
+            };
+            (e.id.clone(), at)
+        }));
+        return out;
     }
     super::ibd::edges(d, c)
 }

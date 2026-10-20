@@ -686,6 +686,23 @@ fn move_message_swaps_statements_but_keeps_then_in_place() {
     );
 }
 
+#[test]
+fn delete_edge_removes_a_succession_between_events_of_the_sequence() {
+    // Arrange（シーケンス図のイベントの間の順序の線、8.2.3.9 の sq-succession）
+    let text = "package P { occurrence def S {\n    part a { event occurrence e; }\n    part b { event occurrence r; }\n    first a.e then b.r;\n} }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"succession|e:a.e|e:b.r|#1","ctx":"S"}"#,
+    );
+    // Assert
+    assert!(!after.contains("first a.e then b.r;"), "{after}");
+    assert!(
+        after.contains("part b { event occurrence r; }\n} }"),
+        "{after}"
+    );
+}
+
 // ---- フェーズ ----
 
 const PH: &str = "package P {\n    enum def K { enum a; enum b; }\n    metadata def Phase { attribute stage : K; }\n    part def A { @Phase { stage = K::a; } }\n    part def B;\n}\npackage Q { @Phase { stage = K::b; } part def C; }\n";
