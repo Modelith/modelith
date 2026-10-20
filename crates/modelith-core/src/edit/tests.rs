@@ -847,6 +847,23 @@ fn save_view_writes_view_with_one_expose_per_element() {
 }
 
 #[test]
+fn save_action_flow_writes_an_action_flow_view() {
+    // Arrange（アクションの流れの図は、対象のアクション定義を expose する ActionFlowView）
+    let text = "package P {\n    action def A {\n        action a;\n    }\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"saveView","name":"流れ","kind":"actionFlow","targets":["A"]}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("    view '流れ' : ActionFlowView {\n        expose P::A;\n    }\n}"),
+        "{after}"
+    );
+    assert_eq!(Doc::new(&after).m.views[0].kind, "actionFlow");
+}
+
+#[test]
 fn save_view_is_refused_without_name_targets_or_with_used_name() {
     let text = "package P { part def A; view v; }";
     assert!(

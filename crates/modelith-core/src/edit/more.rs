@@ -857,7 +857,7 @@ impl Doc<'_> {
 ///
 /// # 引数
 ///
-/// - `kind`：図の描き方（`general`・`interconnection`・`stateTransition`・`sequence`）
+/// - `kind`：図の描き方（`general`・`interconnection`・`stateTransition`・`sequence`・`actionFlow`）
 ///
 /// # 戻り値
 ///
@@ -868,6 +868,7 @@ impl Doc<'_> {
 /// ```text
 /// std_view_for("general")  → Some("GeneralView")
 /// std_view_for("sequence") → Some("SequenceView")
+/// std_view_for("actionFlow") → Some("ActionFlowView")
 /// std_view_for("bogus")    → None
 /// ```
 fn std_view_for(kind: &str) -> Option<&'static str> {
@@ -876,6 +877,7 @@ fn std_view_for(kind: &str) -> Option<&'static str> {
         "interconnection" => Some("InterconnectionView"),
         "stateTransition" => Some("StateTransitionView"),
         "sequence" => Some("SequenceView"),
+        "actionFlow" => Some("ActionFlowView"),
         _ => None,
     }
 }
@@ -922,7 +924,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///
 /// - `d`：操作の対象のテキスト
 /// - `name`：図の名前
-/// - `kind`：図の描き方（`general`・`interconnection`・`stateTransition`・`sequence`）
+/// - `kind`：図の描き方（`general`・`interconnection`・`stateTransition`・`sequence`・`actionFlow`）
 /// - `targets`：図に出す要素
 ///
 /// # 戻り値
