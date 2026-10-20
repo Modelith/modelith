@@ -1,4 +1,4 @@
-// Rust のコア（wasm）が返す解析結果を、暫定コアと同じオブジェクトの形に戻す（ADR-0015）。
+// Rust のコア（wasm）が返す解析結果を、画面が使うオブジェクトの形（types.ts）に戻す（ADR-0015）。
 // Rust は要素どうしの参照を番号で返すので、ここで親・子・持ち主のオブジェクトの参照につなぎ直す。
 // モデル（ADR-0016 の手順 A）も同じく番号で返るので、`build` でオブジェクトの参照に戻す。
 // `@layout` コメント（移行期の形式）の中身は、ここで読む（読み取れないことは Rust が構文エラーとして返す）。
@@ -109,7 +109,7 @@ export function fromAnalysis(json: string, text: string): { P: ParseResult; M: M
 }
 
 /**
- * Rust の解析結果（JSON の文字列）を、暫定コアと同じ `ParseResult` にする。
+ * Rust の解析結果（JSON の文字列）を、画面が使う `ParseResult` にする。
  *
  * @param json Rust の `ParseResult` の JSON の文字列
  * @param text その JSON を作ったときのテキスト全文（`@layout` コメントを読むのに使う）
@@ -127,7 +127,7 @@ export function fromRust(json: string, text: string): ParseResult {
  *
  * @param raw JSON から読んだ Rust の解析結果
  * @param text その解析結果を作ったときのテキスト全文（`@layout` コメントを読むのに使う）
- * @returns 暫定コアと同じ形の解析結果。指す先の無い番号は null（子の一覧からは除く）
+ * @returns 画面が使う形の解析結果。指す先の無い番号は null（子の一覧からは除く）
  * @example
  * fromRaw({ entries: [], blocks: [], rels: [], errors: [], unsupported: [] }, "") // → { entries: [], rels: [], errors: [], layout: {}, unsupported: [] }
  */

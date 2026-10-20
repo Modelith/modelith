@@ -1,4 +1,4 @@
-// 暫定コア（ADR-0009）の型。Rust コアへ差し替えるまで UI はこの型だけに依存する。
+// コアと画面の間の型（解析結果とモデル）。Rust のコアの結果は rust.ts がこの形に戻し、UI はこの型だけに依存する（ADR-0015・ADR-0016）。
 
 /** テキスト上の範囲（UTF-16 オフセット、end は含まない）。 */
 export interface Span {
@@ -151,7 +151,7 @@ export type Rel =
   | (RelBase & { rel: "connect"; a: string; b: string; item: string; usage: Entry; ends?: string[] })
   /**
    * 遷移（`transition t first a accept E via p if g do e then b;`、状態の中の `accept E then b;`・`if g then b;`・`then b;`、8.2.2.18）。
-   * 名前・`via`・ガード・効果は Rust のコアだけが記録する（暫定コアは `from`・`ev`・`to` だけ）。
+   * 名前・`via`・ガード・効果は Rust のコアだけが記録する（モックの出力は `from`・`ev`・`to` だけ）。
    */
   | (RelBase & { rel: "transition"; from: string; ev: string; to: string; name?: string; via?: string; guard?: string; effect?: string })
   /** 状態の本体の最初の遷移（`entry; then s;`・`entry; if g then s;`、EntryTransitionMember、8.2.2.18）。Rust のコアだけが作る。 */

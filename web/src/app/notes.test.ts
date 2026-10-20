@@ -28,7 +28,7 @@ describe("withNotes（一般の図のメモ）", () => {
     expect(c).toBe(content);
   });
 
-  it("メモの無いモデル（暫定コアのモデルなど）でも、内容をそのまま返す", () => {
+  it("メモの一覧を持たないモデル（notes が無い）でも、内容をそのまま返す", () => {
     // Arrange
     const content = { nodes: [], edges: [] };
     // Act
