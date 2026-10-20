@@ -829,6 +829,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
       });
     });
 
+    describe("個体（individual、8.2.2.9）", () => {
+      it("individual を修飾として残し、種類のキーワードの無い individual def・individual h は occurrence にする", () => {
+        // Arrange（IndividualDefinition・IndividualUsage・OccurrenceDefinitionPrefix の isIndividual）
+        const text = "package P { individual part def Car; individual def Earth; individual earth : Earth; }";
+        // Act
+        const got = ["Car", "Earth", "earth"].map((n) => [entry(text, n)?.kind, entry(text, n)?.mods]);
+        // Assert
+        expect(got).toEqual([["part def", "individual"], ["occurrence def", "individual"], ["occurrence", "individual"]]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
     describe("値の種類（FeatureValue、8.2.2.6）", () => {
       it("= は束縛、:= は初期値、default は既定値として、書いた記号を宣言に残す", () => {
         // Arrange（FeatureValue: ( '=' | isInitial ?= ':=' | isDefault ?= 'default' ( '=' | isInitial ?= ':=' )? ) OwnedExpression）

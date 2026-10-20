@@ -2,7 +2,7 @@
 
 import { $, esc } from "./dom";
 import type { ModelNode } from "../core";
-import { boxesOf, computeRoutes, linesOf, pinPoint, pinsOf, type Box, type NodeBox } from "./geometry";
+import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, type Box, type NodeBox } from "./geometry";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
 import { curLayout, curView, viewContent } from "./views";
@@ -100,7 +100,7 @@ export function drawioXml(): string {
     // 中に部品を描く部品（内部ブロック図の入れ子）は、区画の行を書かない
     const lines = nodes.some((c) => c.container === n.key) ? [] : linesOf(n).map((x) => esc(x.t));
     const label =
-      `«${n.kind}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? " : " + n.entry.type : ""))}</b>` +
+      `«${keywordOf(n)}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? " : " + n.entry.type : ""))}</b>` +
       (lines.length ? `<hr><div style="text-align:left;font-size:10px">${lines.join("<br>")}</div>` : "");
     const nid = "n" + id++;
     map.set(n.key, nid);

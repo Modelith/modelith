@@ -2,7 +2,7 @@
 
 import { family } from "../core";
 import { esc } from "./dom";
-import { boxesOf, computeRoutes, DOT, endLabelPos, HEAD, LH, linesOf, packageRects, pinPoint, pinsOf, textWidth, type Box, type NodeBox } from "./geometry";
+import { boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, packageRects, pinPoint, pinsOf, textWidth, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
 import { phaseLabel, type ViewContent } from "./views";
 
@@ -244,7 +244,7 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   if (opts.cands?.has(n.key)) s += `<rect x="-5" y="-5" width="${b.w + 10}" height="${b.h + 10}" rx="${rx + 4}" fill="none" stroke="${C("sel")}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
   s += `<rect class="body" width="${b.w}" height="${b.h}" rx="${rx}" fill="${C("k-" + fam + "-bg")}" stroke="${stroke}" stroke-width="${sw}"/>`;
   s += `<rect width="4" height="${b.h}" fill="${C("k-" + fam)}" rx="${rx ? 2 : 0}"/>`;
-  s += `<text x="${b.w / 2}" y="17" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${n.kind}»`)}</text>`;
+  s += `<text x="${b.w / 2}" y="17" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${keywordOf(n)}»`)}</text>`;
   if (opts.phases && n.phase)
     s += `<text x="${b.w}" y="-5" text-anchor="end" font-size="9" fill="${C("k-" + fam)}" font-family="${F}">${esc(phaseLabel(n.phase))}${n.phaseOwn ? "" : "（継承）"}</text>`;
   const title = (n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? ` : ${n.entry.type}` : "");

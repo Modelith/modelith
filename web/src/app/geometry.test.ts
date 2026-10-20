@@ -1,7 +1,7 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelNode } from "../core";
-import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, PKG_PAD, PKG_TAB, stackedHeight, W, type Box, type RouteEnd } from "./geometry";
+import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, keywordOf, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, PKG_PAD, PKG_TAB, stackedHeight, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -233,5 +233,27 @@ describe("boxesOf・stackedHeight・placeNested（内部ブロック図の入れ
     placeNested(nodes, pos);
     // Assert
     expect(pos).toEqual({});
+  });
+});
+
+describe("keywordOf（見出しのキーワード、8.2.2.9 の individual）", () => {
+  /** 図の要素を、種類と修飾だけ指定して作る。 */
+  const node = (kind: string, mods: string): ModelNode => ({
+    key: "A", name: "A", short: "", kind, isDef: kind.endsWith(" def"), fam: "part", trans: [], ports: [], phase: null, phaseOwn: false,
+    entry: { kind, isDef: kind.endsWith(" def"), short: "", name: "A", type: "", owner: null, pe: null, start: 0, headEnd: 0, end: 0, head: "", exprs: [], children: [], idx: 0, mods },
+  });
+
+  it("個体なら、種類の前に individual を付ける", () => {
+    // Act
+    const k = keywordOf(node("part def", "individual"));
+    // Assert
+    expect(k).toBe("individual part def");
+  });
+
+  it("ほかの修飾だけなら、種類のまま（individual を含む語と取り違えない）", () => {
+    // Act
+    const [plain, other] = [keywordOf(node("part def", "abstract")), keywordOf(node("part", "individualish"))];
+    // Assert
+    expect([plain, other]).toEqual(["part def", "part"]);
   });
 });

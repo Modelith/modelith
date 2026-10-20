@@ -65,6 +65,21 @@ export function wrap(s: string, maxW = W - 18, maxLines = 3): string[] {
   return out.slice(0, maxLines);
 }
 
+/**
+ * 要素の見出しに «» で囲んで書くキーワード（8.2.3 の記法）。個体（`individual`、8.2.2.9）なら、種類の前に `individual` を付ける。
+ *
+ * @param n 図の要素
+ * @returns «» の中に書く文字列
+ * @example
+ * keywordOf(part def Car)            // → "part def"
+ * keywordOf(individual part def Car) // → "individual part def"
+ * keywordOf(individual def Earth)    // → "individual occurrence def"（種類のキーワードを省いた形も、種類を書く）
+ */
+export function keywordOf(n: ModelNode): string {
+  const individual = (n.entry.mods ?? "").split(" ").includes("individual");
+  return individual ? `individual ${n.kind}` : n.kind;
+}
+
 /** 区画に書く、特殊化の種類の記号（テキスト記法と同じ。8.2.2.6）。 */
 const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>" };
 
