@@ -127,7 +127,7 @@ rules:
 | `port def`・`item def`・`attribute def`・`enum def` | ポート・項目・属性・列挙の定義 |
 | `action def`・`state def`・`use case def` | 動作・状態・ユースケースの定義 |
 | `constraint def`・`calc def`・`analysis def` | 制約・計算・解析の定義 |
-| `interface def`・`connection def`・`allocation def` | インタフェース・接続・割り当ての定義 |
+| `interface def`・`connection def`・`allocation def`・`flow def` | インタフェース・接続・割り当て・フローの定義 |
 
 メタデータの定義（`metadata def`）とビューの定義（`view def`）は、要素にならないので書けない。
 

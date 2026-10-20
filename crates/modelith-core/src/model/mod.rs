@@ -905,7 +905,9 @@ impl<'a> Builder<'a> {
                         }
                     }
                 }
-                RelKind::Flow { item, a: ra, b: rb }
+                RelKind::Flow {
+                    item, a: ra, b: rb, ..
+                }
                 | RelKind::Connect {
                     item, a: ra, b: rb, ..
                 } => {

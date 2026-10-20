@@ -387,7 +387,7 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
     describe("まだ扱えない文の本体（F-EDIT-8）", () => {
       it.each([
         ["join j { part x; }"],
-        ["flow def F { part x; }"],
+        ["merge m { part x; }"],
       ])("%s の中の宣言を、外側の package の中身として読まない", (stmt) => {
         // Arrange
         const text = `package P { ${stmt} }`;
@@ -750,6 +750,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         const [ad, a, f] = [entry(text, "AD"), entry(text, "a"), entry(text, "f")];
         // Assert
         expect([ad?.kind, a?.kind, a?.type, f?.pe?.name]).toEqual(["allocation def", "allocation", "AD", "AD"]);
+        expect(build(parse(text)).problems.filter((p) => p.kind === "unsupported")).toEqual([]);
+      });
+    });
+
+    describe("フロー（FlowDefinition・FlowUsage、8.2.2.16）", () => {
+      it("flow def は定義、名前付きのフローは使用になり、本体の中も読む", () => {
+        // Arrange
+        const text = "package P { item def Water; flow def FD { end x : Water; } part def H { flow f : FD from a.o to b.i; } }";
+        // Act
+        const [fd, f, x] = [entry(text, "FD"), entry(text, "f"), entry(text, "x")];
+        // Assert
+        expect([fd?.kind, f?.kind, f?.type, x?.pe?.name]).toEqual(["flow def", "flow", "FD", "FD"]);
         expect(build(parse(text)).problems.filter((p) => p.kind === "unsupported")).toEqual([]);
       });
     });

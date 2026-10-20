@@ -292,6 +292,55 @@ fn standalone_allocate_is_an_anonymous_allocation() {
 }
 
 #[test]
+fn flow_definitions_and_named_flows_are_entries() {
+    // Arrange（FlowDefinition・FlowUsage、8.2.2.16。同値分割：型付き・of 付き・名前の無いフロー）
+    let text = "part def H { flow def FD { end x : W; } flow f : FD from a.o to b.i; \
+                flow g of Water from a.o to b.i { } flow of Heat from a.o to b.i; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (fd, f, g) = (entry(&r, "FD"), entry(&r, "f"), entry(&r, "g"));
+    assert_eq!((fd.kind.as_str(), fd.is_def), ("flow def", true));
+    assert_eq!(entry(&r, "x").pe, Some(fd.idx));
+    assert_eq!((f.kind.as_str(), f.ty.as_str()), ("flow", "FD"));
+    let flows: Vec<(&str, &str, &str, Option<usize>)> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Flow {
+                item,
+                name,
+                ty,
+                usage,
+                ..
+            } => Some((item.as_str(), name.as_str(), ty.as_str(), *usage)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        flows,
+        [
+            ("", "f", "FD", Some(f.idx)),
+            ("Water", "g", "", Some(g.idx)),
+            ("Heat", "", "", None)
+        ]
+    );
+    assert_eq!(r.entries.iter().filter(|e| e.kind == "flow").count(), 2);
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn named_flow_without_ends_has_no_relation() {
+    // Arrange（境界値：端の無いフローの宣言）
+    let text = "flow def FD { } part def H { flow f : FD; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "f").kind, "flow");
+    assert!(r.rels.is_empty());
+}
+
+#[test]
 fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() {
     // Arrange（異常系: 末尾の「;」の無い文は、暫定コアと同じく読まない）
     let text = "package P { send s; }\npart def Tail";
@@ -383,7 +432,7 @@ fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
     // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [
         "package P { join j { part x; } }",
-        "package P { flow def F { part x; } }",
+        "package P { merge m { part x; } }",
         "package P { part def H { send s { part x; } } }",
     ] {
         // Act

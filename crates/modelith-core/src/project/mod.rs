@@ -115,6 +115,7 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "calc def",
     "connection def",
     "allocation def",
+    "flow def",
     "use case def",
     "enum def",
     "view def",
@@ -141,6 +142,7 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "calc",
     "connection",
     "allocation",
+    "flow",
     "subject",
     "stakeholder",
     "view",
@@ -667,7 +669,12 @@ impl Ctx {
                     meta.entry(md, OrderedMap::default);
                 }
             }
-            if let Some(kind) = connector_relation(n.kind(), connector_ends(n), &e.ty, idx) {
+            let flow = (n.kind() == FLOW_USAGE)
+                .then(|| flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx)))
+                .flatten();
+            if let Some(kind) =
+                flow.or_else(|| connector_relation(n.kind(), connector_ends(n), &e.ty, idx))
+            {
                 self.out.rels.push(Rel {
                     kind,
                     pe,
@@ -1782,13 +1789,7 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
                 path: t.path,
             })
         }
-        FLOW_USAGE if child(n, NAME).is_none() => Some(RelKind::Flow {
-            item: ref_after(n, "of")
-                .map(|s| last_segment(&s).to_owned())
-                .unwrap_or_default(),
-            a: ref_after(n, "from")?,
-            b: ref_after(n, "to")?,
-        }),
+        FLOW_USAGE if child(n, NAME).is_none() => flow_ends(n, String::new(), String::new(), None),
         TRANSITION_USAGE => Some(RelKind::Transition {
             from: ref_after(n, "first")?,
             ev: ref_after(n, "accept").unwrap_or_default(),
@@ -1796,6 +1797,39 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         }),
         _ => None,
     }
+}
+
+/// フロー（`flow of I from a to b`、FlowUsage、8.2.2.16）の流れの関係。
+///
+/// # 引数
+///
+/// - `n`：`FLOW_USAGE` の節
+/// - `name`：フローの名前（名前の無いフローは空）
+/// - `ty`：フローの型の名前（無ければ空）
+/// - `usage`：名前付きのフローの宣言の番号（名前の無いフローは `None`）
+///
+/// # 戻り値
+///
+/// 流れの関係（アイテムは `of` の後の型の最後の名前）。`from`・`to` の後の参照が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// flow_ends("flow of Heat from h.o to w.i;", "", "", None) → Some(Flow { item: "Heat", a: "h.o", b: "w.i", … })
+/// flow_ends("flow f : FD from a to b;", "f", "FD", Some(3)) → Some(Flow { item: "", a: "a", b: "b", name: "f", ty: "FD", usage: Some(3) })
+/// flow_ends("flow f : FD;", "f", "FD", Some(3))             → None
+/// ```
+fn flow_ends(n: &SyntaxNode, name: String, ty: String, usage: Option<usize>) -> Option<RelKind> {
+    Some(RelKind::Flow {
+        item: ref_after(n, "of")
+            .map(|s| last_segment(&s).to_owned())
+            .unwrap_or_default(),
+        a: ref_after(n, "from")?,
+        b: ref_after(n, "to")?,
+        name,
+        ty,
+        usage,
+    })
 }
 
 /// 依存（Dependency、8.2.2.3）を、依存する側とされる側の組ごとの関係にする。

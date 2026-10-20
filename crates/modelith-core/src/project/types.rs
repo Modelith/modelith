@@ -233,6 +233,15 @@ pub enum RelKind {
         item: String,
         a: String,
         b: String,
+        /// 名前付きのフロー（`flow f : FD from a to b;`、FlowUsage、8.2.2.16）の名前。名前の無いフローでは空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        name: String,
+        /// 名前付きのフローの型（`: FD` の `FD`）。無ければ空。
+        #[serde(default, rename = "type", skip_serializing_if = "String::is_empty")]
+        ty: String,
+        /// 名前付きのフローの使用（`ParseResult.entries` の番号）。名前の無いフローは宣言にしないので `None`。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<usize>,
     },
     Connect {
         a: String,
