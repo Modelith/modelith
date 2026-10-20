@@ -48,7 +48,7 @@ export const VIEWS: ViewDef[] = [
   { id: "ibd", label: "内部ブロック図" },
   { id: "behavior", label: "振る舞い", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },
   { id: "seq", label: "シーケンス" },
-  { id: "afv", label: "アクションの流れ", layer: flowLayers },
+  { id: "afv", label: "アクティビティ図", layer: flowLayers },
   { id: "all", label: "すべて", kinds: null, edges: null },
 ];
 

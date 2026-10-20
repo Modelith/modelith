@@ -362,7 +362,7 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
   });
 });
 
-test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.17）", () => {
+test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17）", () => {
   const FLOW = `package Kettle {
     item def Water;
     action def Boil {
@@ -386,7 +386,7 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     view boilFlow : ActionFlowView { expose Kettle::Boil; }
 }
 `;
-  /** モデルを書き、＋メニューの「保存された図」からアクションの流れ図を開く。 */
+  /** モデルを書き、＋メニューの「保存された図」からアクティビティ図を開く。 */
   async function openFlow(page: import("@playwright/test").Page): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(FLOW);
@@ -395,7 +395,7 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await page.locator('[data-open-mv="boilFlow"]').click();
   }
 
-  test("F-VIEW-7: ActionFlowView は、expose した action def をアクションの流れとして SysML の記号で描き、「まだ扱えない」と知らせない", async ({ page }) => {
+  test("F-VIEW-7: ActionFlowView は、expose した action def をアクティビティ図として SysML の記号で描き、「まだ扱えない」と知らせない", async ({ page }) => {
     // Arrange・Act
     await openFlow(page);
     // Assert（開始は塗った丸、fork は棒、decide はひし形、送信は五角形。ガードは [ ] のラベル、順序付きの流れは破線）
@@ -411,11 +411,11 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await expect(guarded.locator("path.line")).not.toHaveAttribute("stroke-dasharray", /./);
     await expect(guarded.locator("text")).toHaveText("[temperature >= 100]");
     await expect(page.locator('[data-edge="successionFlow|a:fill|a:heat|Water#1"] path.line')).toHaveAttribute("stroke-dasharray", "6 4");
-    await expect(page.locator("#subbar")).toContainText("保存された図「boilFlow」：アクションの流れ図（Boil）");
+    await expect(page.locator("#subbar")).toContainText("保存された図「boilFlow」：アクティビティ図（Boil）");
     await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
   });
 
-  test("F-VIEW-1: action def をツリーから開くと、アクションの流れのタブになる", async ({ page }) => {
+  test("F-VIEW-1: action def をツリーから開くと、アクティビティ図のタブになる", async ({ page }) => {
     // Arrange
     await openApp(page);
     await page.locator("#ed").fill(FLOW);
@@ -423,9 +423,9 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await page.locator("#sideModel").click();
     await page.locator("#treeSearch").fill("Boil");
     // Act
-    const row = page.locator('#tree .ti:has([title="アクションの流れで開く"])');
+    const row = page.locator('#tree .ti:has([title="アクティビティ図で開く"])');
     await row.hover();
-    await row.locator('[title="アクションの流れで開く"]').click();
+    await row.locator('[title="アクティビティ図で開く"]').click();
     // Assert
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/act Boil/);
     await expect.poll(() => nodeKeys(page)).toContain("a:notify");
@@ -457,7 +457,7 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
     await expect(page.locator('[data-edge="succession|a:warmCup|a:notify|#1"]')).toHaveCount(1);
   });
 
-  test("F-VIEW-3: アクションの流れ図で要素を動かして保存すると、アクション定義ごとの配置として配置ファイルに書く", async ({ page }) => {
+  test("F-VIEW-3: アクティビティ図で要素を動かして保存すると、アクション定義ごとの配置として配置ファイルに書く", async ({ page }) => {
     // Arrange
     await openApp(page);
     await putFiles(page, { "a.sysml": FLOW });

@@ -20,7 +20,7 @@ for (const [name, short, kind] of [
 
 /** 標準ビュー定義の、画面での名前（ADR-0014）。 */
 const STD_LABEL: Record<string, string> = {
-  GeneralView: "一般の図", InterconnectionView: "内部ブロック図", ActionFlowView: "アクションの流れ図", StateTransitionView: "状態遷移の図",
+  GeneralView: "一般の図", InterconnectionView: "内部ブロック図", ActionFlowView: "アクティビティ図", StateTransitionView: "状態遷移の図",
   SequenceView: "シーケンス図", GeometryView: "形状の図", GridView: "表の図", BrowserView: "一覧の図",
 };
 /**

@@ -658,7 +658,7 @@ const pathOf = (e: Entry): string => {
  * // 部品を持たない part def Engine
  * openTarget(Engine)    // → { view: "structure", label: "構造で開く" }
  * // action def Control
- * openTarget(Control)   // → { view: "afv", ctx: "Control", label: "アクションの流れで開く" }
+ * openTarget(Control)   // → { view: "afv", ctx: "Control", label: "アクティビティ図で開く" }
  * // attribute（定義でない属性）
  * openTarget(attr)      // → null
  */
@@ -669,7 +669,7 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
   if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: "シーケンス図で開く" };
   if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
   if (e.kind === "constraint def" || e.kind === "calc def") return { view: "control", label: "制御ループで開く" };
-  if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクションの流れで開く" };
+  if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクティビティ図で開く" };
   if (e.kind === "state def") return { view: "behavior", label: "振る舞いで開く" };
   if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "構造で開く" };
   return null;

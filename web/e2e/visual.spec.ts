@@ -26,7 +26,7 @@ test.describe("UI: 図", () => {
     ["ibd", "内部ブロック図"],
     ["behavior", "振る舞い"],
     ["seq", "シーケンス"],
-    ["afv", "アクションの流れ"],
+    ["afv", "アクティビティ図"],
     ["all", "すべて"],
   ];
   for (const [view, label] of views) {
@@ -185,7 +185,7 @@ async function openScriptProject(page: Page, plugins: Record<string, unknown>, f
 
 const scenes: Scene[] = [
   {
-    title: "F-VIEW-7: アクションの流れ図（ActionFlowView、8.2.3.17 の記号）",
+    title: "F-VIEW-7: アクティビティ図（ActionFlowView、8.2.3.17 の記号）",
     shot: "action-flow",
     act: async (page) => {
       await page.locator("#ed").fill(
