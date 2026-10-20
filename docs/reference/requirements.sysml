@@ -101,6 +101,14 @@ package ModelithRequirements {
         requirement def <'F-EDIT-7'> NewPackageGuideReq {
             doc /* package の無いファイルで図から要素を置こうとしたら、断らずに新しい package を作るよう案内し、名前を決めて作ったうえで要素を置く */
         }
+        requirement def <'F-EDIT-9'> WordHelpReq {
+            doc /* テキストの語（SysML v2 のキーワード・標準ビューの名前・よく使う標準ライブラリの名前）の意味を、SysML v2 の構文を知らない人にも分かる言葉で示す（ADR-0014）。
+                   広い画面では、語にマウスを乗せるとツールチップで示し、カーソルのある語の意味をテキストの下の 1 行に示す。コメントと文字列の中の語は説明しない */
+        }
+        requirement def <'F-EDIT-10'> PhoneTextReq {
+            doc /* 狭い画面（幅 760px 以下）は、モデルを見る・確かめる画面とする。テキストは初めは読み取り専用で（触ってもキーボードが出ない）、
+                   「編集」ボタンで編集できるようにし、もう一度押すと読み取り専用に戻す。語をダブルタップすると、その語を選び、意味を示す（F-EDIT-9） */
+        }
 
         // ---- ビュー ------------------------------------------------
         requirement def <'F-VIEW-1'> BuiltInViewsReq {
@@ -287,6 +295,8 @@ package ModelithRequirements {
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
         #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
         #derivation dependency from NoSilentDropReq to EditBothWaysNeed;
+        #derivation dependency from WordHelpReq to EditBothWaysNeed;
+        #derivation dependency from PhoneTextReq to AnywhereNeed;
         #derivation dependency from RenameReq to EditBothWaysNeed;
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
@@ -416,6 +426,8 @@ package ModelithRequirements {
         satisfy DiagramToTextReq by DiagramUI;
         satisfy NewPackageGuideReq by DiagramUI;
         satisfy NoSilentDropReq by Core;
+        satisfy WordHelpReq by TextEditor;
+        satisfy PhoneTextReq by TextEditor;
         satisfy RenameReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
