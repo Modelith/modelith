@@ -192,6 +192,52 @@ describe("LocalFolderProvider: 前回のフォルダ（F-FILE-9）", () => {
   });
 });
 
+describe("LocalFolderProvider: 起動したときの前回のフォルダの許可（F-FILE-13）", () => {
+  it.each(["granted", "prompt", "denied"] as const)("許可を求めずに、今の許可の状態（%s）を返す", async (state) => {
+    // Arrange
+    const { p, root } = setup();
+    await p.pickFolder();
+    root.permission = state;
+    root.grantOnRequest = "denied";
+    // Act
+    const access = await p.recentAccess();
+    // Assert
+    expect(access).toBe(state);
+    expect(root.permission).toBe(state); // 求めていない
+  });
+
+  it("覚えているフォルダが無ければ none（境界値: 初回）", async () => {
+    // Arrange
+    const { p } = setup();
+    // Act
+    const access = await p.recentAccess();
+    // Assert
+    expect(access).toBe("none");
+  });
+
+  it("ask: false なら、許可済みのフォルダだけを開き直す", async () => {
+    // Arrange
+    const { p } = setup();
+    await p.pickFolder();
+    // Act
+    const folder = await p.reopenRecent({ ask: false });
+    // Assert
+    expect(folder?.name).toBe("project");
+  });
+
+  it("ask: false なら、許可が要るときは許可を求めずに null（異常系）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    await p.pickFolder();
+    root.permission = "prompt";
+    // Act
+    const folder = await p.reopenRecent({ ask: false });
+    // Assert
+    expect(folder).toBeNull();
+    expect(root.permission).toBe("prompt"); // 求めていない
+  });
+});
+
 describe("LocalFolderProvider: 隣のファイル（配置ファイル、ADR-0005）", () => {
   it("フォルダから開いたファイルは、隣のファイルを書いて読める（サブフォルダでも）", async () => {
     // Arrange

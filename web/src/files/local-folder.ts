@@ -14,6 +14,7 @@ import {
   type FolderSource,
   type FolderTrees,
   type Readable,
+  type RecentAccess,
   type RecentFolders,
   type SiblingFiles,
   type Writable,
@@ -168,17 +169,35 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
   }
 
   /**
+   * 前回開いたフォルダを、今の許可のまま開けるかを確かめる。許可は求めない（利用者の操作が無くても呼べる。F-FILE-13）。
+   *
+   * @returns 許可の状態。覚えていなければ "none"。許可を確かめられないハンドルなら "denied"
+   * @example
+   * await p.recentAccess() // → "granted"（許可が残っている）
+   * await p.recentAccess() // → "prompt"（開き直すには許可を求める）
+   * await p.recentAccess() // → "none"（初回）
+   */
+  async recentAccess(): Promise<RecentAccess> {
+    const dir = await this.store.get(RECENT_KEY);
+    if (!dir) return "none";
+    return (await dir.queryPermission?.({ mode: "readwrite" })) ?? "denied";
+  }
+
+  /**
    * 前回開いたフォルダを開き直す。許可が無ければ求める（利用者の操作から呼ぶ）。
    *
+   * @param opts `ask: false` なら許可を求めず、既に許可されているときだけ開く（既定 true）
    * @returns 開いたフォルダの参照。覚えていない・許可されなければ null
    * @example
-   * await p.reopenRecent() // → { provider: "local", id: "dir:2", name: "project" }
-   * await p.reopenRecent() // → null（許可されなかった）
+   * await p.reopenRecent()                 // → { provider: "local", id: "dir:2", name: "project" }
+   * await p.reopenRecent()                 // → null（許可されなかった）
+   * await p.reopenRecent({ ask: false })   // → null（許可を求めないと開けない）
    */
-  async reopenRecent(): Promise<FolderRef | null> {
+  async reopenRecent(opts: { ask?: boolean } = {}): Promise<FolderRef | null> {
     const dir = await this.store.get(RECENT_KEY);
     if (!dir) return null;
-    const ok = (await dir.queryPermission?.({ mode: "readwrite" })) === "granted" || (await dir.requestPermission?.({ mode: "readwrite" })) === "granted";
+    const granted = (await dir.queryPermission?.({ mode: "readwrite" })) === "granted";
+    const ok = granted || (opts.ask !== false && (await dir.requestPermission?.({ mode: "readwrite" })) === "granted");
     return ok ? this.addFolder(dir) : null;
   }
 
