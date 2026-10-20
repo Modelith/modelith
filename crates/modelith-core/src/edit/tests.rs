@@ -864,6 +864,23 @@ fn save_action_flow_writes_an_action_flow_view() {
 }
 
 #[test]
+fn save_state_machine_writes_a_state_transition_view() {
+    // Arrange（状態遷移の図は、対象の状態定義を expose する StateTransitionView）
+    let text = "package P {\n    state def S {\n        state a;\n    }\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"saveView","name":"遷移","kind":"stateTransition","targets":["S"]}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("    view '遷移' : StateTransitionView {\n        expose P::S;\n    }\n}"),
+        "{after}"
+    );
+    assert_eq!(Doc::new(&after).m.views[0].kind, "stateTransition");
+}
+
+#[test]
 fn save_view_is_refused_without_name_targets_or_with_used_name() {
     let text = "package P { part def A; view v; }";
     assert!(
