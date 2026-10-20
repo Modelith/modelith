@@ -339,4 +339,5 @@ main[data-nodoc] .toast{z-index:30}
   .editbtn{display:inline-block;flex:none;margin-left:auto;padding:4px 12px;font-size:12px}
   .editbtn[aria-pressed="true"]{background:var(--selrange);border-color:var(--sel);color:var(--ink)}
   #textInfo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .textpane .docname{flex:none;white-space:nowrap}
 }
