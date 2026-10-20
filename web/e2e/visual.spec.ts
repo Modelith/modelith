@@ -100,6 +100,16 @@ test.describe("UI: 画面全体", () => {
       // Assert
       await expect(page).toHaveScreenshot("plugin-list-narrow.png");
     });
+
+    test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面の「＋」メニュー（SysML v2 の名前の行つき）", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator(".tabadd summary").click();
+      await settle(page);
+      // Assert
+      await expect(page.locator(".tabadd .pop")).toHaveScreenshot("tab-menu-narrow.png");
+    });
   });
 });
 

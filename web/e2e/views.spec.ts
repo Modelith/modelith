@@ -53,6 +53,48 @@ test.describe("ビュー", () => {
     await expect(page.locator("#insp")).toContainText("個を選択中");
     await expect(page.locator("#mini")).toBeVisible();
   });
+
+  test("F-VIEW-1・Q-4: ＋メニューの項目のツールチップに、当たる SysML v2 の標準ビューを添える", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator(".tabadd summary").click();
+    // Assert
+    await expect(page.locator('[data-open="afv"]')).toHaveAttribute("title", "アクティビティ図（SysML v2 では ActionFlowView）");
+    await expect(page.locator('[data-open="trace"]')).toHaveAttribute("title", "トレーサビリティ（SysML v2 では GeneralView で描く図）");
+  });
+
+  test("F-VIEW-1・Q-4: 広い画面では、＋メニューの項目の下に SysML v2 の名前の行を出さない（ツールチップで示す）", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator(".tabadd summary").click();
+    // Assert
+    await expect(page.locator('[data-open="afv"] small')).toBeHidden();
+  });
+
+  test.describe("狭い画面", () => {
+    test.use({ viewport: { width: 390, height: 800 } });
+    test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面では、＋メニューの項目の下に SysML v2 の名前を小さく出す", async ({ page }) => {
+      // Arrange（ツールチップが出ないので、名前の下の行で示す）
+      await openApp(page);
+      // Act
+      await page.locator(".tabadd summary").click();
+      // Assert
+      await expect(page.locator('[data-open="afv"] small')).toBeVisible();
+      await expect(page.locator('[data-open="afv"] small')).toHaveText("SysML v2 では ActionFlowView");
+    });
+  });
+
+  test("F-VIEW-2・Q-4: タブのツールチップに、図の種類と SysML v2 の標準ビューを出す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator(".tabadd summary").click();
+    // Act
+    await page.locator('[data-open="structure"]').click();
+    // Assert
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", "ブロック定義図（SysML v2 では GeneralView で描く図）");
+  });
 });
 
 test.describe("テキストと図の同期", () => {
@@ -177,6 +219,25 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     // Assert
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["u:e", "u:w"]);
     await expect(page.locator("#subbar")).toContainText("（Car）");
+  });
+
+  test("F-VIEW-7・Q-4: 保存された図のサブバーとタブのツールチップに、SysML v2 の標準ビューを添える", async ({ page }) => {
+    // Arrange・Act
+    await openView(page, "inside");
+    // Assert
+    await expect(page.locator("#subbar .vkind")).toHaveAttribute("title", "内部ブロック図（SysML v2 では InterconnectionView）");
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", "保存された図「inside」\n内部ブロック図（SysML v2 では InterconnectionView）");
+  });
+
+  test("F-VIEW-7・Q-4: 型の無い view は、＋メニューのツールチップで一般ビュー（GeneralView）と示す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#ed").fill(MODEL);
+    await page.waitForTimeout(400); // 入力の反映でタブのメニューが描き直されるので、反映を待ってから開く
+    // Act
+    await page.locator(".tabadd summary").click();
+    // Assert
+    await expect(page.locator('[data-open-mv="reqs"]')).toHaveAttribute("title", "一般ビュー（SysML v2 では GeneralView）");
   });
 
   test("F-VIEW-7: GeneralView に、特殊化・依存の線と部品の多重度を SysML の記法で描く", async ({ page }) => {

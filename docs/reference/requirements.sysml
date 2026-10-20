@@ -597,8 +597,9 @@ package ModelithRequirements {
             }
         }
         verification def ViewsE2E {
-            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般の図の特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般の図のメモとその削除・インスペクタのメモと別の言語での表し方、アクションの流れ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
+            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般の図の特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般の図のメモとその削除・インスペクタのメモと別の言語での表し方、アクションの流れ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け・図の種類のツールチップ（＋メニュー・タブ・保存された図のサブバー）と狭い画面の＋メニューに添える SysML v2 の標準ビューの名前（Chromium で操作） */
             objective {
+                verify PlainWordsReq;
                 verify CreateViewReq;
                 verify StandardViewReq;
                 verify NoSilentDropReq;
@@ -657,7 +658,7 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクションの流れ図（ActionFlowView）・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクションの流れ図（ActionFlowView）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
