@@ -1232,3 +1232,71 @@ fn action_node_keyword_after_a_line_break_starts_a_new_statement() {
     assert_eq!(kinds, [SOURCE_FILE, ACTION_USAGE, NAME, FORK_NODE, NAME]);
     assert_eq!(errors(text), [(8, "「;」がありません".to_owned())]);
 }
+
+#[test]
+fn if_node_reads_both_branches_and_else_if() {
+    // Arrange（IfNode、8.2.2.17：else の本体と、else if の中の IfNode）
+    let text = "if x > 0 { action a; } else if y { action b; } else { action c; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            IF_NODE,
+            EXPRESSION,
+            BODY,
+            ACTION_USAGE,
+            NAME,
+            IF_NODE,
+            EXPRESSION,
+            BODY,
+            ACTION_USAGE,
+            NAME,
+            BODY,
+            ACTION_USAGE,
+            NAME
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn loops_read_their_condition_variable_and_body() {
+    // Arrange（同値分割：while … until・loop・for、名前付きの action w while、8.2.2.17）
+    let texts = [
+        "while i < 3 { action a; } until done;",
+        "loop { action a; }",
+        "for x : T in xs { action a; }",
+        "action w while c { }",
+    ];
+    // Act
+    let heads: Vec<SyntaxKind> = texts.iter().map(|t| node_kinds(t)[1]).collect();
+    // Assert
+    assert_eq!(
+        heads,
+        [
+            WHILE_LOOP_NODE,
+            WHILE_LOOP_NODE,
+            FOR_LOOP_NODE,
+            WHILE_LOOP_NODE
+        ]
+    );
+    assert!(node_kinds(texts[2]).contains(&NODE_PARAMETER));
+    assert!(texts.iter().all(|t| errors(t).is_empty()));
+}
+
+#[test]
+fn loop_without_its_body_or_in_is_an_error() {
+    // Arrange（異常系：本体が無い・for の in が無い）
+    let no_body = errors("while x; part p;");
+    let no_in = errors("for x xs { }");
+    // Act / Assert
+    assert_eq!(no_body, [(7, "「{」がありません".to_owned())]);
+    assert_eq!(no_in, [(6, "「in」がありません".to_owned())]);
+    assert_eq!(
+        node_kinds("while x; part p;"),
+        [SOURCE_FILE, WHILE_LOOP_NODE, EXPRESSION, PART_USAGE, NAME]
+    );
+}

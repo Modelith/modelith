@@ -210,7 +210,14 @@ syntax_kinds! {
     ASSIGNMENT_NODE,
     /// `terminate;`・`terminate p;`（TerminateNode）。
     TERMINATE_NODE,
-    /// アクションの節の引数（NodeParameterMember・PayloadParameterMember。送るもの・受けるもの・送る先・代入の相手と値）。
+    /// `if g { … } else { … }`（IfNode）。本体（`BODY`）を 2 つまで持ち、`else if` は中の `IF_NODE` にする。
+    IF_NODE,
+    /// `while g { … } until c;`・`loop { … }`（WhileLoopNode）。
+    WHILE_LOOP_NODE,
+    /// `for x : T in xs { … }`（ForLoopNode）。
+    FOR_LOOP_NODE,
+    /// アクションの節の引数（NodeParameterMember・PayloadParameterMember・ForVariableDeclarationMember。
+    /// 送るもの・受けるもの・送る先・代入の相手と値・繰り返しの変数）。
     NODE_PARAMETER,
     /// `bind a = b;`（BindingConnectorAsUsage）。
     BINDING_CONNECTOR_AS_USAGE,
