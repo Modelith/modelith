@@ -925,6 +925,15 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
 
+      it("継起の相手が見つからなければ、問題として知らせる（8.2.2.14）", () => {
+        // Arrange
+        const text = "package P { action def A { action a; first a then nope; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["「順序」の相手「nope」が見つかりません（succession）"]);
+      });
+
       it("assign の := は、持ち主の式にしない（以前は持ち主の「式」に入っていた）", () => {
         // Arrange
         const text = "package P { action def A { assign x := 1; } }";

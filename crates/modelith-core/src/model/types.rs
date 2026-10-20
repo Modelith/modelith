@@ -102,6 +102,35 @@ pub struct View {
     pub frames: Vec<Frame>,
 }
 
+/// アクションの流れの図（8.2.3.17）の要素 1 つ。アクション・制御の節・送受信などのアクションの節と、暗黙の開始（`start`）・終了（`done`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlowNode {
+    /// 図の要素のキー（`a:名前`。名前の無い要素は `a:#番号`、開始・終了は `a:start`・`a:done`）。配置はこのキーで覚える。
+    pub key: String,
+    /// 名前（名前の無い要素は空）。
+    pub name: String,
+    /// 種類（宣言の種類。`action`・`fork`・`send` など。開始・終了は `start`・`done`）。
+    pub kind: String,
+    /// 宣言（`ParseResult.entries` の番号）。開始・終了は宣言を持たないので `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry: Option<usize>,
+}
+
+/// アクション定義 1 つの、アクションの流れの図（ActionFlowView、8.2.3.17）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionFlow {
+    /// アクション定義の、図の要素のキー。
+    pub key: String,
+    /// アクション定義の宣言（`ParseResult.entries` の番号）。
+    pub entry: usize,
+    /// 要素（開始、書いた順の要素、終了の順）。
+    pub nodes: Vec<FlowNode>,
+    /// 継起（種類 `succession`）と順序付きの流れ（種類 `successionFlow`）の線。端は `nodes` のキー。
+    pub edges: Vec<Edge>,
+}
+
 /// モデル。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,4 +143,6 @@ pub struct Model {
     pub phase_enum: Option<String>,
     /// 図に描くコメント（書いた順）。一般の図（GeneralView）にだけ描く。
     pub notes: Vec<Note>,
+    /// アクション定義ごとの、アクションの流れの図（図の要素の順）。
+    pub action_flows: Vec<ActionFlow>,
 }

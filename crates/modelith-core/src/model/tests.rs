@@ -1051,3 +1051,137 @@ fn comment_about_missing_target_is_a_problem() {
     );
     assert_eq!(m.notes.len(), 1);
 }
+
+/// アクション定義の、アクションの流れの図。
+fn flow<'a>(m: &'a Model, key: &str) -> &'a ActionFlow {
+    m.action_flows
+        .iter()
+        .find(|f| f.key == key)
+        .unwrap_or_else(|| panic!("{key} の流れがありません"))
+}
+
+#[test]
+fn action_flow_draws_actions_control_nodes_and_successions() {
+    // Arrange（8.2.3.17：開始・アクション・判断・ガード付きの継起・else・終了）
+    let text = "package P { action def A { first start; then action a; then decide d; if x > 0 then b; else c; \
+                action b; action c; first b then done; first c then done; attribute n; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let f = flow(&m, "A");
+    let keys: Vec<&str> = f.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["a:start", "a:a", "a:d", "a:b", "a:c", "a:done"]);
+    let ids: Vec<&str> = f.edges.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "succession|a:start|a:a|#1",
+            "succession|a:a|a:d|#1",
+            "succession|a:d|a:b|[x > 0]#1",
+            "succession|a:d|a:c|[else]#1",
+            "succession|a:b|a:done|#1",
+            "succession|a:c|a:done|#1",
+        ]
+    );
+    assert_eq!(f.nodes[0].entry, None);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn unnamed_action_nodes_get_numbered_keys() {
+    // Arrange（境界値：名前の無いアクションの節は、書いた順に番号を付ける）
+    let text = "package P { action def A { send S() to b; then accept e : E; then terminate; } part def E; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let f = flow(&m, "A");
+    let nodes: Vec<(&str, &str)> = f
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.kind.as_str()))
+        .collect();
+    assert_eq!(
+        nodes,
+        [("a:#1", "send"), ("a:#2", "accept"), ("a:#3", "terminate")]
+    );
+    let ends: Vec<(&str, &str)> = f
+        .edges
+        .iter()
+        .map(|e| (e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert_eq!(ends, [("a:#1", "a:#2"), ("a:#2", "a:#3")]);
+}
+
+#[test]
+fn succession_line_points_to_its_statement_or_then() {
+    // Arrange（線を消す範囲：first … then の文全体・then action の then だけ）
+    let text = "package P { action def A { action a; then action b; first a then b; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let srcs: Vec<&str> = flow(&m, "A")
+        .edges
+        .iter()
+        .map(|e| &text[e.src.start..e.src.end])
+        .collect();
+    assert_eq!(srcs, ["then ", "first a then b;"]);
+}
+
+#[test]
+fn succession_flow_is_a_labelled_line() {
+    // Arrange（SuccessionFlowUsage、8.2.3.17：名前の無いものはアイテム、名前付きは名前と型）
+    let text = "package P { item def W; action def A { action a; action b; succession flow of W from a.o to b.i; \
+                succession flow f : FD from a to b; } flow def FD; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let lines: Vec<(&str, &str, &str)> = flow(&m, "A")
+        .edges
+        .iter()
+        .map(|e| (e.kind, e.label.as_str(), &text[e.src.start..e.src.end]))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            (
+                "successionFlow",
+                "W",
+                "succession flow of W from a.o to b.i;"
+            ),
+            (
+                "successionFlow",
+                "f : FD",
+                "succession flow f : FD from a to b;"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn succession_to_a_missing_action_is_a_problem() {
+    // Arrange（異常系：見つからない名前。比較：アクション定義の中の別の要素（属性）は問題にしない）
+    let text = "package P { action def A { action a; first a then nope; first a then n; attribute n; then x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "「順序」の相手「nope」が見つかりません（succession）",
+            "「順序」の相手「x」が見つかりません（succession）"
+        ]
+    );
+    assert!(flow(&m, "A").edges.is_empty());
+}
+
+#[test]
+fn successions_outside_action_definitions_are_not_drawn() {
+    // Arrange（境界値：状態定義の中の then は、アクションの流れの図にしない。問題にもしない）
+    let text = "package P { state def S { entry; then idle; state idle; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.action_flows.is_empty());
+    assert!(m.problems.is_empty());
+}
