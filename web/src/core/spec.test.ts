@@ -136,17 +136,17 @@ for (const [impl, parse, build] of PARSERS) {
     describe("まだ扱えない文（F-EDIT-5・C-6 の趣旨：黙って捨てない）", () => {
       it("知らない文は捨てずに「まだ扱えない」と知らせる", () => {
         // Arrange
-        const text = "package P { send s; part def A; }";
+        const text = "package P { until s; part def A; }";
         // Act
         const M = build(parse(text));
         // Assert
         const info = M.problems.filter((p) => p.kind === "unsupported");
-        expect(info.map((p) => p.msg)).toEqual(["「send s」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
+        expect(info.map((p) => p.msg)).toEqual(["「until s」は Modelith ではまだ扱えないため、図とツリーに出ません"]);
       });
 
       it("まだ扱えない文は、エラーとして数えない", () => {
         // Arrange
-        const text = "package P { send s; }";
+        const text = "package P { until s; }";
         // Act
         const errors = build(parse(text)).problems.filter((p) => !p.kind);
         // Assert
@@ -386,8 +386,8 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
 
     describe("まだ扱えない文の本体（F-EDIT-8）", () => {
       it.each([
-        ["join j { part x; }"],
-        ["merge m { part x; }"],
+        ["until u { part x; }"],
+        ["after a { part x; }"],
       ])("%s の中の宣言を、外側の package の中身として読まない", (stmt) => {
         // Arrange
         const text = `package P { ${stmt} }`;
@@ -875,6 +875,72 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         // Assert
         expect(b?.specs?.map((s) => [s.op, s.target])).toEqual([["specializes", "A"]]);
         expect(m?.specs?.map((s) => [s.op, s.target])).toEqual([["redefines", "m"]]);
+      });
+    });
+
+    describe("アクションの節（ActionNode・ControlNode、8.2.2.17）", () => {
+      it("fork・join・merge・decide・send・accept・assign・terminate は、書いた語を種類にした使用になり、「まだ扱えない」と知らせない", () => {
+        // Arrange
+        const text = "package P { action def A { fork f; join j; merge m; decide d; send S() to b; accept e : E; assign x := 1; terminate; } }";
+        // Act
+        const kinds = parse(text).entries.filter((e) => e.pe?.name === "A").map((e) => e.kind);
+        // Assert
+        expect(kinds).toEqual(["fork", "join", "merge", "decide", "send", "accept", "assign", "terminate"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("if・while・loop・for は、条件と本体を持つ使用になり、for も「まだ扱えない」と知らせない（IfNode・WhileLoopNode・ForLoopNode）", () => {
+        // Arrange
+        const text = "package P { action def A { if x > 0 { action a; } else { action b; } while i < 3 { action c; } for v in vs { action d; } } }";
+        // Act
+        const nodes = parse(text).entries.filter((e) => e.pe?.name === "A");
+        // Assert
+        expect(nodes.map((e) => [e.kind, e.guard, e.children.map((c) => c.name)])).toEqual([
+          ["if", "x > 0", ["a", "b"]],
+          ["while", "i < 3", ["c"]],
+          ["for", "v in vs", ["d"]],
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("継起は、書いた端か直前の要素から、関係として記録する（first … then・then・if … then・else、8.2.2.14・8.2.2.17）", () => {
+        // Arrange
+        const text = "package P { action def A { first start; then decide d; if x > 0 then a; else b; first a then done; action a; action b; } }";
+        // Act
+        const rels = parse(text).rels.flatMap((r) => (r.rel === "succession" ? [[r.a, r.b, r.guard ?? ""]] : []));
+        // Assert
+        expect(rels).toEqual([["start", "d", ""], ["d", "a", "x > 0"], ["d", "b", "else"], ["a", "done", ""]]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("succession flow は順序付きの流れとして記録し、名前付きのものは宣言にする（SuccessionFlowUsage、8.2.2.16）", () => {
+        // Arrange
+        const text = "package P { item def W; action def A { action a; action b; succession flow f of W from a to b; } }";
+        // Act
+        const P = parse(text);
+        const flows = P.rels.flatMap((r) => (r.rel === "successionFlow" ? [[r.item, r.a, r.b, r.usage?.name]] : []));
+        // Assert
+        expect(flows).toEqual([["W", "a", "b", "f"]]);
+        expect(entry(text, "f")?.kind).toBe("succession flow");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("継起の相手が見つからなければ、問題として知らせる（8.2.2.14）", () => {
+        // Arrange
+        const text = "package P { action def A { action a; first a then nope; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["「順序」の相手「nope」が見つかりません（succession）"]);
+      });
+
+      it("assign の := は、持ち主の式にしない（以前は持ち主の「式」に入っていた）", () => {
+        // Arrange
+        const text = "package P { action def A { assign x := 1; } }";
+        // Act
+        const a = entry(text, "A");
+        // Assert
+        expect(a?.exprs).toEqual([]);
       });
     });
   });

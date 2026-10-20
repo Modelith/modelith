@@ -1,6 +1,7 @@
 // 図の幾何計算（ノードの大きさ・接続点・線の経路・自動配置）。DOM に依存しない純粋関数。
 
 import type { Entry, ModelEdge, ModelNode, Port, PortDir } from "../core";
+import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
 import type { Pos, Side, ViewLayout } from "./layout";
 import type { ViewDef } from "./views";
 
@@ -138,9 +139,13 @@ export interface Line {
  * compartment(n) // → []（境界）
  * // 本文「安全のため」のメモ
  * compartment(n) // → [{ t: "安全のため", cls: "doc" }]
+ * // アクションの流れの図の if x { action a; } else { action b; }
+ * compartment(n) // → [{ t: "then: a", cls: "attr" }, { t: "else: b", cls: "attr" }]
  */
 export function compartment(n: ModelNode): Line[] {
   if (n.note) return noteLines(n.entry.body ?? "");
+  // アクションの流れの図の if・while・loop・for は、本体のアクションの名前を書く
+  if (n.flow) return flowBodyLines(n.entry).flatMap((t) => wrap(t, FLOW_W - 18, 1).map((x) => ({ t: x, cls: "attr" as const })));
   const e = n.entry;
   const L: Line[] = [];
   const push = (t: string, cls: Line["cls"], max = 2): void => {
@@ -231,6 +236,7 @@ export function linesOf(n: ModelNode): Line[] {
 /**
  * ノードの高さ。見出しの高さ HEAD（44）に、区画があれば行数 × LH（15）と余白 12 を足す。
  * メモは見出しを持たず、本文の上の余白（noteTop）に、本文の行数（少なくとも 1）× LH と下の余白 8 を足す。
+ * アクションの流れの図の要素は、形ごとの大きさ（flowSize）。
  *
  * @param n 図のノード
  * @returns 高さ（図の座標の単位）
@@ -241,8 +247,11 @@ export function linesOf(n: ModelNode): Line[] {
  * nodeH(n) // → 44（境界）
  * // 名前の無いメモで、本文が 2 行
  * nodeH(n) // → 10 + 2 × 15 + 8 = 48
+ * // アクションの流れの図の fork
+ * nodeH(n) // → 8（flowSize の高さ）
  */
 export function nodeH(n: ModelNode): number {
+  if (n.flow) return flowSize(n).h;
   const L = linesOf(n);
   if (n.note) return noteTop(n) + Math.max(1, L.length) * LH + 8;
   return HEAD + (L.length ? L.length * LH + 12 : 0);
@@ -257,6 +266,43 @@ export interface Box {
 
 /** n 項の接続の点（8.2.3.13 の n-ary-connection-dot）の大きさ（四方）。 */
 export const DOT = 12;
+/** アクションの流れの図の、アクション（角の丸い四角・五角形）の幅。 */
+export const FLOW_W = 168;
+/** アクションの流れの図の、記号だけの要素の大きさ（開始・終了は四方、棒は幅と高さ、ひし形は四方）。 */
+const FLOW_SYMBOL: Record<string, [number, number]> = { start: [22, 22], done: [26, 26], bar: [120, 8], diamond: [34, 34] };
+
+/**
+ * アクションの流れの図（8.2.3.17）の要素の大きさ。記号だけの要素（開始・終了・棒・ひし形）は決まった大きさ、
+ * アクション・送る・受けるは幅 FLOW_W で、高さは見出し HEAD（名前と中身の両方を書くときは 14 足す）に、本体の行数 × LH と余白 12 を足す。
+ *
+ * @param n アクションの流れの図の要素
+ * @returns 幅と高さ（図の座標の単位）
+ * @example
+ * flowSize(start)                         // → { w: 22, h: 22 }
+ * flowSize(fork f)                        // → { w: 120, h: 8 }
+ * flowSize(action a)                      // → { w: 168, h: 44 }
+ * flowSize(action s send x)               // → { w: 168, h: 58 }（名前と中身の 2 行）
+ * flowSize(if x { action a; })            // → { w: 168, h: 71 }（本体の 1 行）
+ */
+export function flowSize(n: ModelNode): { w: number; h: number } {
+  const shape = flowShape(n.kind);
+  const symbol = FLOW_SYMBOL[shape];
+  if (symbol) return { w: symbol[0], h: symbol[1] };
+  const L = linesOf(n);
+  const both = !!n.name && !!flowDetail(n) && !["action", "perform action", "state"].includes(n.kind);
+  return { w: FLOW_W, h: HEAD + (both ? 14 : 0) + (L.length ? L.length * LH + 12 : 0) };
+}
+
+/**
+ * 要素の幅。n 項の接続の点は DOT、アクションの流れの図の要素は flowSize の幅、ほかは W。
+ *
+ * @param n 図の要素
+ * @returns 幅（図の座標の単位）
+ * @example
+ * nodeW(part def A) // → 224
+ * nodeW(decide d)   // → 34
+ */
+export const nodeW = (n: ModelNode): number => (n.junction ? DOT : n.flow ? flowSize(n).w : W);
 /** 中に部品を描く部品（内部ブロック図の入れ子）の、中の部品の周りの余白（左右・下）と、見出しの分を含む上の余白。 */
 export const NEST_PAD = 20;
 export const NEST_TOP = HEAD + 10;
@@ -264,7 +310,8 @@ export const NEST_TOP = HEAD + 10;
 const NEST_GAP = 30;
 
 /**
- * 図の要素の矩形を、配置の座標から求める。n 項の接続の点は DOT 四方、中に部品を描く部品（`container` で指される部品）は
+ * 図の要素の矩形を、配置の座標から求める。n 項の接続の点は DOT 四方、アクションの流れの図の要素は形ごとの大きさ（flowSize）、
+ * 中に部品を描く部品（`container` で指される部品）は
  * 中の部品をすべて囲む矩形（左右・下に NEST_PAD、上に見出しの分 NEST_TOP の余白）、ほかは幅 W・高さ nodeH。
  *
  * @param nodes 図に描く要素
@@ -280,7 +327,7 @@ const NEST_GAP = 30;
 export function boxesOf(nodes: readonly ModelNode[], pos: Record<string, Pos>): Map<string, Box> {
   const own = (n: ModelNode): Box => {
     const p = pos[n.key] ?? [0, 0];
-    return n.junction ? { x: p[0], y: p[1], w: DOT, h: DOT } : { x: p[0], y: p[1], w: W, h: nodeH(n) };
+    return n.junction ? { x: p[0], y: p[1], w: DOT, h: DOT } : { x: p[0], y: p[1], w: nodeW(n), h: nodeH(n) };
   };
   return new Map(
     nodes.map((n) => {
@@ -727,7 +774,7 @@ interface RouteRec {
 
 /**
  * すべての線について、出口・入口の位置と経路を決める。接続点の決まっていない端は、
- * 同じ辺から出る線を相手の位置の順に等間隔に並べ、固定の接続点を避ける。ラベルの位置も決める。
+ * 同じ辺から出る線を相手の位置の順に等間隔に並べ、固定の接続点を避ける（アクションの流れの図の丸とひし形は、辺の中央に集める）。ラベルの位置も決める。
  *
  * @param box ノードのキーから、ノードの矩形と接続点への対応
  * @param edges 描く線
@@ -777,7 +824,14 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
     const len = horiz ? b.w : b.h;
     list.sort((u, v) => (horiz ? u.o[0] - v.o[0] : u.o[1] - v.o[1]));
     const fixed = b.pins.filter((p) => p.side === side).map((p) => p.t * len);
+    // 開始・終了の丸とひし形は、線をその頂点（辺の中央）に集める
+    const point = !!b.n.flow && ["start", "done", "diamond"].includes(flowShape(b.n.kind));
     list.forEach((it, i) => {
+      if (point) {
+        if (it.end === "f") it.rec.ft = 0.5;
+        else it.rec.tt = 0.5;
+        return;
+      }
       let pos = (len * (i + 1)) / (list.length + 1);
       for (let g = 0; g < 3; g++) {
         const hit = fixed.find((f) => Math.abs(f - pos) < 16);
@@ -877,21 +931,28 @@ const RANK: Record<string, number> = {
 
 /**
  * 配置済みの要素の下に、未配置の要素を段ごとに並べ、座標を pos に書き込む（pos を変更する）。
- * 段は、ビューが深さで並べるなら線の向きの深さ（特殊化などは一般な側を上に。`downward`）、そうでなければ種類の順位（RANK）で決める。
+ * 段は、ビューが段の決め方（`layer`）を持てばそれで、深さで並べるなら線の向きの深さ（特殊化などは一般な側を上に。`downward`）、
+ * そうでなければ種類の順位（RANK）で決める。
  * 段の中は前の段とのつながりの重心で並べ替えて線の交差を減らし、1 段は 7 個までで折り返す。
  *
  * @param list 並べる（未配置の）ノード
  * @param edges 図の線（段と並び順の計算に使う）
  * @param pos ノードのキーから座標への対応。並べた座標を書き込む
- * @param v ビューの定義（depth が真なら線の深さで段を決める。control・ibd では信号の上流を左に置く）
+ * @param v ビューの定義（layer があればそれで、depth が真なら線の深さで段を決める。control・ibd では信号の上流を左に置く）
  * @param firstPhase 最初の段階の名前。その段階の requirement def を requirement の上の段に置く。無ければ null
  * @param oy 最初の段の y 座標（既定 0。配置済みの要素の下端を渡す）
  * @param heightOf 要素の高さ（既定 nodeH。中に部品を描く部品は、中の部品を積んだ高さを渡す）
+ * @param widthOf 要素の幅（既定はすべて W。W より狭い要素は列の中央に置く）
  */
-export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<string, Pos>, v: ViewDef, firstPhase: string | null, oy = 0, heightOf: (n: ModelNode) => number = nodeH): void {
+export function autoPlace(
+  list: ModelNode[], edges: ModelEdge[], pos: Record<string, Pos>, v: ViewDef, firstPhase: string | null, oy = 0,
+  heightOf: (n: ModelNode) => number = nodeH, widthOf: (n: ModelNode) => number = () => W,
+): void {
   const keys = new Set(list.map((n) => n.key));
-  const layer = new Map<string, number>();
-  if (v.depth) {
+  let layer = new Map<string, number>();
+  if (v.layer) {
+    layer = v.layer(list, edges);
+  } else if (v.depth) {
     const down = edges.map(downward);
     const inc = new Map(list.map((n) => [n.key, 0]));
     for (const [from, to] of down) if (keys.has(to) && keys.has(from)) inc.set(to, (inc.get(to) ?? 0) + 1);
@@ -948,7 +1009,8 @@ export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<str
       const chunk = row.slice(i, i + maxPer);
       const off = ((widest - chunk.length) * (W + GX)) / 2;
       chunk.forEach((n, k) => {
-        pos[n.key] = [Math.round((off + k * (W + GX)) / 10) * 10, y];
+        // 幅の狭い要素（アクションの流れの図の記号）は、列の中央に置く
+        pos[n.key] = [Math.round((off + k * (W + GX) + (W - widthOf(n)) / 2) / 10) * 10, y];
       });
       y += Math.max(...chunk.map(heightOf)) + 110;
     }

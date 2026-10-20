@@ -1,6 +1,6 @@
 // Rust のコア（wasm）との境界（ADR-0015）。解析は例外を投げず、失敗しても画面に知らせる（Q-5）。
 import { describe, expect, it } from "vitest";
-import { edit, parse, safeEdit, safeParse } from "./rust";
+import { build, edit, parse, safeEdit, safeParse } from "./rust";
 import { applyTextEdits } from "./text-ops";
 
 describe("parse（Rust のパーサ）", () => {
@@ -61,5 +61,21 @@ describe("edit（Rust の図の操作、ADR-0016）", () => {
     const r = safeEdit("", { op: "delete", keys: [] }, failing);
     // Assert
     expect(r).toEqual({ refused: "操作できませんでした。テキストはそのまま残っています（unreachable）" });
+  });
+});
+
+describe("build（Rust のモデル構築）", () => {
+  it("アクションの流れの図を、宣言の参照に戻す（開始・終了は宣言を持たない、8.2.3.17）", () => {
+    // Arrange
+    const text = "package P { action def A { first start; then action a; } }";
+    // Act
+    const flow = build(parse(text)).actionFlows?.[0];
+    // Assert
+    expect(flow?.entry.name).toBe("A");
+    expect(flow?.nodes.map((n) => [n.key, n.entry?.name ?? null])).toEqual([
+      ["a:start", null],
+      ["a:a", "a"],
+    ]);
+    expect(flow?.edges.map((e) => e.id)).toEqual(["succession|a:start|a:a|#1"]);
   });
 });

@@ -1,5 +1,5 @@
 // ビュー・ツリー・テキストとの同期・トレーサビリティ（F-VIEW-*・F-EDIT-1・5・F-TRACE-*）
-import { editorText, expect, nodeKeys, openApp, test } from "./fixtures";
+import { editorText, expect, nodeKeys, openApp, putFiles, readFile, test } from "./fixtures";
 
 test.describe("ビュー", () => {
   const cases: [string, string][] = [
@@ -9,6 +9,7 @@ test.describe("ビュー", () => {
     ["ibd", "u:controller"],
     ["behavior", "KettleStates"],
     ["seq", "l:controller"],
+    ["afv", "a:readSensor"],
     ["all", "WaterVessel"],
   ];
   for (const [view, key] of cases) {
@@ -94,11 +95,11 @@ test.describe("テキストと図の同期", () => {
     // Arrange
     await openApp(page);
     // Act
-    await page.locator("#ed").fill("package P {\n    part def A;\n    send s;\n}\n");
+    await page.locator("#ed").fill("package P {\n    part def A;\n    until s;\n}\n");
     // Assert
     const info = page.locator("#problems button.unsupported");
     await expect(info).toContainText("3 行目");
-    await expect(info).toContainText("「send s」は Modelith ではまだ扱えない");
+    await expect(info).toContainText("「until s」は Modelith ではまだ扱えない");
     await expect(page.locator("#syncText")).toHaveText("同期済み");
   });
 
@@ -358,6 +359,122 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     await page.locator(".tabadd summary").click();
     // Assert
     await expect(page.locator(".tabadd .pnote")).toHaveText("保存された図はまだありません");
+  });
+});
+
+test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.17）", () => {
+  const FLOW = `package Kettle {
+    item def Water;
+    action def Boil {
+        first start;
+        then action fill;
+        then fork split;
+        then heat;
+        then warmCup;
+        action heat;
+        action warmCup;
+        first heat then ready;
+        first warmCup then ready;
+        join ready;
+        then decide check;
+        if temperature >= 100 then notify;
+        else heat;
+        action notify send Done() to user;
+        then done;
+        succession flow of Water from fill to heat;
+    }
+    view boilFlow : ActionFlowView { expose Kettle::Boil; }
+}
+`;
+  /** モデルを書き、＋メニューの「保存された図」からアクションの流れ図を開く。 */
+  async function openFlow(page: import("@playwright/test").Page): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(FLOW);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="boilFlow"]').click();
+  }
+
+  test("F-VIEW-7: ActionFlowView は、expose した action def をアクションの流れとして SysML の記号で描き、「まだ扱えない」と知らせない", async ({ page }) => {
+    // Arrange・Act
+    await openFlow(page);
+    // Assert（開始は塗った丸、fork は棒、decide はひし形、送信は五角形。ガードは [ ] のラベル、順序付きの流れは破線）
+    await expect
+      .poll(async () => (await nodeKeys(page)).sort())
+      .toEqual(["a:check", "a:done", "a:fill", "a:heat", "a:notify", "a:ready", "a:split", "a:start", "a:warmCup"]);
+    await expect(page.locator('[data-key="a:start"] circle.body')).toBeVisible();
+    await expect(page.locator('[data-key="a:split"] rect.body')).toHaveAttribute("height", "8");
+    await expect(page.locator('[data-key="a:check"] path.body')).toHaveAttribute("d", "M17,0 L34,17 L17,34 L0,17 Z");
+    await expect(page.locator('[data-key="a:notify"]')).toContainText("«send»");
+    const guarded = page.locator('[data-edge="succession|a:check|a:notify|[temperature >= 100]#1"]');
+    await expect(guarded.locator("path.line")).toHaveAttribute("marker-end", "url(#mOpen)");
+    await expect(guarded.locator("path.line")).not.toHaveAttribute("stroke-dasharray", /./);
+    await expect(guarded.locator("text")).toHaveText("[temperature >= 100]");
+    await expect(page.locator('[data-edge="successionFlow|a:fill|a:heat|Water#1"] path.line')).toHaveAttribute("stroke-dasharray", "6 4");
+    await expect(page.locator("#subbar")).toContainText("保存された図「boilFlow」：アクションの流れ図（Boil）");
+    await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
+  });
+
+  test("F-VIEW-1: action def をツリーから開くと、アクションの流れのタブになる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#ed").fill(FLOW);
+    await page.waitForTimeout(400);
+    await page.locator("#sideModel").click();
+    await page.locator("#treeSearch").fill("Boil");
+    // Act
+    const row = page.locator('#tree .ti:has([title="アクションの流れで開く"])');
+    await row.hover();
+    await row.locator('[title="アクションの流れで開く"]').click();
+    // Assert
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/act Boil/);
+    await expect.poll(() => nodeKeys(page)).toContain("a:notify");
+  });
+
+  test("F-VIEW-7: 順序の線を図から削除すると、テキストからその文だけが消える", async ({ page }) => {
+    // Arrange
+    await openFlow(page);
+    await page.locator('[data-edge="succession|a:check|a:notify|[temperature >= 100]#1"] path.hit').click({ force: true });
+    // Act（2 回押しで削除）
+    await page.locator('#insp [data-act="delEdge"]').click();
+    await page.locator('#insp [data-act="delEdge"]').click();
+    // Assert
+    await expect(page.locator("#ed")).not.toHaveValue(/if temperature >= 100 then notify;/);
+    await expect(page.locator("#ed")).toHaveValue(/else heat;\n        action notify send/);
+    await expect(page.locator('[data-edge^="succession|a:check|a:notify|"]')).toHaveCount(0);
+  });
+
+  test("F-VIEW-7: 2 つのアクションの間に線を引くと、順序（first … then）をテキストに書く", async ({ page }) => {
+    // Arrange
+    await openFlow(page);
+    await page.locator('#gNodes [data-key="a:warmCup"]').click();
+    await page.locator('#insp [data-act="connect"]').click();
+    // Act
+    await page.locator('#gNodes [data-key="a:notify"]').click();
+    await page.locator('#insp [data-rel="succession"]').click();
+    // Assert
+    await expect(page.locator("#ed")).toHaveValue(/succession flow of Water from fill to heat;\n        first warmCup then notify;\n    }/);
+    await expect(page.locator('[data-edge="succession|a:warmCup|a:notify|#1"]')).toHaveCount(1);
+  });
+
+  test("F-VIEW-3: アクションの流れ図で要素を動かして保存すると、アクション定義ごとの配置として配置ファイルに書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await putFiles(page, { "a.sysml": FLOW });
+    await page.locator('[data-cmd="openFolder"]').click();
+    await page.locator('#explorer [data-file][title="a.sysml"]').click();
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="afv"]').click();
+    const b = (await page.locator('#gNodes [data-key="a:fill"]').boundingBox())!;
+    // Act
+    await page.mouse.move(b.x + 40, b.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(b.x + 240, b.y + 70, { steps: 6 });
+    await page.mouse.up();
+    await page.keyboard.press("Control+s");
+    // Assert
+    await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"afv:Boil": \{[\s\S]*"a:fill": \[/);
+    expect(await readFile(page, "a.sysml")).toBe(FLOW);
   });
 });
 

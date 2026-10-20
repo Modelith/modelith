@@ -343,7 +343,7 @@ fn named_flow_without_ends_has_no_relation() {
 #[test]
 fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() {
     // Arrange（異常系: 末尾の「;」の無い文は、暫定コアと同じく読まない）
-    let text = "package P { send s; }\npart def Tail";
+    let text = "package P { until s; }\npart def Tail";
     // Act
     let r = run(text);
     // Assert
@@ -352,7 +352,7 @@ fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() 
             .iter()
             .map(|u| u.head.as_str())
             .collect::<Vec<_>>(),
-        vec!["send s"]
+        vec!["until s"]
     );
     assert!(r.entries.iter().all(|e| e.name != "Tail"));
     assert_eq!(r.errors.len(), 1);
@@ -431,9 +431,9 @@ fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
 fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
     // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [
-        "package P { join j { part x; } }",
-        "package P { merge m { part x; } }",
-        "package P { part def H { send s { part x; } } }",
+        "package P { until u { part x; } }",
+        "package P { after a { part x; } }",
+        "package P { part def H { until u { part x; } } }",
     ] {
         // Act
         let r = run(text);
@@ -1167,5 +1167,269 @@ fn individual_is_kept_as_a_modifier_of_occurrences() {
             ("earth", "occurrence", false, "Earth", Some("individual")),
         ]
     );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn action_nodes_are_usages_of_the_kind_as_written() {
+    // Arrange（同値分割：制御の節・send・accept・assign・terminate、then の後の節、8.2.2.17）
+    let text = "action def A { fork f; join j; merge m; decide d; send S() to b; then accept e : E via p; \
+                action s send x; assign a.x := 1; terminate; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(&str, &str, &str)> = entry(&r, "A")
+        .children
+        .iter()
+        .map(|&i| {
+            let e = &r.entries[i];
+            (e.kind.as_str(), e.name.as_str(), e.head.as_str())
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("fork", "f", "fork f"),
+            ("join", "j", "join j"),
+            ("merge", "m", "merge m"),
+            ("decide", "d", "decide d"),
+            ("send", "", "send S() to b"),
+            ("accept", "", "accept e : E via p"),
+            ("send", "s", "action s send x"),
+            ("assign", "", "assign a.x := 1"),
+            ("terminate", "", "terminate"),
+        ]
+    );
+    assert!(r.unsupported.is_empty());
+    assert!(entry(&r, "A").exprs.is_empty());
+}
+
+#[test]
+fn body_of_a_control_node_belongs_to_the_node() {
+    // Arrange（正常系：制御の節の本体の中身は、その節の中身）
+    let text = "package P { join j { part x; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        entry(&r, "x").pe,
+        Some(r.entries.iter().position(|e| e.name == "j").unwrap_or(0))
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn accept_shorthand_transition_is_still_skipped() {
+    // Arrange（境界値：状態の中の省略形の遷移 accept E then b; は、アクションの節にしない）
+    let text = "state def S { state a; accept Go then a; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.kind != "accept"));
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn if_action_keeps_its_guard_and_both_branches() {
+    // Arrange（IfNode、8.2.2.17：then の本体・else の本体・else if）
+    let text = "action def A { if x > 0 { action a; } else if y { action b; } else { action c; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let ifs: Vec<&Entry> = r.entries.iter().filter(|e| e.kind == "if").collect();
+    assert_eq!(
+        ifs.iter().map(|e| e.guard.as_deref()).collect::<Vec<_>>(),
+        [Some("x > 0"), Some("y")]
+    );
+    let outer = r.entries.iter().position(|e| e.kind == "if").unwrap_or(0);
+    let inner = r.entries.iter().rposition(|e| e.kind == "if").unwrap_or(0);
+    assert_eq!(entry(&r, "a").pe, Some(outer));
+    assert_eq!(r.entries[inner].pe, Some(outer));
+    assert_eq!(entry(&r, "b").pe, Some(inner));
+    assert_eq!(entry(&r, "c").pe, Some(inner));
+    assert!(matches!(entry(&r, "c").owner, Some(Scope::Block(b)) if r.blocks[b].kw == "else"));
+    assert!(text[..r.entries[outer].end].ends_with("else { action c; }"));
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn loops_keep_their_guard_and_body() {
+    // Arrange（同値分割：while … until・loop・for、8.2.2.17）
+    let text = "action def A { while i < 3 { action a; } until done; loop { action b; } for x : T in xs { action c; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let loops: Vec<(&str, Option<&str>, usize)> = r
+        .entries
+        .iter()
+        .filter(|e| matches!(e.kind.as_str(), "while" | "loop" | "for"))
+        .map(|e| (e.kind.as_str(), e.guard.as_deref(), e.children.len()))
+        .collect();
+    assert_eq!(
+        loops,
+        [
+            ("while", Some("i < 3"), 1),
+            ("loop", None, 1),
+            ("for", Some("x : T in xs"), 1)
+        ]
+    );
+    let w = r
+        .entries
+        .iter()
+        .position(|e| e.kind == "while")
+        .unwrap_or(0);
+    assert!(text[..r.entries[w].end].ends_with("until done;"));
+    assert!(r.unsupported.is_empty());
+}
+
+/// 継起の関係 1 つ（元, 先, 元の番号, 先の番号, ガード）。
+type SuccessionRow = (String, String, Option<usize>, Option<usize>, String);
+
+/// 継起の関係を（元, 先, 元の番号, 先の番号, ガード）の組にする。
+fn successions(r: &ParseResult) -> Vec<SuccessionRow> {
+    r.rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Succession {
+                a,
+                b,
+                a_entry,
+                b_entry,
+                guard,
+                ..
+            } => Some((a.clone(), b.clone(), *a_entry, *b_entry, guard.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn successions_record_written_and_lexical_sources() {
+    // Arrange（同値分割：first … then・then の後の要素（SourceSuccessionMember）・then b（直前の要素から）・
+    // first start（継起の元を決める）、8.2.2.14・8.2.2.17）
+    let text = "action def A { first start; then action a; then action b; then c; first b then c; action c; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (a, b) = (
+        r.entries.iter().position(|e| e.name == "a"),
+        r.entries.iter().position(|e| e.name == "b"),
+    );
+    let s = |x: &str, y: &str, ae: Option<usize>, be: Option<usize>| {
+        (x.to_owned(), y.to_owned(), ae, be, String::new())
+    };
+    assert_eq!(
+        successions(&r),
+        [
+            s("start", "a", None, a),
+            s("a", "b", a, b),
+            s("b", "c", b, None),
+            s("b", "c", None, None),
+        ]
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn guarded_successions_start_from_the_preceding_decision() {
+    // Arrange（GuardedTargetSuccession・DefaultTargetSuccession・GuardedSuccession、8.2.2.17）
+    let text = "action def A { decide d; if x > 0 then a; else b; first d if y then c; action a; action b; action c; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let d = r.entries.iter().position(|e| e.name == "d");
+    let got: Vec<(String, String, Option<usize>, String)> = successions(&r)
+        .into_iter()
+        .map(|(a, b, ae, _, g)| (a, b, ae, g))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("d".to_owned(), "a".to_owned(), d, "x > 0".to_owned()),
+            ("d".to_owned(), "b".to_owned(), d, "else".to_owned()),
+            ("d".to_owned(), "c".to_owned(), None, "y".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn succession_from_then_covers_only_the_keyword() {
+    // Arrange（then action b; の継起を消すと、then だけが消える範囲）
+    let text = "action def A { action a; then action b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let rel = r
+        .rels
+        .iter()
+        .find(|x| matches!(x.kind, RelKind::Succession { .. }))
+        .map(|x| (x.start, x.end + 1));
+    assert_eq!(rel.map(|(s, e)| &text[s..e]), Some("then "));
+    assert_eq!(entry(&r, "b").head, "action b");
+}
+
+#[test]
+fn successions_count_sources_per_body() {
+    // Arrange（境界値：入れ子の本体の要素は、外の then の元にならない。本体の最初の then は元が無い）
+    let text = "action def A { action a { action x; } then b; } action def B { then c; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a = r.entries.iter().position(|e| e.name == "a");
+    let got: Vec<(String, Option<usize>)> = successions(&r)
+        .into_iter()
+        .map(|(x, _, ae, _, _)| (x, ae))
+        .collect();
+    assert_eq!(got, [("a".to_owned(), a), (String::new(), None)]);
+}
+
+#[test]
+fn named_succession_keeps_its_name() {
+    // Arrange（SuccessionAsUsage の名前、8.2.2.14）
+    let text = "action def A { action a; action b; succession s first a then b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let names: Vec<&str> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Succession { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, ["s"]);
+    assert!(r.entries.iter().all(|e| e.name != "s"));
+}
+
+#[test]
+fn succession_flows_are_relations_and_named_ones_are_entries() {
+    // Arrange（同値分割：名前の無い・名前付きの succession flow、8.2.2.16）
+    let text = "action def A { action a; action b; succession flow of W from a.o to b.i; succession flow f : FD from a to b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let f = r.entries.iter().position(|e| e.name == "f");
+    let flows: Vec<(&str, &str, &str, &str, Option<usize>)> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::SuccessionFlow {
+                item,
+                a,
+                b,
+                name,
+                usage,
+                ..
+            } => Some((item.as_str(), a.as_str(), b.as_str(), name.as_str(), *usage)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        flows,
+        [("W", "a.o", "b.i", "", None), ("", "a", "b", "f", f)]
+    );
+    assert_eq!(entry(&r, "f").kind, "succession flow");
+    assert_eq!(entry(&r, "f").ty, "FD");
     assert!(r.unsupported.is_empty());
 }

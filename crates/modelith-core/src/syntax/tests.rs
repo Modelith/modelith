@@ -309,7 +309,7 @@ fn then_with_kind_is_a_usage_of_that_kind() {
 #[test]
 fn statement_without_grammar_is_kept_as_unsupported() {
     // Arrange（F-EDIT-8：黙って捨てない）
-    let text = "action def A { send x via p; }";
+    let text = "action def A { until x; }";
     // Act
     let p = parse(text);
     // Assert
@@ -947,4 +947,356 @@ fn individual_without_kind_keyword_is_an_occurrence() {
         ]
     );
     assert!(texts.iter().all(|t| errors(t).is_empty()));
+}
+
+// ---- alpha.9 で読むようにした形（アクションの流れ、8.2.2.14・8.2.2.17） ----
+
+#[test]
+fn successions_read_both_ends() {
+    // Arrange（同値分割：first … then（SuccessionAsUsage）・名前付きの succession・then だけ（TargetSuccessionMember）・
+    // 境界値：then の無い first（InitialNodeMember））
+    let texts = [
+        "first a then b;",
+        "succession s first a then b;",
+        "then b;",
+        "first start;",
+    ];
+    // Act
+    let kinds: Vec<Vec<SyntaxKind>> = texts.iter().map(|t| node_kinds(t)).collect();
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                CONNECTOR_END,
+                QUALIFIED_NAME,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                NAME,
+                CONNECTOR_END,
+                QUALIFIED_NAME,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+            vec![
+                SOURCE_FILE,
+                SUCCESSION_AS_USAGE,
+                CONNECTOR_END,
+                QUALIFIED_NAME
+            ],
+        ]
+    );
+    assert!(texts.iter().all(|t| errors(t).is_empty()));
+}
+
+#[test]
+fn guarded_successions_keep_the_guard_expression() {
+    // Arrange（GuardedSuccession・GuardedTargetSuccession・DefaultTargetSuccession、8.2.2.17）
+    let text = "first d if x > 0 and y then a; if x <= 0 then b; else c;";
+    // Act
+    let p = parse(text);
+    // Assert
+    let guards: Vec<String> = p
+        .syntax()
+        .descendants()
+        .filter(|n| n.kind() == GUARD_EXPRESSION)
+        .map(|n| n.text().to_string())
+        .collect();
+    assert_eq!(guards, ["if x > 0 and y", "if x <= 0"]);
+    assert_eq!(
+        node_kinds(text)
+            .iter()
+            .filter(|k| **k == SUCCESSION_AS_USAGE)
+            .count(),
+        3
+    );
+    assert!(p.errors().is_empty());
+}
+
+#[test]
+fn guarded_succession_tree() {
+    // ガードの式は then の手前まで（括弧の中は式として読む）
+    check(
+        "first d if f(x) then a;",
+        expect![[r#"
+            SOURCE_FILE@0..23
+              SUCCESSION_AS_USAGE@0..23
+                KEYWORD@0..5 "first"
+                WHITESPACE@5..6 " "
+                CONNECTOR_END@6..7
+                  QUALIFIED_NAME@6..7
+                    IDENT@6..7 "d"
+                WHITESPACE@7..8 " "
+                GUARD_EXPRESSION@8..15
+                  KEYWORD@8..10 "if"
+                  WHITESPACE@10..11 " "
+                  EXPRESSION@11..15
+                    IDENT@11..12 "f"
+                    L_PAREN@12..13 "("
+                    IDENT@13..14 "x"
+                    R_PAREN@14..15 ")"
+                WHITESPACE@15..16 " "
+                KEYWORD@16..20 "then"
+                WHITESPACE@20..21 " "
+                CONNECTOR_END@21..22
+                  QUALIFIED_NAME@21..22
+                    IDENT@21..22 "a"
+                SEMI@22..23 ";"
+        "#]],
+    );
+}
+
+#[test]
+fn succession_flow_is_one_kind_of_two_words() {
+    // Arrange（SuccessionFlowUsage、8.2.2.16）
+    let text = "succession flow f of T from a.x to b.y;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds[1], SUCCESSION_FLOW_USAGE);
+    assert!(kinds.contains(&NAME));
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn succession_without_first_or_guard_is_an_error() {
+    // Arrange（異常系：first が無い・ガードの式が無い）
+    let no_first = errors("succession s : S;");
+    let no_guard = errors("first a if then b;");
+    let bare_if = errors("if then b;");
+    // Act / Assert
+    assert_eq!(no_first, [(16, "「first」がありません".to_owned())]);
+    assert_eq!(no_guard, [(11, "条件の式がありません".to_owned())]);
+    assert_eq!(bare_if, [(3, "条件の式がありません".to_owned())]);
+}
+
+#[test]
+fn if_without_then_is_kept_as_unsupported() {
+    // Arrange（境界値：then の無い if は、継起ではない）
+    let text = "if x;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds[1], UNSUPPORTED_MEMBER);
+}
+
+#[test]
+fn control_nodes_are_named_usages() {
+    // Arrange（同値分割：ForkNode・JoinNode・MergeNode・DecisionNode、8.2.2.17）
+    let text = "fork f; join j; merge m; decide d { doc /* x */ }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            FORK_NODE,
+            NAME,
+            JOIN_NODE,
+            NAME,
+            MERGE_NODE,
+            NAME,
+            DECISION_NODE,
+            NAME,
+            BODY,
+            DOCUMENTATION
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn send_accept_assign_and_terminate_read_their_parameters() {
+    // Arrange（同値分割：SendNode（via・to）・AcceptNode（名前と型・型だけ・時間の経過・via）・AssignmentNode・TerminateNode、
+    // 境界値：引数の無い terminate）
+    let texts = [
+        "send S(1) via p to b;",
+        "accept e : E via p;",
+        "accept Go;",
+        "accept after 5 [s];",
+        "assign a.x := x + 1;",
+        "terminate;",
+    ];
+    // Act
+    let kinds: Vec<Vec<SyntaxKind>> = texts.iter().map(|t| node_kinds(t)).collect();
+    // Assert
+    let params: Vec<usize> = kinds
+        .iter()
+        .map(|k| k.iter().filter(|x| **x == NODE_PARAMETER).count())
+        .collect();
+    let heads: Vec<SyntaxKind> = kinds.iter().map(|k| k[1]).collect();
+    assert_eq!(
+        heads,
+        [
+            SEND_NODE,
+            ACCEPT_NODE,
+            ACCEPT_NODE,
+            ACCEPT_NODE,
+            ASSIGNMENT_NODE,
+            TERMINATE_NODE
+        ]
+    );
+    assert_eq!(params, [3, 2, 1, 1, 2, 0]);
+    assert!(texts.iter().all(|t| errors(t).is_empty()));
+}
+
+#[test]
+fn accept_payload_tree() {
+    // 受けるものの名前は、節の名前ではなく引数の中に置く
+    check(
+        "action a accept e : E;",
+        expect![[r#"
+        SOURCE_FILE@0..22
+          ACCEPT_NODE@0..22
+            KEYWORD@0..6 "action"
+            WHITESPACE@6..7 " "
+            NAME@7..8
+              IDENT@7..8 "a"
+            WHITESPACE@8..9 " "
+            KEYWORD@9..15 "accept"
+            WHITESPACE@15..16 " "
+            NODE_PARAMETER@16..21
+              NAME@16..17
+                IDENT@16..17 "e"
+              WHITESPACE@17..18 " "
+              FEATURE_TYPING@18..21
+                COLON@18..19 ":"
+                WHITESPACE@19..20 " "
+                QUALIFIED_NAME@20..21
+                  IDENT@20..21 "E"
+            SEMI@21..22 ";"
+    "#]],
+    );
+}
+
+#[test]
+fn action_nodes_follow_then_and_a_named_action() {
+    // Arrange（SourceSuccessionMember の後の節・ActionNodeUsageDeclaration、8.2.2.17）
+    let texts = [
+        "then fork f;",
+        "then send x to y;",
+        "action s send x;",
+        "then action t terminate;",
+    ];
+    // Act
+    let heads: Vec<SyntaxKind> = texts.iter().map(|t| node_kinds(t)[1]).collect();
+    // Assert
+    assert_eq!(heads, [FORK_NODE, SEND_NODE, SEND_NODE, TERMINATE_NODE]);
+    assert!(texts.iter().all(|t| errors(t).is_empty()));
+}
+
+#[test]
+fn accept_shorthand_transition_reads_its_target() {
+    // Arrange（状態の中の省略形の遷移 `accept E then b;`、8.2.2.18。エラーにしない）
+    let text = "state def S { state a; accept Go then b; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&ACCEPT_NODE));
+    assert!(kinds.contains(&CONNECTOR_END));
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn action_node_without_its_parameter_is_an_error() {
+    // Arrange（異常系：受けるもの・送る先・:= が無い）
+    let no_payload = errors("accept;");
+    let no_target = errors("send x to;");
+    let no_assign = errors("assign a 1;");
+    // Act / Assert
+    assert_eq!(no_payload, [(6, "受けるものがありません".to_owned())]);
+    assert_eq!(no_target, [(9, "値の式がありません".to_owned())]);
+    assert_eq!(no_assign, [(8, "「:=」がありません".to_owned())]);
+}
+
+#[test]
+fn action_node_keyword_after_a_line_break_starts_a_new_statement() {
+    // Arrange（「;」の書き忘れ：改行の後の fork は新しい文の頭）
+    let text = "action a\nfork f;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds, [SOURCE_FILE, ACTION_USAGE, NAME, FORK_NODE, NAME]);
+    assert_eq!(errors(text), [(8, "「;」がありません".to_owned())]);
+}
+
+#[test]
+fn if_node_reads_both_branches_and_else_if() {
+    // Arrange（IfNode、8.2.2.17：else の本体と、else if の中の IfNode）
+    let text = "if x > 0 { action a; } else if y { action b; } else { action c; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            IF_NODE,
+            EXPRESSION,
+            BODY,
+            ACTION_USAGE,
+            NAME,
+            IF_NODE,
+            EXPRESSION,
+            BODY,
+            ACTION_USAGE,
+            NAME,
+            BODY,
+            ACTION_USAGE,
+            NAME
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn loops_read_their_condition_variable_and_body() {
+    // Arrange（同値分割：while … until・loop・for、名前付きの action w while、8.2.2.17）
+    let texts = [
+        "while i < 3 { action a; } until done;",
+        "loop { action a; }",
+        "for x : T in xs { action a; }",
+        "action w while c { }",
+    ];
+    // Act
+    let heads: Vec<SyntaxKind> = texts.iter().map(|t| node_kinds(t)[1]).collect();
+    // Assert
+    assert_eq!(
+        heads,
+        [
+            WHILE_LOOP_NODE,
+            WHILE_LOOP_NODE,
+            FOR_LOOP_NODE,
+            WHILE_LOOP_NODE
+        ]
+    );
+    assert!(node_kinds(texts[2]).contains(&NODE_PARAMETER));
+    assert!(texts.iter().all(|t| errors(t).is_empty()));
+}
+
+#[test]
+fn loop_without_its_body_or_in_is_an_error() {
+    // Arrange（異常系：本体が無い・for の in が無い）
+    let no_body = errors("while x; part p;");
+    let no_in = errors("for x xs { }");
+    // Act / Assert
+    assert_eq!(no_body, [(7, "「{」がありません".to_owned())]);
+    assert_eq!(no_in, [(6, "「in」がありません".to_owned())]);
+    assert_eq!(
+        node_kinds("while x; part p;"),
+        [SOURCE_FILE, WHILE_LOOP_NODE, EXPRESSION, PART_USAGE, NAME]
+    );
 }

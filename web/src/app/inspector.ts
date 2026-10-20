@@ -1,8 +1,10 @@
 // 図の下に出るインスペクタ（選択中の要素・関係・接続点の情報と操作）。
 
 import { lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
+import { flowDetail, flowName } from "./action-flow";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
+import { kindLabel } from "./labels";
 import type { Pin } from "./geometry";
 import { centerOn, render, scrollEditorTo } from "./render";
 import { OPS, MSGOPS, PHASEOPS, alignSel, deleteSel, selNodes, setPhaseSel, uniqueChild, type AlignMode } from "./ops";
@@ -119,11 +121,12 @@ function connectHtml(): string | null {
   }
   const opts = relOptions(a, b);
   const toTxt = portName(S.wire?.to?.pin);
+  const nm = (n: ModelNode): string => (n.flow ? flowName(n) : n.name);
   return (
-    `<div class="what"><small>追加する関係を選択</small><b>${esc(a.name + fromTxt)} → ${esc(b.name + toTxt)}</b></div><div class="acts">` +
+    `<div class="what"><small>追加する関係を選択</small><b>${esc(nm(a) + fromTxt)} → ${esc(nm(b) + toTxt)}</b></div><div class="acts">` +
     (opts.length
       ? opts.map((o) => `<button class="primary" data-rel="${o.rel}">${esc(o.label)}</button>`).join("")
-      : `<span style="font-size:12px;color:var(--ink2)">この組み合わせで追加できる関係はありません</span>`) +
+      : `<span style="font-size:12px;color:var(--ink2)">${a.flow && b.flow && (!a.name || !b.name) ? "名前の無い要素は、順序の線でつなげません。テキストで名前を付けてください" : "この組み合わせで追加できる関係はありません"}</span>`) +
     `<button data-act="cancel">やめる</button></div>`
   );
 }
@@ -236,6 +239,7 @@ function nodeHtml(n: ModelNode): string {
       `</div><div class="notes"><div class="note"><small>メモを付ける相手</small><p>${esc(about)}</p></div><div class="note"><small>本文</small><p>${esc(e.body ?? "")}</p></div></div>`
     );
   }
+  if (n.flow) return flowNodeHtml(n, line);
   if (n.usage || n.lifeline) {
     return (
       `<div class="what"><small>«${esc(n.kind)}» テキスト ${line} 行目${n.usage ? "・縁の＋から線を引けます" : "・ライフラインから横にドラッグでメッセージを追加"}</small><b>${esc(n.name)}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
@@ -260,11 +264,39 @@ function nodeHtml(n: ModelNode): string {
   );
 }
 
+/**
+ * アクションの流れの図の要素（8.2.3.17）の HTML を作る。種類の画面の言葉と中身、テキストで見る・名前の変更・順序の線の追加・削除のボタンを出す。
+ * 開始・終了はテキストに宣言が無いので、順序の線の追加だけを出す。
+ *
+ * @param n アクションの流れの図の要素
+ * @param line 宣言の行（1 から）
+ * @returns 要素の HTML
+ * @example
+ * // action s send S() to b; を選んでいるとき
+ * flowNodeHtml(s, 5) // → '<div class="what"><small>送信（send） テキスト 5 行目・縁の＋から順序の線を引けます</small><b>s</b><small>S() to b</small></div>…'
+ * // 開始を選んでいるとき
+ * flowNodeHtml(start, 1) // → '<div class="what"><small>開始（start）・順序の線から決まる記号です</small><b>開始</b></div><div class="acts"><button data-act="connect">順序の線を追加</button></div>'
+ */
+function flowNodeHtml(n: ModelNode, line: number): string {
+  const implicit = n.kind === "start" || n.kind === "done";
+  const detail = flowDetail(n);
+  const where = implicit ? "・順序の線から決まる記号です" : ` テキスト ${line} 行目・縁の＋から順序の線を引けます`;
+  return (
+    `<div class="what"><small>${esc(kindLabel(n.kind))}（${esc(n.kind)}）${where}</small><b>${esc(flowName(n))}</b>${detail && n.name && !implicit ? `<small>${esc(detail)}</small>` : ""}</div><div class="acts">` +
+    (implicit ? "" : `<button data-act="goto">テキストで見る</button>`) +
+    (n.name && !implicit ? `<button data-act="rename">名前を変更</button>` : "") +
+    (n.kind === "done" ? "" : `<button data-act="connect">順序の線を追加</button>`) +
+    (implicit ? "" : delBtn("del", "削除")) +
+    `</div>`
+  );
+}
+
 const EDGE_NAME: Record<string, string> = {
   comp: "部品・特性として持つ", satisfy: "要求を満たす «satisfy»", verify: "要求を検証する «verify»", frame: "関心事を扱う «frame»", flow: "流れ・接続", defined: "型（定義）", derive: "要求の導出 «derive»",
   specialize: "定義を引き継ぐ（特殊化 :>）", subset: "一部になる（部分集合 subsets）", redefine: "置き換える（再定義 redefines）", reference: "参照する（references）",
   dependency: "依存する（dependency）", allocate: "割り当てる «allocate»", bind: "値を等しくする（結び付け bind）",
   connect: "3 つ以上をつなぐ接続（connect）", annotate: "メモを付ける（comment about）",
+  succession: "順序（succession）", successionFlow: "順序付きの流れ（succession flow）",
 };
 
 /**

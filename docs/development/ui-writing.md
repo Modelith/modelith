@@ -40,7 +40,12 @@
 | 割り当て・割り当てる | allocation・allocate |
 | 流れの定義・流れ | flow def・flow |
 | 定義を引き継ぐ（特殊化）・一部になる（部分集合）・置き換える（再定義）・参照する | specializes・subsets・redefines・references（`:>`・`:>>`・`::>`） |
-| 一般の図・内部ブロック図・状態遷移の図・シーケンス図 | GeneralView・InterconnectionView・StateTransitionView・SequenceView |
+| 一般の図・内部ブロック図・状態遷移の図・シーケンス図・アクションの流れ図 | GeneralView・InterconnectionView・StateTransitionView・SequenceView・ActionFlowView |
+| 順序・順序付きの流れ | succession・succession flow（`first a then b`・`then b`） |
+| 開始・終了 | start・done |
+| 分岐（並行）・合流（並行）・分岐（条件）・合流（条件） | fork・join・decide・merge |
+| 送信・受信・代入・打ち切り | send・accept・assign・terminate |
+| 条件付きの実行・繰り返し・要素ごとの繰り返し | if・while（loop）・for |
 | メモ・メモを付ける相手 | comment・about（Comment） |
 | 別の言語での表し方 | rep・language（TextualRepresentation） |
 

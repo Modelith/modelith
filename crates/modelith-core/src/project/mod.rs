@@ -156,6 +156,36 @@ pub(crate) const DECL_KINDS: &[&str] = &[
     "rendering",
 ];
 
+/// アクションの流れ（8.2.2.17）の要素になる使用の種類（ActionBehaviorMember：振る舞いの使用とアクションの節）。
+/// これらの宣言は、続く `then b;`・`if g then b;`・`else b;` の継起の元になる。
+pub(crate) const ACTION_FLOW_KINDS: &[&str] = &[
+    "action",
+    "perform action",
+    "state",
+    "exhibit state",
+    "fork",
+    "join",
+    "merge",
+    "decide",
+    "send",
+    "accept",
+    "assign",
+    "terminate",
+    "if",
+    "while",
+    "loop",
+    "for",
+];
+
+/// 本体の中で、直前に書いたアクションの流れの要素（継起の元）。
+#[derive(Clone)]
+struct Prev {
+    /// 宣言の番号。`first start;` のように参照で決めたときは `None`。
+    entry: Option<usize>,
+    /// 名前（名前の無い宣言は空）。
+    name: String,
+}
+
 /// 利用者定義のキーワード（`#X def H;`・`#X h;`、8.2.2.27）で書いた宣言の、基の種類が決まらないときの種類。
 /// 定義は `"def"`、使用は `"usage"` にする（ツリーにだけ出す）。
 const EXTENDED_DEF_KIND: &str = "def";
@@ -227,6 +257,8 @@ struct Ctx {
     extended: Vec<usize>,
     /// `about` の付いたコメント（書いた順）。相手は読み終えてから解決する。
     comment_abouts: Vec<CommentAbout>,
+    /// 読んでいる本体ごとの、直前のアクションの流れの要素（入れ子の本体の順。末尾が今の本体）。
+    prev: Vec<Option<Prev>>,
 }
 
 impl Ctx {
@@ -280,6 +312,7 @@ impl Ctx {
             annotations: Vec::new(),
             extended: Vec::new(),
             comment_abouts: Vec::new(),
+            prev: Vec::new(),
         }
     }
 
@@ -354,6 +387,7 @@ impl Ctx {
     }
 
     /// 節の子の要素を、書いた順に `statement` で読む。解析結果に宣言・ブロック・関係などを足す。
+    /// 継起の元になる直前の要素（`prev`）は、この本体の中だけで数える。
     ///
     /// # 引数
     ///
@@ -361,9 +395,12 @@ impl Ctx {
     /// - `owner`：子の持ち主（宣言か無名ブロックの番号）。ファイルの直下なら `None`
     /// - `pe`：子を含む、いちばん近い宣言の番号。無ければ `None`
     fn members(&mut self, container: &SyntaxNode, owner: Option<Scope>, pe: Option<usize>) {
+        // 継起の元（直前の要素）は、本体ごとに数える
+        self.prev.push(None);
         for n in container.children() {
             self.statement(&n, owner, pe);
         }
+        self.prev.pop();
     }
 
     /// 要素 1 つを、宣言・関係・式・まだ扱えない文・無名ブロックのどれかにする（暫定コアの stmt と同じ順で判定する）。
@@ -438,6 +475,9 @@ impl Ctx {
                     e.close = Some(c);
                     e.end = c + 1;
                 }
+                if matches!(n.kind(), IF_NODE | WHILE_LOOP_NODE) {
+                    self.branches(n, i);
+                }
             }
             None => {
                 let b = self.out.blocks.len();
@@ -463,11 +503,80 @@ impl Ctx {
         }
     }
 
+    /// `if` のアクションの `else` の後（本体か `else if …`）と、`while` の後ろの `until c;` を読む（IfNode・WhileLoopNode、8.2.2.17）。
+    ///
+    /// `else` の本体は、キーワード `else` の無名ブロックにして中を読む（中の宣言の `pe` は `if` のアクション）。`else if …` は、
+    /// `if` のアクションの中の `if` のアクションにする。宣言の終わり（`end`）は、`else` の本体や `until c;` まで広げる。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：`IF_NODE` か `WHILE_LOOP_NODE` の節
+    /// - `i`：その節の宣言の番号（最初の本体は読み終えていること）
+    fn branches(&mut self, n: &SyntaxNode, i: usize) {
+        let bodies: Vec<SyntaxNode> = n.children().filter(|c| c.kind() == BODY).collect();
+        if let Some(body) = bodies.get(1) {
+            let at = n
+                .children_with_tokens()
+                .find(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == "else"))
+                .map_or(body.text_range().start(), |e| e.text_range().start());
+            let b = self.out.blocks.len();
+            let close = body
+                .last_token()
+                .filter(|t| t.kind() == R_BRACE)
+                .map(|t| self.utf16(t.text_range().start().into()));
+            self.out.blocks.push(Block {
+                kw: "else".to_owned(),
+                head: "else".to_owned(),
+                start: self.utf16(at.into()),
+                owner: Some(Scope::Entry(i)),
+                open: Some(self.utf16(body.text_range().start().into())),
+                close,
+                end: close.map(|c| c + 1),
+            });
+            self.members(body, Some(Scope::Block(b)), Some(i));
+        }
+        if let Some(nested) = child(n, IF_NODE) {
+            self.statement(&nested, Some(Scope::Entry(i)), Some(i));
+        }
+        self.out.entries[i].end = self.utf16(n.text_range().end().into());
+    }
+
+    /// `if`・`while` のアクションの条件、`for` のアクションの `変数 in 列`（IfNode・WhileLoopNode・ForLoopNode、8.2.2.17）。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：文の節
+    ///
+    /// # 戻り値
+    ///
+    /// 条件の式（空白をまとめたもの）。`for` は `x : T in xs` の形。ほかの節や、条件の無い `loop` なら `None`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// guard("if x  > 0 { … }")         → Some("x > 0")
+    /// guard("for x : T in xs { … }")   → Some("x : T in xs")
+    /// guard("loop { … } until done;") → None   // until の条件は記録しない
+    /// guard("part p;")                 → None
+    /// ```
+    fn guard(&self, n: &SyntaxNode) -> Option<String> {
+        let cond = child(n, EXPRESSION).map(|x| self.node_head(&x));
+        match n.kind() {
+            IF_NODE => cond.filter(|c| !c.is_empty()),
+            WHILE_LOOP_NODE if !has_keyword(n, "loop") => cond.filter(|c| !c.is_empty()),
+            FOR_LOOP_NODE => {
+                let var = child(n, NODE_PARAMETER).map(|v| self.node_head(&v))?;
+                Some(format!("{var} in {}", cond.unwrap_or_default()))
+            }
+            _ => None,
+        }
+    }
+
     /// 文を読み、宣言を作ったらその番号を返す。
     ///
     /// メタデータの本体の `key = 値`、メタデータの使用（`@M`・`metadata M about …`）、列挙値、関係、
     /// view の `expose`・`filter`・`render`、別名、`import`、本体の無い名前付きの制約（`assert constraint c : CD`）、
-    /// 読み飛ばす文、宣言、パラメータ、式、まだ扱えない文の順に判定し、解析結果の該当する表に足す。
+    /// 読み飛ばす文、宣言（アクションの節を含む）、パラメータ、式、まだ扱えない文の順に判定し、解析結果の該当する表に足す。
     ///
     /// # 引数
     ///
@@ -492,8 +601,10 @@ impl Ctx {
     /// classify(…, "in x : Real", …, Semi)  → Some(1)（kind "param"、dir "in"、ty "Real"）
     /// // "satisfy R by A;"
     /// classify(…, "satisfy R by A", …)     → None（rels に Satisfy { req: "R", by: "A" }）
-    /// // "send s;"
-    /// classify(…, "send s", …)             → None（unsupported に "send s"）
+    /// // "action def A { then send s to b; }" の中の文（A が 0 番）
+    /// classify(…, "then send s to b", …)   → Some(1)（kind "send"、head "send s to b"）
+    /// // "until s;"
+    /// classify(…, "until s", …)            → None（unsupported に "until s"）
     /// ```
     #[allow(clippy::too_many_arguments)]
     fn classify(
@@ -549,6 +660,11 @@ impl Ctx {
                     end,
                 });
             }
+            return None;
+        }
+        // 継起（`first a then b;`・`then b;`・`if g then b;`・`else b;`・`first start;`、8.2.2.14・8.2.2.17）
+        if n.kind() == SUCCESSION_AS_USAGE {
+            self.succession(n, pe, start, end);
             return None;
         }
         // 関係
@@ -628,10 +744,21 @@ impl Ctx {
             }
             return None;
         }
-        if is_skipped(h) {
-            return None;
-        }
-        if let Some((kind, is_def)) = entry_kind(n, h, &mods, !prefix_meta.is_empty()) {
+        // アクションの節（`fork f;`・`then send x to y;`・`accept e : E;` など）は、書いた語を種類にした使用（8.2.2.17）
+        let node = action_node_kind(n).or_else(|| {
+            // 名前付きの `succession flow f …;` は、名前付きのフローと同じく宣言にする（8.2.2.16）
+            (n.kind() == SUCCESSION_FLOW_USAGE && child(n, NAME).is_some())
+                .then_some("succession flow")
+        });
+        let h = match node {
+            Some(_) => h.strip_prefix("then ").unwrap_or(h),
+            None if is_skipped(h) => return None,
+            None => h,
+        };
+        if let Some((kind, is_def)) = node
+            .map(|k| (k, false))
+            .or_else(|| entry_kind(n, h, &mods, !prefix_meta.is_empty()))
+        {
             let idx = self.out.entries.len();
             let parts = decl_parts(n, is_def);
             let name = if parts.name.is_empty()
@@ -693,16 +820,22 @@ impl Ctx {
                 body: None,
                 about: Vec::new(),
                 reps: Vec::new(),
+                guard: None,
             };
+            e.guard = self.guard(n);
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
                 for md in prefix_meta {
                     meta.entry(md, OrderedMap::default);
                 }
             }
-            let flow = (n.kind() == FLOW_USAGE)
-                .then(|| flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx)))
-                .flatten();
+            let flow = match n.kind() {
+                FLOW_USAGE => flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx)),
+                SUCCESSION_FLOW_USAGE => {
+                    succession_flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx))
+                }
+                _ => None,
+            };
             if let Some(kind) =
                 flow.or_else(|| connector_relation(n.kind(), connector_ends(n), &e.ty, idx))
             {
@@ -713,7 +846,12 @@ impl Ctx {
                     end,
                 });
             }
+            let is_flow_node = ACTION_FLOW_KINDS.contains(&e.kind.as_str());
+            let name = e.name.clone();
             self.push_entry(e, pe);
+            if is_flow_node {
+                self.flow_node(n, pe, idx, name);
+            }
             return Some(idx);
         }
         if !mods.is_empty()
@@ -756,6 +894,7 @@ impl Ctx {
                 body: None,
                 about: Vec::new(),
                 reps: Vec::new(),
+                guard: None,
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -779,6 +918,128 @@ impl Ctx {
             });
         }
         None
+    }
+
+    /// 継起の文（SuccessionAsUsage・TargetSuccessionMember・GuardedSuccession・DefaultTargetSuccession、8.2.2.14・8.2.2.17）を
+    /// 関係にする。`first a then b;` は書いた 2 つの端の間、`then b;`・`if g then b;`・`else b;` は直前の要素から b へ。
+    /// `then` の無い `first start;`（InitialNodeMember）は関係にせず、続く継起の元を start にする。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：`SUCCESSION_AS_USAGE` の節
+    /// - `pe`：文を含む、いちばん近い宣言の番号
+    /// - `start`・`end`：文の範囲（UTF-16。`end` は `;` の位置）
+    fn succession(&mut self, n: &SyntaxNode, pe: Option<usize>, start: usize, end: usize) {
+        let ends = connector_ends(n);
+        let has = |kw: &str| has_keyword(n, kw);
+        let guard = child(n, GUARD_EXPRESSION)
+            .and_then(|g| child(&g, EXPRESSION))
+            .map(|x| self.node_head(&x))
+            .unwrap_or_else(|| {
+                if has("else") {
+                    "else".to_owned()
+                } else {
+                    String::new()
+                }
+            });
+        let (source, target) = match (has("first"), ends.as_slice()) {
+            (true, [a, b, ..]) if has("then") => (
+                Prev {
+                    entry: None,
+                    name: a.clone(),
+                },
+                b.clone(),
+            ),
+            (true, [a, ..]) => {
+                if let Some(top) = self.prev.last_mut() {
+                    *top = Some(Prev {
+                        entry: None,
+                        name: a.clone(),
+                    });
+                }
+                return;
+            }
+            (false, [b, ..]) => (self.current_prev(), b.clone()),
+            _ => return,
+        };
+        self.out.rels.push(Rel {
+            kind: RelKind::Succession {
+                a: source.name,
+                b: target,
+                a_entry: source.entry,
+                b_entry: None,
+                guard,
+                name: child(n, NAME)
+                    .map(|c| unquote(&compact(&c)).to_owned())
+                    .unwrap_or_default(),
+            },
+            pe,
+            start,
+            end,
+        });
+    }
+
+    /// 本体の中の、直前のアクションの流れの要素（継起の元）。無ければ、名前も番号も無い元。
+    ///
+    /// # 戻り値
+    ///
+    /// 今の本体で直前に書いた要素。まだ無ければ `Prev { entry: None, name: "" }`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "action a; then b;" の then b; を読むとき
+    /// current_prev() → Prev { entry: Some(a の番号), name: "a" }
+    /// // 本体の最初の "then b;" を読むとき
+    /// current_prev() → Prev { entry: None, name: "" }
+    /// ```
+    fn current_prev(&self) -> Prev {
+        self.prev.last().cloned().flatten().unwrap_or(Prev {
+            entry: None,
+            name: String::new(),
+        })
+    }
+
+    /// アクションの流れの要素（`action b;`・`fork f;` など）を読んだ後の処理。`then` で始まる要素（`then action b;`、
+    /// SourceSuccessionMember、8.2.2.17）なら、直前の要素からこの要素への継起を関係にし（範囲は `then` と後ろの空白だけ）、
+    /// この要素を、続く継起の元にする。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：要素の文の節
+    /// - `pe`：文を含む、いちばん近い宣言の番号
+    /// - `idx`：要素の宣言の番号
+    /// - `name`：要素の名前（名前の無い要素は空）
+    fn flow_node(&mut self, n: &SyntaxNode, pe: Option<usize>, idx: usize, name: String) {
+        let mut ts = tokens(n);
+        if let (Some(then), Some(next)) = (ts.next(), ts.next())
+            && then.kind() == KEYWORD
+            && then.text() == "then"
+        {
+            let source = self.current_prev();
+            let from: usize = then.text_range().start().into();
+            let to: usize = next.text_range().start().into();
+            self.out.rels.push(Rel {
+                kind: RelKind::Succession {
+                    a: source.name,
+                    b: name.clone(),
+                    a_entry: source.entry,
+                    b_entry: Some(idx),
+                    guard: String::new(),
+                    name: String::new(),
+                },
+                pe,
+                start: self.utf16(from),
+                // 関係の範囲の終わり（end + 1 が、消す範囲の終わり）は、次のトークンの手前
+                end: self.utf16(to).saturating_sub(1),
+            });
+        }
+        if let Some(top) = self.prev.last_mut() {
+            *top = Some(Prev {
+                entry: Some(idx),
+                name,
+            });
+        }
     }
 
     /// 宣言の特殊化・部分集合・再定義・参照（8.2.2.6）を、相手ごとに書いた順に集める。
@@ -1045,6 +1306,7 @@ impl Ctx {
                 Vec::new()
             },
             reps: Vec::new(),
+            guard: None,
         };
         self.push_entry(e, pe);
         if !about.is_empty() {
@@ -1392,6 +1654,68 @@ fn entry_kind(
         }
         _ => None,
     }
+}
+
+/// アクションの節（ActionNode、8.2.2.17）の、書いた語の種類。宣言の種類にする（`fork f;` は種類 `fork` の使用）。
+///
+/// 状態の中の省略形の遷移 `accept E then b;`（8.2.2.18）は、アクションの節にしない（遷移として読むまで、これまでどおり読み飛ばす）。
+///
+/// # 引数
+///
+/// - `n`：文の節
+///
+/// # 戻り値
+///
+/// `fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`loop`・`for` のどれか。
+/// アクションの節でなければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// action_node_kind("decide d;")        → Some("decide")
+/// action_node_kind("accept e : E;")    → Some("accept")
+/// action_node_kind("loop { … }")       → Some("loop")
+/// action_node_kind("accept Go then b;") → None   // 状態の中の省略形の遷移
+/// action_node_kind("part p;")          → None
+/// ```
+fn action_node_kind(n: &SyntaxNode) -> Option<&'static str> {
+    match n.kind() {
+        FORK_NODE => Some("fork"),
+        JOIN_NODE => Some("join"),
+        MERGE_NODE => Some("merge"),
+        DECISION_NODE => Some("decide"),
+        SEND_NODE => Some("send"),
+        ACCEPT_NODE if child(n, CONNECTOR_END).is_none() => Some("accept"),
+        ASSIGNMENT_NODE => Some("assign"),
+        TERMINATE_NODE => Some("terminate"),
+        IF_NODE => Some("if"),
+        WHILE_LOOP_NODE if has_keyword(n, "loop") => Some("loop"),
+        WHILE_LOOP_NODE => Some("while"),
+        FOR_LOOP_NODE => Some("for"),
+        _ => None,
+    }
+}
+
+/// 節の直下に、キーワード `kw` のトークンがあるか（孫より深くは見ない）。
+///
+/// # 引数
+///
+/// - `n`：節
+/// - `kw`：探すキーワード
+///
+/// # 戻り値
+///
+/// 直下にあれば `true`。
+///
+/// # 例
+///
+/// ```text
+/// has_keyword("loop { … }" の WHILE_LOOP_NODE, "loop")       → true
+/// has_keyword("while x { loop { } }" の WHILE_LOOP_NODE, "loop") → false   // 本体の中は見ない
+/// ```
+fn has_keyword(n: &SyntaxNode, kw: &str) -> bool {
+    n.children_with_tokens()
+        .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == kw))
 }
 
 /// メタデータの定義の本体の式 `:>> baseType = … meta SysML::PartUsage` から、基のメタクラスの名前を取り出す
@@ -1941,9 +2265,9 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
         .collect()
 }
 
-/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・遷移）。依存は `dependencies` で読む。
+/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・順序付きの流れ・遷移）。依存は `dependencies` で読む。
 ///
-/// 流れは名前の無いものだけを関係にする。
+/// 流れと順序付きの流れは、名前の無いものだけを関係にする（名前付きのものは宣言を作るときに関係にする）。
 ///
 /// # 引数
 ///
@@ -1963,6 +2287,7 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
 /// relation("verify R;", "verify R")              → Some(Verify { req: "R" })
 /// relation("transition t first idle accept Go then idle;", …)
 ///   → Some(Transition { from: "idle", ev: "Go", to: "idle" })
+/// relation("succession flow of W from a.o to b.i;", …) → Some(SuccessionFlow { item: "W", a: "a.o", b: "b.i", … })
 /// relation("part a;", "part a")                  → None
 /// ```
 fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
@@ -2006,6 +2331,9 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
             })
         }
         FLOW_USAGE if child(n, NAME).is_none() => flow_ends(n, String::new(), String::new(), None),
+        SUCCESSION_FLOW_USAGE if child(n, NAME).is_none() => {
+            succession_flow_ends(n, String::new(), String::new(), None)
+        }
         TRANSITION_USAGE => Some(RelKind::Transition {
             from: ref_after(n, "first")?,
             ev: ref_after(n, "accept").unwrap_or_default(),
@@ -2042,6 +2370,44 @@ fn flow_ends(n: &SyntaxNode, name: String, ty: String, usage: Option<usize>) -> 
             .unwrap_or_default(),
         a: ref_after(n, "from")?,
         b: ref_after(n, "to")?,
+        name,
+        ty,
+        usage,
+    })
+}
+
+/// 順序付きの流れ（`succession flow of I from a to b`、SuccessionFlowUsage、8.2.2.16）の関係。
+///
+/// # 引数
+///
+/// - `n`：`SUCCESSION_FLOW_USAGE` の節
+/// - `name`：名前（名前の無いものは空）
+/// - `ty`：型の名前（無ければ空）
+/// - `usage`：名前付きのものの宣言の番号（名前の無いものは `None`）
+///
+/// # 戻り値
+///
+/// 順序付きの流れの関係（アイテムは `of` の後の型の最後の名前）。`from`・`to` の後の参照が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// succession_flow_ends("succession flow of W from a.o to b.i;", "", "", None) → Some(SuccessionFlow { item: "W", a: "a.o", b: "b.i", … })
+/// succession_flow_ends("succession flow f;", "f", "", Some(3))               → None
+/// ```
+fn succession_flow_ends(
+    n: &SyntaxNode,
+    name: String,
+    ty: String,
+    usage: Option<usize>,
+) -> Option<RelKind> {
+    let RelKind::Flow { item, a, b, .. } = flow_ends(n, String::new(), String::new(), None)? else {
+        return None;
+    };
+    Some(RelKind::SuccessionFlow {
+        item,
+        a,
+        b,
         name,
         ty,
         usage,

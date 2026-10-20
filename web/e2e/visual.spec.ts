@@ -26,6 +26,7 @@ test.describe("UI: 図", () => {
     ["ibd", "内部ブロック図"],
     ["behavior", "振る舞い"],
     ["seq", "シーケンス"],
+    ["afv", "アクションの流れ"],
     ["all", "すべて"],
   ];
   for (const [view, label] of views) {
@@ -183,6 +184,24 @@ async function openScriptProject(page: Page, plugins: Record<string, unknown>, f
 }
 
 const scenes: Scene[] = [
+  {
+    title: "F-VIEW-7: アクションの流れ図（ActionFlowView、8.2.3.17 の記号）",
+    shot: "action-flow",
+    act: async (page) => {
+      await page.locator("#ed").fill(
+        "package Kettle {\n    item def Water;\n    action def Boil {\n        first start;\n        then action fill;\n        then fork split;\n" +
+          "        then heat;\n        then warmCup;\n        action heat;\n        action warmCup;\n        first heat then ready;\n" +
+          "        first warmCup then ready;\n        join ready;\n        then decide check;\n        if temperature >= 100 then notify;\n" +
+          "        else heat;\n        action notify send Done() to user;\n        then accept ack : Water;\n        then done;\n" +
+          "        succession flow of Water from fill to heat;\n    }\n    view boilFlow : ActionFlowView { expose Kettle::Boil; }\n}\n",
+      );
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="boilFlow"]').click();
+      await expect(page.locator('#canvas [data-key="a:done"]')).toBeVisible();
+      return [page.locator("#wrap")];
+    },
+  },
   {
     title: "F-VIEW-9: package を枠として描いた保存された図",
     shot: "package-frame",

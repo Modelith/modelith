@@ -103,8 +103,8 @@ package ModelithRequirements {
         }
 
         // ---- ビュー ------------------------------------------------
-        requirement def <'F-VIEW-1'> SevenViewsReq {
-            doc /* トレーサビリティ・構造・制御ループ・内部ブロック図・振る舞い・シーケンス・すべて、の 7 つのビューを持つ */
+        requirement def <'F-VIEW-1'> BuiltInViewsReq {
+            doc /* トレーサビリティ・構造・制御ループ・内部ブロック図・振る舞い・シーケンス・アクションの流れ・すべて、の 8 つのビューを持つ */
         }
         requirement def <'F-VIEW-2'> ViewTabsReq {
             doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する */
@@ -118,7 +118,7 @@ package ModelithRequirements {
                    フォルダを開けないブラウザでは、保存でモデルと配置ファイルを両方ダウンロードし、開くときに 2 つを一緒に選べば配置も戻る */
         }
         requirement def <'F-VIEW-7'> StandardViewReq {
-            doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・StateTransitionView・SequenceView）から決める（ADR-0005）。
+            doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・ActionFlowView・StateTransitionView・SequenceView）から決める（ADR-0005）。
                    expose は要素（A）・中身（A::*）・入れ子すべて（A::**、A::*::**）と、[...] の絞り込みを扱い、filter は @メタクラス と @メタデータ で絞り込む。
                    render の asTreeDiagram・asInterconnectionDiagram は図の種類より優先する。扱えない図の種類・描き方・絞り込みは、黙って捨てずに問題一覧で知らせる */
         }
@@ -291,7 +291,7 @@ package ModelithRequirements {
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
         #derivation dependency from ParseParityReq to EditBothWaysNeed;
-        #derivation dependency from SevenViewsReq to ViewsNeed;
+        #derivation dependency from BuiltInViewsReq to ViewsNeed;
         #derivation dependency from ViewTabsReq to ViewsNeed;
         #derivation dependency from LayoutReq to ViewsNeed;
         #derivation dependency from UnsavedLayoutReq to SafetyNeed;
@@ -420,7 +420,7 @@ package ModelithRequirements {
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
         satisfy ParseParityReq by Core;
-        satisfy SevenViewsReq by DiagramUI;
+        satisfy BuiltInViewsReq by DiagramUI;
         satisfy ViewTabsReq by DiagramUI;
         satisfy LayoutReq by DiagramUI;
         satisfy UnsavedLayoutReq by Workspace;
@@ -499,7 +499,7 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。ただし誤った表示の修正と alpha.7 以降に読むようにした構文のケースは、Rust だけで動かす（ADR-0015）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般の図に、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手）。期待値は仕様から手で書く（ADR-0013）。TS と Rust の両方のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。ただし誤った表示の修正と alpha.7 以降に読むようにした構文のケースは、Rust だけで動かす（ADR-0015）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般の図に、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクションの流れ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。export.test.ts：アクションの流れ図の draw.io の図形と線 */
             objective {
                 verify StandardViewReq;
                 verify PackageFrameReq;
@@ -507,7 +507,7 @@ package ModelithRequirements {
             }
         }
         verification def RustSyntaxTest {
-            doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・依存の相手の並び・接続の端（2 項・n 項・bind・allocate）・種類のキーワードの無い individual・ロスレス・途中で切った入力や深い入れ子でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置・接続・結び付け・割り当て・フローの宣言と関係・値の書き方（:=・default）・コメントの本文と注釈する相手・別の言語での表し方の言語と本文・individual）。web/src/core/rust.test.ts：コアが失敗しても例外を投げずに知らせる。ADR-0015 */
+            doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・依存の相手の並び・接続の端（2 項・n 項・bind・allocate）・種類のキーワードの無い individual・継起の端とガード・succession flow・アクションの節（制御の節・send・accept・assign・terminate・if・while・loop・for）とその引数と本体・ロスレス・途中で切った入力や深い入れ子でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置・接続・結び付け・割り当て・フローの宣言と関係・値の書き方（:=・default）・コメントの本文と注釈する相手・別の言語での表し方の言語と本文・individual・書いた語を種類にしたアクションの節・if と while の条件と本体（else の本体）・直前の要素から引く継起とガード・順序付きの流れ）。web/src/core/rust.test.ts：コアが失敗しても例外を投げずに知らせる。ADR-0015 */
             objective {
                 verify NoSilentDropReq;
                 verify ProblemsReq;
@@ -515,7 +515,7 @@ package ModelithRequirements {
             }
         }
         verification def RustModelTest {
-            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定は比べない）。ADR-0016 */
+            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定は比べない）。ADR-0016 */
             objective {
                 verify ParseParityReq;
                 verify ProblemsReq;
@@ -526,7 +526,7 @@ package ModelithRequirements {
             }
         }
         verification def RustEditTest {
-            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
+            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
             objective {
                 verify DiagramToTextReq;
                 verify RenameReq;
@@ -589,12 +589,12 @@ package ModelithRequirements {
             }
         }
         verification def ViewsE2E {
-            doc /* web/e2e/views.spec.ts：7 つのビュー・テキストの view（一般の図の特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般の図のメモとその削除・インスペクタのメモと別の言語での表し方を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
+            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般の図の特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般の図のメモとその削除・インスペクタのメモと別の言語での表し方、アクションの流れ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（Chromium で操作） */
             objective {
                 verify CreateViewReq;
                 verify StandardViewReq;
                 verify NoSilentDropReq;
-                verify SevenViewsReq;
+                verify BuiltInViewsReq;
                 verify ViewTabsReq;
                 verify CanvasReq;
                 verify TextToDiagramReq;
@@ -649,11 +649,11 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクションの流れ図（ActionFlowView）・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
-                verify SevenViewsReq;
+                verify BuiltInViewsReq;
                 verify NarrowScreenReq;
                 verify LookReq;
                 verify CanvasReq;

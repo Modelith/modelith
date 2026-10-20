@@ -1,6 +1,7 @@
 // 右クリック（長押し）メニュー。
 
 import type { ModelEdge, ModelNode } from "../core";
+import { flowName } from "./action-flow";
 import { local, placeUsageAt, fit, toCanvas } from "./canvas";
 import { $, closest, esc } from "./dom";
 import type { Pin } from "./geometry";
@@ -10,6 +11,7 @@ import { openEntry, openTarget, PALETTE, placeTool, selectEntry, setTab } from "
 import { DIR_LABEL, PINOPS, pinsFor } from "./pins";
 import { highlight, render, scrollEditorTo } from "./render";
 import { clearSel, S } from "./state";
+import { kindLabel } from "./labels";
 import { kindIcon } from "./svg";
 import { relayout, toast } from "./sync";
 import { CC, edgeById, nodeByKey, phaseLabel } from "./views";
@@ -116,6 +118,7 @@ function itemsForNode(n: ModelNode): CtxItem[] {
     return items;
   }
   if (n.note) return itemsForNote(n);
+  if (n.flow) return itemsForFlowNode(n);
   items.push({ head: `«${n.kind}» ${n.name}` }, {
     label: "テキストで見る",
     act: () => {
@@ -156,6 +159,28 @@ function itemsForNote(n: ModelNode): CtxItem[] {
     { sep: true },
     { label: "メモを削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } },
   ];
+}
+
+/**
+ * アクションの流れの図の要素（8.2.3.17）の上で開くメニューの項目を作る。テキストで見る・名前を変更・順序の線を追加・削除を並べる。
+ * 開始・終了はテキストに宣言が無いので、順序の線の追加だけにする（終了からは線を引けないので何も並べない）。
+ *
+ * @param n アクションの流れの図の要素
+ * @returns メニューの項目
+ * @example
+ * itemsForFlowNode(heat).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["アクション heat", "テキストで見る", "名前を変更", "順序の線を追加…", "—", "削除"]
+ * itemsForFlowNode(start).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["開始", "順序の線を追加…"]
+ */
+function itemsForFlowNode(n: ModelNode): CtxItem[] {
+  const implicit = n.kind === "start" || n.kind === "done";
+  const items: CtxItem[] = [{ head: implicit || !n.name ? flowName(n) : `${kindLabel(n.kind)} ${n.name}` }];
+  if (!implicit) items.push({ label: "テキストで見る", act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } });
+  if (!implicit && n.name) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } });
+  if (n.kind !== "done") items.push({ label: "順序の線を追加…", act: () => { selectOnly(n.key); act("connect"); } });
+  if (!implicit) items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  return items;
 }
 
 /**
@@ -230,6 +255,7 @@ function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
 /**
  * 図の何も無いところで開くメニューの項目を作る。その位置に要素（内部ブロック図・シーケンス図では、
  * 部品定義を 12 個までの部品・ライフライン）を置く項目と、すべて選択・並べ直す・全体を表示を並べる。
+ * アクションの流れの図では、置く項目を出さない（要素はテキストで書く）。
  *
  * @param lx 開いた位置の x（図の枠の中の座標、px）
  * @param ly 開いた位置の y（図の枠の中の座標、px）
@@ -247,12 +273,13 @@ function itemsForCanvas(lx: number, ly: number): CtxItem[] {
     for (const n of S.M.nodes.filter((x) => x.kind === "part def").slice(0, 12)) {
       items.push({ label: n.name, icon: kindIcon("part"), act: () => { S.tool = { usage: n.name }; placeTool(lx, ly); } });
     }
-  } else {
+  } else if (S.view !== "afv") {
+    // アクションの流れの図には、置く項目を出さない（要素はテキストで書く）
     items.push({ head: "ここに要素を追加" });
     for (const [k, l] of PALETTE[S.view] ?? PALETTE["all"] ?? []) items.push({ label: l, icon: kindIcon(k), act: () => { S.tool = { kind: k }; placeTool(lx, ly); } });
   }
+  if (items.length) items.push({ sep: true });
   items.push(
-    { sep: true },
     { label: "すべて選択", act: () => { setSelection(CC().nodes.map((n) => n.key)); render(); highlight(); renderInspector(); } },
     { label: "この図を並べ直す", act: () => { relayout(); fit(); toast("この図を並べ直しました"); } },
     { label: "全体を表示", act: fit },

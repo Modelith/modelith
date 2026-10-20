@@ -4,6 +4,7 @@
 //! 一致は web の golden.test.ts・spec.test.ts が TS と Rust の両方で確かめる。
 //! SysML v2 の意味（名前解決・継承など）に沿った作り直しは、0.1.0 の後に行う。
 
+mod flows;
 mod names;
 mod types;
 mod views;
@@ -246,7 +247,7 @@ fn has_word(mods: &str, w: &str) -> bool {
 }
 
 /// 解析結果からモデルを作る。暫定コアの `build`（`web/src/core/model.ts`）と同じ振る舞い。
-/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → 解析の問題 → フェーズ → view の順に組み立てる。
+/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → アクションの流れ → 解析の問題 → フェーズ → view の順に組み立てる。
 ///
 /// # 引数
 ///
@@ -273,6 +274,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.specializations();
     b.edge_ids();
     b.notes();
+    b.action_flows();
     b.parse_problems();
     b.phases();
     views::build_views(&mut b);
@@ -1029,6 +1031,8 @@ impl<'a> Builder<'a> {
                         self.add_edge("allocate", a, b, dependency_label(&u.name, "allocate"), s);
                     }
                 }
+                // 継起と順序付きの流れは一般の図の線にしない（アクションの流れの図に描く）
+                RelKind::Succession { .. } | RelKind::SuccessionFlow { .. } => {}
                 RelKind::Transition { from, ev, to } => {
                     if let Some(a) = self.node_ancestor(pe) {
                         let ev = if ev.is_empty() {

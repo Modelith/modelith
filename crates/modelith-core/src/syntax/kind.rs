@@ -187,8 +187,38 @@ syntax_kinds! {
     REFERENCE_USAGE,
     MESSAGE_USAGE,
     TRANSITION_USAGE,
-    /// `first a then b;`・`then b;`（SuccessionAsUsage・TargetSuccessionMember）。
+    /// `first a then b;`・`then b;`・`succession s first a then b;`・`first a if g then b;`・`if g then b;`・`else b;`・
+    /// `first start;`（SuccessionAsUsage・TargetSuccessionMember・GuardedSuccession・DefaultTargetSuccession・InitialNodeMember）。
     SUCCESSION_AS_USAGE,
+    /// `succession flow f from a.x to b.y;`（SuccessionFlowUsage）。
+    SUCCESSION_FLOW_USAGE,
+    /// 継起のガード `if g`（GuardExpressionMember）。`first a if g then b;`・`if g then b;` の中に置く。
+    GUARD_EXPRESSION,
+    /// `fork f;`（ForkNode）。
+    FORK_NODE,
+    /// `join j;`（JoinNode）。
+    JOIN_NODE,
+    /// `merge m;`（MergeNode）。
+    MERGE_NODE,
+    /// `decide d;`（DecisionNode）。
+    DECISION_NODE,
+    /// `send x via p to y;`・`action s send x;`（SendNode）。
+    SEND_NODE,
+    /// `accept e : E via p;`・`action a accept E;`（AcceptNode）。
+    ACCEPT_NODE,
+    /// `assign a.x := 1;`（AssignmentNode）。
+    ASSIGNMENT_NODE,
+    /// `terminate;`・`terminate p;`（TerminateNode）。
+    TERMINATE_NODE,
+    /// `if g { … } else { … }`（IfNode）。本体（`BODY`）を 2 つまで持ち、`else if` は中の `IF_NODE` にする。
+    IF_NODE,
+    /// `while g { … } until c;`・`loop { … }`（WhileLoopNode）。
+    WHILE_LOOP_NODE,
+    /// `for x : T in xs { … }`（ForLoopNode）。
+    FOR_LOOP_NODE,
+    /// アクションの節の引数（NodeParameterMember・PayloadParameterMember・ForVariableDeclarationMember。
+    /// 送るもの・受けるもの・送る先・代入の相手と値・繰り返しの変数）。
+    NODE_PARAMETER,
     /// `bind a = b;`（BindingConnectorAsUsage）。
     BINDING_CONNECTOR_AS_USAGE,
     /// `entry;`・`entry action a;`・`exit`・`do`（StateSubactionMembership）。
