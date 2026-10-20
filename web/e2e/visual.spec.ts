@@ -1,6 +1,6 @@
 // UI テスト（見た目の回帰）。画面を撮って基準画像（visual.spec.ts-snapshots/）と比べる。
 // 差があれば HTML レポートに「基準・今回・差分」の 3 枚が並ぶ。意図した変更なら基準を更新する（docs/development/testing.md）。
-import { editorText, expect, nodeKeys, openApp, pickDirNext, putBrowserPlugin, putFiles, test, typeAtEnd } from "./fixtures";
+import { editorText, expect, nodeKeys, openApp, openReadOnlyText, pickDirNext, putBrowserPlugin, putFiles, replaceText, test, typeAtEnd, wordCenter } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 
 // 画素はフォントや描画の設定で変わるので、基準のブラウザ（scripts/e2e.sh が Docker で起動する）でだけ比べる
@@ -127,8 +127,31 @@ test.describe("UI: 画面全体", () => {
       // Assert
       await expect(page.locator(".tabadd .pop")).toHaveScreenshot("tab-menu-narrow.png");
     });
+
+    for (const scheme of ["light", "dark"] as const) {
+      test.describe(`語の説明（${scheme === "light" ? "明るい" : "暗い"}配色）`, () => {
+        test.use({ colorScheme: scheme, hasTouch: true });
+        test(`F-EDIT-9・F-EDIT-10・Q-2: 幅 390px の読み取り専用のテキストで、ダブルタップした語の説明（${scheme === "light" ? "明るい" : "暗い"}配色）`, async ({ page }) => {
+          // Arrange
+          await openReadOnlyText(page, WORDS_MODEL);
+          const p = await wordCenter(page, "satisfy", 3, 1);
+          // Act
+          await page.touchscreen.tap(p.x, p.y);
+          await page.touchscreen.tap(p.x, p.y);
+          await expect(page.locator("#wordLine b")).toHaveText("満たす（satisfy）");
+          await settle(page);
+          // Assert
+          await expect(page).toHaveScreenshot(`words-narrow${scheme === "dark" ? "-dark" : ""}.png`);
+        });
+      });
+    }
   });
 });
+
+/** 語の説明の UI テストに使うモデル。 */
+const WORDS_MODEL =
+  "package WaterSupply {\n    port def WaterPort;\n    part def Pump {\n        attribute flowRate : Real;\n        port outlet : WaterPort;\n    }\n" +
+  "    requirement def <'R-1'> SupplyReq {\n        doc /* 毎分 20 L の水を送る */\n    }\n    part pump : Pump;\n    satisfy SupplyReq by pump;\n}\n";
 
 /** 部品の見た目の場面。操作して、撮る範囲を返す。 */
 interface Scene {
@@ -220,6 +243,17 @@ const LAMP_STATES =
   "    view lampStates : StateTransitionView { expose Lamp::LampStates; }\n}\n";
 
 const scenes: Scene[] = [
+  {
+    title: "F-EDIT-9: テキストの語にマウスを乗せたときのツールチップ",
+    shot: "word-tooltip",
+    act: async (page) => {
+      await replaceText(page, WORDS_MODEL);
+      const p = await wordCenter(page, "part def", 1, 1);
+      await page.mouse.move(p.x, p.y);
+      await expect(page.locator("#wordTip")).toBeVisible();
+      return [page.locator(".textpane")];
+    },
+  },
   {
     title: "F-VIEW-7: アクティビティ図（ActionFlowView、8.2.3.17 の記号）",
     shot: "action-flow",

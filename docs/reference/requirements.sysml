@@ -700,7 +700,7 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
@@ -716,6 +716,8 @@ package ModelithRequirements {
                 verify PhaseReq;
                 verify TraceGapReq;
                 verify SourceOfferReq;
+                verify WordHelpReq;
+                verify PhoneTextReq;
             }
         }
         verification def LayoutTest {
