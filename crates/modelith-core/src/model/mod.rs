@@ -946,8 +946,17 @@ impl<'a> Builder<'a> {
                     };
                     let pa: Vec<&str> = ra.split('.').collect();
                     let pb: Vec<&str> = rb.split('.').collect();
-                    let a = self.node_for(self.resolve(pa[0], pe));
-                    let b = self.node_for(self.resolve(pb[0], pe));
+                    let (ea, eb) = (self.resolve(pa[0], pe), self.resolve(pb[0], pe));
+                    if ea.is_none() || eb.is_none() {
+                        let who = if ea.is_none() { ra } else { rb };
+                        self.problem(
+                            r.start,
+                            format!("線の接続先「{who}」が見つかりません（{rel}）"),
+                            None,
+                        );
+                        continue;
+                    }
+                    let (a, b) = (self.node_for(ea), self.node_for(eb));
                     // 接続と名前付きのフローは、使用の範囲（本体を含む）を指す
                     let usage = match &r.kind {
                         RelKind::Connect { usage, .. } => Some(*usage),
@@ -958,27 +967,23 @@ impl<'a> Builder<'a> {
                         start: p.entries[u].start,
                         end: p.entries[u].end,
                     });
-                    match (a, b) {
+                    // 2 段目のポート（`a.p` の `p`）は port_end が確かめるので、連鎖は 3 段目から確かめる。
+                    // 端はあるが一般ビューの要素でない（定義の中の型の無い部品など）ときは、線にせず（内部ブロック図に描く）、
+                    // 2 段目から部品の本体の中をたどって確かめる
+                    let checked = match (a, b) {
                         (Some(a), Some(b)) => {
                             let ed = self.add_edge("flow", a, b, label, s);
                             self.model.edges[ed].rel = Some(ri);
                             self.port_end(ed, a, pa.get(1).copied(), true, r.start);
                             self.port_end(ed, b, pb.get(1).copied(), false, r.start);
-                            // 3 段目から先（`a.b.p` の `p`）も、部品の型の中をたどって確かめる。2 段目は port_end が確かめる
-                            for (head, x) in [(pa[0], ra), (pb[0], rb)] {
-                                if let Some(miss) = self.chain_miss(self.resolve(head, pe), x, 1) {
-                                    let msg = format!("線の接続先{miss}が見つかりません（{rel}）");
-                                    self.problem(r.start, msg, None);
-                                }
-                            }
+                            1
                         }
-                        _ => {
-                            let who = if a.is_none() { ra } else { rb };
-                            self.problem(
-                                r.start,
-                                format!("線の接続先「{who}」が見つかりません（{rel}）"),
-                                None,
-                            );
+                        _ => 0,
+                    };
+                    for (head, x) in [(ea, ra), (eb, rb)] {
+                        if let Some(miss) = self.chain_miss(head, x, checked) {
+                            let msg = format!("線の接続先{miss}が見つかりません（{rel}）");
+                            self.problem(r.start, msg, None);
                         }
                     }
                 }

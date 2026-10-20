@@ -1276,5 +1276,25 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(M.problems).toEqual([]);
       });
     });
+
+    describe("定義の中の型の無い部品を端にした接続（ConnectorEnd 8.2.2.13・FlowEnd 8.2.2.16）", () => {
+      it("part def S { part t; part e; connect t to e; flow from t to e; } は、端を見つけ、誤って「見つかりません」と言わない", () => {
+        // Arrange
+        const text = "package P { part def S { part t; part e; connect t to e; flow from t to e; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+
+      it("型の無い部品の本体に無い 2 段目は知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def S { part t { port o; } part e; flow from t.x to e; } }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["線の接続先「t.x」の「x」が見つかりません（flow）"]);
+      });
+    });
   });
 }

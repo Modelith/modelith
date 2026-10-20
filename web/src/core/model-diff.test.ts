@@ -6,6 +6,7 @@
 // 標準ライブラリの型の判定も、Rust は名前の一覧と import で決める（`…Value` で終わる名前は、ISQ などを import したときだけ標準）。
 // alpha.9 から、Rust は遷移の相手が見つからないこと、特徴の連鎖（a.b.c）の 2 段目から先が見つからないこと、
 // シナリオの順序の相手が見つからないことと順序の循環を問題にする（暫定コアはしない）。
+// alpha.10 から、Rust は図の要素でない接続・流れの端（定義の中の型の無い部品など）を「見つかりません」としない。
 import { describe, expect, it } from "vitest";
 import { build as tsBuild } from "./model";
 import { build as rustBuild, parse } from "./rust";
@@ -124,6 +125,21 @@ function isSequenceMessage(msg: string): boolean {
   return /^「順序」の相手「[^「」]*」が見つかりません|^シナリオ「[^「」]*」の順序が循環しています/.test(msg);
 }
 
+/**
+ * 「線の接続先「t」が見つかりません」のような、接続・流れの端の最初の段が見つからない問題か。alpha.10 から、Rust は
+ * 端が一般ビューの要素でなくても（定義の中の型の無い部品など）見つかれば問題にしない（暫定コアは図の要素でない端を
+ * 「見つかりません」とし、2 つ目の端を確かめない）ので、行の組み合わせや途中まで書いた形では暫定コアと違ってよい。
+ *
+ * @param msg 問題の文
+ * @returns 接続・流れの端の最初の段が見つからないという問題なら true
+ * @example
+ * isEndMessage("線の接続先「t.p」が見つかりません（flow）")          // → true
+ * isEndMessage("線の接続先「e.cyl.x」の「x」が見つかりません（connect）") // → false（連鎖の途中の段）
+ */
+function isEndMessage(msg: string): boolean {
+  return /^線の接続先「[^「」]*」が見つかりません（(?:connect|flow)）$/.test(msg);
+}
+
 /** 決まった種から作る乱数（テストを毎回同じにする）。 */
 function random(seed: number): () => number {
   let s = seed >>> 0;
@@ -144,7 +160,7 @@ function snapshot(P: ParseResult, M: Model): unknown {
     edges: M.edges.map((e) => ({ ...e, rel: e.rel ? P.rels.indexOf(e.rel) : null })),
     views: M.views.map((v) => ({ ...v, entry: ref(v.entry), targets: v.targets.map(ref), frames: v.frames.map((f) => ({ ...f, entry: ref(f.entry) })) })),
     problems: M.problems
-      .filter((p) => !isValueTypeMessage(p.msg) && !isTransitionMessage(p.msg) && !isChainMessage(p.msg) && !isSequenceMessage(p.msg))
+      .filter((p) => !isValueTypeMessage(p.msg) && !isTransitionMessage(p.msg) && !isChainMessage(p.msg) && !isSequenceMessage(p.msg) && !isEndMessage(p.msg))
       .map((p) => ({ ...p, msg: unqualifiedTypeMessage(p.msg) })),
     phases: M.phases,
     phaseEnum: M.phaseEnum,

@@ -999,6 +999,34 @@ fn keyword_less_feature_with_a_missing_type_is_reported() {
 }
 
 #[test]
+fn untyped_parts_in_a_definition_can_be_connection_ends() {
+    // Arrange（ConnectorEnd、8.2.2.13：定義の中の型の無い部品。一般ビューの要素ではないので線にしない）
+    let text = "package P { part def S { part t { port o; } part e; connect t to e; flow from t.o to e; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert!(m.edges.iter().all(|e| e.kind != "flow"));
+}
+
+#[test]
+fn missing_feature_of_an_untyped_part_end_is_reported() {
+    // Arrange（異常系：型の無い部品の本体に無い 2 段目・どこにも無い端）
+    let text = "package P { part def S { part t { port o; } part e; flow from t.x to e; connect t to nope; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "線の接続先「t.x」の「x」が見つかりません（flow）",
+            "線の接続先「nope」が見つかりません（connect）"
+        ]
+    );
+}
+
+#[test]
 fn dependency_draws_a_line_per_client_and_supplier_with_its_label() {
     // Arrange（Dependency、8.2.2.3・8.2.3.3 の binary-dependency：名前・メタデータ・複数の相手）
     let text = "package P { part def A; part def B; part def C; metadata def trace; \
