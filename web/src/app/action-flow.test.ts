@@ -1,9 +1,10 @@
 // アクションの流れの図（ActionFlowView、8.2.3.17）の中身と、その描き方。要素のキーと線の ID は、Rust のコアが決めたものを使う（ADR-0016）。
 import { describe, expect, it } from "vitest";
 import { build, parse, type Model, type ModelNode } from "../core";
-import { defaultFlowContext, flowBodyLines, flowContentOf, flowContexts, flowDetail, flowLayers, flowShape } from "./action-flow";
+import { canSucceed, defaultFlowContext, flowBodyLines, flowContentOf, flowContexts, flowDetail, flowLayers, flowName, flowShape } from "./action-flow";
 import { autoPlace, boxesOf, computeRoutes, compartment, flowSize, nodeW, W, type NodeBox } from "./geometry";
 import { kindLabel } from "./labels";
+import { relOptions } from "./relations";
 import { emptyView } from "./layout";
 import { CV, edgeStroke, kindIcon, svgMarkup } from "./svg";
 
@@ -268,5 +269,44 @@ describe("アクションの流れの要素の名前とアイコン（ADR-0014�
     // Assert
     expect(icon).toContain('fill="var(--k-beh-bg)"');
     expect(icon).toContain(">Fk</text>");
+  });
+});
+
+describe("canSucceed・relOptions・flowName（図から順序の線を引く）", () => {
+  const FLOW = "package P { action def A { first start; then action a; then action b; send S() to b; then done; } }";
+
+  it("名前のある要素どうしは、順序の線だけを引ける", () => {
+    // Arrange
+    const { M, c } = setup(FLOW, "A");
+    const { nodes } = flowContentOf(M, c);
+    // Act
+    const opts = relOptions(nodeOf(nodes, "a:a"), nodeOf(nodes, "a:b"));
+    // Assert
+    expect(opts).toEqual([{ rel: "succession", label: "この後に実行する（順序 succession）" }]);
+  });
+
+  it.each([
+    ["a:b", "a:start", "開始へ向かう"],
+    ["a:done", "a:a", "終了から始まる"],
+    ["a:a", "a:#1", "名前の無い要素へ"],
+    ["a:a", "a:a", "同じ要素へ"],
+  ])("%s から %s へは引けない（異常系：%s）", (from, to) => {
+    // Arrange
+    const { M, c } = setup(FLOW, "A");
+    const { nodes } = flowContentOf(M, c);
+    // Act
+    const ok = canSucceed(nodeOf(nodes, from), nodeOf(nodes, to));
+    // Assert
+    expect(ok).toBe(false);
+  });
+
+  it("開始・終了・名前の無い要素は、種類の画面の言葉で出す", () => {
+    // Arrange
+    const { M, c } = setup(FLOW, "A");
+    const { nodes } = flowContentOf(M, c);
+    // Act
+    const names = nodes.map(flowName);
+    // Assert
+    expect(names).toEqual(["開始", "a", "b", "送信", "終了"]);
   });
 });

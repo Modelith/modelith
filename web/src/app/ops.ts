@@ -3,6 +3,7 @@
 import type { Entry, ModelEdge, ModelNode } from "../core";
 import { ask } from "./dialog";
 import { perform } from "./intent";
+import { flowName } from "./action-flow";
 import { kindLabel } from "./labels";
 import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
@@ -211,7 +212,7 @@ export const OPS = {
     S.sel = null;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(n.note ? "メモを削除しました" : `「${n.name}」を削除しました`);
+    toast(n.note ? "メモを削除しました" : `「${n.flow ? flowName(n) : n.name}」を削除しました`);
   },
 
   /**
@@ -238,7 +239,7 @@ export const OPS = {
    *
    * @param a 関係の元の要素
    * @param b 関係の先の要素
-   * @param rel 関係の種類（`comp`・`satisfy`・`verify`・`frame`・`derive`・`flow`。relOptions が返したもの）
+   * @param rel 関係の種類（`comp`・`satisfy`・`verify`・`frame`・`derive`・`flow`・`succession`。relOptions が返したもの）
    */
   async connect(a: ModelNode, b: ModelNode, rel: RelKind): Promise<void> {
     const wire = S.wire;
@@ -251,6 +252,7 @@ export const OPS = {
       frame: `「${a.name} が関心事 ${b.name} を扱う」`,
       derive: `「${a.name} を ${b.name} から導出する」`,
       flow: `「${a.name} から ${b.name} への流れ」`,
+      succession: `「${flowName(a)} の後に ${flowName(b)}」の順序`,
     }[rel];
     if (!r) return;
     const before = new Set([...S.M.edges, ...CC().edges].map((e) => e.id));

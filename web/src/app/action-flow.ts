@@ -2,6 +2,7 @@
 // 要素のキーと線の ID は Rust のコア（crates/modelith-core/src/model/flows.rs）が決めたもの。図の操作（edit/flow.rs）も同じものを探す（ADR-0016）。
 
 import type { Entry, Model, ModelEdge, ModelNode } from "../core";
+import { kindLabel } from "./labels";
 
 /** アクションの流れの図に描く要素と線。 */
 export interface FlowContent {
@@ -163,3 +164,30 @@ export function flowLayers(list: readonly ModelNode[], edges: readonly ModelEdge
   }
   return layer;
 }
+
+/**
+ * アクションの流れの図の要素を、画面に出す名前にする。開始・終了と名前の無い要素は、種類の画面の言葉にする（ADR-0014）。
+ *
+ * @param n アクションの流れの図の要素
+ * @returns 画面に出す名前
+ * @example
+ * flowName(action heat)      // → "heat"
+ * flowName(start)            // → "開始"
+ * flowName(send S() to b)    // → "送信"（名前が無い）
+ */
+export const flowName = (n: ModelNode): string => (n.kind === "start" || n.kind === "done" || !n.name ? kindLabel(n.kind) : n.name);
+
+/**
+ * 順序の線（継起、8.2.2.14）を a から b へ引けるか。両方がアクションの流れの図の別の要素で、終了から始まらず、開始へ向かわず、
+ * 名前の無い要素（テキストで参照できない）を含まないときに引ける。
+ *
+ * @param a 線の元
+ * @param b 線の先
+ * @returns 引けるなら true
+ * @example
+ * canSucceed(start, heat)  // → true
+ * canSucceed(heat, start)  // → false（開始へは向かわない）
+ * canSucceed(heat, send)   // → false（名前の無い要素）
+ */
+export const canSucceed = (a: ModelNode, b: ModelNode): boolean =>
+  !!a.flow && !!b.flow && a.key !== b.key && a.kind !== "done" && b.kind !== "start" && !!a.name && !!b.name;

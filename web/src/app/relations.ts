@@ -1,10 +1,11 @@
 // 2 つの要素の間に追加できる関係を決める。
 
 import type { Entry, ModelNode } from "../core";
+import { canSucceed } from "./action-flow";
 import { kindLabel } from "./labels";
 import { S } from "./state";
 
-export type RelKind = "comp" | "satisfy" | "verify" | "frame" | "derive" | "flow";
+export type RelKind = "comp" | "satisfy" | "verify" | "frame" | "derive" | "flow" | "succession";
 
 /** 定義の種類に対応する、部品として持つときのキーワード。 */
 export const KW_FOR: Record<string, string> = {
@@ -37,7 +38,8 @@ export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: E
 
 /**
  * a から b へ追加できる関係の一覧を作る。接続の案内（インスペクタ）で選べる候補になる。
- * 使用（usage）どうしなら flow だけ、ライフラインかメモを含むなら無し。定義どうしなら持つ・満たす・検証する・扱う・導出する・flow から合うものを並べる。
+ * 使用（usage）どうしなら flow だけ、ライフラインかメモを含むなら無し。アクションの流れの図の要素どうしなら順序（succession）だけ（canSucceed）。
+ * 定義どうしなら持つ・満たす・検証する・扱う・導出する・flow から合うものを並べる。
  *
  * @param a 関係の元の要素（未選択なら null）
  * @param b 関係の先の要素（未選択なら null）
@@ -45,12 +47,15 @@ export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: E
  * @example
  * // a が part def、b が requirement def のとき
  * relOptions(a, b) // → [{ rel: "comp", label: "要求として持つ" }, { rel: "satisfy", label: "要求を満たす «satisfy»" }]
+ * // アクションの流れの図で、heat から notify へ
+ * relOptions(heat, notify) // → [{ rel: "succession", label: "この後に実行する（順序 succession）" }]
  * relOptions(a, null) // → []
  */
 export function relOptions(a: ModelNode | null, b: ModelNode | null): { rel: RelKind; label: string }[] {
   const o: { rel: RelKind; label: string }[] = [];
   if (!a || !b) return o;
   if (a.usage || b.usage) return a.usage && b.usage && a.key !== b.key ? [{ rel: "flow", label: "信号・物理量を流す（flow）" }] : o;
+  if (a.flow || b.flow) return canSucceed(a, b) ? [{ rel: "succession", label: "この後に実行する（順序 succession）" }] : o;
   if (a.lifeline || b.lifeline || a.note || b.note) return o;
   const isReq = (n: ModelNode): boolean => /^requirement/.test(n.kind);
   if (a.isDef && b.isDef && a.key !== b.key && !["concern def", "item def", "port def"].includes(a.kind)) {
