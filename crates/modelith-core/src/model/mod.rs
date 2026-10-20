@@ -246,7 +246,7 @@ fn has_word(mods: &str, w: &str) -> bool {
 }
 
 /// 解析結果からモデルを作る。暫定コアの `build`（`web/src/core/model.ts`）と同じ振る舞い。
-/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 線の ID → 解析の問題 → フェーズ → view の順に組み立てる。
+/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → 解析の問題 → フェーズ → view の順に組み立てる。
 ///
 /// # 引数
 ///
@@ -270,6 +270,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.ports();
     b.usages();
     b.relations();
+    b.specializations();
     b.edge_ids();
     b.parse_problems();
     b.phases();
@@ -658,7 +659,7 @@ impl<'a> Builder<'a> {
     ///
     /// # 引数
     ///
-    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`）
+    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`・`dependency`・`specialize`・`subset`・`redefine`・`reference`）
     /// - `from`・`to`：線の両端の図の要素の番号（`model.nodes` の添字。範囲外なら panic する）
     /// - `label`：線のラベル（無ければ空文字列）
     /// - `src`：線のもとになった文の範囲（UTF-16 のオフセット）
@@ -695,6 +696,7 @@ impl<'a> Builder<'a> {
             rel: None,
             from_port: None,
             to_port: None,
+            end_label: None,
         });
         self.model.edges.len() - 1
     }
@@ -787,7 +789,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 型付けの線（defined）と、部品として持つ線（comp）。見つからない型は問題にする。
+    /// 型付けの線（defined）と、部品として持つ線（comp。部品の側の端に多重度と飾りを書く）。見つからない型は問題にする。
     /// 標準ライブラリの型・`subject`・標準ビュー定義を型にした view は、型が見つからなくても問題にしない（モデルの `edges`・`problems` を書き換える）。
     fn usages(&mut self) {
         let entries = self.entries;
@@ -824,12 +826,13 @@ impl<'a> Builder<'a> {
                 (COMP_KINDS.contains(&u.kind.as_str()), pn, tn)
                 && u.pe != Some(t)
             {
-                self.add_edge("comp", pn, tn, u.name.clone(), src);
+                let ed = self.add_edge("comp", pn, tn, u.name.clone(), src);
+                self.model.edges[ed].end_label = end_label(u);
             }
         }
     }
 
-    /// 関係（satisfy・verify・frame・flow・connect・derivation・message・transition）を線や遷移にする。
+    /// 関係（satisfy・verify・frame・flow・connect・derivation・dependency・message・transition）を線や遷移にする。
     /// 相手が見つからない関係は問題にする（モデルの `edges`・`nodes` の `trans`・`problems` を書き換える）。暫定コアの `build` の関係の処理と同じ。
     fn relations(&mut self) {
         let p = self.p;
@@ -977,7 +980,63 @@ impl<'a> Builder<'a> {
                         self.model.nodes[a].trans.push(format!("{from} → {to}{ev}"));
                     }
                 }
-                RelKind::Dependency { .. } => {}
+                RelKind::Dependency {
+                    a: ra,
+                    b: rb,
+                    name,
+                    meta,
+                } => {
+                    let (ea, eb) = (self.resolve(ra, pe), self.resolve(rb, pe));
+                    if ea.is_none() || eb.is_none() {
+                        let who = if ea.is_none() { ra } else { rb };
+                        self.problem(
+                            r.start,
+                            format!("「依存」関係の相手「{who}」が見つかりません（dependency）"),
+                            None,
+                        );
+                        continue;
+                    }
+                    // 相手はあるが図の要素でない（package など）ときは、線にしない
+                    if let (Some(a), Some(b)) = (self.node_for(ea), self.node_for(eb))
+                        && a != b
+                    {
+                        self.add_edge("dependency", a, b, dependency_label(name, meta), src);
+                    }
+                }
+            }
+        }
+    }
+
+    /// 特殊化・部分集合・再定義・参照の線（8.2.3 の subclassification・subsetting・redefinition・reference-subsetting）。
+    /// 両端が図の要素のときだけ、特殊な側から一般な側へ引く（モデルの `edges` を書き換える）。定義の相手は定義として、
+    /// 使用の相手は持ち主から外へ（`a.b` は型の中へ）探す。図の要素でない使用（定義の中の特性）の関係は、線にしない。
+    /// 相手が見つからなくても問題にしない（標準ライブラリの定義や、継承した特性など、読んでいない相手が多いため）。
+    /// 線の範囲は、その相手だけを消す範囲にする（線を削除すると、その相手だけがテキストから消える）。
+    fn specializations(&mut self) {
+        let entries = self.entries;
+        for (i, e) in entries.iter().enumerate() {
+            let Some(&from) = self.node_of.get(&i) else {
+                continue;
+            };
+            for s in &e.specs {
+                let Some(kind) = spec_edge_kind(s.op) else {
+                    continue;
+                };
+                let target = if e.is_def {
+                    self.def_of(&s.path, e.pe)
+                } else {
+                    self.resolve(&s.target, e.pe)
+                };
+                let Some(&to) = target.and_then(|t| self.node_of.get(&t)) else {
+                    continue;
+                };
+                if to != from {
+                    let src = Span {
+                        start: s.start,
+                        end: s.end,
+                    };
+                    self.add_edge(kind, from, to, String::new(), src);
+                }
             }
         }
     }
@@ -1162,6 +1221,97 @@ impl<'a> Builder<'a> {
         for (pos, msg) in gaps {
             self.problem(pos, msg, Some("gap"));
         }
+    }
+}
+
+/// 依存の線のラベル（8.2.3.3 の binary-dependency の名前）。前に付けたメタデータは «キーワード» にして名前の前に書く。
+///
+/// # 引数
+///
+/// - `name`：依存の名前（無ければ空）
+/// - `meta`：前に付けたメタデータの名前（無ければ空）
+///
+/// # 戻り値
+///
+/// ラベル。名前もメタデータも無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// dependency_label("d", "trace") → "«trace» d"
+/// dependency_label("", "trace")  → "«trace»"
+/// dependency_label("", "")       → ""
+/// ```
+fn dependency_label(name: &str, meta: &str) -> String {
+    let keyword = (!meta.is_empty()).then(|| format!("«{meta}»"));
+    keyword
+        .into_iter()
+        .chain((!name.is_empty()).then(|| name.to_owned()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// 部品として持つ線の、部品の側の端に書く文字（8.2.3 の multiplicity と c-adornment）。
+/// 多重度の範囲（`[4]`）、`ordered`・`nonunique`、部分集合・再定義・参照の相手（`subsets a` など）を、この順に空白でつなぐ。
+///
+/// # 引数
+///
+/// - `e`：部品として持つ使用の宣言
+///
+/// # 戻り値
+///
+/// 端に書く文字。書くことが無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// end_label("part w : W[4];")                 → Some("[4]")
+/// end_label("part w : W[0..*] ordered :>> v;") → Some("[0..*] ordered redefines v")
+/// end_label("part w : W;")                    → None
+/// ```
+fn end_label(e: &Entry) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(m) = &e.multiplicity {
+        if !m.range.is_empty() {
+            parts.push(format!("[{}]", m.range));
+        }
+        if m.ordered {
+            parts.push("ordered".to_owned());
+        }
+        if m.nonunique {
+            parts.push("nonunique".to_owned());
+        }
+    }
+    for s in &e.specs {
+        parts.push(format!("{} {}", s.op, s.target));
+    }
+    (!parts.is_empty()).then(|| parts.join(" "))
+}
+
+/// 特殊化の種類（`Spec.op`）から、線の種類を決める。
+///
+/// # 引数
+///
+/// - `op`：特殊化の種類（`specializes` など）
+///
+/// # 戻り値
+///
+/// 線の種類。線にしない種類なら None。
+///
+/// # 例
+///
+/// ```text
+/// spec_edge_kind("specializes") → Some("specialize")
+/// spec_edge_kind("redefines")   → Some("redefine")
+/// spec_edge_kind("bogus")       → None
+/// ```
+fn spec_edge_kind(op: &str) -> Option<&'static str> {
+    match op {
+        "specializes" => Some("specialize"),
+        "subsets" => Some("subset"),
+        "redefines" => Some("redefine"),
+        "references" => Some("reference"),
+        _ => None,
     }
 }
 

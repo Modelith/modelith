@@ -38,7 +38,7 @@ export interface ViewContent {
 
 export const VIEWS: ViewDef[] = [
   { id: "trace", label: "トレーサビリティ", kinds: ["concern def", "requirement def", "requirement", "verification def", "analysis def"], pull: ["satisfy"], edges: ["satisfy", "verify", "frame", "comp", "defined", "derive"] },
-  { id: "structure", label: "構造", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined"], depth: true },
+  { id: "structure", label: "構造", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined", "specialize", "subset", "redefine", "reference"], depth: true },
   { id: "control", label: "制御ループ", kinds: ["constraint def", "calc def"], pull: ["flow"], edges: ["flow", "comp"] },
   { id: "ibd", label: "内部ブロック図" },
   { id: "behavior", label: "振る舞い", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },

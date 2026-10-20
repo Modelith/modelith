@@ -511,6 +511,18 @@ impl Ctx {
                 .push(v.to_owned());
             return None;
         }
+        // 依存（依存する側とされる側の組ごとに 1 つの関係にする。8.2.2.3）
+        if n.kind() == DEPENDENCY {
+            for kind in dependencies(n) {
+                self.out.rels.push(Rel {
+                    kind,
+                    pe,
+                    start,
+                    end,
+                });
+            }
+            return None;
+        }
         // 関係
         if let Some(kind) = relation(n, h) {
             self.out.rels.push(Rel {
@@ -644,6 +656,8 @@ impl Ctx {
                 render: None,
                 open: None,
                 close: None,
+                specs: self.specs(n, is_def),
+                multiplicity: multiplicity(n),
             };
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
@@ -701,6 +715,8 @@ impl Ctx {
                 render: None,
                 open: None,
                 close: None,
+                specs: Vec::new(),
+                multiplicity: None,
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -724,6 +740,59 @@ impl Ctx {
             });
         }
         None
+    }
+
+    /// 宣言の特殊化・部分集合・再定義・参照（8.2.2.6）を、相手ごとに書いた順に集める。
+    ///
+    /// 定義の `:>`・`specializes` は `specializes`、使用の `:>`・`specializes`・`subsets` は `subsets`、
+    /// `:>>`・`redefines` は `redefines`、`::>`・`references` は `references` にする。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：宣言の節
+    /// - `is_def`：定義か
+    ///
+    /// # 戻り値
+    ///
+    /// 相手ごとの `Spec`（範囲は UTF-16）。関係が無ければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// specs("part def B :> A, Q::C;", true) → [specializes A（範囲は "A, "）, specializes Q::C（範囲は ", Q::C"）]
+    /// specs("part b : B :> a;", false)      → [subsets a（範囲 " :> a"）]
+    /// specs("part c : C;", false)           → []
+    /// ```
+    fn specs(&self, n: &SyntaxNode, is_def: bool) -> Vec<Spec> {
+        let mut out = Vec::new();
+        for rel in n.children() {
+            let op = match rel.kind() {
+                SUBCLASSIFICATION if is_def => "specializes",
+                SUBCLASSIFICATION | SUBSETTING => "subsets",
+                REDEFINITION => "redefines",
+                REFERENCE_SUBSETTING => "references",
+                _ => continue,
+            };
+            let targets: Vec<SyntaxNode> = rel
+                .children()
+                .filter(|t| matches!(t.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+                .collect();
+            for (i, t) in targets.iter().enumerate() {
+                let (start, end) = removal_range(&rel, &targets, i);
+                out.push(Spec {
+                    op,
+                    target: compact(t),
+                    path: if t.kind() == QUALIFIED_NAME {
+                        path_of(t)
+                    } else {
+                        compact(t)
+                    },
+                    start: self.utf16(start),
+                    end: self.utf16(end),
+                });
+            }
+        }
+        out
     }
 
     /// 宣言を `entries` の末尾に足し、`pe` の宣言の `children` にその番号を足す。
@@ -1362,6 +1431,87 @@ fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
     Some(TypeRef { name, conj, path })
 }
 
+/// 宣言の多重度（MultiplicityPart、8.2.2.6）。`[…]` の中と、`ordered`・`nonunique` を読む。
+///
+/// # 引数
+///
+/// - `n`：宣言の節
+///
+/// # 戻り値
+///
+/// 多重度。`[…]` も `ordered`・`nonunique` も無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// multiplicity("part w : W[0 .. 4] ordered;") → Some({ range: "0..4", ordered: true, nonunique: false })
+/// multiplicity("part w : W nonunique;")       → Some({ range: "", ordered: false, nonunique: true })
+/// multiplicity("part w : W;")                 → None
+/// ```
+fn multiplicity(n: &SyntaxNode) -> Option<Multiplicity> {
+    let range = child(n, MULTIPLICITY).map(|m| {
+        let t = compact(&m);
+        let t = t.strip_prefix('[').unwrap_or(&t);
+        t.strip_suffix(']').unwrap_or(t).to_owned()
+    });
+    let has_kw = |kw: &str| {
+        n.children_with_tokens()
+            .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == kw))
+    };
+    let (ordered, nonunique) = (has_kw("ordered"), has_kw("nonunique"));
+    if range.is_none() && !ordered && !nonunique {
+        return None;
+    }
+    Some(Multiplicity {
+        range: range.unwrap_or_default(),
+        ordered,
+        nonunique,
+    })
+}
+
+/// 関係の相手 1 つだけを消すときの範囲（バイトオフセット）。消した後も、関係の書き方が崩れないようにする。
+///
+/// 相手が 1 つなら関係全体と前の空白（` :> A`）、複数のうち最後でなければ次の相手の手前まで（`A, `）、
+/// 最後なら前の相手の後ろから（`, C`）。
+///
+/// # 引数
+///
+/// - `rel`：関係の節（`SUBCLASSIFICATION` など）
+/// - `targets`：関係の相手の節（書いた順。空でないこと）
+/// - `i`：消す相手の番号（`targets` の添字）
+///
+/// # 戻り値
+///
+/// 消す範囲の始まりと終わり（`end` は含まない）。
+///
+/// # 例
+///
+/// ```text
+/// // "part def B :> A, C;"
+/// removal_range(:> A, C, [A, C], 0) → "A, " の範囲
+/// removal_range(:> A, C, [A, C], 1) → ", C" の範囲
+/// // "part def B :> A;"
+/// removal_range(:> A, [A], 0)       → " :> A" の範囲
+/// ```
+fn removal_range(rel: &SyntaxNode, targets: &[SyntaxNode], i: usize) -> (usize, usize) {
+    let start_of = |n: &SyntaxNode| -> usize { n.text_range().start().into() };
+    let end_of = |n: &SyntaxNode| -> usize { n.text_range().end().into() };
+    if let (Some(t), Some(next)) = (targets.get(i), targets.get(i + 1)) {
+        return (start_of(t), start_of(next));
+    }
+    if let (Some(prev), Some(t)) = (
+        i.checked_sub(1).and_then(|p| targets.get(p)),
+        targets.get(i),
+    ) {
+        return (end_of(prev), end_of(t));
+    }
+    let space = rel
+        .prev_sibling_or_token()
+        .filter(|t| t.kind() == WHITESPACE)
+        .map(|t| t.text_range().start().into());
+    (space.unwrap_or_else(|| start_of(rel)), end_of(rel))
+}
+
 /// 修飾名の節を、引用符を外した名前を `::` でつないだ文字列にする。
 ///
 /// # 引数
@@ -1501,9 +1651,9 @@ fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
     Some((ref_after(n, "connect")?, ref_after(n, "to")?))
 }
 
-/// 関係を表す文（依存・メッセージ・満たす・検証する・扱う・流れ・遷移）。
+/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・遷移）。依存は `dependencies` で読む。
 ///
-/// 依存は前置メタデータ（`#derivation` なら導出）の付いたものだけ、流れは名前の無いものだけを関係にする。
+/// 流れは名前の無いものだけを関係にする。
 ///
 /// # 引数
 ///
@@ -1528,19 +1678,6 @@ fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
 fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
     let name = || child(n, NAME).map(|c| unquote(&compact(&c)).to_owned());
     match n.kind() {
-        DEPENDENCY => {
-            let pm = child(n, PREFIX_METADATA)?;
-            if !h.starts_with('#') {
-                return None;
-            }
-            let md = tokens(&pm).find(|t| t.kind() == IDENT || t.kind() == QUOTED_NAME)?;
-            let (a, b) = (ref_after(n, "from")?, ref_after(n, "to")?);
-            Some(if md.text() == "derivation" {
-                RelKind::Derive { a, b }
-            } else {
-                RelKind::Dependency { a, b }
-            })
-        }
         MESSAGE_USAGE => Some(RelKind::Message {
             name: name().unwrap_or_default(),
             item: ref_after(n, "of")
@@ -1592,6 +1729,70 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         }),
         _ => None,
     }
+}
+
+/// 依存（Dependency、8.2.2.3）を、依存する側とされる側の組ごとの関係にする。
+///
+/// 前置メタデータが `#derivation` なら導出、それ以外（メタデータが無いものを含む）は依存にする。
+///
+/// # 引数
+///
+/// - `n`：`DEPENDENCY` の節
+///
+/// # 戻り値
+///
+/// 組ごとの関係（依存する側の順、その中でされる側の順）。どちらかの側が無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// dependencies("dependency A, B to C;")              → [Dependency { a: "A", b: "C" }, Dependency { a: "B", b: "C" }]
+/// dependencies("#trace dependency d from A to B;")   → [Dependency { a: "A", b: "B", name: "d", meta: "trace" }]
+/// dependencies("#derivation dependency from B to A;") → [Derive { a: "B", b: "A" }]
+/// dependencies("dependency from A;")                 → []（される側が無い）
+/// ```
+fn dependencies(n: &SyntaxNode) -> Vec<RelKind> {
+    let meta = child(n, PREFIX_METADATA)
+        .and_then(|pm| tokens(&pm).find(|t| matches!(t.kind(), IDENT | QUOTED_NAME)))
+        .map(|t| unquote(t.text()).to_owned())
+        .unwrap_or_default();
+    let name = child(n, NAME)
+        .map(|c| unquote(&compact(&c)).to_owned())
+        .unwrap_or_default();
+    let (mut clients, mut suppliers) = (Vec::new(), Vec::new());
+    let mut after_to = false;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "to" => {
+                after_to = true;
+            }
+            rowan::NodeOrToken::Node(c) if matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) => {
+                if after_to {
+                    suppliers.push(compact(&c));
+                } else {
+                    clients.push(compact(&c));
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for a in &clients {
+        for b in &suppliers {
+            let (a, b) = (a.clone(), b.clone());
+            out.push(if meta == "derivation" {
+                RelKind::Derive { a, b }
+            } else {
+                RelKind::Dependency {
+                    a,
+                    b,
+                    name: name.clone(),
+                    meta: meta.clone(),
+                }
+            });
+        }
+    }
+    out
 }
 
 /// 修飾の付いた `name : Type`（パラメータ）。修飾があるかは呼び出し側が確かめる。

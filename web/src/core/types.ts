@@ -61,6 +61,26 @@ export interface Entry {
   render?: string;
   open?: number;
   close?: number;
+  /** 特殊化・部分集合・再定義・参照の相手（8.2.2.6）。Rust のコアだけが作る。 */
+  specs?: Spec[];
+  /** 多重度（MultiplicityPart、8.2.2.6）。Rust のコアだけが作る。 */
+  multiplicity?: Multiplicity;
+}
+
+/** 宣言の特殊化の相手 1 つ（SubclassificationPart・FeatureSpecializationPart、8.2.2.6）。 */
+export interface Spec extends Span {
+  /** 定義の `:>`・`specializes` は specializes、使用の `:>`・`subsets` は subsets、`:>>` は redefines、`::>` は references。 */
+  op: "specializes" | "subsets" | "redefines" | "references";
+  /** 相手（書いた修飾名・特徴の連鎖。空白を除き、引用符は残す）。 */
+  target: string;
+}
+
+/** 多重度と並びの性質（MultiplicityPart、8.2.2.6）。 */
+export interface Multiplicity {
+  /** `[` と `]` の中（`0..4`・`*`）。範囲を書いていなければ空文字列。 */
+  range: string;
+  ordered: boolean;
+  nonunique: boolean;
 }
 
 /** `expose` 1 つ（Expose、8.2.2.26.2）。 */
@@ -153,7 +173,10 @@ export interface ModelNode {
   typeKey?: string | null;
 }
 
-export type EdgeKind = "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message";
+/** 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency` は特殊化・部分集合・再定義・参照・依存（8.2.3）で、Rust のコアだけが作る。 */
+export type EdgeKind =
+  | "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message"
+  | "specialize" | "subset" | "redefine" | "reference" | "dependency";
 
 /** 図に投影する関係。 */
 export interface ModelEdge {
@@ -170,6 +193,8 @@ export interface ModelEdge {
   idx?: number;
   /** メッセージのアイテム型。 */
   type?: string;
+  /** 終わりの端に書く文字（部品として持つ線の多重度と飾り。`[4]`・`ordered`・`redefines w` など。8.2.3）。Rust のコアだけが作る。 */
+  endLabel?: string;
 }
 
 export interface Problem {

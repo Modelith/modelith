@@ -52,6 +52,9 @@ pub struct Edge {
     pub from_port: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_port: Option<String>,
+    /// 終わりの端に書く文字（部品として持つ線の多重度と飾り。`[4] ordered`・`redefines w` など。8.2.3 の multiplicity・c-adornment）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_label: Option<String>,
 }
 
 /// 問題一覧の 1 行。`kind` が無ければエラー、`gap` はトレースの抜け、`unsupported` はまだ扱えない構文。

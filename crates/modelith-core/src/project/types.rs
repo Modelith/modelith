@@ -124,6 +124,39 @@ pub struct Entry {
     pub open: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub close: Option<usize>,
+    /// 特殊化・部分集合・再定義・参照（8.2.2.6）。相手ごとに、書いた順。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub specs: Vec<Spec>,
+    /// 多重度（MultiplicityPart、8.2.2.6）。書いていなければ `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multiplicity: Option<Multiplicity>,
+}
+
+/// 多重度と、その並びの性質（MultiplicityPart、8.2.2.6）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Multiplicity {
+    /// `[` と `]` の中（空白を除いたもの。`0..4`・`*`・`1`）。範囲を書いていなければ空文字列。
+    pub range: String,
+    /// `ordered` を書いたか。
+    pub ordered: bool,
+    /// `nonunique` を書いたか。
+    pub nonunique: bool,
+}
+
+/// 宣言の特殊化の相手 1 つ（SubclassificationPart・FeatureSpecializationPart、8.2.2.6）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Spec {
+    /// 関係の種類。`specializes`（定義の `:>`・`specializes`）・`subsets`（使用の `:>`・`subsets`）・
+    /// `redefines`（`:>>`・`redefines`）・`references`（`::>`・`references`）のいずれか。
+    pub op: &'static str,
+    /// 相手（書いた修飾名・特徴の連鎖から空白を除いたもの。引用符は残す）。
+    pub target: String,
+    /// 相手の修飾名（引用符を外し `::` でつなぐ）。名前の解決にだけ使い、TS には渡さない。
+    #[serde(skip)]
+    pub path: String,
+    /// この相手だけを消すときの範囲（UTF-16 のオフセット。`end` は含まない）。
+    pub start: usize,
+    pub end: usize,
 }
 
 /// 名前を持たないブロック（`objective { … }`、`@Phase { … }` など）。
@@ -164,6 +197,12 @@ pub enum RelKind {
     Dependency {
         a: String,
         b: String,
+        /// 依存の名前（`dependency d from …` の `d`）。無ければ空。図のラベルにだけ使い、TS には渡さない。
+        #[serde(skip)]
+        name: String,
+        /// 前に付けたメタデータの名前（`#trace dependency …` の `trace`）。無ければ空。図のラベルにだけ使い、TS には渡さない。
+        #[serde(skip)]
+        meta: String,
     },
     Message {
         name: String,

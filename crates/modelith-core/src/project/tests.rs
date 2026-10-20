@@ -626,3 +626,174 @@ fn value_written_on_the_element_wins_over_metadata_about() {
         )]
     );
 }
+
+/// 宣言の `specs` を（種類, 相手, 修飾名, 消す範囲の文字列）の組にする。
+fn specs_of(text: &str, name: &str) -> Vec<(&'static str, String, String, String)> {
+    let r = run(text);
+    entry(&r, name)
+        .specs
+        .iter()
+        .map(|s| {
+            (
+                s.op,
+                s.target.clone(),
+                s.path.clone(),
+                text[s.start..s.end].to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn definition_keeps_every_supertype_and_first_one_as_type() {
+    // Arrange（SubclassificationPart、8.2.2.6：`:>` と `specializes` の相手をすべて）
+    let text = "part def B :> A, 'Q 1'::C specializes D;";
+    // Act
+    let specs = specs_of(text, "B");
+    // Assert
+    assert_eq!(
+        specs,
+        [
+            ("specializes", "A".into(), "A".into(), "A, ".into()),
+            (
+                "specializes",
+                "'Q 1'::C".into(),
+                "Q 1::C".into(),
+                ", 'Q 1'::C".into()
+            ),
+            (
+                "specializes",
+                "D".into(),
+                "D".into(),
+                " specializes D".into()
+            ),
+        ]
+    );
+    assert_eq!(entry(&run(text), "B").ty, "A");
+}
+
+#[test]
+fn usage_records_subsetting_redefinition_and_reference_by_kind() {
+    // Arrange（FeatureSpecializationPart、8.2.2.6：記号とキーワードの両方）
+    let text = "part def W { part b : B :> a subsets c; attribute :>> m redefines n; part x ::> y.z; part w references v; }";
+    // Act
+    let (b, m, x, w) = (
+        specs_of(text, "b"),
+        specs_of(text, "m"),
+        specs_of(text, "x"),
+        specs_of(text, "w"),
+    );
+    // Assert（名前の無い `:>> m` も再定義として残す。型は部分集合と取り違えない）
+    let ops = |v: &[(&'static str, String, String, String)]| -> Vec<(&'static str, String)> {
+        v.iter().map(|s| (s.0, s.1.clone())).collect()
+    };
+    assert_eq!(ops(&b), [("subsets", "a".into()), ("subsets", "c".into())]);
+    assert_eq!(
+        ops(&m),
+        [("redefines", "m".into()), ("redefines", "n".into())]
+    );
+    assert_eq!(ops(&x), [("references", "y.z".into())]);
+    assert_eq!(ops(&w), [("references", "v".into())]);
+    assert_eq!(entry(&run(text), "b").ty, "B");
+}
+
+#[test]
+fn declaration_without_relations_has_no_specs() {
+    // Arrange（境界値：関係の無い宣言と、パラメータ）
+    let text = "constraint def C { in x : Real; } part def A { part p : P; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.specs.is_empty()));
+}
+
+#[test]
+fn multiplicity_keeps_range_and_order_keywords() {
+    // Arrange（MultiplicityPart、8.2.2.6：範囲・`*`・`ordered`・`nonunique`、名前の後ろの多重度）
+    let text = "part def V { part w : W[ 0 .. 4 ] ordered nonunique; part s[*] : S; part n : N nonunique; part p : P; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let m = |name: &str| entry(&r, name).multiplicity.clone();
+    assert_eq!(
+        m("w"),
+        Some(Multiplicity {
+            range: "0..4".into(),
+            ordered: true,
+            nonunique: true
+        })
+    );
+    assert_eq!(m("s").map(|x| x.range), Some("*".into()));
+    assert_eq!(
+        m("n"),
+        Some(Multiplicity {
+            range: String::new(),
+            ordered: false,
+            nonunique: true
+        })
+    );
+    assert_eq!(m("p"), None);
+    assert_eq!(entry(&r, "s").ty, "S");
+}
+
+/// `RelKind::Dependency` を短く作る。
+fn dependency(a: &str, b: &str, name: &str, meta: &str) -> RelKind {
+    RelKind::Dependency {
+        a: a.to_owned(),
+        b: b.to_owned(),
+        name: name.to_owned(),
+        meta: meta.to_owned(),
+    }
+}
+
+#[test]
+fn dependency_becomes_one_relation_per_client_and_supplier() {
+    // Arrange（Dependency、8.2.2.3：メタデータの無い依存と、複数の依存する側・される側）
+    let text = "package P { dependency A, B to C, D; }";
+    // Act
+    let r = run(text);
+    // Assert（組ごと。宣言にはしない）
+    let kinds: Vec<_> = r.rels.iter().map(|x| x.kind.clone()).collect();
+    assert_eq!(
+        kinds,
+        [
+            dependency("A", "C", "", ""),
+            dependency("A", "D", "", ""),
+            dependency("B", "C", "", ""),
+            dependency("B", "D", "", ""),
+        ]
+    );
+    assert_eq!(r.entries.len(), 1);
+}
+
+#[test]
+fn dependency_keeps_name_and_metadata_and_derivation_stays_derive() {
+    // Arrange（名前とメタデータ付き・#derivation）
+    let text =
+        "package P { #trace dependency d from x.y to B; #derivation dependency from R2 to R1; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let kinds: Vec<_> = r.rels.iter().map(|x| x.kind.clone()).collect();
+    assert_eq!(
+        kinds,
+        [
+            dependency("x.y", "B", "d", "trace"),
+            RelKind::Derive {
+                a: "R2".to_owned(),
+                b: "R1".to_owned()
+            },
+        ]
+    );
+}
+
+#[test]
+fn dependency_without_supplier_makes_no_relation() {
+    // Arrange（異常系：to が無い。構文エラーはパーサが出す）
+    let text = "package P { dependency from A; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.rels.is_empty());
+    assert_eq!(r.errors.len(), 1);
+}

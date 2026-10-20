@@ -2,7 +2,7 @@
 
 import { family } from "../core";
 import { esc } from "./dom";
-import { computeRoutes, HEAD, LH, linesOf, nodeH, packageRects, pinPoint, pinsOf, textWidth, W, type Box, type NodeBox } from "./geometry";
+import { computeRoutes, endLabelPos, HEAD, LH, linesOf, nodeH, packageRects, pinPoint, pinsOf, textWidth, W, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
 import { phaseLabel, type ViewContent } from "./views";
 
@@ -66,6 +66,27 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
     s += `<path d="M${cx - dx * 2},${cy - dy * 2} L${cx + dx * 2},${cy + dy * 2}" stroke="${col}" stroke-width="1.2"/>` + ar(dx, dy, cx + dx * 4.6, cy + dy * 4.6) + ar(-dx, -dy, cx - dx * 4.6, cy - dy * 4.6);
   else s += `<path d="M${cx - dx * 4.2},${cy - dy * 4.2} L${cx + dx * 1.5},${cy + dy * 1.5}" stroke="${col}" stroke-width="1.3"/>` + ar(dx, dy, cx + dx * 4.6, cy + dy * 4.6);
   return s;
+}
+
+/** 破線で描く線の種類。 */
+const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency"];
+/** 終わりの端の矢印（マーカーの ID）。無い種類は開いた矢印（mOpen）。特殊化・部分集合は白抜きの三角、再定義は三角と縦棒、参照は三角と 2 つの点（8.2.3）。 */
+const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri", subset: "mTri", redefine: "mRedef", reference: "mRef" };
+
+/**
+ * 線の種類から、線の破線と矢印の属性を決める（8.2.3 の記法）。部品として持つ線は始まりの端にひし形、ほかは終わりの端に矢印を付ける。
+ *
+ * @param kind 線の種類（`comp`・`satisfy`・`specialize` など）
+ * @returns path 要素に足す属性の文字列（先頭に空白を含む）
+ * @example
+ * edgeStroke("specialize") // → ' marker-end="url(#mTri)"'（実線・白抜きの三角）
+ * edgeStroke("satisfy")    // → ' stroke-dasharray="6 4" marker-end="url(#mOpen)"'
+ * edgeStroke("comp")       // → ' marker-start="url(#mDiamond)"'
+ */
+export function edgeStroke(kind: string): string {
+  const dash = DASHED_EDGES.includes(kind) ? ' stroke-dasharray="6 4"' : "";
+  if (kind === "comp") return `${dash} marker-start="url(#mDiamond)"`;
+  return `${dash} marker-end="url(#${END_MARKER[kind] ?? "mOpen"})"`;
 }
 
 const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req" };
@@ -153,21 +174,37 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
     const rt = routes.get(e.id);
     if (!rt) continue;
     const path = rt.d, lx = rt.lab.x, ly = rt.lab.y, la = rt.lab.a;
-    const dash = ["satisfy", "verify", "frame", "defined", "derive"].includes(e.kind) ? ' stroke-dasharray="6 4"' : "";
-    const mk = e.kind === "comp" ? ' marker-start="url(#mDiamond)"' : e.kind === "flow" ? ' marker-end="url(#mBlock)"' : ' marker-end="url(#mOpen)"';
     const ck = EDGE_COLOR[e.kind];
     const col = ck ? C(ck) : C("ink2");
     const sel = opts.selEdge === e.id ? " sel" : "";
     es +=
-      `<g class="edge${sel}" data-edge="${esc(e.id)}"><path class="line" d="${path}" fill="none" stroke="${col}" stroke-width="${e.kind === "flow" ? 1.8 : 1.3}"${dash}${mk}/>` +
+      `<g class="edge${sel}" data-edge="${esc(e.id)}"><path class="line" d="${path}" fill="none" stroke="${col}" stroke-width="${e.kind === "flow" ? 1.8 : 1.3}"${edgeStroke(e.kind)}/>` +
       (opts.interactive ? `<path class="hit" d="${path}"/>` : "") +
       (e.label ? `<text x="${lx}" y="${ly}" text-anchor="${la}" font-size="10.5" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${F}">${esc(e.label)}</text>` : "") +
+      (e.endLabel ? endLabelMarkup(C, endLabelPos(rt.to), e.endLabel, col, F) : "") +
       `</g>`;
   }
   let ns = "", ps = "";
   for (const [, b] of box) ns += nodeMarkup(C, b, opts, F, MONO);
   for (const [, b] of box) ps += pinsMarkup(C, b, opts, MONO);
   return { es, ns: ns + ps, box };
+}
+
+/**
+ * 線の端に書く文字（多重度など、8.2.3 の multiplicity）を SVG の文字列にする。
+ *
+ * @param C 色の関数
+ * @param at 文字の位置と揃え（`endLabelPos` の結果）
+ * @param text 書く文字
+ * @param col 文字の色（線と同じ色）
+ * @param F 文字のフォント
+ * @returns `<text class="end" …>文字</text>` の文字列
+ * @example
+ * endLabelMarkup(CV, { x: 104, y: 44, a: "start" }, "[4]", "var(--ink2)", "inherit")
+ * // → '<text class="end" x="104" y="44" text-anchor="start" font-size="10" …>[4]</text>'
+ */
+function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, text: string, col: string, F: string): string {
+  return `<text class="end" x="${at.x}" y="${at.y}" text-anchor="${at.a}" font-size="10" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${F}">${esc(text)}</text>`;
 }
 
 /**
@@ -330,7 +367,10 @@ export const DEFS =
   `<marker id="mDiamond" viewBox="0 0 20 10" refX="1" refY="5" markerWidth="18" markerHeight="9" orient="auto-start-reverse"><path d="M1,5 L10,1 L19,5 L10,9 Z" style="fill:var(--ink2)"/></marker>` +
   `<marker id="mOpen" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto"><path d="M1,1 L11,6 L1,11" fill="none" style="stroke:var(--ink2)" stroke-width="1.4"/></marker>` +
   `<marker id="mMsg" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto"><path d="M1,1 L11,6 L1,11 Z" style="fill:var(--ink)"/></marker>` +
-  `<marker id="mBlock" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto"><path d="M1,1 L11,6 L1,11 Z" style="fill:var(--k-con)"/></marker>`;
+  `<marker id="mBlock" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto"><path d="M1,1 L11,6 L1,11 Z" style="fill:var(--k-con)"/></marker>` +
+  `<marker id="mTri" viewBox="0 0 14 14" refX="13" refY="7" markerWidth="13" markerHeight="13" orient="auto"><path d="M1,1 L13,7 L1,13 Z" style="fill:var(--paper);stroke:var(--ink2)" stroke-width="1.2"/></marker>` +
+  `<marker id="mRedef" viewBox="0 0 18 14" refX="17" refY="7" markerWidth="17" markerHeight="13" orient="auto"><path d="M1.5,1 L1.5,13" style="stroke:var(--ink2)" stroke-width="1.2"/><path d="M5,1 L17,7 L5,13 Z" style="fill:var(--paper);stroke:var(--ink2)" stroke-width="1.2"/></marker>` +
+  `<marker id="mRef" viewBox="0 0 18 14" refX="17" refY="7" markerWidth="17" markerHeight="13" orient="auto"><circle cx="2" cy="4" r="1.4" style="fill:var(--ink2)"/><circle cx="2" cy="10" r="1.4" style="fill:var(--ink2)"/><path d="M5,1 L17,7 L5,13 Z" style="fill:var(--paper);stroke:var(--ink2)" stroke-width="1.2"/></marker>`;
 
 /* ---- アイコン ---- */
 const ICON_L: Record<string, string> = {

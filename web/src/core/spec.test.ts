@@ -670,5 +670,101 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("特殊化・部分集合・再定義・参照の線（SubclassificationPart・FeatureSpecializationPart 8.2.2.6、8.2.3 の type-relationship）", () => {
+      it("定義の :> A, B と specializes は、相手ごとに特殊化の線になる", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; part def C :> A, B; part def D specializes C; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["specialize|C|A", "specialize|C|B", "specialize|D|C"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("特殊化の線を消すと、その相手だけがテキストから消える範囲を指す", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; part def C :> A, B; }";
+        // Act
+        const srcs = build(parse(text)).edges.map((e) => text.slice(e.src.start, e.src.end));
+        // Assert
+        expect(srcs).toEqual(["A, ", ", B"]);
+      });
+
+      it("package の直下の部品どうしの :>・:>>・::> は、部分集合・再定義・参照の線になる", () => {
+        // Arrange
+        const text = "package P { part def A; part a : A; part b :> a; part c redefines a; part d references a; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["defined|a|A", "subset|b|a", "redefine|c|a", "reference|d|a"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("標準ライブラリの定義や、定義の中の特性への関係は、線にも問題にもしない（異常系）", () => {
+        // Arrange
+        const text = "package P { part def A :> Part { attribute m; } part def B :> A { attribute :>> m = 1; part x :> nope; } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["specialize|B|A"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("依存（Dependency、8.2.2.3・8.2.3.3 の binary-dependency）", () => {
+      it("dependency A, B to C; は、依存する側とされる側の組ごとに線になる", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; part def C; dependency A, B to C; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["dependency|A|C", "dependency|B|C"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("名前と、前に付けたメタデータ（#derivation 以外）は線のラベルになる", () => {
+        // Arrange
+        const text = "package P { metadata def trace; part def A; part def B; #trace dependency d from A to B; }";
+        // Act
+        const labels = build(parse(text)).edges.map((e) => e.label);
+        // Assert
+        expect(labels).toEqual(["«trace» d"]);
+      });
+
+      it("見つからない相手は、ほかの関係と同じ言い方で知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def A; dependency d from A to Nope; }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["「依存」関係の相手「Nope」が見つかりません（dependency）"]);
+      });
+    });
+
+    describe("多重度（MultiplicityPart、8.2.2.6）", () => {
+      it("[…] の中と ordered・nonunique を宣言に残し、部品として持つ線の端に書く", () => {
+        // Arrange
+        const text = "package P { part def W; part def V { part w : W[0..4] ordered; attribute n : Real nonunique; } }";
+        // Act
+        const [w, n] = [entry(text, "w"), entry(text, "n")];
+        const ends = build(parse(text)).edges.map((e) => e.endLabel);
+        // Assert
+        expect(w?.multiplicity).toEqual({ range: "0..4", ordered: true, nonunique: false });
+        expect(n?.multiplicity).toEqual({ range: "", ordered: false, nonunique: true });
+        expect(ends).toEqual(["[0..4] ordered"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("特殊化の相手は、記号の種類と書いた相手を宣言に残す", () => {
+        // Arrange
+        const text = "package P { part def A { attribute m; } part def B :> A { attribute :>> m = 1; } }";
+        // Act
+        const [b, m] = [entry(text, "B"), parse(text).entries.find((e) => e.pe?.name === "B")];
+        // Assert
+        expect(b?.specs?.map((s) => [s.op, s.target])).toEqual([["specializes", "A"]]);
+        expect(m?.specs?.map((s) => [s.op, s.target])).toEqual([["redefines", "m"]]);
+      });
+    });
   });
 }

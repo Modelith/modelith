@@ -1,6 +1,6 @@
 // 図の幾何計算（ノードの大きさ・接続点・線の経路・自動配置）。DOM に依存しない純粋関数。
 
-import type { ModelEdge, ModelNode, Port, PortDir } from "../core";
+import type { Entry, ModelEdge, ModelNode, Port, PortDir } from "../core";
 import type { Pos, Side, ViewLayout } from "./layout";
 import type { ViewDef } from "./views";
 
@@ -65,6 +65,37 @@ export function wrap(s: string, maxW = W - 18, maxLines = 3): string[] {
   return out.slice(0, maxLines);
 }
 
+/** 区画に書く、特殊化の種類の記号（テキスト記法と同じ。8.2.2.6）。 */
+const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>" };
+
+/**
+ * 区画に書く、属性・パラメータの 1 行（8.2.3 の usage-cp：テキスト記法の宣言と値）。
+ * 多重度も特殊化の相手も無ければ、これまでどおり `名前 = 値` か `名前 : 型` にする。
+ * あれば `名前 : 型 [多重度] :>> 相手 = 値` の順に書き、名前を書かずに再定義した特性（`:>> mass`）は名前を省く。
+ *
+ * @param c 属性かパラメータの宣言
+ * @returns 区画の 1 行
+ * @example
+ * featureText(attribute mass : Real)                 // → "mass : Real"
+ * featureText(attribute w : Wheel[4] ordered)        // → "w : Wheel [4] ordered"
+ * featureText(attribute :>> mass = 1500)             // → ":>> mass = 1500"（名前は再定義した特性から）
+ * featureText(attribute b : B :> a, c)               // → "b : B :> a :> c"
+ */
+export function featureText(c: Entry): string {
+  const specs = c.specs ?? [], m = c.multiplicity;
+  if (!specs.length && !m) return c.value ? `${c.name} = ${c.value}` : `${c.name} : ${c.type}`;
+  const first = specs[0];
+  const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
+  const parts = [unnamed ? "" : c.name];
+  if (c.type) parts.push(`: ${c.type}`);
+  if (m?.range) parts.push(`[${m.range}]`);
+  if (m?.ordered) parts.push("ordered");
+  if (m?.nonunique) parts.push("nonunique");
+  for (const s of specs) parts.push(`${SPEC_SYMBOL[s.op] ?? ":>"} ${s.target}`);
+  if (c.value) parts.push(`= ${c.value}`);
+  return parts.filter(Boolean).join(" ");
+}
+
 export interface Line {
   t: string;
   cls: "doc" | "expr" | "attr" | "more";
@@ -79,6 +110,8 @@ export interface Line {
  * @example
  * // part def で、属性 mass : Real を 1 つ持つ
  * compartment(n) // → [{ t: "mass : Real", cls: "attr" }]
+ * // part def で、名前を書かずに再定義した属性 :>> mass = 1500 を持つ
+ * compartment(n) // → [{ t: ":>> mass = 1500", cls: "attr" }]
  * // 要求で、説明「速く走る」と require 式 v > 10 を持つ
  * compartment(n) // → [{ t: "速く走る", cls: "doc" }, { t: "{ v > 10 }", cls: "expr" }]
  * // 中身の無い part def
@@ -94,7 +127,7 @@ export function compartment(n: ModelNode): Line[] {
   if (n.fam === "req") for (const x of e.exprs) if (x.via === "require" || !x.via) push(`{ ${x.text} }`, "expr");
   if (n.fam === "con") for (const x of e.exprs) push(x.text, "expr", 3);
   if (["part", "other"].includes(n.fam)) {
-    for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(c.value ? `${c.name} = ${c.value}` : `${c.name} : ${c.type}`, "attr", 1);
+    for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(featureText(c), "attr", 1);
   }
   if (n.kind === "state def") {
     const st = e.children.filter((c) => c.kind === "state").map((c) => c.name);
@@ -576,6 +609,38 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
   return out;
 }
 
+/**
+ * 線の端に書く文字（多重度など）の位置。端のある辺の外側に置き、線に重ならないよう線の横にずらす。
+ *
+ * @param end 線の端（位置 P と、辺の外向きの向き N）
+ * @returns 文字の位置（x・y はベースライン）と揃え
+ * @example
+ * endLabelPos({ P: [100, 50], N: [0, -1], … }) // → { x: 104, y: 44, a: "start" }（上の辺：線の右、辺の上）
+ * endLabelPos({ P: [100, 50], N: [0, 1], … })  // → { x: 104, y: 64, a: "start" }（下の辺：線の右、辺の下）
+ * endLabelPos({ P: [0, 25], N: [-1, 0], … })   // → { x: -6, y: 20, a: "end" }（左の辺：線の上、辺の左）
+ */
+export function endLabelPos(end: RouteEnd): { x: number; y: number; a: "start" | "end" } {
+  const [x, y] = end.P, [nx, ny] = end.N;
+  if (nx !== 0) return { x: x + nx * 6, y: y - 5, a: nx > 0 ? "start" : "end" };
+  return { x: x + 4, y: ny < 0 ? y - 6 : y + 14, a: "start" };
+}
+
+/** 一般な側を上に置く線の種類（特殊化・部分集合・再定義・参照。線は特殊な側から一般な側へ向く）。 */
+const UPWARD_EDGES = ["specialize", "subset", "redefine", "reference"];
+
+/**
+ * 深さで並べるときの、線の上下の向き（上の要素、下の要素）。特殊化などは一般な側（線の終わり）を上にし、ほかは線の始まりを上にする。
+ *
+ * @param e 図の線
+ * @returns [上に置く要素のキー, 下に置く要素のキー]
+ * @example
+ * downward({ kind: "comp", from: "V", to: "W", … })       // → ["V", "W"]（持ち主が上）
+ * downward({ kind: "specialize", from: "B", to: "A", … }) // → ["A", "B"]（一般な A が上）
+ */
+export function downward(e: ModelEdge): [string, string] {
+  return UPWARD_EDGES.includes(e.kind) ? [e.to, e.from] : [e.from, e.to];
+}
+
 /** 自動配置で上から並べる順位。 */
 const RANK: Record<string, number> = {
   "concern def": 0, requirement: 1, "requirement def": 2, part: 3, "part def": 3, "verification def": 3, "attribute def": 5,
@@ -585,7 +650,7 @@ const RANK: Record<string, number> = {
 
 /**
  * 配置済みの要素の下に、未配置の要素を段ごとに並べ、座標を pos に書き込む（pos を変更する）。
- * 段は、ビューが深さで並べるなら線の向きの深さ、そうでなければ種類の順位（RANK）で決める。
+ * 段は、ビューが深さで並べるなら線の向きの深さ（特殊化などは一般な側を上に。`downward`）、そうでなければ種類の順位（RANK）で決める。
  * 段の中は前の段とのつながりの重心で並べ替えて線の交差を減らし、1 段は 7 個までで折り返す。
  *
  * @param list 並べる（未配置の）ノード
@@ -599,16 +664,17 @@ export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<str
   const keys = new Set(list.map((n) => n.key));
   const layer = new Map<string, number>();
   if (v.depth) {
+    const down = edges.map(downward);
     const inc = new Map(list.map((n) => [n.key, 0]));
-    for (const e of edges) if (keys.has(e.to) && keys.has(e.from)) inc.set(e.to, (inc.get(e.to) ?? 0) + 1);
+    for (const [from, to] of down) if (keys.has(to) && keys.has(from)) inc.set(to, (inc.get(to) ?? 0) + 1);
     const q = list.filter((n) => !inc.get(n.key)).map((n) => n.key);
     for (const k of q) layer.set(k, 0);
     while (q.length) {
       const k = q.shift() as string;
-      for (const e of edges) {
-        if (e.from === k && keys.has(e.to) && !layer.has(e.to)) {
-          layer.set(e.to, (layer.get(k) ?? 0) + 1);
-          q.push(e.to);
+      for (const [from, to] of down) {
+        if (from === k && keys.has(to) && !layer.has(to)) {
+          layer.set(to, (layer.get(k) ?? 0) + 1);
+          q.push(to);
         }
       }
     }
