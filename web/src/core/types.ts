@@ -70,6 +70,22 @@ export interface Entry {
   specs?: Spec[];
   /** 多重度（MultiplicityPart、8.2.2.6）。Rust のコアだけが作る。 */
   multiplicity?: Multiplicity;
+  /** コメント（種類 `comment`、8.2.2.4）の本文。行は改行でつなぐ。Rust のコアだけが作る。 */
+  body?: string;
+  /** コメントが注釈する宣言（`about` の相手。無ければ持ち主）。Rust のコアだけが作る。 */
+  about?: Entry[];
+  /** 別の言語での表し方（`rep … language "x" /* … *\/`、TextualRepresentation、8.2.2.4）。Rust のコアだけが作る。 */
+  reps?: Rep[];
+}
+
+/** 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。 */
+export interface Rep {
+  /** 名前（`rep r` の `r`）。無ければ空文字列。 */
+  name: string;
+  /** 言語の名前（`language "OCL"` の OCL）。 */
+  language: string;
+  /** 本文（共通の字下げを除いたもの。行は改行でつなぐ）。 */
+  body: string;
 }
 
 /** 宣言の特殊化の相手 1 つ（SubclassificationPart・FeatureSpecializationPart、8.2.2.6）。 */

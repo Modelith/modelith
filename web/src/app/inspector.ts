@@ -1,6 +1,7 @@
 // 図の下に出るインスペクタ（選択中の要素・関係・接続点の情報と操作）。
 
 import { lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
+import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
 import type { Pin } from "./geometry";
 import { centerOn, render, scrollEditorTo } from "./render";
@@ -199,6 +200,7 @@ function pinHtml(n: ModelNode, pin: Pin): string {
 /**
  * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、n 項の接続の点なら接続の名前と「接続を削除」を、使用・ライフラインなら型と「型の定義へ」を、
  * 定義なら種類・テキストの行・（フェーズの定義があれば）フェーズの選択欄と、名前の変更・関係の追加・削除のボタンを出す。
+ * 使用と定義では、要素に付けたメモと別の言語での表し方（comment・rep）も下に並べる。
  *
  * @param n 選んだ要素
  * @returns 要素の HTML
@@ -229,7 +231,8 @@ function nodeHtml(n: ModelNode): string {
       `<button data-act="goto">テキストで見る</button>` +
       (e.type && S.M.byName.has(e.type) ? `<button data-act="openType">型の定義へ</button>` : "") +
       delBtn("del", "削除") +
-      `</div>`
+      `</div>` +
+      annotationsHtml(e, S.P.entries)
     );
   }
   const phases = S.M.phases;
@@ -241,7 +244,8 @@ function nodeHtml(n: ModelNode): string {
     `<div class="what"><small>«${esc(n.kind)}» テキスト ${line} 行目・縁の＋から線を引けます</small><b>${esc(n.name)}</b></div>${phSel}<div class="acts">` +
     `<button data-act="goto">テキストで見る</button><button data-act="rename">名前を変更</button><button data-act="connect">関係を追加</button>` +
     delBtn("del", "削除") +
-    `</div>`
+    `</div>` +
+    annotationsHtml(e, S.P.entries)
   );
 }
 

@@ -71,11 +71,12 @@ export function safeParse(text: string, analyzeJson: (text: string) => string): 
 /** 持ち主の番号（名前のある宣言か、名前の無いブロック）。 */
 type RawScope = { e: number } | { b: number };
 
-type RawEntry = Omit<Entry, "owner" | "pe" | "children" | "phaseBlock"> & {
+type RawEntry = Omit<Entry, "owner" | "pe" | "children" | "phaseBlock" | "about"> & {
   owner: RawScope | null;
   pe: number | null;
   children: number[];
   phaseBlock?: RawScope;
+  about?: number[];
 };
 type RawBlock = Omit<Block, "anon" | "owner"> & { owner: RawScope | null };
 /** 関係（相手は文字列、文の持ち主と使用（接続・名前付きのフローなど）は番号）。 */
@@ -131,7 +132,7 @@ export function fromRust(json: string, text: string): ParseResult {
  * fromRaw({ entries: [], blocks: [], rels: [], errors: [], unsupported: [] }, "") // → { entries: [], rels: [], errors: [], layout: {}, unsupported: [] }
  */
 function fromRaw(raw: RawParseResult, text: string): ParseResult {
-  const entries: Entry[] = raw.entries.map((e) => ({ ...e, owner: null, pe: null, children: [], phaseBlock: undefined }));
+  const entries: Entry[] = raw.entries.map((e) => ({ ...e, owner: null, pe: null, children: [], phaseBlock: undefined, about: undefined }));
   const blocks: Block[] = raw.blocks.map((b) => ({ ...b, anon: true, owner: null }));
   const scope = (s: RawScope | null | undefined): Scope | null => {
     if (!s) return null;
@@ -145,6 +146,8 @@ function fromRaw(raw: RawParseResult, text: string): ParseResult {
     e.children = r.children.flatMap((c) => entry(c) ?? []);
     if (r.phaseBlock) e.phaseBlock = scope(r.phaseBlock) ?? undefined;
     else delete e.phaseBlock;
+    if (r.about) e.about = r.about.flatMap((a) => entry(a) ?? []);
+    else delete e.about;
   });
   raw.blocks.forEach((r, i) => {
     blocks[i]!.owner = scope(r.owner);

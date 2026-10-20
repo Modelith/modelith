@@ -41,6 +41,8 @@
 | 流れの定義・流れ | flow def・flow |
 | 定義を引き継ぐ（特殊化）・一部になる（部分集合）・置き換える（再定義）・参照する | specializes・subsets・redefines・references（`:>`・`:>>`・`::>`） |
 | 一般の図・内部ブロック図・状態遷移の図・シーケンス図 | GeneralView・InterconnectionView・StateTransitionView・SequenceView |
+| メモ・メモを付ける相手 | comment・about（Comment） |
+| 別の言語での表し方 | rep・language（TextualRepresentation） |
 
 ### 一般の言葉
 
