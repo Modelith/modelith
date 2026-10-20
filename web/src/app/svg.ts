@@ -529,7 +529,11 @@ const ICON_L: Record<string, string> = {
   "perform action": "Ac", "exhibit state": "S", param: "·", message: "M", metadata: "Md",
   case: "Ce", actor: "Ar", "include use case": "U", "event occurrence": "Oc", timeslice: "Oc", snapshot: "Oc",
   viewpoint: "Vp", rendering: "Rd", variant: "Va", def: "#", usage: "#",
+  fork: "Fk", join: "Jn", decide: "Dc", merge: "Mg", send: "Sd", accept: "Rc", assign: "As", terminate: "Tm",
+  if: "If", while: "Wh", loop: "Lp", for: "Fr", "succession flow": "SF",
 };
+/** アクションの流れの要素の種類（振る舞いの色で描く。8.2.2.17）。 */
+const FLOW_KINDS = ["fork", "join", "decide", "merge", "send", "accept", "assign", "terminate", "if", "while", "loop", "for", "succession flow"];
 
 /**
  * 種類を表す小さなアイコン（ツリー・パレット・タブ）を SVG の文字列にする。package はフォルダ、ほかは種類の色の四角に略号（`P`・`R` など）を書く。
@@ -541,11 +545,12 @@ const ICON_L: Record<string, string> = {
  * kindIcon("part def") // → '<svg class="ki" …><rect … rx="0" fill="var(--k-part-bg)" stroke="var(--k-part)"/><text …>P</text></svg>'
  * kindIcon("package")  // → フォルダの形の '<svg class="ki" …><path …/></svg>'
  * kindIcon("flow")     // → '…fill="var(--k-other-bg)"…>F</text></svg>'（表に無い種類は頭文字）
+ * kindIcon("fork")     // → '…fill="var(--k-beh-bg)"…>Fk</text></svg>'（アクションの流れの要素は振る舞いの色）
  */
 export function kindIcon(kind: string): string {
   if (kind === "package")
     return `<svg class="ki" width="18" height="16" viewBox="0 0 18 16" aria-hidden="true"><path d="M1.5 3.5h5l1.6 1.6h8.4v8.9H1.5Z" fill="var(--k-req-bg)" stroke="var(--k-req)"/></svg>`;
-  const fam = kind === "message" ? "beh" : family(kind);
+  const fam = kind === "message" || FLOW_KINDS.includes(kind) ? "beh" : family(kind);
   const isDef = / def$/.test(kind);
   const base = kind.replace(/ def$/, "");
   const L = ICON_L[base] ?? base.charAt(0).toUpperCase();

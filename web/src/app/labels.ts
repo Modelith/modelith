@@ -19,6 +19,11 @@ const KIND_LABEL: Record<string, string> = {
   def: "定義（利用者定義のキーワード）", usage: "使用（利用者定義のキーワード）",
   // alpha.8 で読むようにした種類
   comment: "メモ",
+  // alpha.9 で読むようにした種類（アクションの流れ、8.2.2.17）
+  fork: "分岐（並行）", join: "合流（並行）", decide: "分岐（条件）", merge: "合流（条件）",
+  send: "送信", accept: "受信", assign: "代入", terminate: "打ち切り",
+  if: "条件付きの実行", while: "繰り返し", loop: "繰り返し", for: "要素ごとの繰り返し",
+  start: "開始", done: "終了", "succession flow": "順序付きの流れ",
 };
 
 /**
@@ -30,6 +35,7 @@ const KIND_LABEL: Record<string, string> = {
  * kindLabel("part def")  // → "部品定義"
  * kindLabel("view")      // → "保存された図"
  * kindLabel("flow def")  // → "流れの定義"
- * kindLabel("send")      // → "send"（表に無い種類）
+ * kindLabel("send")      // → "送信"
+ * kindLabel("bogus")     // → "bogus"（表に無い種類）
  */
 export const kindLabel = (kind: string): string => KIND_LABEL[kind] ?? kind;

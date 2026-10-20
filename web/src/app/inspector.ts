@@ -265,6 +265,7 @@ const EDGE_NAME: Record<string, string> = {
   specialize: "定義を引き継ぐ（特殊化 :>）", subset: "一部になる（部分集合 subsets）", redefine: "置き換える（再定義 redefines）", reference: "参照する（references）",
   dependency: "依存する（dependency）", allocate: "割り当てる «allocate»", bind: "値を等しくする（結び付け bind）",
   connect: "3 つ以上をつなぐ接続（connect）", annotate: "メモを付ける（comment about）",
+  succession: "順序（succession）", successionFlow: "順序付きの流れ（succession flow）",
 };
 
 /**

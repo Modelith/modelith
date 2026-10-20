@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { build, parse, type Model, type ModelNode } from "../core";
 import { defaultFlowContext, flowBodyLines, flowContentOf, flowContexts, flowDetail, flowLayers, flowShape } from "./action-flow";
 import { autoPlace, boxesOf, computeRoutes, compartment, flowSize, nodeW, W, type NodeBox } from "./geometry";
+import { kindLabel } from "./labels";
 import { emptyView } from "./layout";
-import { CV, edgeStroke, svgMarkup } from "./svg";
+import { CV, edgeStroke, kindIcon, svgMarkup } from "./svg";
 
 const TEXT =
   "package P { action def A { first start; then action a : Heat; then decide d; if x > 0 then s; else c; " +
@@ -243,5 +244,29 @@ describe("アクションの流れの図の記法（svg）", () => {
     expect(node("a:a")).toContain('<rect class="body" width="168" height="44" rx="10"');
     expect(node("a:a")).toContain(">a : Heat</text>");
     expect(es).toContain(">[x &gt; 0]</text>");
+  });
+});
+
+describe("アクションの流れの要素の名前とアイコン（ADR-0014）", () => {
+  it.each([
+    ["fork", "分岐（並行）"],
+    ["decide", "分岐（条件）"],
+    ["send", "送信"],
+    ["accept", "受信"],
+    ["for", "要素ごとの繰り返し"],
+    ["done", "終了"],
+  ])("%s は「%s」と出す", (kind, label) => {
+    // Act
+    const got = kindLabel(kind);
+    // Assert
+    expect(got).toBe(label);
+  });
+
+  it("ツリーのアイコンは振る舞いの色で、略号を書く", () => {
+    // Act
+    const icon = kindIcon("fork");
+    // Assert
+    expect(icon).toContain('fill="var(--k-beh-bg)"');
+    expect(icon).toContain(">Fk</text>");
   });
 });
