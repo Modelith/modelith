@@ -954,3 +954,33 @@ fn named_flow_is_labelled_with_its_declaration_and_points_to_its_usage() {
     assert_eq!(flows[0].from_port.as_deref(), Some("port:o"));
     assert!(m.problems.is_empty(), "{:?}", m.problems);
 }
+
+#[test]
+fn nary_connection_and_binding_are_not_lines_of_the_general_view() {
+    // Arrange（n 項の接続 8.2.3.13・結び付け 8.2.2.13.2 は内部ブロック図だけに描く）
+    let text = "package P { part def A { port p; } part def H { part a : A; part b : A; part c : A; \
+                connect (a.p, b.p, c.p); bind a.p = b.p; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.edges.iter().all(|e| e.kind == "comp"), "{:?}", m.edges);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn nary_connection_and_binding_report_a_missing_end() {
+    // Arrange（異常系：端の最初の段が見つからない）
+    let text =
+        "package P { part def H { part a; part b; connect (a, b, nope.p); bind a = gone; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "線の接続先「nope.p」が見つかりません（connect）",
+            "「結び付け」の相手「gone」が見つかりません（bind）"
+        ]
+    );
+}

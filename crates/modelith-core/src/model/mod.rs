@@ -834,6 +834,7 @@ impl<'a> Builder<'a> {
 
     /// 関係（satisfy・verify・frame・flow・connect・derivation・dependency・allocate・message・transition）を線や遷移にする。
     /// 割り当ての線（8.2.3.15 の allocate-relationship）は、割り当ての使用の範囲を指す（線を消すと文ごと消える）。
+    /// n 項の接続と結び付けは、一般の図の線にしない（内部ブロック図に描く）が、相手が見つからなければ問題にする。
     /// 相手が見つからない関係は問題にする（モデルの `edges`・`nodes` の `trans`・`problems` を書き換える）。暫定コアの `build` の関係の処理と同じ。
     fn relations(&mut self) {
         let p = self.p;
@@ -904,6 +905,16 @@ impl<'a> Builder<'a> {
                                 None,
                             );
                         }
+                    }
+                }
+                // n 項の接続（8.2.3.13 の n-ary-connection）は、一般の図には線にしない（内部ブロック図に描く）
+                RelKind::Connect { ends, .. } if ends.len() > 2 => {
+                    if let Some(who) = self.missing_end(ends, pe) {
+                        self.problem(
+                            r.start,
+                            format!("線の接続先「{who}」が見つかりません（connect）"),
+                            None,
+                        );
                     }
                 }
                 RelKind::Flow {
@@ -980,8 +991,16 @@ impl<'a> Builder<'a> {
                         }
                     }
                 }
-                // 結び付けは内部ブロック図だけに描く（web）
-                RelKind::Bind { .. } => {}
+                // 結び付けは内部ブロック図だけに描く（web）。ここでは相手があるかだけを確かめる
+                RelKind::Bind { a, b, .. } => {
+                    if let Some(who) = self.missing_end(&[a.clone(), b.clone()], pe) {
+                        self.problem(
+                            r.start,
+                            format!("「結び付け」の相手「{who}」が見つかりません（bind）"),
+                            None,
+                        );
+                    }
+                }
                 RelKind::Allocate {
                     a: ra,
                     b: rb,
@@ -1078,6 +1097,31 @@ impl<'a> Builder<'a> {
                 }
             }
         }
+    }
+
+    /// 接続の端（`a.p` など）のうち、最初の段（`a`）が見つからない最初のもの。
+    ///
+    /// # 引数
+    ///
+    /// - `ends`：端の参照（書いた順）
+    /// - `pe`：文の持ち主の宣言の番号（名前を探し始める場所）
+    ///
+    /// # 戻り値
+    ///
+    /// 見つからない端（書いたままの参照）。すべて見つかれば None。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def H { part a; part b; connect (a.p, b, c); }" の H の中で
+    /// missing_end(["a.p", "b"], Some(H の番号))      → None
+    /// missing_end(["a.p", "b", "c"], Some(H の番号)) → Some("c")
+    /// ```
+    fn missing_end<'s>(&self, ends: &'s [String], pe: Option<usize>) -> Option<&'s String> {
+        ends.iter().find(|x| {
+            let head = x.split('.').next().unwrap_or("");
+            self.resolve(head, pe).is_none()
+        })
     }
 
     /// 流れの端のポート（`a.p` の `p`）。要素にポートがあればそこにつなぎ、ポートでも中身でもなければ問題にする。

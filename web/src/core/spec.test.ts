@@ -742,6 +742,38 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
       });
     });
 
+    describe("接続と結び付け（ConnectionUsage・BindingConnectorAsUsage、8.2.2.13）", () => {
+      it("connection の無い connect a to b; は、名前の無い接続として connection connect と同じ線になる", () => {
+        // Arrange
+        const text = "package P { part def A { port p; } part def H { part a : A; part b : A; connect a.p to b.p; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.edges.filter((e) => e.kind === "flow").map((e) => `${e.from}|${e.to}|${e.fromPort}|${e.toPort}`)).toEqual(["A|A|port:p|port:p"]);
+        expect(M.problems).toEqual([]);
+      });
+
+      it("n 項の connect (a, b, c) は、すべての端を残し、一般の図の線にはしない", () => {
+        // Arrange
+        const text = "package P { part def A { port p; } part def H { part a : A; part b : A; part c : A; connect (a.p, b.p, c.p); } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.rels.map((r) => (r as { ends?: string[] }).ends)).toEqual([["a.p", "b.p", "c.p"]]);
+        expect(build(P).edges.filter((e) => e.kind === "flow")).toEqual([]);
+      });
+
+      it("bind a = b; は持ち主の式にならず、見つからない相手を知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def H { part a; bind a = gone; } }";
+        // Act
+        const [h, ps] = [entry(text, "H"), errors(text)];
+        // Assert
+        expect(h?.exprs).toEqual([]);
+        expect(ps).toEqual(["「結び付け」の相手「gone」が見つかりません（bind）"]);
+      });
+    });
+
     describe("割り当て（AllocationDefinition・AllocationUsage、8.2.2.15）", () => {
       it("allocation def と allocation は要素になり、本体の中も読む", () => {
         // Arrange
