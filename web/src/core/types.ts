@@ -78,6 +78,18 @@ export interface Entry {
   reps?: Rep[];
   /** `if`・`while` のアクションの条件、`for` のアクションの `変数 in 列`（8.2.2.17）。Rust のコアだけが作る。 */
   guard?: string;
+  /** 状態の `entry`・`do`・`exit` の振る舞い（書いた順、8.2.2.18）。振る舞いを書かない `entry;` は入らない。Rust のコアだけが作る。 */
+  stateActions?: StateAction[];
+  /** 並行の状態（`state def S parallel { … }`、8.2.2.18）。Rust のコアだけが作る。 */
+  parallel?: boolean;
+}
+
+/** 状態の振る舞い 1 つ（`entry a;`・`do action a;`・`exit send S() to b;`、8.2.2.18）。 */
+export interface StateAction {
+  /** いつ行うか。 */
+  kind: "entry" | "do" | "exit";
+  /** キーワードの後ろ（`a`・`action a`・`send S() to b` など）。 */
+  text: string;
 }
 
 /** 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。 */

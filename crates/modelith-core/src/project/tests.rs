@@ -1554,3 +1554,57 @@ fn transition_without_target_is_not_recorded() {
     assert!(r.rels.is_empty());
     assert!(r.unsupported.is_empty());
 }
+
+#[test]
+fn state_records_its_entry_do_and_exit_actions() {
+    // Arrange（StateSubactionMembership、8.2.2.18：参照・action・send。振る舞いを書かない entry; は記録しない）
+    let text =
+        "state def S { entry; state on { entry action init; do heat; exit send Off() to h; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let actions = |name: &str| -> Vec<(&str, String)> {
+        entry(&r, name)
+            .state_actions
+            .iter()
+            .map(|a| (a.kind, a.text.clone()))
+            .collect()
+    };
+    assert!(actions("S").is_empty());
+    assert_eq!(
+        actions("on"),
+        [
+            ("entry", "action init".to_owned()),
+            ("do", "heat".to_owned()),
+            ("exit", "send Off() to h".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn entry_outside_a_state_is_not_a_state_action() {
+    // Arrange（境界値：状態の本体の外の entry は、これまでどおり読み飛ばす）
+    let text = "action def A { entry a; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.state_actions.is_empty()));
+}
+
+#[test]
+fn parallel_states_are_marked() {
+    // Arrange（StateDefBody の isParallel、8.2.2.18：定義と使用）
+    let text = "state def S parallel { state a parallel { state x; } state b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let parallel: Vec<(&str, bool)> = r
+        .entries
+        .iter()
+        .map(|e| (e.name.as_str(), e.parallel))
+        .collect();
+    assert_eq!(
+        parallel,
+        [("S", true), ("a", true), ("x", false), ("b", false)]
+    );
+}

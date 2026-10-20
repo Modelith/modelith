@@ -975,5 +975,31 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("状態の振る舞いと並行の状態（StateSubactionMembership・StateDefBody、8.2.2.18）", () => {
+      it("entry・do・exit の振る舞いを状態に記録する（以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { state def S { state on { entry action init; do heat; exit send Off() to h; } } }";
+        // Act
+        const on = entry(text, "on");
+        // Assert
+        expect(on?.stateActions).toEqual([
+          { kind: "entry", text: "action init" },
+          { kind: "do", text: "heat" },
+          { kind: "exit", text: "send Off() to h" },
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("parallel の状態は並行であることを記録する（以前は記録しなかった）", () => {
+        // Arrange
+        const text = "package P { state def S parallel { state a; state b; } }";
+        // Act
+        const S = entry(text, "S");
+        // Assert
+        expect(S?.parallel).toBe(true);
+        expect(entry(text, "a")?.parallel).toBeUndefined();
+      });
+    });
   });
 }

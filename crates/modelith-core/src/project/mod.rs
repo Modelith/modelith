@@ -668,7 +668,9 @@ impl Ctx {
         if self.transition(n, pe, start, end) {
             return None;
         }
-        self.entry_action(n, pe);
+        if self.state_subaction(n, pe, h) {
+            return None;
+        }
         // 継起（`first a then b;`・`then b;`・`if g then b;`・`else b;`・`first start;`、8.2.2.14・8.2.2.17）
         if n.kind() == SUCCESSION_AS_USAGE {
             self.succession(n, pe, start, end);
@@ -828,8 +830,14 @@ impl Ctx {
                 about: Vec::new(),
                 reps: Vec::new(),
                 guard: None,
+                state_actions: Vec::new(),
+                parallel: false,
             };
             e.guard = self.guard(n);
+            e.parallel = matches!(
+                n.kind(),
+                STATE_DEFINITION | STATE_USAGE | EXHIBIT_STATE_USAGE
+            ) && has_keyword(n, "parallel");
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
                 for md in prefix_meta {
@@ -902,6 +910,8 @@ impl Ctx {
                 about: Vec::new(),
                 reps: Vec::new(),
                 guard: None,
+                state_actions: Vec::new(),
+                parallel: false,
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -1142,24 +1152,57 @@ impl Ctx {
         (ev, via)
     }
 
-    /// 状態の本体の `entry …;`（EntryActionMember、8.2.2.18）を読んだ後の処理。続く `then s;` を最初の遷移にするため、
-    /// 直前の要素を「entry」にする。状態の本体でなければ何もしない。
+    /// 状態の本体の `entry …;`・`do …;`・`exit …;`（StateSubactionMembership、8.2.2.18）を、状態の振る舞いとして記録する。
+    /// 振る舞いを書かない `entry;` は記録しない。`entry …;` の後は、続く `then s;` を最初の遷移にするため、直前の要素を「entry」にする。
     ///
     /// # 引数
     ///
-    /// - `n`：文の節（`entry` で始まる `STATE_SUBACTION_MEMBER` のときだけ働く）
+    /// - `n`：文の節（`STATE_SUBACTION_MEMBER` のときだけ働く）
     /// - `pe`：文を含む、いちばん近い宣言の番号
-    fn entry_action(&mut self, n: &SyntaxNode, pe: Option<usize>) {
-        if n.kind() != STATE_SUBACTION_MEMBER || !has_keyword(n, "entry") || !self.in_state(pe) {
-            return;
+    /// - `h`：文の頭（修飾を外し、空白をまとめたもの。`entry action init` など）
+    ///
+    /// # 戻り値
+    ///
+    /// 状態の本体の振る舞いの文として読んだら `true`。ほかの文や、状態の本体の外なら `false`（何もしない）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "state def S { entry action init; }" の entry の文（S が 0 番）
+    /// state_subaction(…, Some(0), "entry action init") → true（S の state_actions に { kind: "entry", text: "action init" }）
+    /// state_subaction(…, Some(0), "entry")              → true（記録しないが、直前の要素を「entry」にする）
+    /// state_subaction(…, None, "do a")                 → false
+    /// ```
+    fn state_subaction(&mut self, n: &SyntaxNode, pe: Option<usize>, h: &str) -> bool {
+        let (Some(pe), STATE_SUBACTION_MEMBER) = (pe, n.kind()) else {
+            return false;
+        };
+        if !self.in_state(Some(pe)) {
+            return false;
         }
-        if let Some(top) = self.prev.last_mut() {
+        let Some(kind) = ["entry", "do", "exit"]
+            .into_iter()
+            .find(|k| has_keyword(n, k))
+        else {
+            return false;
+        };
+        let text = h.strip_prefix(kind).unwrap_or(h).trim();
+        if !text.is_empty() {
+            self.out.entries[pe].state_actions.push(StateAction {
+                kind,
+                text: text.to_owned(),
+            });
+        }
+        if kind == "entry"
+            && let Some(top) = self.prev.last_mut()
+        {
             *top = Some(Prev {
                 entry: None,
                 name: String::new(),
                 initial: true,
             });
         }
+        true
     }
 
     /// 本体の中の、直前のアクションの流れの要素（継起の元）。無ければ、名前も番号も無い元。
@@ -1492,6 +1535,8 @@ impl Ctx {
             },
             reps: Vec::new(),
             guard: None,
+            state_actions: Vec::new(),
+            parallel: false,
         };
         self.push_entry(e, pe);
         if !about.is_empty() {

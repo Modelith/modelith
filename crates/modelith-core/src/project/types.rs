@@ -148,6 +148,22 @@ pub struct Entry {
     /// 空白をまとめて書いたとおりに持つ。ほかの宣言と、条件の無い `loop` では `None`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guard: Option<String>,
+    /// 状態の `entry`・`do`・`exit` の振る舞い（StateSubactionMembership、8.2.2.18）。書いた順。
+    /// 振る舞いを書かない `entry;` は入れない（最初の遷移の元としてだけ読む）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub state_actions: Vec<StateAction>,
+    /// 並行の状態（`state def S parallel { … }`、StateDefBody の isParallel、8.2.2.18）か。中の状態は同時に進む。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub parallel: bool,
+}
+
+/// 状態の振る舞い 1 つ（`entry a;`・`do action a { … }`・`exit send S() to b;`、StateSubactionMembership、8.2.2.18）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StateAction {
+    /// いつ行うか（`entry`・`do`・`exit`）。
+    pub kind: &'static str,
+    /// キーワードの後ろ（`a`・`action a`・`send S() to b` など。空白をまとめて書いたとおり）。
+    pub text: String,
 }
 
 /// 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。
