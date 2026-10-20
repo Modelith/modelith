@@ -258,6 +258,61 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     await expect(line.locator("text")).toHaveText("«allocate» a");
   });
 
+  test("F-VIEW-7: GeneralView に、要素に付けたメモを角を折った四角と破線で描き、インスペクタに本文を出す", async ({ page }) => {
+    // Arrange
+    const text = `package G {
+    part def Pump {
+        attribute rate : Real := 2;
+        rep inOCL language "OCL" /* self.rate > 0 */
+    }
+    part def Tank;
+    comment safety about Pump, Tank /* 空のタンクでポンプを回さない */
+    view gv : GeneralView { expose G::*; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="gv"]').click();
+    // Act
+    await page.locator('#gNodes [data-key="note:safety"]').click();
+    // Assert（メモは 2 つの要素へ矢印の無い破線を引き、インスペクタに相手と本文を出す）
+    await expect(page.locator('[data-edge="annotate|note:safety|Pump"] path.line')).toHaveAttribute("stroke-dasharray", "6 4");
+    await expect(page.locator('[data-edge="annotate|note:safety|Tank"] path.line')).not.toHaveAttribute("marker-end", /.+/);
+    await expect(page.locator("#insp")).toContainText("メモを付ける相手Pump、Tank");
+    await expect(page.locator("#insp")).toContainText("空のタンクでポンプを回さない");
+    // Act（メモを付けた要素を選ぶ）
+    await page.locator('#gNodes [data-key="Pump"]').click();
+    // Assert（要素のインスペクタにも、メモと別の言語での表し方を出す。初期値は := のまま区画に書く）
+    await expect(page.locator("#insp .notes")).toContainText("空のタンクでポンプを回さない");
+    await expect(page.locator("#insp .notes")).toContainText("別の言語での表し方（OCL）・inOCL");
+    await expect(page.locator('#gNodes [data-key="Pump"]')).toContainText("rate := 2");
+  });
+
+  test("F-VIEW-7: メモを図から削除すると、テキストからコメントが消え、注釈した要素は残る", async ({ page }) => {
+    // Arrange
+    const text = `package G {
+    part def Pump;
+    comment about Pump /* 点検を年に 1 回 */
+    view gv : GeneralView { expose G::*; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400);
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="gv"]').click();
+    await page.locator('#gNodes [data-key="note:#1"]').click();
+    // Act（2 回押しで削除）
+    await page.locator('#insp [data-act="del"]').click();
+    await page.locator('#insp [data-act="del"]').click();
+    // Assert
+    await expect(page.locator("#ed")).not.toHaveValue(/点検を年に 1 回/);
+    await expect(page.locator("#ed")).toHaveValue(/part def Pump;/);
+    await expect(page.locator('#gNodes [data-key="note:#1"]')).toHaveCount(0);
+  });
+
   test("F-VIEW-7: テキストで expose を書き換えると、開いている図も変わる", async ({ page }) => {
     // Arrange
     await openView(page, "reqs");
