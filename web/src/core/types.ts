@@ -333,6 +333,65 @@ export interface Model {
   actionFlows?: ModelActionFlow[];
   /** 状態定義ごとの、状態遷移の図（StateTransitionView、8.2.3.18）。Rust のコアだけが作る。 */
   stateMachines?: ModelStateMachine[];
+  /** シナリオごとの、シーケンス図（SequenceView、9.2.20.2.7・8.2.3.9）。Rust のコアだけが作る。 */
+  sequences?: ModelSequence[];
+}
+
+/** シーケンス図のライフライン（シナリオの直下の、名前のある部品と出来事）。 */
+export interface ModelLifeline {
+  /** 図の要素のキー（`l:名前`）。 */
+  key: string;
+  name: string;
+  /** 部品か出来事の宣言。 */
+  entry: Entry;
+}
+
+/** シーケンス図の、ライフラインの上のイベント（8.2.3.9 の sq-proxy）。 */
+export interface ModelSequenceEvent {
+  /** キー（`e:ライフライン.連鎖`）。 */
+  key: string;
+  /** イベントを描くライフラインのキー。 */
+  lifeline: string;
+  /** 札（`.ev`・`.sub.ev`）。 */
+  label: string;
+  /** イベントの宣言。ライフラインの本体に宣言が無いものは null。 */
+  entry: Entry | null;
+  /** 上から何段目か（0 から）。 */
+  row: number;
+}
+
+/** シーケンス図のメッセージ。 */
+export interface ModelSequenceMessage {
+  /** 線の ID（`msg|書いた順の番号|名前`）。 */
+  id: string;
+  /** 送り手・受け手のライフラインのキー。 */
+  from: string;
+  to: string;
+  /** 送り手・受け手のイベントのキー（端が `a.ev` のとき）。 */
+  fromEvent?: string;
+  toEvent?: string;
+  /** 上から何段目か（0 から）。 */
+  row: number;
+  /** メッセージの関係。 */
+  rel: Rel;
+}
+
+/** シナリオ 1 つの、シーケンス図（SequenceView、9.2.20.2.7）。時間は上から下へ進む。 */
+export interface ModelSequence {
+  /** シナリオの、図の要素のキー。 */
+  key: string;
+  /** シナリオの宣言。 */
+  entry: Entry;
+  /** ライフライン（左から）。 */
+  lifelines: ModelLifeline[];
+  /** イベント（段の順）。 */
+  events: ModelSequenceEvent[];
+  /** メッセージ（段の順）。 */
+  messages: ModelSequenceMessage[];
+  /** 別のライフラインのイベントの間の順序（succession）の線。端はイベントのキー。 */
+  successions: ModelEdge[];
+  /** 段の数。 */
+  rows: number;
 }
 
 /** 状態遷移の図の要素 1 つ（状態と、本体ごとの開始・終了の記号）。 */

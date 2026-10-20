@@ -96,3 +96,17 @@ describe("build（Rust のモデル構築）の状態遷移の図", () => {
     expect(sm?.edges.map((e) => e.id)).toEqual(["transition|s:#start|s:on|#1"]);
   });
 });
+
+describe("build（Rust のモデル構築）のシーケンス図", () => {
+  it("シーケンス図を、宣言と関係の参照に戻す（型の中のイベントは宣言を指し、メッセージは関係を指す、8.2.3.9）", () => {
+    // Arrange
+    const text = "package P { part def A { event occurrence go; } occurrence def S { part a : A; part b { event occurrence r; } message m from a.go to b.r; } }";
+    // Act
+    const seq = build(parse(text)).sequences?.[0];
+    // Assert
+    expect(seq?.entry.name).toBe("S");
+    expect(seq?.lifelines.map((l) => [l.key, l.entry.name])).toEqual([["l:a", "a"], ["l:b", "b"]]);
+    expect(seq?.events.map((e) => [e.key, e.entry?.name ?? null, e.row])).toEqual([["e:b.r", "r", 0], ["e:a.go", "go", 0]]);
+    expect(seq?.messages.map((m) => [m.id, m.rel.rel, m.fromEvent, m.toEvent])).toEqual([["msg|0|m", "message", "e:a.go", "e:b.r"]]);
+  });
+});
