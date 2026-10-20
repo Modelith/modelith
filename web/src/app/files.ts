@@ -874,6 +874,7 @@ export function initFiles(sample: Sample): void {
     rerender: renderFiles,
     pickPluginFolder,
     openImported,
+    hasOpenDoc: () => shownKey !== null,
     browser: idbBrowserPlugins,
     data: idbPluginData,
   });

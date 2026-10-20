@@ -26,6 +26,8 @@ export interface HostEnv {
   onChange(): void;
   /** 読み込んだテキストを新しい無題の文書として開いて表示し、付けた名前を返す（既存のファイルは書き換えない。C-6）。 */
   openImported(fileName: string, text: string): string;
+  /** 開いている文書があるか（無ければ、コマンドと書き出しは対象が無いので行わない。F-FILE-14）。 */
+  hasOpenDoc(): boolean;
   /** プラグイン用の保存場所。 */
   data: PluginDataStore;
 }
@@ -52,6 +54,9 @@ interface Entry {
   /** 動かし始めるたびに増える番号。止めた後に届いた古い知らせを捨てる。 */
   run: number;
 }
+
+/** 開いているファイルが無いときに、コマンドや書き出しを頼まれたときの知らせ（F-FILE-14）。 */
+const NO_OPEN_FILE = "開いているファイルがありません。ファイルを開いてから実行してください";
 
 /** 許可を覚える localStorage のキー（形は trust.ts の TrustStore）。 */
 const TRUST_KEY = "modelith-plugin-trust";
@@ -435,12 +440,13 @@ async function sendDidChange(e: Entry): Promise<void> {
 }
 
 /**
- * プラグインのコマンドを実行する（runCommand を送り、答えを待つ）。
+ * プラグインのコマンドを実行する（runCommand を送り、答えを待つ）。開いているファイルが無ければ、送らずに知らせる（F-FILE-14）。
  *
  * @param id プラグインの ID
  * @param command コマンドの ID
  */
 function runCommand(id: string, command: string): void {
+  if (!hostEnv().hasOpenDoc()) return toast(NO_OPEN_FILE);
   const e = entries.get(id);
   const c = e?.plugin.commands.find((x) => x.id === command);
   if (!e || !c || e.state !== "running") return toast("プラグインがまだ準備できていないため、コマンドを実行できません");
@@ -475,12 +481,13 @@ async function runImport(id: string, importer: string): Promise<void> {
 
 /**
  * プラグインの書き出しを実行する。表示中の保存された図があれば、その名前を添える（F-PLUG-4）。
- * 結果（exported）は、ダウンロードさせる（プロジェクトのフォルダには書かない）。
+ * 結果（exported）は、ダウンロードさせる（プロジェクトのフォルダには書かない）。開いているファイルが無ければ、送らずに知らせる（F-FILE-14）。
  *
  * @param id プラグインの ID
  * @param exporter 書き出しの ID
  */
 function runExport(id: string, exporter: string): void {
+  if (!hostEnv().hasOpenDoc()) return toast(NO_OPEN_FILE);
   const e = entries.get(id);
   const x = e?.plugin.exporters.find((y) => y.id === exporter);
   if (!e || !x || e.state !== "running") return toast("プラグインがまだ準備できていないため、書き出せません");
