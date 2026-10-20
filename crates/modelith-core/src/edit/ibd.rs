@@ -410,3 +410,33 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Option<usize> {
         inner_named(d, u, rest)
     }
 }
+
+/// 内部ブロック図の部品を、対象の中から指す参照（直下の部品は `a`、入れ子の部品は `a.b`）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `c`：図の対象（部品定義）の宣言の番号
+/// - `u`：部品の宣言の番号
+///
+/// # 戻り値
+///
+/// 参照。直下の部品でも、直下の部品の中の部品でもなければ、その部品の名前。
+///
+/// # 例
+///
+/// ```text
+/// // "part def A { part x; } part def C { part a : A; }" のとき
+/// path_of(d, C, a の番号) → "a"
+/// path_of(d, C, x の番号) → "a.x"
+/// ```
+pub(super) fn path_of(d: &Doc<'_>, c: usize, u: usize) -> String {
+    let name = &d.e(u).name;
+    if d.e(c).children.contains(&u) {
+        return name.clone();
+    }
+    parts(d, c)
+        .into_iter()
+        .find(|&p| inner_parts(d, p).contains(&u))
+        .map_or_else(|| name.clone(), |p| format!("{}.{name}", d.e(p).name))
+}

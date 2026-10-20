@@ -342,6 +342,20 @@ fn nested_part_and_junction_keys_are_found_in_the_context() {
 }
 
 #[test]
+fn connect_flow_to_a_nested_part_writes_its_path() {
+    // Arrange（入れ子の部品 `u:a.x` へ、内部ブロック図で流れを引く）
+    let text = "package P { part def X { port i; } part def A { part x : X; } part def B { port o; } \
+                part def C { part a : A; part b : B; } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"flow","from":"u:b","to":"u:a.x","fromPort":"o","toPort":"i","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(after.contains("flow from b.o to a.x.i;"), "{after}");
+}
+
+#[test]
 fn delete_edge_with_unknown_id_is_refused() {
     assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
 }

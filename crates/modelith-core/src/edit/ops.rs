@@ -1014,8 +1014,10 @@ fn connect(
                     "2 つの部品を両方持つ部品定義がないため、流れを書けません".to_owned()
                 })?,
             };
+            // 内部ブロック図の入れ子の部品は、対象の中から `a.b` で指す
             let end = |u: usize, p: Option<&str>| {
-                p.map_or_else(|| d.e(u).name.clone(), |p| format!("{}.{p}", d.e(u).name))
+                let path = super::ibd::path_of(d, parent, u);
+                p.map_or_else(|| path.clone(), |p| format!("{path}.{p}"))
             };
             (
                 d.target(parent),
