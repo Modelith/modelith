@@ -4,6 +4,7 @@
 
 use std::collections::HashSet;
 
+use super::filters::filter_of;
 use super::{Builder, Frame, View};
 use crate::project::{Entry, Expose};
 
@@ -133,87 +134,6 @@ pub fn std_view_label(std: Option<&str>) -> String {
             .map_or(s, |(_, l)| l)
             .to_owned(),
     }
-}
-
-/// `@X`（X はメタクラスかメタデータ）の絞り込み。
-enum Filter {
-    Definition,
-    Usage,
-    Kind(String),
-    Metadata(String),
-}
-
-impl Filter {
-    /// 宣言が絞り込みに合うか。
-    ///
-    /// # 引数
-    ///
-    /// - `e`：調べる宣言
-    ///
-    /// # 戻り値
-    ///
-    /// 合えば true。`Definition` は定義、`Usage` は使用、`Kind` は種類が一致するもの、`Metadata` はそのメタデータを付けたものが合う。
-    ///
-    /// # 例
-    ///
-    /// ```text
-    /// Filter::Kind("part def").test(part def A の宣言) → true
-    /// Filter::Usage.test(part def A の宣言)            → false
-    /// ```
-    fn test(&self, e: &Entry) -> bool {
-        match self {
-            Self::Definition => e.is_def,
-            Self::Usage => !e.is_def,
-            Self::Kind(k) => e.kind == *k,
-            Self::Metadata(m) => e
-                .meta
-                .as_ref()
-                .is_some_and(|ms| ms.0.iter().any(|(k, _)| k == m)),
-        }
-    }
-}
-
-/// `@X` の式を絞り込みにする。扱えない式なら None。暫定コアの `filterTest`（`web/src/core/views.ts`）と同じ。
-/// `X` は修飾名でもよく、最後の段だけを見る。`…Definition`・`…Usage` のメタクラスは種類に、メタデータの定義の名前はメタデータの絞り込みにする。
-///
-/// # 引数
-///
-/// - `expr`：filter の式（`@PartDefinition`・`@SysML::PartUsage`・`@Safety` など）
-/// - `is_metadata`：名前がメタデータの定義（`metadata def`）かを答える関数
-///
-/// # 戻り値
-///
-/// 絞り込み。`@` で始まらない式・名前の形でない式・知らないメタクラスでメタデータでもない名前なら None。
-///
-/// # 例
-///
-/// ```text
-/// filter_of("@PartDefinition", …)  → Some(Kind("part def"))
-/// filter_of("@SysML::PartUsage", …) → Some(Kind("part"))
-/// filter_of("@Definition", …)      → Some(Definition)
-/// filter_of("@Safety", …)          → Some(Metadata("Safety"))   // Safety がメタデータの定義のとき
-/// filter_of("not @A", …)           → None                       // 扱えない式
-/// ```
-fn filter_of(expr: &str, is_metadata: impl Fn(&str) -> bool) -> Option<Filter> {
-    let rest = expr.strip_prefix('@')?.trim_start();
-    let mut cs = rest.chars();
-    let ok = cs
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':');
-    if !ok {
-        return None;
-    }
-    let name = rest.rsplit("::").next().unwrap_or(rest);
-    match name {
-        "Definition" => return Some(Filter::Definition),
-        "Usage" => return Some(Filter::Usage),
-        _ => {}
-    }
-    if let Some(kind) = metaclass_kind(name) {
-        return Some(Filter::Kind(kind));
-    }
-    is_metadata(name).then(|| Filter::Metadata(name.to_owned()))
 }
 
 /// メタクラスの名前（`PartDefinition`・`ActionUsage` など）を、Modelith の要素の種類にする。

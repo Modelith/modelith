@@ -1022,6 +1022,40 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
       });
     });
 
+    describe("ビューの絞り込みの式（ElementFilterMember・FilterPackageMember 8.2.2.26、KerML 8.2.5.8 の分類の検査と論理演算）", () => {
+      const MODEL = "package P { metadata def Safety; part def A; #Safety part def B; requirement def R; attribute def T; ";
+      const keys = (body: string): string[] | undefined => build(parse(MODEL + body + " }")).views.find((v) => v.name === "v")?.nodeKeys;
+
+      it("filter は and・or・not と括弧で、@メタクラスと @メタデータを組み合わせられる（以前は知らせて使わなかった）", () => {
+        // Arrange
+        const body = "view v { expose P::*; filter (@PartDefinition or @RequirementDefinition) and not @Safety; }";
+        // Act
+        const got = keys(body);
+        // Assert
+        expect(got).toEqual(["A", "R"]);
+        expect(problems(MODEL + body + " }")).toEqual([]);
+      });
+
+      it("istype・hastype・xor と、expose の [ ] の中の式も読む", () => {
+        // Arrange
+        const body = "view v { expose P::*[istype Safety xor hastype RequirementDefinition]; }";
+        // Act
+        const got = keys(body);
+        // Assert
+        expect(got).toEqual(["B", "R"]);
+      });
+
+      it("値の比較を含む式は、知らせたうえで使わない（異常系）", () => {
+        // Arrange
+        const body = "view v { expose P::*; filter @Safety and level > 1; }";
+        // Act
+        const ps = problems(MODEL + body + " }");
+        // Assert
+        expect(keys(body)).toEqual(["A", "B", "R", "T"]);
+        expect(ps).toEqual(["図「v」の絞り込み「@Safety and level > 1」はまだ扱えないため、絞り込まずに描きます（filter）"]);
+      });
+    });
+
     describe("シナリオの順序（SuccessionAsUsage 8.2.2.14、SequenceView 9.2.20.2.7）", () => {
       it("メッセージとイベントの間の順序は、相手を確かめ、見つからなければ知らせる（以前は確かめなかった）", () => {
         // Arrange

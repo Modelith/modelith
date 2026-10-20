@@ -164,6 +164,44 @@ fn no_phase_metadata_means_no_phases() {
 }
 
 #[test]
+fn view_filters_combine_tests_with_logical_operators() {
+    // Arrange（filter の or・not と、expose の [ ] の and・括弧。8.2.2.26・7.5.4）
+    let text = "package P { metadata def Safety; part def A; #Safety part def B; requirement def R; attribute def T; \
+                view v { expose P::*; filter @PartDefinition or @RequirementDefinition; filter not @Safety; } \
+                view w { expose P::*[@Definition and not (@AttributeDefinition or @RequirementDefinition)]; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let keys = |name: &str| {
+        m.views
+            .iter()
+            .find(|v| v.name == name)
+            .map(|v| v.node_keys.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(keys("v"), ["A", "R"]);
+    assert_eq!(keys("w"), ["A", "B"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn view_filter_with_a_value_comparison_is_reported_and_not_used() {
+    // Arrange（異常系：値の比較は扱えない式。知らせたうえで、絞り込まずに描く）
+    let text = "package P { metadata def Safety; part def A; view v { expose P::*; filter @Safety and level > 1; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(m.views[0].node_keys, ["A"]);
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "図「v」の絞り込み「@Safety and level > 1」はまだ扱えないため、絞り込まずに描きます（filter）"
+        ]
+    );
+}
+
+#[test]
 fn view_exposes_members_and_filters_by_metaclass() {
     // Arrange
     let text = "package P { part def A; part a : A; attribute def B; \

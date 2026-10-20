@@ -5,6 +5,7 @@
 //! SysML v2 の意味（名前解決・継承など）に沿った作り直しは、0.1.0 の後に行う。
 
 mod chains;
+mod filters;
 mod flows;
 mod names;
 mod sequences;
