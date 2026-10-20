@@ -326,3 +326,10 @@ main[data-nodoc] .toast{z-index:30}
   .nodoc{grid-column:1 / -1}
   main[data-tab="tree"] .nodoc{display:none}
 }
+/* ---- テキストの語の説明（F-EDIT-9） ---- */
+.wordline{flex:none;border-top:1px solid var(--rule);background:var(--panel2);padding:6px 12px;font-size:12px;line-height:1.6;color:var(--ink2)}
+.wordline:empty{display:none}
+.wordline b,.wordtip b{color:var(--ink);font-weight:500;margin-right:8px}
+.wordtip{position:fixed;z-index:95;max-width:320px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:7px 10px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:12px;line-height:1.6;color:var(--ink2);pointer-events:none}
+.wordtip b{display:block;margin-right:0}
+.wordtip[hidden]{display:none}

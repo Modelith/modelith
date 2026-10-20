@@ -370,7 +370,7 @@ package ModelithRequirements {
             doc /* 図の描画と操作・ビュー・タブ（web/src/app） */
         }
         part def TextEditor {
-            doc /* テキストの編集・色付け・問題一覧（web/src/app/editor.ts） */
+            doc /* テキストの編集・色付け・問題一覧・語の説明（web/src/app/editor.ts・glossary.ts・word-help.ts） */
         }
         part def Workspace {
             doc /* 開いているファイルと未保存の変更、保存・競合・自動保存（web/src/workspace） */
@@ -643,6 +643,13 @@ package ModelithRequirements {
                 verify NoSilentWriteReq;
                 verify UndoReq;
                 verify TextIsSourceReq;
+            }
+        }
+        verification def WordHelpE2E {
+            doc /* web/e2e/words.spec.ts：キーワードと標準ライブラリの型にマウスを乗せたときのツールチップ、コメントの中の語と利用者の付けた名前では出さないこと、クリックとキー操作で動かしたカーソルのある語の説明の行（Chromium で操作） */
+            objective {
+                verify WordHelpReq;
+                verify PlainWordsReq;
             }
         }
         verification def FilesE2E {
