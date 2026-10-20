@@ -33,23 +33,26 @@
 | 7 | `0.1.0-alpha.7` | SysML v2 の文法（1）：誤った表示をなくし、読める構文を増やす（下の「SysML v2 の文法への対応」）（公開済み） |
 | 8 | `0.1.0-alpha.8` | SysML v2 の文法（2）：構造の関係を図に描く。最後のファイルを閉じても新しいファイルを作らない（F-FILE-14。テストユーザーの報告）（公開済み） |
 | 9 | `0.1.0-alpha.9` | SysML v2 の文法（3）：振る舞いの流れを描く。テキストの語の意味を示す（F-EDIT-9）。スマホは見る・確かめる画面とし、テキストを読み取り専用で開いて「編集」で書き換え、ダブルタップで語の意味を示す（F-EDIT-10。メンテナの判断）（公開済み） |
-| 10 | `0.1.0-beta.1` | 起動時に前回の続きから始める（F-FILE-13。利用者からの要望で、プラグインの仕組みの後に入れる）。暫定コアを削除し機能を固定。以降は不具合の修正のみ |
+| 10 | `0.1.0-alpha.10` | SysML v2 の文法（4）：誤った表示をなくす（下の「SysML v2 の文法への対応」。2026-10-20 に規格と照合し直して見つけたもの。メンテナの判断） |
+| 11 | `0.1.0-beta.1` | 起動時に前回の続きから始める（F-FILE-13。利用者からの要望で、プラグインの仕組みの後に入れる）。暫定コアを削除し機能を固定。以降は不具合の修正のみ |
 | — | `0.1.0-rc.1` → `0.1.0` | 1 週間、重大な報告がなければ正式版 |
 
 テストユーザーの報告次第で、スプリントの内容は入れ替える。
 alpha.7〜alpha.9 は、beta で機能を固定する前に、alpha で直せる文法の不足を埋めるために入れた（メンテナの判断、2026-10-19）。
+alpha.10 は、alpha.9 の公開後に規格と照合し直して見つかった誤った表示（⚠）を、beta で機能を固定する前に直すために入れた（メンテナの判断、2026-10-20）。
 
 ## SysML v2 の文法への対応
 
-[対応表](../reference/sysml-conformance.md)（2026-10-19 に Rust のコアで照合）の ×・△・⚠ を、次の順に埋める。項目ごとの予定は対応表の「予定」の列に書く。
+[対応表](../reference/sysml-conformance.md)（2026-10-20 に Rust のコアで照合し直した）の ×・△・⚠ を、次の順に埋める。項目ごとの予定は対応表の「予定」の列に書く。
 
 | リリース | 内容 |
 | --- | --- |
 | `0.1.0-alpha.7` | 誤った表示（⚠）をなくす：`rep`、`assert not constraint`・`assume constraint`、パッケージ直下の `verify`、`viewpoint` の中の `frame`、同じファイルの中の `alias` と修飾名（パッケージの階層をたどる）。まだ扱えない構文の `{ }` の中身が外に漏れないようにする。読める構文を増やす：`case`・`objective`・`actor`・`include use case`・`enum` の使用・`event occurrence`・`timeslice`・`snapshot`・`typed by`・`constant`・`variant`・`rendering`・`metadata … about`・利用者定義のキーワード（`#X def`）・`by` の無い `satisfy`・`not satisfy`・`assert satisfy`・`@M` の値の式。標準ライブラリの型名の判定を直す |
 | `0.1.0-alpha.8` | 構造の関係を図に描く：特殊化・部分集合・再定義・参照の線、多重度、`:=` と `default` の区別、`dependency` の線、`comment … about`・`rep` の本文、単独の `connect`・n 項の `connect`・`bind`・`binding`、`allocation`・`allocate`、`flow def`・名前付きのフロー。GeneralView・InterconnectionView の不足を埋める |
 | `0.1.0-alpha.9` | 振る舞いの流れを描く：継起（`first … then`・`succession`・`succession flow`）、`fork`・`join`・`merge`・`decide`、`send`・`accept`・`assign`・`terminate`、`if`・`while`・`for`、ActionFlowView。状態の `entry`・`do`・`exit`・`parallel`、遷移の線と省略形、StateTransitionView・SequenceView の不足。`render` の合成形、`filter` の論理式、3 段以上の特徴量の連鎖 |
+| `0.1.0-alpha.10` | 誤った表示（⚠）をなくす：本体が `true`・`false`・`not` で始まる制約と計算、定義の中の型の無い部品を端にする線、`satisfy requirement r : R by x`・`verify requirement r : R` と `view def` の中の `satisfy`、`@M { :>> x = 1; }`、KerML の宣言の本体の漏れ、`crosses`（`=>`）、キーワードの無い特性（`x : Real;`）と型の無い `ref`、`flow of p : T` の運ぶもの、本体付きの式（`->collect{ … }`）、関係の本体の `doc`、`'~Pt'` の共役ポート。黙って捨てる短い書き方を読む：`from` の無い `flow`・`succession flow`、`message a to b`、`connect` の無い `interface`、参照の形の `perform x.y;`・`exhibit s;`・`frame c;` |
 | `0.2.0` | パッケージやファイルをまたぐ名前の解決：`import`（フィルタ付きを含む）・別のファイルの `alias`・修飾名・可視性、`expose` で import を通した名前。「複数のファイルにまたがるモデル」（ADR-0019）とあわせて行う |
-| `0.3.0` 以降 | 新しい仕組みが要るもの：式の文法と評価・単位（`filter` のメタデータの値の比較を含む）、KerML の文法、標準ライブラリの同梱、GeometryView・GridView・BrowserView、`asTextualNotation`・`asElementTable`、SequenceView の複合フラグメントと入れ子のシーケンス図、モデル交換（`.kpar`） |
+| `0.3.0` 以降 | 新しい仕組みが要るもの：式の文法と評価・単位（`filter` のメタデータの値の比較を含む）、KerML の文法、標準ライブラリの同梱、GeometryView・GridView・BrowserView、`asTextualNotation`・`asElementTable`、SequenceView の複合フラグメントと入れ子のシーケンス図、ActionFlowView のパラメータとその間のフロー・区画（swim lane）、StateTransitionView の状態の使用の中の遷移と複数の状態定義、`assert constraint`・`assert not`、モデル交換（`.kpar`） |
 必要になってから作る（YAGNI）。利用者の声（Issues）が無い機能は、ここに先回りして入れない。オフライン利用（PWA）も、声が出てから判断する。
 
 ## 0.1.0 より先の方向

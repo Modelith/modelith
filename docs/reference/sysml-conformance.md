@@ -3,8 +3,8 @@
 Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示す。
 対象は、アプリが使う Rust のパーサ（`crates/modelith-core/src/syntax`・`project`、段階 A。ADR-0015）とモデル構築（`crates/modelith-core/src/model`。ADR-0016）と図（`web/src/app/`）。暫定の TS コア（`web/src/core/`）は、Rust のコアと同じテストで比べるために残している。
 
-- 照合日: 2026-10-20（アクションの流れ・状態遷移・シーケンス図・ビューの式・特徴量の連鎖の行を更新した。全体は 2026-10-19 に Rust のコアで照合し直した。その前は 2026-10-13、暫定の TS コアで照合）
-- 照合したコミット: `516deae`（dev）
+- 照合日: 2026-10-20（alpha.9 の公開後に、BNF の規則から書いた断片で全体を照合し直した。その前は 2026-10-19 に Rust のコアで、2026-10-13 に暫定の TS コアで照合）
+- 照合したコミット: `c07b3c2`（dev。コアは `09ef7ef` から変わっていない）
 - 解析器や図を変えたら、この表も更新する。要求は [requirements.sysml](requirements.sysml) にだけ書き（ADR-0011）、この表は「仕様のどこまでに対応しているか」の記録とする。
 
 ## 照合した資料
@@ -17,13 +17,13 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 | 文法 | `bnf/SysML-textual-bnf.kebnf`、`bnf/SysML-graphical-bnf.kgbnf` |
 | 標準ライブラリ | `sysml.library/`（`Views.sysml`、`StandardViewDefinitions.sysml`、`ScalarValues.kerml`、ISQ） |
 
-> **版の注意**：README は「SysML 2.0 が 2025-06-30 に正式採択」としているが、同梱の PDF は 2.1 Beta 2 である。章番号は 2.1 Beta 2 のもの。2.0 正式版（omg.org の PDF）との差は未確認。
+> **版の注意**：公式リポジトリの README は「SysML 2.0 が 2025-06-30 に正式採択」としているが、同梱の PDF は 2.1 Beta 2 である。章番号は 2.1 Beta 2 のもの。2.0 正式版（omg.org の PDF）との差は未確認。
 
 読んだ範囲：言語仕様の 2 Conformance・7.26 Views and Viewpoints・8.2.3.1・9.2.20.1（Table 34）、変換仕様の 1 Scope・2 Conformance、テキスト記法の BNF の全規則名と、主な章の本文。KerML の式の文法（8.2.5）は読んでいない。
 
 ## 判定の方法
 
-コードを読んだうえで、短い SysML の断片（約 120 件）を Rust のコアの `syntax::parse` → `project::project` → `model::build` に渡し、要素・関係・問題・ビューを見て確かめた。
+コードを読んだうえで、BNF の規則から書いた短い SysML の断片（約 150 件）を Rust のコアの `syntax::parse` → `project::project` → `model::build` に渡し、要素・関係・問題・ビューを見て確かめた。
 
 | 印 | 意味 |
 | --- | --- |
@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 82・△ 10・× 4。⚠ は 0 件。
+件数：テキスト記法（2 章）119 項目のうち ○ 81・△ 16・× 10・⚠ 12。
+
+2026-10-20 の照合し直しでは、BNF の規則（約 330）から書いた断片（約 150）を Rust のコアに通した。それまでの表は ⚠ を 0 件としていたが、誤った構文エラーや「見つかりません」を出す書き方が残っていた。BNF にあって表に無かった書き方（`from` の無い `flow`・`message`、参照の形の `perform`・`exhibit`・`frame`、キーワードの無い特性、`crosses` など）の 23 行を足し、`library package` を ○ から △ に直した。⚠ と、黙って捨てる短い書き方は alpha.10 で直す。それまでは 96 項目のうち ○ 82・△ 10・× 4 としていた。
 
 alpha.9 の 3 回目の更新で、ビューの `filter` の論理式（`and`・`or`・`xor`・`not`・括弧と `istype`・`hastype`）、`render` の合成形（`render rendering r :> asTreeDiagram { … }`）と標準の表し方を特殊化した `rendering` の参照、3 段以上の特徴量の連鎖（`a.b.c.p`）を読み、シーケンス図（SequenceView）にライフラインの上のイベント（入れ子の部品のイベントを含む）・イベントの間の順序・順序に合わせた段を描くようにした。`then event occurrence e;` も読む（Rust のコアだけ。ADR-0015）。それまでは ○ 79・△ 12・× 5 だった。
 
@@ -61,7 +63,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- |
 | 1 抽象構文 | メタクラスの作成・読み書き・削除と、メタモデルの制約による検査 | × 独自の簡易な構造で、制約の検査も無い |
 | 2a テキスト記法 | 8.2.2 の具象構文を読み書きできる（抽象構文の適合を含む） | △ BNF に沿った Rust のパーサ（段階 A：宣言の頭まで読み、式は括弧で区切るだけ。ADR-0015）。まだ扱えない文は知らせる |
-| 2b グラフィカル記法 | 8.2.3 の記法。9.2.20 の標準ビュー定義は必ず扱う | △ `view` を図として描く（5 種類の標準ビュー定義）。記号は 8.2.3 と細部が違う |
+| 2b グラフィカル記法 | 8.2.3 の記法。9.2.20 の標準ビュー定義は必ず扱う（9.2.20.1） | △ `view` を図として描く（5 種類の標準ビュー定義）。記号は 8.2.3 と細部が違う |
 | 3 意味 | 8.4・9.2 の意味での解釈（評価・実行） | × 式の評価も名前解決の意味論も無い |
 | 4 モデル交換 | `.kpar` の入出力 | × `.sysml`・`.kerml` の単一ファイルだけ（0.3.0 以降） |
 | 5 ドメインライブラリ | ISQ・SI など（任意） | × 同梱していない（0.3.0 以降） |
@@ -92,24 +94,27 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `doc` | Documentation | ○ | | locale は無視 |
 | `comment … about` | Comment | ○ | | `comment c about A, B /* … */`・`comment /* … */`・`comment c locale "ja" /* … */` を種類 `comment` の要素として読み、本文（各行の頭の `*` を除く）と注釈する相手（`about` が無ければ持ち主）を残す。要素を選ぶとインスペクタに「メモ」として本文を出し、一般ビューでは、相手が図にあれば角を折った四角と矢印の無い破線で描く（8.2.3.4 の comment-node・annotation-link。名前があれば «comment» と名前も書く）。メモを図から削除するとコメントが消える。名前のあるメモはツリーにも出る。見つからない相手は「見つかりません」と示す。キーワードの無い `/* … */` は、BNF では持ち主を注釈する Comment だが、テキストの注記として使われることが多いので、これまでどおり要素にしない |
 | `rep … language` | TextualRepresentation | ○ | | 名前・言語の名前・本文（字下げを保つ）を持ち主の要素に残し、要素を選ぶとインスペクタに「別の言語での表し方（言語）」として出す。`rep` の無い `language "x" /* … */` も同じ。図の記号（8.2.3.4 の textual-representation-node）は描かない。ファイルの直下の表し方は持ち主が無いので捨てる |
+| 関係の本体の `doc`（`dependency … { doc /* … */ }`・`alias … { doc … }`） | ⚠ | alpha.10 | 外側の package の `doc` として取り込む |
 
 ### 2.3 パッケージ（8.2.2.5）
 
 | 要素 | BNF | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- | --- |
 | `package`（入れ子を含む） | Package | ○ | | ツリーに出る。図のノードにはならない。保存された図で package そのものを expose すると、名前を書いた枠（フォルダの形、8.2.3.5）として描き、中の要素を枠の中に示す（F-VIEW-9） |
-| `standard library package`・`library package` | LibraryPackage | ○ | | package として取り込む（ライブラリの印は記録しない） |
-| `import Q::A` / `::*` / `::**` / `all` | Import 系 | × | 0.2.0 | 黙って捨てる。他のファイルは読まない |
+| `standard library package`・`library package` | LibraryPackage | △ | — | package として取り込む。ライブラリ・標準の印は記録しない |
+| `import Q::A` / `::*` / `::**` / `all` | Import 系 | × | 0.2.0 | 黙って捨てる。他のファイルは読まない。型の名前はファイル全体から単純名で探すため、`import` の無い別の package の型も見つかる（誤ったエラーは出ないが、見えないはずの名前も通す） |
 | `import Q::*[@F]` | FilterPackage | × | 0.2.0 | |
 | `alias B for A` | AliasMember | △ | 0.2.0 | 同じファイルの別名は、指す先として解決する（型付け・関係の相手・expose。別名の別名も）。他のファイルの別名と `import` は解決しない |
 | `filter @X;`（package 直下） | ElementFilterMember | × | 0.2.0 | 黙って捨てる |
 | `private` / `public` / `protected` | VisibilityIndicator | △ | 0.2.0 | 記録するだけ（import と一緒に意味を持つ） |
+| package の無いファイルの直下の使用 | RootNamespace | △ | — | ツリーには出るが、図には描かない |
 
 ### 2.4 定義と使用の共通部分（8.2.2.6）
 
 | 要素 | BNF | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- | --- |
-| 型付け `: A` | FeatureTyping | ○ | | `: A, B` は先頭の 1 つだけ |
+| 型付け `: A` | FeatureTyping | ○ | | |
+| 複数の型 `: A, B` | FeatureTyping | △ | — | 先頭の 1 つだけを型にする |
 | `typed by` / `defined by` | TypedBy | ○ | | `defined by A`・`typed by A` は `: A` と同じく型になる（`typed by` は KerML の TYPED_BY。SysML の BNF ではメタデータの使用の宣言にだけ出るが、どこでも同じに読む） |
 | 定義の特殊化 `:> A` | SubclassificationPart | ○ | | `:> A, B` の相手をすべて記録し、両方が図の要素なら特殊化の線（実線と白抜きの三角、8.2.3 の subclassification）にする。先頭の相手はこれまでどおり型にもなる。見つからない相手（標準ライブラリなど）は知らせない。線を削除すると、その相手だけが消える |
 | `specializes` | 同上 | ○ | | `:>` と同じ |
@@ -120,6 +125,9 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 値 `= 式` | FeatureValue | ○ | | 文字列として保持し、図に出す |
 | `:=` / `default` | FeatureValue | ○ | | `=`（束縛）・`:=`（初期値、isInitial）・`default`・`default =`・`default :=`（既定値、isDefault）を区別して記録し、区画に書いたとおり（`m := 10`・`m default 10`）書く。図からの名前の変更でも書き方は変わらない（値を書き換える図の操作は無い） |
 | `abstract`・`ref`・`derived`・`end`・`in`・`out`・`inout` など | Prefix 系 | ○ | | 記録する |
+| `ref r : A;`・型の無い `ref r;` | ReferenceUsage | △ | alpha.10 | 型付きは参照の使用になる。型の無い `ref r;` は黙って捨てる |
+| キーワードの無い特性 `x : Real;`・`y :> x;`・`z : Real = 3;` | DefaultReferenceUsage | ⚠ | alpha.10 | 捨てるか、制約の式の文字列と読み違える |
+| `crosses`・`=>` | OwnedCrossFeatureMember | ⚠ | alpha.10 | `=> q.r` を値「> q.r」と読み違え、`crosses q.r` は黙って捨てる |
 | `constant`・`variant` | UsagePrefix 等 | ○ | | 後ろの宣言をそのまま読み、`constant`・`variant` を修飾として記録する。`variant a;`（VariantReference）は種類 `variant` の要素になる。`variation part def V { variant part a; }` も読む（バリアントの意味は持たない） |
 
 ### 2.5 属性・列挙・出来事・項目・部品・ポート（8.2.2.7〜12）
@@ -128,6 +136,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- |
 | `attribute def` / `attribute` | ○ | | |
 | `enum def`・列挙値 | ○ | | 列挙値はフェーズにも使う |
+| 値付きの列挙値 `enum b = 3;` | △ | — | 列挙値として読むが、値は記録しない |
 | `enum` の使用 `enum e : E;` | ○ | | 種類 `enum` の要素になる。`enum def` の中の `enum a;` はこれまでどおり列挙値 |
 | `occurrence def` / `occurrence` | ○ | | シーケンス図の文脈 |
 | `individual` | ○ | | 修飾として記録し（isIndividual）、図の見出しを «individual part def» のように書く。種類のキーワードの無い `individual def E;`・`individual e : E;`（IndividualDefinition・IndividualUsage）は `occurrence def`・`occurrence` として読む（以前は、定義を「まだ扱えない」と知らせ、使用を型付きのパラメータと取り違えていた） |
@@ -135,34 +144,44 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `item def` / `item` | ○ | | |
 | `part def` / `part` | ○ | | |
 | `port def` / `port`、共役 `~` | ○ | | 向きを推定する |
+| 共役ポートの定義を名前で書く `port y : Pt::'~Pt';` | ⚠ | alpha.10 | `'~Pt'` を探して「見つかりません」と誤って示す（`~Pt` は使える） |
 
 ### 2.6 接続・割り当て・フロー（8.2.2.13〜16）
 
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | `connection def`、`connection c : C connect a.p to b.p` | ○ | | 内部ブロック図の線。端の多重度と `e ::> a.p` の名前（ConnectorEnd、8.2.2.13.1）も読む |
+| 定義の中の型の無い部品を線の端にする `part t; connect t to u;` | ⚠ | alpha.10 | 「線の接続先「t」が見つかりません」と誤って示す（`flow` も同じ） |
 | 単独の `connect a to b;` | ○ | | 名前の無い接続（ConnectionUsage、8.2.2.13.1）として読み、`connection connect a to b;` と同じく内部ブロック図の線にする |
 | n 項の `connect (a, b, c)` | ○ | | 端をすべて残す（NaryConnectorPart、8.2.2.13.1）。内部ブロック図では、塗った点と、点から端ごとの矢印の無い線で描く（8.2.3.13 の n-ary-connection-dot・n-ary-segment）。一般ビューには線にしない。見つからない端は「見つかりません」と示す |
 | `bind` / `binding` | ○ | | 名前の無いもの・名前付きのものを結び付けの使用として読み（BindingConnectorAsUsage、8.2.2.13.2）、親の「式」に入れない。内部ブロック図に、矢印の無い実線と「=」で描く（8.2.3.13 の binding-connection）。見つからない相手は「見つかりません」と示す |
 | `succession` / `first … then` | ○ | | 継起（SuccessionAsUsage、8.2.2.14）として記録する（名前付きの `succession s first a then b;` の名前も）。アクション定義の中の継起は、アクションの流れ図に実線と開いた矢印で描く（8.2.3.17）。シナリオ（`occurrence def`）の中の継起は、シーケンス図の段の順を決め、別のライフラインのイベントの間なら破線と開いた矢印で描く（8.2.3.9 の sq-succession）。循環する順序は知らせる。見つからない相手は「見つかりません」と示す。状態定義の中の継起は記録するが、まだ線にしない（状態遷移は 2.7 の行） |
-| `interface def` / `interface … connect` | ○ | | |
+| `interface def` / `interface … connect` | ○ | | `interface i : I connect a.p to b.p;` を接続と同じく内部ブロック図の線にする |
+| `connect` の無い `interface a.p to b.p;` | × | alpha.10 | 要素になるだけで、線にしない |
 | `allocation def` / `allocation` / `allocate` | ○ | | 定義と使用（`allocation` の無い `allocate x to y;` は名前の無い使用）として本体ごと読み（8.2.2.15）、図に描く要素の間に «allocate» の破線と開いた矢印を描く（8.2.3.15 の allocate-relationship）。見つからない相手は「見つかりません」と示す。n 項の `allocate (a, b, c)` は線にしない |
 | `flow of F from a.p to b.p` | ○ | | |
+| `from` の無い `flow a.p to b.p;` | × | alpha.10 | 黙って捨てる |
+| 運ぶものに名前を付けた `flow of f : Fuel from …` | ⚠ | alpha.10 | 運ぶものの名前 `f` を型と取り違える |
 | `flow def`、名前付きのフロー | ○ | | `flow def` は定義、`flow f : FD from a.p to b.q;`・`flow f of I from … to …;` は使用として本体ごと読む（8.2.2.16）。名前付きのフローは名前の無いフローと同じ線にし、ラベルに `f : FD`・`f of I` を書く（8.2.3.16 の flow-label） |
 | `succession flow` | ○ | | 順序付きの流れ（SuccessionFlowUsage、8.2.2.16）として記録し、名前付きのものは使用にする。アクションの流れ図に、破線と開いた矢印、アイテム（名前付きは名前と型）のラベルで描く。一般ビュー・内部ブロック図には描かない |
+| `first` の無い `succession flow a.d to b.d;` | × | alpha.10 | 黙って捨てる |
 | `message` | ○ | | シーケンス図。端の `a.ev`・`a.sub.ev` は、ライフラインの上のイベントにつなぐ。見つからない端は「見つかりません」と示す |
+| `from` の無い `message a to b;` | × | alpha.10 | 黙って捨てる |
 
 ### 2.7 アクション・状態（8.2.2.17〜18）
 
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | `action def` / `action` / `then action` | ○ | | 区画に手順として番号付きで並ぶ。アクションの流れ図には、角の丸い四角と継起の線で描く |
-| `perform action` | ○ | | |
+| アクションのパラメータ `in w : W;` | △ | 0.3.0 以降 | 要素として読むが、アクティビティ図にパラメータとその間のフローを描かない |
+| `perform action` | ○ | | `perform action a : A;` は種類 `perform action` の使用になる |
+| 参照の形 `perform x.y;` | × | alpha.10 | 「まだ扱えない」と知らせる |
 | アクションの継起 `first a1 then a2;` | ○ | | `first a then b;`・`then b;`（直前の要素から。続けて書いた `then` はどれも同じ要素から）・`then action b;`（`then` だけが継起）・`first start;`（続く継起の元）を読み、アクションの流れ図に描く。開始・終了（`start`・`done`）は塗った丸と、丸の中の塗った丸（8.2.3.17）。図から 2 つの要素の間に線を引くと `first a then b;` を書き、線を消すとその文（`then action b;` は `then` だけ）を消す |
 | `fork` / `join` / `merge` / `decide` | ○ | | 書いた語を種類にした使用（ControlNode、8.2.2.17）。fork・join は太い棒、merge・decide はひし形で描き、名前を横に書く（8.2.3.17）。`if g then b;`・`else b;`・`first d if g then b;`（GuardedSuccession）のガードは、線のラベル `[g]`・`[else]` |
 | `if` / `while` / `for` | ○ | | 書いた語（`loop` も）を種類にした使用（IfNode・WhileLoopNode・ForLoopNode、8.2.2.17）。条件（`for` は `x in xs`）と本体を記録し、`else` の本体と `else if` も本体に入れる。アクションの流れ図では «if» などの角の丸い四角に、条件と本体のアクションの名前（then と else を分ける）を書く。本体の中の継起は描かず、`until` の条件は記録しない |
 | `send` / `accept` / `assign` / `terminate` | ○ | | 書いた語を種類にした使用（SendNode・AcceptNode・AssignmentNode・TerminateNode、8.2.2.17）。`action s send x;` のように名前も付けられる。`assign` は親の「式」に入れない。アクションの流れ図では、send は右が尖った五角形、accept は左がへこんだ五角形、ほかは «assign»・«terminate» の角の丸い四角に、送るもの・受けるもの・代入を書く（8.2.3.17）。受けるものの型は確かめない |
 | `state def` / `state` / `exhibit state` | ○ | | 状態遷移図（StateTransitionView）では、状態を角の丸い四角に描き、入れ子の状態（`state on { state low; }`）は外の状態の中に描く（8.2.3.18）。「振る舞い」の図では、これまでどおり状態定義の区画に状態と遷移を並べる |
+| 参照の形 `exhibit s;` | × | alpha.10 | 「まだ扱えない」と知らせる |
 | `parallel` | ○ | | 並行であることを記録し（StateDefBody の isParallel、8.2.2.18）、状態遷移図では、中の状態（領域）を上から積み、間を破線で区切る（8.2.3.18） |
 | `entry` / `do` / `exit` | ○ | | 状態の振る舞い（StateSubactionMembership）として、書いた順に状態に記録し、状態遷移図の状態の区画に `entry / init` の形で書く（`action a` は `a`）。インスペクタにも出す。振る舞いを書かない `entry;` は記録せず、直後の `then s;`・`if g then s;` を、本体の最初の遷移（開始の記号から s への線）にする（EntryTransitionMember） |
 | `transition … first a accept E then b` | ○ | | 名前・元・先・トリガ（受けるものと `via`。`at`・`after`・`when` は式のまま）・ガード・効果（`do` の後の振る舞い。本体も読む）を記録し（TransitionUsage、8.2.2.18）、状態遷移図に、実線と開いた矢印、ラベル `トリガ [ガード] / 効果` で描く（8.2.3.18）。`done` へ向かう遷移は終了の記号（丸の中の塗った丸）へ引く。端は書いた本体から外へ探し、`on.low` のような名前の道のりも読む。見つからない相手は問題として知らせる。図から線を消すとその文が消え、2 つの状態の間に線を引くと `transition first a then b;` を書く。「振る舞い」の図の区画の文字列は、これまでどおり「a → b [E]」（ガードと効果は書かない）。受けるものの型は確かめない |
@@ -174,19 +193,23 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- |
 | `calc def` / `calc` / `return` | ○ | | 式は文字列 |
 | `constraint def` / `constraint` | ○ | | 式は文字列（評価しない） |
+| 本体が `true`・`false`・`not` で始まる制約・計算・`require` | ⚠ | alpha.10 | `constraint def C { true }`・`require constraint { not x }` で「「;」がありません」と誤った構文エラーを出す |
 | `assert constraint` / `assert not` | △ | 0.3.0 以降 | `assert constraint { … }`・`assert not constraint d { … }` は式として親に入る（`x < 0` のような比べる式も誤ったエラーにしない）。本体の無い `assert constraint c : CD;` も `c : CD` を親の式として残す（`not` は `not c : CD` と残す）。本体のある形では否定（`not`）を記録しない |
 | `requirement def` / `requirement` | ○ | | |
 | `subject` / `stakeholder` | ○ | | |
 | `require` / `assume constraint` | ○ | | `require constraint { … }`・`assume constraint { … }`（名前付きも）は式として入る。本体の無い `require c : CD;`・`require constraint c : CD;` も `c : CD` を式として残す（要求の区画に出る） |
 | `actor` | ○ | | 型付きの要素になり、ツリーに出る（`subject`・`stakeholder` と違い、ツリーで隠さない） |
 | `satisfy R by X` | ○ | | |
+| 宣言する形 `satisfy requirement r : R by x;`、`view def` の中の `satisfy vp;` | ⚠ | alpha.10 | 「相手「r」が見つかりません」と誤って示す |
 | `by` の無い `satisfy`、`assert satisfy`、`not satisfy` | ○ | | `satisfy R;` は持ち主（使用なら型の定義）から満たす線を引く。`assert satisfy R by X` は `satisfy R by X` と同じ。`not satisfy R by X` は関係として記録するが、線にせず、トレースの抜けの検出でも満たす要素に数えない |
-| `concern def`、`frame concern c : C` | ○ | | 型の無い `frame c;` は「まだ扱えない」と知らせる |
+| `concern def`、`frame concern c : C` | ○ | | |
+| 型の無い `frame c;` | × | alpha.10 | 「まだ扱えない」と知らせる |
 | `case def` / `case` | ○ | | ツリーに出る要素になる（図のノードにはしない）。本体（`subject`・`actor`・`objective` など）も読む |
-| `objective` | △ | | 中身は親に入る（目的の要求そのものは要素にしない） |
+| `objective` | △ | — | 中身は親に入る（目的の要求そのものは要素にしない） |
 | `analysis def` / `analysis` | ○ | | |
 | `verification def` / `verification` | ○ | | |
-| `verify` | △ | | 定義の中と、パッケージ直下の型付きの使用の中（型の定義から線を引く）で線になる。型の無い使用の中では線を引かない |
+| `verify` | △ | — | 定義の中と、パッケージ直下の型付きの使用の中（型の定義から線を引く）で線になる。型の無い使用の中では線を引かない |
+| 宣言する形 `verify requirement r : R;` | ⚠ | alpha.10 | 「相手「r」が見つかりません」と誤って示す |
 | `use case def` / `use case` | ○ | | 専用のビューは無い |
 | `include use case` | ○ | | 種類 `include use case` の要素になる（`include use case u : U;` は U を型にする。`include u;` は u を名前にし、型は付けない）。図の線は引かない |
 
@@ -209,6 +232,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- |
 | `metadata def` | ○ | | フェーズに使う。図のノードにはしない |
 | `@M { k = E::V; }` | ○ | | 値は式の全体（`k = 1 + 2` は `1 + 2`）。列挙値などの修飾名（`E::V`）だけは最後の名前（フェーズに使う）。本体の無い `@M;` も持ち主に `M` を付ける |
+| 再定義の形 `@M { :>> x = 1; }`・`redefines x = 1` | ⚠ | alpha.10 | 値を捨て、持ち主の「式」に漏れる（要求定義の区画に `{ :>> x = 1 }` と出る） |
 | `metadata M about A { … }` | ○ | | `about` の相手（修飾名・特徴の連鎖も）を書いた場所から探し、それぞれに `M` と本体の値を付ける。見つからない相手は問題一覧に示す。`about` の無い `metadata M;` は持ち主に付ける（`@M;` と同じ） |
 | 前置の `#M part def A;` | ○ | | 宣言を読み、`M` をメタデータとして記録する（ADR-0013） |
 | 利用者定義のキーワード `#X def`・`#X x;` | ○ | | メタデータの定義 `X` が `:>> baseType = … meta SysML::PartUsage;` で基の型を決めていれば、その種類（`part def`・`part` など）として読む。決まらなければ種類 `def`・`usage` の要素としてツリーにだけ出す。どちらも `X` をメタデータとして記録する |
@@ -218,8 +242,9 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | 式・単位 `1500 [kg]` | △ | 0.3.0 以降 | 文字列として保持するだけ |
+| 本体付きの式 `a.b->collect{ in i; i*2 }` | ⚠ | alpha.10 | 「要素の種類や名前がありません」と誤った構文エラーを出す |
 | 特徴量の連鎖 `a.b.v` | ○ | | 各段を、前の段の本体・型の定義（とその一般の定義）・部分集合や再定義の相手の中から探す（FeatureChain、8.2.2.6）。接続・フロー・結び付け・メッセージの端の 3 段目から先（`a.b.c.p`）も確かめ、見つからない段は「「a.b.x」の「x」が見つかりません」と示す。型の無い要素とファイルの外の型の中は確かめない。内部ブロック図では、どの深さの部品の中の部品にもつなぐ |
-| KerML のキーワード（`classifier`・`class`・`struct`・`feature`・`datatype`・`function` など） | × | 0.3.0 以降 | すべて黙って捨てる。`.kerml` ファイルは開けるが、中身は読めない |
+| KerML のキーワード（`classifier`・`class`・`struct`・`feature`・`datatype`・`function` など） | ⚠ | alpha.10（漏れ）・0.3.0 以降 | KerML の文法は読まない。`classifier C { part p : X; }`・`function F { in x : Real; }` の本体の中身が外の package の要素として漏れ、部品のノードや型のエラーとして出る。`.kerml` ファイルは開けるが、中身は読めない |
 
 ## 3. 図・ビュー（言語仕様 7.26・8.2.3・9.2.20）
 
@@ -232,7 +257,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 標準ビュー定義 | 短い名前 | 画面の名前 | `view` の描き方 | 対応 | 予定 |
 | --- | --- | --- | --- | --- | --- |
-| GeneralView | `gv` | 一般ビュー | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
+| GeneralView | `gv` | 一般ビュー | ノードと線の図（expose した要素と、その間の関係） | △ 図のノードにするのは、定義と、package の直下の `part`・`requirement` の使用だけ（`action`・`item`・`state`・`use case` の使用と `case def` は描かない。ユースケースの楕円・アクターの記号も無い）。特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
 | InterconnectionView | `iv` | 内部ブロック図 | 内部ブロック図（expose した part def、または part の型が対象） | △ 部品の本体に書いた部品（どの深さでも）と、線の端 `a.b.p`・`a.b.c.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
 | ActionFlowView | `afv` | アクティビティ図 | アクティビティ図（expose した action def が対象。自動の図「アクティビティ図」とツリーの「アクティビティ図で開く」でも開ける） | △ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータとその間のフロー、入れ子の本体の流れ、区画（swim lane）は無い | 0.3.0 以降 |
 | StateTransitionView | `stv` | 状態遷移図 | 状態遷移図（expose した state def が対象。ツリーの「状態遷移図で開く」でも開ける。組み込みのビューの一覧には出さない） | △ 状態・入れ子の状態・並行の領域（破線で区切る）・entry／do／exit の区画・開始と終了の記号と、遷移を `トリガ [ガード] / 効果` のラベルの線で、8.2.3.18 の記法で描く。本体ごとに、遷移の向きに左から並べる。図から遷移を消す・引く（`transition first a then b;`）。expose した state def が複数あっても最初の 1 つだけを描き、状態の使用（`exhibit state s { … }`）の中の遷移、効果の本体の中身、線の交差を避ける配置は無い | 0.3.0 以降 |
@@ -272,6 +297,5 @@ v1（UML4SysML・XMI）の抽象構文を v2 へ写す規則であり、Modelith
 - 「制御ループ」に相当する v2 の標準の描き方
 - ビューの型と `render` が食い違うときの優先順位（Modelith は `render` を優先している）
 - 書き出す `view` の参照の書き方（`import` か修飾名か）と、他ツールとの互換性
-- `crosses`、定義の外での列挙の使用
-- `readonly` が現行の SysML v2 の予約語かどうか（今は `readonly attribute ro : Real;` の名前と型が空になる）
+- 定義の外での列挙の使用
 - KerML の式の文法（8.2.5）
