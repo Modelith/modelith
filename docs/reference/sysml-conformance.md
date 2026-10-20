@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 60・△ 18・× 18。⚠ は 0 件。
+件数：テキスト記法（2 章）96 項目のうち ○ 65・△ 17・× 14。⚠ は 0 件。
+
+alpha.8 の 2 回目の更新で、単独の `connect`・n 項の `connect`・`bind`・`binding`・`allocation def`・`allocation`・`allocate`・`flow def`・名前付きのフローを読み、内部ブロック図（入れ子は 2 段まで）と一般の図に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 60・△ 18・× 18 だった。
 
 alpha.8 の 1 回目の更新で、定義の特殊化（`:>`・`specializes`）・部分集合・再定義・参照・多重度・`dependency` を記録して図に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 52・△ 25・× 19 だった。
 
@@ -130,15 +132,15 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
-| `connection def`、`connection c : C connect a.p to b.p` | ○ | | 内部ブロック図の線 |
-| 単独の `connect a to b;` | × | alpha.8 | 「まだ扱えない」と知らせる |
-| n 項の `connect (a, b, c)` | △ | alpha.8 | 接続の使用だけ残り、接続先を捨てる |
-| `bind` / `binding` | × | alpha.8 | `bind` は黙って捨てる。`binding … bind …` は親の「式」に入る |
+| `connection def`、`connection c : C connect a.p to b.p` | ○ | | 内部ブロック図の線。端の多重度と `e ::> a.p` の名前（ConnectorEnd、8.2.2.13.1）も読む |
+| 単独の `connect a to b;` | ○ | | 名前の無い接続（ConnectionUsage、8.2.2.13.1）として読み、`connection connect a to b;` と同じく内部ブロック図の線にする |
+| n 項の `connect (a, b, c)` | ○ | | 端をすべて残す（NaryConnectorPart、8.2.2.13.1）。内部ブロック図では、塗った点と、点から端ごとの矢印の無い線で描く（8.2.3.13 の n-ary-connection-dot・n-ary-segment）。一般の図には線にしない。見つからない端は「見つかりません」と示す |
+| `bind` / `binding` | ○ | | 名前の無いもの・名前付きのものを結び付けの使用として読み（BindingConnectorAsUsage、8.2.2.13.2）、親の「式」に入れない。内部ブロック図に、矢印の無い実線と「=」で描く（8.2.3.13 の binding-connection）。見つからない相手は「見つかりません」と示す |
 | `succession` / `first … then` | × | alpha.9 | 黙って捨てる |
 | `interface def` / `interface … connect` | ○ | | |
-| `allocation def` / `allocation` / `allocate` | × | alpha.8 | 定義と使用は「まだ扱えない」と知らせ（本体の中は読まない）、`allocate` は黙って捨てる |
+| `allocation def` / `allocation` / `allocate` | ○ | | 定義と使用（`allocation` の無い `allocate x to y;` は名前の無い使用）として本体ごと読み（8.2.2.15）、図に描く要素の間に «allocate» の破線と開いた矢印を描く（8.2.3.15 の allocate-relationship）。見つからない相手は「見つかりません」と示す。n 項の `allocate (a, b, c)` は線にしない |
 | `flow of F from a.p to b.p` | ○ | | |
-| `flow def`、名前付きのフロー | × | alpha.8 | 「まだ扱えない」と知らせる（本体の中は読まない） |
+| `flow def`、名前付きのフロー | ○ | | `flow def` は定義、`flow f : FD from a.p to b.q;`・`flow f of I from … to …;` は使用として本体ごと読む（8.2.2.16）。名前付きのフローは名前の無いフローと同じ線にし、ラベルに `f : FD`・`f of I` を書く（8.2.3.16 の flow-label） |
 | `succession flow` | × | alpha.9 | 黙って捨てる |
 | `message` | ○ | | シーケンス図 |
 
@@ -221,8 +223,8 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 標準ビュー定義 | 短い名前 | `view` の描き方 | 対応 | 予定 |
 | --- | --- | --- | --- | --- |
-| GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存の線と多重度は 8.2.3 の記法で描く。注釈（`comment … about`）と、定義の中の特性どうしの線は無い | alpha.8 |
-| InterconnectionView | `iv` | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 1 段。`bind` と単独の `connect` は不可 | alpha.8 |
+| GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度は 8.2.3 の記法で描く。注釈（`comment … about`）と、定義の中の特性どうしの線は無い | alpha.8 |
+| InterconnectionView | `iv` | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 2 段まで（部品の本体に書いた部品と、線の端 `a.b.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く）。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。3 段目より深い入れ子、対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
 | ActionFlowView | `afv` | ノードと線の図で代わりに描き、知らせる | × | alpha.9 |
 | StateTransitionView | `stv` | 振る舞いの図（expose した要素） | △ 状態は描くが、遷移を線にしない | alpha.9 |
 | SequenceView | `sv` | シーケンス図（expose した occurrence def が対象） | △ メッセージだけ。イベント・継起・入れ子は無い | alpha.9 |
@@ -262,5 +264,4 @@ v1（UML4SysML・XMI）の抽象構文を v2 へ写す規則であり、Modelith
 - 書き出す `view` の参照の書き方（`import` か修飾名か）と、他ツールとの互換性
 - `crosses`、定義の外での列挙の使用
 - `readonly` が現行の SysML v2 の予約語かどうか（今は `readonly attribute ro : Real;` の名前と型が空になる）
-- InterconnectionView の入れ子が 1 段であることは、図の描画のコードでは照合していない
 - KerML の式の文法（8.2.5）
