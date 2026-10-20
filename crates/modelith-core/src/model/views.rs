@@ -1,5 +1,5 @@
 //! テキストに書かれた view を、描く要素と描き方に解決する（ADR-0005・ADR-0013、F-VIEW-7）。
-//! 暫定コアの `web/src/core/views.ts` と同じ振る舞い。
+//! alpha.4 で暫定の TS コア（beta.1 で削除）の `views.ts` から移した振る舞い。
 //! 仕様：8.2.2.26 Views and Viewpoints（view・expose・filter・render）、9.2.20 標準ビュー定義（StandardViewDefinitions）。
 
 use std::collections::HashSet;
@@ -64,7 +64,7 @@ const METACLASS_KIND: &[(&str, &str)] = &[
     ("View", "view"),
 ];
 
-/// 標準ビュー定義を、名前か短い名前で引く。暫定コアの `STANDARD_VIEWS`（`web/src/core/views.ts`）の引き方と同じ。
+/// 標準ビュー定義を、名前か短い名前で引く。web の `standardViewName`（`web/src/core/views.ts`）の引き方と同じ。
 ///
 /// # 引数
 ///
@@ -109,7 +109,7 @@ pub fn is_standard_view(t: &str) -> bool {
     standard_view(t).is_some()
 }
 
-/// 図の種類の、画面での名前（型の無い図は一般ビュー）。暫定コアの `stdViewLabel` と同じ。
+/// 図の種類の、画面での名前（型の無い図は一般ビュー）。web の `stdViewLabel`（`web/src/core/views.ts`）と同じ。
 ///
 /// # 引数
 ///

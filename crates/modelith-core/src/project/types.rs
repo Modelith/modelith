@@ -1,4 +1,4 @@
-//! 暫定コア（`web/src/core/types.ts` の `ParseResult`）と同じ形の解析結果（ADR-0015）。
+//! 画面の型（`web/src/core/types.ts` の `ParseResult`）と同じ形の解析結果（ADR-0015）。
 //!
 //! 位置はすべて UTF-16 のオフセット（JS の文字列の位置）。要素どうしの参照は番号で持ち、
 //! TS の境界でオブジェクトの参照に戻す。

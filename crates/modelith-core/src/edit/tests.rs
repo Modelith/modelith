@@ -568,7 +568,7 @@ fn line_start_clamps_to_the_text_like_the_ts_core() {
     assert_eq!(
         line_start("ab\ncd", 9),
         3,
-        "範囲外は最後の行（暫定コアの lineStart と同じ）"
+        "範囲外は最後の行（web の lineStart と同じ）"
     );
     assert_eq!(indent_at("x\n  y", 99), "  ");
 }

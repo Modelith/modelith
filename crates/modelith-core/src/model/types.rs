@@ -1,4 +1,4 @@
-//! 暫定コア（`web/src/core/types.ts` の `Model`）と同じ形のモデル（ADR-0016 の手順 A）。
+//! 画面の型（`web/src/core/types.ts` の `Model`）と同じ形のモデル（ADR-0016 の手順 A）。
 //!
 //! 位置は UTF-16 のオフセット。宣言は `ParseResult.entries` の番号、関係は `ParseResult.rels` の番号で指し、
 //! TS の境界でオブジェクトの参照（`nodeOf`・`byName` の Map、`phaseOf` の関数を含む）に戻す。
