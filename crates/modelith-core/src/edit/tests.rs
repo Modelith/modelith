@@ -1001,3 +1001,63 @@ fn connect_succession_refuses_start_targets_and_unnamed_elements() {
     assert!(refused(FLOW, from_done).contains("終了の記号"));
     assert!(refused(text, unnamed).contains("名前の無い要素"));
 }
+
+// ---- 状態遷移の図（StateTransitionView、8.2.3.18） ----
+
+const STATES: &str = "package P {\n    state def S {\n        entry; then off;\n        state off;\n        accept Go then on;\n        state on {\n            entry; then low;\n            state low;\n            state high;\n        }\n        transition t first on accept Stop if ready do beep then off;\n    }\n}\n";
+
+#[test]
+fn delete_transition_line_removes_its_statement() {
+    // Arrange（同値分割：transition の文・状態の中の省略形の遷移・最初の遷移）
+    let full =
+        r#"{"op":"deleteEdge","id":"transition|s:on|s:off|Stop [ready] / beep#1","ctx":"S"}"#;
+    let shorthand = r#"{"op":"deleteEdge","id":"transition|s:off|s:on|Go#1","ctx":"S"}"#;
+    let initial = r#"{"op":"deleteEdge","id":"transition|s:on#start|s:on.low|#1","ctx":"S"}"#;
+    // Act
+    let (after_full, _) = run(STATES, full);
+    let (after_shorthand, _) = run(STATES, shorthand);
+    let (after_initial, _) = run(STATES, initial);
+    // Assert
+    assert!(!after_full.contains("transition t"), "{after_full}");
+    assert!(
+        after_shorthand.contains("        state off;\n        state on {"),
+        "{after_shorthand}"
+    );
+    assert!(
+        after_initial.contains("            entry; \n            state low;"),
+        "{after_initial}"
+    );
+}
+
+#[test]
+fn delete_and_rename_nested_state() {
+    // Arrange（s: のキーの要素は、状態定義の中の状態。入れ子は s:外.中）
+    let del = r#"{"op":"delete","keys":["s:on.high"],"ctx":"S"}"#;
+    let ren = r#"{"op":"rename","key":"s:off","name":"idle","ctx":"S"}"#;
+    // Act
+    let (deleted, _) = run(STATES, del);
+    let (renamed, _) = run(STATES, ren);
+    // Assert
+    assert!(!deleted.contains("state high;"));
+    assert!(renamed.contains("state idle;"), "{renamed}");
+}
+
+#[test]
+fn start_symbol_of_a_state_machine_cannot_be_deleted() {
+    // Arrange（異常系：開始の記号は宣言を持たない）
+    let del = r#"{"op":"delete","keys":["s:#start"],"ctx":"S"}"#;
+    // Act
+    let why = refused(STATES, del);
+    // Assert
+    assert!(why.contains("開始と終了の記号"), "{why}");
+}
+
+#[test]
+fn unknown_transition_or_state_is_refused() {
+    // Arrange（異常系：無い ID・無い状態）
+    let line = r#"{"op":"deleteEdge","id":"transition|s:x|s:y|#1","ctx":"S"}"#;
+    let node = r#"{"op":"delete","keys":["s:x"],"ctx":"S"}"#;
+    // Act / Assert
+    assert!(refused(STATES, line).contains("関係"));
+    assert!(refused(STATES, node).contains("s:x"));
+}

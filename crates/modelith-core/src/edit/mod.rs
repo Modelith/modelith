@@ -6,6 +6,7 @@ mod flow;
 mod ibd;
 mod more;
 mod ops;
+mod states;
 #[cfg(test)]
 mod tests;
 pub mod text;
@@ -18,8 +19,8 @@ pub use more::{FlowEnd, sysml_name};
 use text::{Utf16, diff, utf16_of};
 
 /// 図の操作の意図。要素は図の要素のキー、関係は ID で指す。
-/// `ctx` は内部ブロック図・シーケンス図・アクションの流れの図の対象（部品定義・シナリオ・アクション定義のキー）。
-/// `u:名前`・`l:名前`・`a:名前` のキーは、その中の部品・ライフライン・アクション。
+/// `ctx` は内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図の対象（部品定義・シナリオ・アクション定義・状態定義のキー）。
+/// `u:名前`・`l:名前`・`a:名前`・`s:名前` のキーは、その中の部品・ライフライン・アクション・状態。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Intent {
