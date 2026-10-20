@@ -194,11 +194,12 @@ fn missing(key: &str) -> Refusal {
 impl Doc<'_> {
     /// キーの要素。`u:名前`・`l:名前` は、ctx（部品定義・シナリオ）の中の部品・ライフライン。
     /// `u:部品.部品`（入れ子の部品）と `j:…`（n 項の接続の点。接続の使用を指す）は、内部ブロック図の要素として探す。
+    /// `note:…` はメモ（コメントの宣言）として探す。
     /// それ以外のキーは、図の要素のキー（同じ名前が 2 つ目なら `名前@持ち主`）として探す。
     ///
     /// # 引数
     ///
-    /// - `key`：要素のキー（`A`・`A@Q`・`u:e`・`l:x` など）
+    /// - `key`：要素のキー（`A`・`A@Q`・`u:e`・`l:x`・`note:#1` など）
     /// - `ctx`：`u:`・`l:` のキーのときの図の対象のキー（部品定義・シナリオ）。None なら空のキーとして探す
     ///
     /// # 戻り値
@@ -212,6 +213,7 @@ impl Doc<'_> {
     /// find("C", None)         → Ok(Found { entry: C の番号 })
     /// find("u:e", Some("C"))  → Ok(Found { entry: C の中の e の番号 })
     /// find("u:e.x", Some("C")) → Ok(Found { entry: E の中の x の番号 })   // E に part x があるとき
+    /// find("note:#1", None)   → Ok(Found { entry: 名前の無い 1 つ目のメモの番号 })   // メモが E を注釈するとき
     /// find("u:e", None)       → Err("操作する要素「」が見つかりません。…")   // 対象が無い
     /// find("Gone", None)      → Err("操作する要素「Gone」が見つかりません。…")
     /// ```
@@ -233,6 +235,16 @@ impl Doc<'_> {
                 .find(|&i| self.e(i).name == name);
             return child
                 .map(|entry| Found { entry })
+                .ok_or_else(|| missing(key));
+        }
+        // メモ（`note:…`）は、コメントの宣言を指す（8.2.3.4）
+        if key.starts_with("note:") {
+            return self
+                .m
+                .notes
+                .iter()
+                .find(|n| n.key == key)
+                .map(|n| Found { entry: n.entry })
                 .ok_or_else(|| missing(key));
         }
         self.m

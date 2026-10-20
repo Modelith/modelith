@@ -221,6 +221,34 @@ fn delete_removes_whole_line_of_definition() {
 }
 
 #[test]
+fn delete_note_removes_the_comment_and_keeps_the_annotated_element() {
+    // Arrange（メモのキー。名前の無いメモ `note:#1` と、名前のあるメモ `note:c`）
+    let text = "package P {\n    part def A;\n    comment about A /* 1 つ目 */\n    comment c about A /* 2 つ目 */\n}";
+    // Act
+    let (unnamed, _) = run(text, r#"{"op":"delete","keys":["note:#1"]}"#);
+    let (named, _) = run(text, r#"{"op":"delete","keys":["note:c"]}"#);
+    // Assert
+    assert_eq!(
+        unnamed,
+        "package P {\n    part def A;\n    comment c about A /* 2 つ目 */\n}"
+    );
+    assert_eq!(
+        named,
+        "package P {\n    part def A;\n    comment about A /* 1 つ目 */\n}"
+    );
+}
+
+#[test]
+fn delete_unknown_note_is_refused() {
+    // Arrange（異常系: 図に描かないメモ（相手が package）のキーは無い）
+    let text = "package P { comment /* p */ }";
+    // Act
+    let msg = refused(text, r#"{"op":"delete","keys":["note:#1"]}"#);
+    // Assert
+    assert!(msg.contains("note:#1"), "{msg}");
+}
+
+#[test]
 fn delete_many_skips_elements_inside_other_selected_elements() {
     // Arrange（C の中の部品と C を両方選ぶ。外側だけ消す）
     let text = "package P {\n    part def A;\n    part def C {\n        part def D;\n    }\n    part def B;\n}\n";
