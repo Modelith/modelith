@@ -96,6 +96,12 @@ header .short{display:none}
 .tab .x:hover{background:var(--panel2);color:var(--ink)}
 .tabadd{margin:0 0 4px 4px}
 .tabadd>summary{padding:3px 9px;font-size:14px;line-height:1}
+/* ＋メニューの項目の下の行（SysML v2 の標準ビュー）。ツールチップの出ない、ホバーの無い狭い画面でだけ見せる */
+.tabadd .vname small{display:none}
+@media (max-width:760px),(hover:none){
+  .tabadd .vname{display:flex;flex-direction:column;line-height:1.3}
+  .tabadd .vname small{display:block;font-size:10.5px;color:var(--ink2)}
+}
 .pop-left{left:0;right:auto}
 .pop button{display:flex;align-items:center;gap:8px}
 .toolbar{display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid var(--rule);background:var(--panel);flex-wrap:wrap;flex:none;position:relative;z-index:20}
