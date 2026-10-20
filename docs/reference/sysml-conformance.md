@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 52・△ 25・× 19。⚠ は 0 件。
+件数：テキスト記法（2 章）96 項目のうち ○ 60・△ 18・× 18。⚠ は 0 件。
+
+alpha.8 の 1 回目の更新で、定義の特殊化（`:>`・`specializes`）・部分集合・再定義・参照・多重度・`dependency` を記録して図に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 52・△ 25・× 19 だった。
 
 alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum` の使用・`event occurrence`・`timeslice`・`snapshot`・`typed by`・`constant`・`variant`・`viewpoint`・`rendering`・`metadata … about`・利用者定義のキーワード・`satisfy` の書き方・名前付きの制約の参照を読むようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 38・△ 28・× 30 だった。
 
@@ -74,9 +76,9 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 要素 | BNF | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- | --- |
-| `dependency d from A to B;` | Dependency | × | alpha.8 | 黙って捨てる |
+| `dependency d from A to B;` | Dependency | ○ | | 依存の線（破線と開いた矢印、8.2.3.3）。名前はラベルに書く。`dependency A, B to C;` は依存する側とされる側の組ごとに線にする。相手が見つからなければ「見つかりません」と示す。相手が図の要素でない（package など）ときは線にしない |
 | `#derivation dependency …` | Dependency + PrefixMetadataAnnotation | ○ | | derive の線になり、トレースの抜けの検出にも使う |
-| 他の `#X dependency` | 同上 | △ | alpha.8 | 関係として読むが、図に出ない |
+| 他の `#X dependency` | 同上 | ○ | | 依存の線になり、ラベルに «X» を書く |
 | `doc` | Documentation | ○ | | locale は無視 |
 | `comment … about` | Comment | × | alpha.8 | 本文を黙って捨てる（後の宣言は残る） |
 | `rep … language` | TextualRepresentation | × | alpha.8 | 本文のコメントで文が終わり、続く宣言を正しく読む。表し方そのものはまだ捨てる |
@@ -99,12 +101,12 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- | --- |
 | 型付け `: A` | FeatureTyping | ○ | | `: A, B` は先頭の 1 つだけ |
 | `typed by` / `defined by` | TypedBy | ○ | | `defined by A`・`typed by A` は `: A` と同じく型になる（`typed by` は KerML の TYPED_BY。SysML の BNF ではメタデータの使用の宣言にだけ出るが、どこでも同じに読む） |
-| 定義の特殊化 `:> A` | SubclassificationPart | △ | alpha.8 | 先頭の 1 つを記録するが、線は描かない |
-| `specializes` | 同上 | △ | alpha.8 | `:>` と同じ |
-| 使用の部分集合 `:>` / `subsets` | Subsets | △ | alpha.8 | 型と取り違えない。関係そのものは記録しない（ADR-0013） |
-| 再定義 `:>>` / `redefines` | Redefines | △ | alpha.8 | 型と取り違えない。名前が無ければ、再定義する特徴の名前を名前にする。関係は記録しない（ADR-0013） |
-| 参照 `::>` / `references` | References | △ | alpha.8 | 型と取り違えない。関係は記録しない |
-| 多重度 `[0..4]`、`ordered`、`nonunique` | MultiplicityPart | △ | alpha.8 | 名前と型は残り、値は捨てる |
+| 定義の特殊化 `:> A` | SubclassificationPart | ○ | | `:> A, B` の相手をすべて記録し、両方が図の要素なら特殊化の線（実線と白抜きの三角、8.2.3 の subclassification）にする。先頭の相手はこれまでどおり型にもなる。見つからない相手（標準ライブラリなど）は知らせない。線を削除すると、その相手だけが消える |
+| `specializes` | 同上 | ○ | | `:>` と同じ |
+| 使用の部分集合 `:>` / `subsets` | Subsets | ○ | | 型と取り違えずに、相手をすべて記録する。package の直下の部品・要求どうしなら線（実線と白抜きの三角、8.2.3 の subsetting）。定義の中の特性は、区画の行（`b : B :> a`）と、部品として持つ線の端（`subsets a`）に書く。相手が見つからなくても知らせない（継承した特性は探さない） |
+| 再定義 `:>>` / `redefines` | Redefines | ○ | | 部分集合と同じ。線は三角の手前に縦棒を付ける（8.2.3 の redefinition）。名前が無ければ、再定義する特徴の名前を名前にし、区画には `:>> mass = 1500` と書く |
+| 参照 `::>` / `references` | References | ○ | | 部分集合と同じ。線は三角の手前に 2 つの点を付ける（8.2.3 の reference-subsetting） |
+| 多重度 `[0..4]`、`ordered`、`nonunique` | MultiplicityPart | ○ | | 範囲と `ordered`・`nonunique` を記録し、部品として持つ線の部品の側の端（`[4] ordered`、8.2.3 の multiplicity）と、区画の属性の行（`w : Wheel [4]`）に書く |
 | 値 `= 式` | FeatureValue | ○ | | 文字列として保持し、図に出す |
 | `:=` / `default` | FeatureValue | △ | alpha.8 | 値として残るが、`=` と区別しない |
 | `abstract`・`ref`・`derived`・`end`・`in`・`out`・`inout` など | Prefix 系 | ○ | | 記録する |
@@ -219,7 +221,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 標準ビュー定義 | 短い名前 | `view` の描き方 | 対応 | 予定 |
 | --- | --- | --- | --- | --- |
-| GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化の線と多重度が無い | alpha.8 |
+| GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存の線と多重度は 8.2.3 の記法で描く。注釈（`comment … about`）と、定義の中の特性どうしの線は無い | alpha.8 |
 | InterconnectionView | `iv` | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 1 段。`bind` と単独の `connect` は不可 | alpha.8 |
 | ActionFlowView | `afv` | ノードと線の図で代わりに描き、知らせる | × | alpha.9 |
 | StateTransitionView | `stv` | 振る舞いの図（expose した要素） | △ 状態は描くが、遷移を線にしない | alpha.9 |
