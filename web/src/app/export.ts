@@ -80,10 +80,10 @@ export function drawioFlowCell(n: ModelNode): { style: string; value: string } {
  *
  * @returns draw.io（app.diagrams.net）で読み込める mxfile の XML
  * @example
- * // 「構造」の図に要素が 1 つも無い
+ * // ブロック定義図に要素が 1 つも無い
  * drawioXml()
- * // → '<mxfile host="app.diagrams.net"><diagram id="v" name="構造"><mxGraphModel grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'
- * // 構造の図に part def A がある
+ * // → '<mxfile host="app.diagrams.net"><diagram id="v" name="ブロック定義図"><mxGraphModel grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'
+ * // ブロック定義図に part def A がある
  * drawioXml() // → 上の root の中に <mxCell id="n2" value="«part def»&lt;br&gt;&lt;b&gt;A&lt;/b&gt;" … vertex="1" …> が入る
  */
 export function drawioXml(): string {

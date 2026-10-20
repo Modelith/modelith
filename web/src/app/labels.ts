@@ -39,3 +39,16 @@ const KIND_LABEL: Record<string, string> = {
  * kindLabel("bogus")     // → "bogus"（表に無い種類）
  */
 export const kindLabel = (kind: string): string => KIND_LABEL[kind] ?? kind;
+
+/**
+ * ビュー（図の種類）の名前を、「〜の図」と呼べる形にする。名前が「図」で終わればそのまま、そうでなければ「の図」を付ける。
+ * 保存する図の名前の候補や、トーストの「〜には出ていません」に使う。
+ *
+ * @param label ビューの画面での名前（「トレーサビリティ」・「ブロック定義図」など）
+ * @returns 図の呼び名
+ * @example
+ * diagramName("トレーサビリティ") // → "トレーサビリティの図"
+ * diagramName("ブロック定義図")   // → "ブロック定義図"（「図」で終わる）
+ * diagramName("")                 // → "の図"（空の名前）
+ */
+export const diagramName = (label: string): string => (label.endsWith("図") ? label : `${label}の図`);

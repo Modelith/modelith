@@ -4,6 +4,7 @@
 import type { Entry, ModelNode, ViewKind } from "../core";
 import { ask } from "./dialog";
 import { perform } from "./intent";
+import { diagramName } from "./labels";
 import { openModelView } from "./panels";
 import { S } from "./state";
 import { commitLayout, setText, settled, toast } from "./sync";
@@ -45,13 +46,13 @@ export function canAddToView(e: Entry): boolean {
 /**
  * まだ使われていない図の名前の候補を作る。base が使われていれば、後ろに 2 から順に番号を付ける。
  *
- * @param base 名前の元（`構造の図` など）
+ * @param base 名前の元（`ブロック定義図` など）
  * @returns モデルの view（S.M.views）の名前と重ならない名前
  * @example
  * // 保存された図が無いとき
- * suggestName("構造の図") // → "構造の図"
- * // 「構造の図」と「構造の図2」が既にあるとき
- * suggestName("構造の図") // → "構造の図3"
+ * suggestName("ブロック定義図") // → "ブロック定義図"
+ * // 「ブロック定義図」と「ブロック定義図2」が既にあるとき
+ * suggestName("ブロック定義図") // → "ブロック定義図3"
  */
 function suggestName(base: string): string {
   const used = new Set(S.M.views.map((v) => v.name));
@@ -79,7 +80,7 @@ export async function saveAsView(): Promise<void> {
   const r = await ask("図を保存", "名前を付けて保存します。保存した図は、＋メニューの「保存された図」からいつでも開けます。", [
     { id: "cancel", label: "やめる" },
     { id: "ok", label: "保存", kind: "primary" },
-  ], { value: suggestName(`${curView().label}の図`), label: "図の名前" });
+  ], { value: suggestName(diagramName(curView().label)), label: "図の名前" });
   if (r?.id !== "ok") return;
   const name = r.value.trim();
   const ins = await perform({ op: "saveView", name, kind, targets });

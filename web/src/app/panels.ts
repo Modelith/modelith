@@ -656,7 +656,7 @@ const pathOf = (e: Entry): string => {
  * // 部品を持つ part def Vehicle
  * openTarget(Vehicle)   // → { view: "ibd", ctx: "Vehicle", label: "内部ブロック図で開く" }
  * // 部品を持たない part def Engine
- * openTarget(Engine)    // → { view: "structure", label: "構造で開く" }
+ * openTarget(Engine)    // → { view: "structure", label: "ブロック定義図で開く" }
  * // action def Control
  * openTarget(Control)   // → { view: "afv", ctx: "Control", label: "アクティビティ図で開く" }
  * // attribute（定義でない属性）
@@ -671,7 +671,7 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
   if (e.kind === "constraint def" || e.kind === "calc def") return { view: "control", label: "制御ループで開く" };
   if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクティビティ図で開く" };
   if (e.kind === "state def") return { view: "behavior", label: "振る舞いで開く" };
-  if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "構造で開く" };
+  if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "ブロック定義図で開く" };
   return null;
 }
 
@@ -683,7 +683,7 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
  * @param e テキストの要素
  * @returns 図の要素のキー。当たる要素が無ければ null
  * @example
- * // part def Vehicle の中の attribute mass（構造の図）
+ * // part def Vehicle の中の attribute mass（ブロック定義図）
  * keyForEntry(mass)   // → "Vehicle"
  * // 内部ブロック図で Vehicle を表示中、Vehicle の部品 engine
  * keyForEntry(engine) // → "u:engine"

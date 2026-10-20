@@ -33,7 +33,7 @@ test.describe("ビュー", () => {
     await page.reload();
     await page.locator("#gNodes .node").first().waitFor();
     // Assert
-    await expect(page.locator('.tab[aria-selected="true"]')).toContainText("構造");
+    await expect(page.locator('.tab[aria-selected="true"]')).toContainText("ブロック定義図");
   });
 
   test("F-VIEW-4: 拡大ボタンで図が大きくなり、空いた所のドラッグで範囲選択できる", async ({ page }) => {

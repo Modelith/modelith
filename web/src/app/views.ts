@@ -43,11 +43,11 @@ export interface ViewContent {
 
 export const VIEWS: ViewDef[] = [
   { id: "trace", label: "トレーサビリティ", kinds: ["concern def", "requirement def", "requirement", "verification def", "analysis def"], pull: ["satisfy"], edges: ["satisfy", "verify", "frame", "comp", "defined", "derive"] },
-  { id: "structure", label: "構造", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined", "specialize", "subset", "redefine", "reference"], depth: true },
+  { id: "structure", label: "ブロック定義図", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined", "specialize", "subset", "redefine", "reference"], depth: true },
   { id: "control", label: "制御ループ", kinds: ["constraint def", "calc def"], pull: ["flow"], edges: ["flow", "comp"] },
   { id: "ibd", label: "内部ブロック図" },
   { id: "behavior", label: "振る舞い", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },
-  { id: "seq", label: "シーケンス" },
+  { id: "seq", label: "シーケンス図" },
   { id: "afv", label: "アクティビティ図", layer: flowLayers },
   { id: "all", label: "すべて", kinds: null, edges: null },
 ];
@@ -82,7 +82,7 @@ export const viewDef = (id: string): ViewDef => VIEWS.find((x) => x.id === id) ?
  * @returns ビューの定義
  * @example
  * // S.view が "structure"
- * curView().label // → "構造"
+ * curView().label // → "ブロック定義図"
  */
 export const curView = (): ViewDef => viewDef(S.view);
 /** テキストの view の描き方を、それに当たる自動の図で描く（ADR-0005：標準の図の描き方は Modelith の既定で補う）。 */
@@ -240,7 +240,7 @@ export function defaultIbdContext(M: Model): ModelNode | null {
  */
 function ibdContent(M: Model): ViewContent {
   const ctx = ibdContexts(M).find((n) => n.key === S.ibdCtx);
-  if (!ctx) return { nodes: [], edges: [], empty: "中に部品を持つ部品定義がまだありません。「構造」の図で、部品定義から別の部品定義へ線を引き、「部品として持つ」を選ぶと作れます。" };
+  if (!ctx) return { nodes: [], edges: [], empty: "中に部品を持つ部品定義がまだありません。「ブロック定義図」で、部品定義から別の部品定義へ線を引き、「部品として持つ」を選ぶと作れます。" };
   return { ...ibdContentOf(M, ctx), frame: { kind: "part def", title: ctx.name }, ctx };
 }
 
@@ -478,7 +478,7 @@ export function edgeById(id: string | null | undefined): ModelEdge | null {
  *
  * @returns 表示中の要素（CC().nodes）
  * @example
- * // 構造の図に A と B を表示中
+ * // ブロック定義図に A と B を表示中
  * visibleNodes().map((n) => n.key) // → ["A", "B"]
  */
 export const visibleNodes = (): ModelNode[] => CC().nodes;

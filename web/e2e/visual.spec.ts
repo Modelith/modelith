@@ -21,16 +21,16 @@ async function openView(page: Page, view: string): Promise<void> {
 test.describe("UI: 図", () => {
   const views: [string, string][] = [
     ["trace", "トレーサビリティ"],
-    ["structure", "構造"],
+    ["structure", "ブロック定義図"],
     ["control", "制御ループ"],
     ["ibd", "内部ブロック図"],
     ["behavior", "振る舞い"],
-    ["seq", "シーケンス"],
+    ["seq", "シーケンス図"],
     ["afv", "アクティビティ図"],
     ["all", "すべて"],
   ];
   for (const [view, label] of views) {
-    test(`F-VIEW-1: ${label}ビューの見た目`, async ({ page }) => {
+    test(`F-VIEW-1: 「${label}」の見た目`, async ({ page }) => {
       // Arrange
       await openApp(page);
       // Act
