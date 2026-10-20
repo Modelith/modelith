@@ -90,6 +90,8 @@ export interface AppState {
   phase: string;
   ibdCtx: string | null;
   seqCtx: string | null;
+  /** アクションの流れの図の対象（アクション定義のキー）。 */
+  flowCtx: string | null;
   spaceDown: boolean;
   ui: UiPrefs;
   tabs: Tab[];
@@ -146,6 +148,7 @@ export const S: AppState = {
   phase: "",
   ibdCtx: null,
   seqCtx: null,
+  flowCtx: null,
   spaceDown: false,
   ui: { tree: true, text: true, treeW: 250, textW: 440, mini: true },
   tabs: [],

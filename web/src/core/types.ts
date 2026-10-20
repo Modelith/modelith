@@ -264,7 +264,7 @@ export interface PhaseInfo {
 }
 
 /** Modelith の描き方（標準のビュー定義に対応させる、ADR-0005）。 */
-export type ViewKind = "general" | "interconnection" | "stateTransition" | "sequence";
+export type ViewKind = "general" | "interconnection" | "stateTransition" | "sequence" | "actionFlow";
 
 /** 図に出した package（package そのものを expose したもの）。枠として描き、中の要素を枠の中に示す（F-VIEW-9）。 */
 export interface ModelFrame {

@@ -559,12 +559,12 @@ export const HAND_ICON = `<svg class="ki" width="16" height="16" viewBox="0 0 16
 export const SELECT_ICON = `<svg class="ki" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2l9 6-4 1 2.5 4.5-1.6.9L6.4 9.8 3 12.5Z" fill="var(--ink)"/></svg>`;
 
 const VIEW_ICON_KIND: Record<string, string> = {
-  trace: "requirement def", structure: "part def", control: "constraint def", ibd: "part", behavior: "state def", seq: "occurrence def", all: "package",
+  trace: "requirement def", structure: "part def", control: "constraint def", ibd: "part", behavior: "state def", seq: "occurrence def", afv: "action def", all: "package",
 };
 /**
  * 自動の図（ビュー）を表すアイコンを、そのビューの代表の種類のアイコン（kindIcon）で返す。
  *
- * @param view 自動の図の id（`trace`・`structure`・`control`・`ibd`・`behavior`・`seq`・`all`）
+ * @param view 自動の図の id（`trace`・`structure`・`control`・`ibd`・`behavior`・`seq`・`afv`・`all`）
  * @returns `<svg class="ki" …>…</svg>` の文字列。知らない id なら空文字列
  * @example
  * viewIcon("trace")   // → kindIcon("requirement def") と同じ文字列

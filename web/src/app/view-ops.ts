@@ -10,20 +10,20 @@ import { commitLayout, setText, settled, toast } from "./sync";
 import { CC, curLayout, curView, modelView } from "./views";
 
 /** 自動の図から、保存する図の描き方を決める。 */
-const KIND_OF: Record<string, ViewKind> = { ibd: "interconnection", seq: "sequence", behavior: "stateTransition" };
+const KIND_OF: Record<string, ViewKind> = { ibd: "interconnection", seq: "sequence", behavior: "stateTransition", afv: "actionFlow" };
 
 /**
  * 表示中のタブが、要素を 1 つずつ入れたり外したりできる保存された図かを判定する（F-VIEW-8）。
- * 内部ブロック図・シーケンス図は対象の中身で決まるので対象外。
+ * 内部ブロック図・シーケンス図・アクションの流れの図は対象の中身で決まるので対象外。
  *
- * @returns 表示中がテキストに書かれた view で、描き方が内部ブロック図（ibd）・シーケンス図（seq）でなければ true
+ * @returns 表示中がテキストに書かれた view で、描き方が内部ブロック図（ibd）・シーケンス図（seq）・アクションの流れの図（afv）でなければ true
  * @example
  * // 保存された図「概要の図」（一般の図）を表示中のとき
  * editableView() // → true
  * // 自動の図（トレーサビリティなど）を表示中のとき
  * editableView() // → false
  */
-export const editableView = (): boolean => !!modelView() && S.view !== "ibd" && S.view !== "seq";
+export const editableView = (): boolean => !!modelView() && S.view !== "ibd" && S.view !== "seq" && S.view !== "afv";
 
 /**
  * 要素を、表示中の保存された図に入れられるか（まだ入っていないか）を判定する（F-VIEW-8）。
@@ -71,7 +71,7 @@ export async function saveAsView(): Promise<void> {
   const pkg = S.P.entries.find((e) => e.kind === "package");
   const kind = KIND_OF[S.view] ?? "general";
   const c = CC();
-  const targets = kind === "interconnection" || kind === "sequence" ? (c.ctx ? [c.ctx.key] : []) : c.nodes.map((n) => n.key);
+  const targets = kind === "interconnection" || kind === "sequence" || kind === "actionFlow" ? (c.ctx ? [c.ctx.key] : []) : c.nodes.map((n) => n.key);
   if (!pkg || !targets.length) {
     toast("図に要素が無いため、保存できません");
     return;
@@ -84,7 +84,7 @@ export async function saveAsView(): Promise<void> {
   const name = r.value.trim();
   const ins = await perform({ op: "saveView", name, kind, targets });
   if (!ins) return;
-  // 見えている配置のまま保存する（内部ブロック図・シーケンス図は、対象ごとの配置をそのまま使う）
+  // 見えている配置のまま保存する（内部ブロック図・シーケンス図・アクションの流れの図は、対象ごとの配置をそのまま使う）
   if (kind === "general" || kind === "stateTransition") S.layout[`view:${name}`] = structuredClone(curLayout());
   setText(ins.text, { changeAt: ins.at, flash: ins.flash });
   commitLayout();

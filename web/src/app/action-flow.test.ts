@@ -1,8 +1,8 @@
 // アクションの流れの図（ActionFlowView、8.2.3.17）の中身と、その描き方。要素のキーと線の ID は、Rust のコアが決めたものを使う（ADR-0016）。
 import { describe, expect, it } from "vitest";
 import { build, parse, type Model, type ModelNode } from "../core";
-import { defaultFlowContext, flowBodyLines, flowContentOf, flowContexts, flowDetail, flowShape } from "./action-flow";
-import { boxesOf, computeRoutes, compartment, flowSize, nodeW, W, type NodeBox } from "./geometry";
+import { defaultFlowContext, flowBodyLines, flowContentOf, flowContexts, flowDetail, flowLayers, flowShape } from "./action-flow";
+import { autoPlace, boxesOf, computeRoutes, compartment, flowSize, nodeW, W, type NodeBox } from "./geometry";
 import { emptyView } from "./layout";
 import { CV, edgeStroke, svgMarkup } from "./svg";
 
@@ -170,6 +170,48 @@ describe("アクションの流れの図の大きさと線（geometry）", () =>
     // Assert
     const starts = edges.flatMap((e) => (routes.get(e.id) ? [routes.get(e.id)?.from.t] : []));
     expect(starts).toEqual([0.5, 0.5]);
+  });
+});
+
+describe("flowLayers・autoPlace（アクションの流れの図を上から並べる）", () => {
+  const LOOP =
+    "package P { action def A { first start; then action a; then fork f; then b; then c; action b; action c; " +
+    "first b then j; first c then j; join j; then decide d; if x then a; else done; succession flow from a to c; } }";
+
+  it("継起の最も長い道のりの段にし、同じ分岐から出た要素は同じ段、繰り返しの戻りの線は数えない", () => {
+    // Arrange
+    const { M, c } = setup(LOOP, "A");
+    const { nodes, edges } = flowContentOf(M, c);
+    // Act
+    const layers = flowLayers(nodes, edges);
+    // Assert
+    expect(Object.fromEntries(layers)).toEqual({ "a:start": 0, "a:a": 1, "a:f": 2, "a:b": 3, "a:c": 3, "a:j": 4, "a:d": 5, "a:done": 6 });
+  });
+
+  it("つながらない要素は最初の段（境界値）", () => {
+    // Arrange
+    const { M, c } = setup("package P { action def A { action a; action b; } }", "A");
+    const { nodes, edges } = flowContentOf(M, c);
+    // Act
+    const layers = flowLayers(nodes, edges);
+    // Assert
+    expect([...layers.values()]).toEqual([0, 0]);
+  });
+
+  it("autoPlace は段の決め方（layer）で上から並べ、狭い記号を列の中央に置く", () => {
+    // Arrange
+    const { M, c } = setup(LOOP, "A");
+    const { nodes, edges } = flowContentOf(M, c);
+    const pos: Record<string, [number, number]> = {};
+    // Act
+    autoPlace(nodes, edges, pos, { id: "afv", label: "", layer: flowLayers }, null, 0, (n) => flowSize(n).h, nodeW);
+    // Assert
+    const ys = ["a:start", "a:a", "a:f", "a:b", "a:c"].map((k) => pos[k]?.[1]);
+    expect(ys[0]).toBeLessThan(ys[1] ?? 0);
+    expect(ys[3]).toBe(ys[4]);
+    // 開始（幅 22）とアクション（幅 168）の中心は、10 単位に丸めた分を除いてそろう
+    const center = (k: string, w: number): number => (pos[k]?.[0] ?? 0) + w / 2;
+    expect(Math.abs(center("a:start", 22) - center("a:a", 168))).toBeLessThanOrEqual(10);
   });
 });
 

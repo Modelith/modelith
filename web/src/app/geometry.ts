@@ -931,13 +931,14 @@ const RANK: Record<string, number> = {
 
 /**
  * 配置済みの要素の下に、未配置の要素を段ごとに並べ、座標を pos に書き込む（pos を変更する）。
- * 段は、ビューが深さで並べるなら線の向きの深さ（特殊化などは一般な側を上に。`downward`）、そうでなければ種類の順位（RANK）で決める。
+ * 段は、ビューが段の決め方（`layer`）を持てばそれで、深さで並べるなら線の向きの深さ（特殊化などは一般な側を上に。`downward`）、
+ * そうでなければ種類の順位（RANK）で決める。
  * 段の中は前の段とのつながりの重心で並べ替えて線の交差を減らし、1 段は 7 個までで折り返す。
  *
  * @param list 並べる（未配置の）ノード
  * @param edges 図の線（段と並び順の計算に使う）
  * @param pos ノードのキーから座標への対応。並べた座標を書き込む
- * @param v ビューの定義（depth が真なら線の深さで段を決める。control・ibd では信号の上流を左に置く）
+ * @param v ビューの定義（layer があればそれで、depth が真なら線の深さで段を決める。control・ibd では信号の上流を左に置く）
  * @param firstPhase 最初の段階の名前。その段階の requirement def を requirement の上の段に置く。無ければ null
  * @param oy 最初の段の y 座標（既定 0。配置済みの要素の下端を渡す）
  * @param heightOf 要素の高さ（既定 nodeH。中に部品を描く部品は、中の部品を積んだ高さを渡す）
@@ -948,8 +949,10 @@ export function autoPlace(
   heightOf: (n: ModelNode) => number = nodeH, widthOf: (n: ModelNode) => number = () => W,
 ): void {
   const keys = new Set(list.map((n) => n.key));
-  const layer = new Map<string, number>();
-  if (v.depth) {
+  let layer = new Map<string, number>();
+  if (v.layer) {
+    layer = v.layer(list, edges);
+  } else if (v.depth) {
     const down = edges.map(downward);
     const inc = new Map(list.map((n) => [n.key, 0]));
     for (const [from, to] of down) if (keys.has(to) && keys.has(from)) inc.set(to, (inc.get(to) ?? 0) + 1);

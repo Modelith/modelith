@@ -13,6 +13,7 @@ import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type Tab, type Tool, type UiPrefs } from "./state";
 import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "./svg";
 import { ensureLayout, toast } from "./sync";
+import { defaultFlowContext, flowContexts } from "./action-flow";
 import { baseViewOf, CC, defaultIbdContext, edgeById, ibdContexts, modelView, nodeByKey, phaseLabel, seqContexts, VIEWS } from "./views";
 import { isCtxOpen } from "./ctxmenu";
 
@@ -155,7 +156,7 @@ let tabSeq = 1;
 const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
 
 /**
- * タブに出す名前を作る。保存された図はその名前、内部ブロック図・シーケンス図は対象の名前つき、
+ * タブに出す名前を作る。保存された図はその名前、内部ブロック図・シーケンス図・アクションの流れの図は対象の名前つき、
  * 他のビューはビューの名前（工程で絞っていれば工程の名前つき）にする。
  *
  * @param t タブ
@@ -165,6 +166,7 @@ const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
  * tabLabel({ id: 1, view: "trace", ctx: null, phase: "SystemRequirements" }) // → "トレーサビリティ：システム要求"
  * tabLabel({ id: 2, view: "ibd", ctx: "Vehicle", phase: "" })              // → "ibd Vehicle"
  * tabLabel({ id: 3, view: "seq", ctx: null, phase: "" })                   // → "sd （未選択）"
+ * tabLabel({ id: 5, view: "afv", ctx: "Control", phase: "" })             // → "act Control"
  * tabLabel({ id: 4, view: "all", ctx: null, phase: "", mv: "Overview" })    // → "Overview"
  */
 function tabLabel(t: Tab): string {
@@ -174,16 +176,17 @@ function tabLabel(t: Tab): string {
   const nm = t.ctx ? (S.M.nodes.find((n) => n.key === t.ctx)?.name ?? t.ctx) : "";
   if (t.view === "ibd") return `ibd ${nm || "（未選択）"}`;
   if (t.view === "seq") return `sd ${nm || "（未選択）"}`;
+  if (t.view === "afv") return `act ${nm || "（未選択）"}`;
   return v.label + (t.phase ? `：${phaseLabel(t.phase)}` : "");
 }
 
 /**
- * 表示中のタブに、今の対象（内部ブロック図・シーケンス図）と工程の絞り込みを書き戻す。タブが無ければ何もしない。
+ * 表示中のタブに、今の対象（内部ブロック図・シーケンス図・アクションの流れの図）と工程の絞り込みを書き戻す。タブが無ければ何もしない。
  */
 function syncCurTab(): void {
   const t = curTab();
   if (!t) return;
-  t.ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : null;
+  t.ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : null;
   t.phase = S.phase || "";
 }
 
@@ -245,6 +248,7 @@ export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean
   S.phase = t.phase || "";
   if (t.view === "ibd") S.ibdCtx = t.ctx;
   if (t.view === "seq") S.seqCtx = t.ctx;
+  if (t.view === "afv") S.flowCtx = t.ctx;
   cancelConnect();
   S.tool = null;
   if (!opts.keepSel) clearSel();
@@ -281,11 +285,11 @@ export function openModelView(name: string): void {
  * ビューを開く（同じビュー・同じ対象のタブがあればそれに切り替える。F-VIEW-2）。新しいタブを作ったときは全体を表示する。
  *
  * @param view ビューの ID（"trace"・"ibd" など）
- * @param ctx 内部ブロック図・シーケンス図の対象のキー。指定しなければ null（同じビューのタブがあればそれを使う）
+ * @param ctx 内部ブロック図・シーケンス図・アクションの流れの図の対象のキー。指定しなければ null（同じビューのタブがあればそれを使う）
  * @param opts keepSel：選択を解かない
  */
 export function openTab(view: string, ctx?: string | null, opts: { keepSel?: boolean } = {}): void {
-  const ex = S.tabs.find((t) => !t.mv && t.view === view && ((view !== "ibd" && view !== "seq") || !ctx || t.ctx === ctx));
+  const ex = S.tabs.find((t) => !t.mv && t.view === view && (!["ibd", "seq", "afv"].includes(view) || !ctx || t.ctx === ctx));
   if (ex && !(ctx && ex.ctx !== ctx)) {
     activateTab(ex.id, opts);
     return;
@@ -315,17 +319,25 @@ function closeTab(id: number): void {
 }
 
 /**
- * 新しく開くタブの既定の対象を選ぶ。内部ブロック図は部品の最も多いブロック、シーケンス図は最初のシナリオ。
+ * 新しく開くタブの既定の対象を選ぶ。内部ブロック図は部品の最も多いブロック、シーケンス図は最初のシナリオ、
+ * アクションの流れの図は線の最も多いアクション定義。
  *
  * @param view ビューの ID
  * @returns 対象のキー。対象を持たないビューや、対象が無ければ null
  * @example
  * // occurrence def Start がある
  * defaultCtx("seq")   // → "Start"
+ * defaultCtx("afv")   // → "Control"（線の最も多いアクション定義）
  * defaultCtx("trace") // → null（対象を持たないビュー）
  */
 const defaultCtx = (view: string): string | null =>
-  view === "ibd" ? (defaultIbdContext(S.M)?.key ?? null) : view === "seq" ? (seqContexts(S.M)[0]?.key ?? null) : null;
+  view === "ibd"
+    ? (defaultIbdContext(S.M)?.key ?? null)
+    : view === "seq"
+      ? (seqContexts(S.M)[0]?.key ?? null)
+      : view === "afv"
+        ? (defaultFlowContext(S.M)?.key ?? null)
+        : null;
 
 /**
  * localStorage に保存したタブを読む。
@@ -645,6 +657,8 @@ const pathOf = (e: Entry): string => {
  * openTarget(Vehicle)   // → { view: "ibd", ctx: "Vehicle", label: "内部ブロック図で開く" }
  * // 部品を持たない part def Engine
  * openTarget(Engine)    // → { view: "structure", label: "構造で開く" }
+ * // action def Control
+ * openTarget(Control)   // → { view: "afv", ctx: "Control", label: "アクションの流れで開く" }
  * // attribute（定義でない属性）
  * openTarget(attr)      // → null
  */
@@ -655,13 +669,15 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
   if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: "シーケンス図で開く" };
   if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
   if (e.kind === "constraint def" || e.kind === "calc def") return { view: "control", label: "制御ループで開く" };
-  if (e.kind === "state def" || e.kind === "action def") return { view: "behavior", label: "振る舞いで開く" };
+  if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクションの流れで開く" };
+  if (e.kind === "state def") return { view: "behavior", label: "振る舞いで開く" };
   if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "構造で開く" };
   return null;
 }
 
 /**
- * テキストの要素に当たる図の要素のキーを探す。内部ブロック図・シーケンス図の対象の中の部品は `u:`・`l:` のキーにし、
+ * テキストの要素に当たる図の要素のキーを探す。内部ブロック図・シーケンス図の対象の中の部品は `u:`・`l:` のキー、
+ * アクションの流れの図の対象の中の要素はその図の要素のキーにし、
  * それ以外は自身か、最も近い外側の、図に描く要素のキーにする。
  *
  * @param e テキストの要素
@@ -677,6 +693,8 @@ function keyForEntry(e: Entry): string | null {
   if (c.ctx && e.pe === c.ctx.entry) {
     if (S.view === "ibd" && e.kind === "part") return "u:" + e.name;
     if (S.view === "seq") return "l:" + e.name;
+    const fl = S.view === "afv" ? c.nodes.find((n) => n.flow && n.entry === e) : undefined;
+    if (fl) return fl.key;
   }
   for (let a: Entry | null = e; a; a = a.pe) {
     const n = S.M.nodeOf.get(a);
@@ -948,7 +966,7 @@ function initTree(): void {
 
 /* ---- サブバー（対象ブロック・フェーズ・トレースの抜け） ---- */
 /**
- * 図の上のサブバーを描き直す。保存された図ではその名前と種類、内部ブロック図・シーケンス図では対象の選択欄、
+ * 図の上のサブバーを描き直す。保存された図ではその名前と種類、内部ブロック図・シーケンス図・アクションの流れの図では対象の選択欄、
  * 他のビューでは工程の絞り込み（工程が無ければ「フェーズ管理を始める」）を出し、工程があればトレースの抜けの件数を出す（F-TRACE-1・F-TRACE-2）。
  */
 export function renderSub(): void {
@@ -959,7 +977,7 @@ export function renderSub(): void {
   const mv = modelView();
   if (S.modelView) {
     // 保存された図（view）：中身と対象は expose で決まるので、選ばせない
-    const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : null;
+    const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : null;
     const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
     parts.push(
       `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、保存された図の設定で決まります"}（view の expose・filter）">保存された図「${esc(S.modelView)}」：${esc(stdViewLabel(mv?.std ?? null))}${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
@@ -970,6 +988,9 @@ export function renderSub(): void {
   } else if (S.view === "seq") {
     CC();
     parts.push(ctxSel(seqContexts(S.M), S.seqCtx, "シナリオ"));
+  } else if (S.view === "afv") {
+    CC();
+    parts.push(ctxSel(flowContexts(S.M), S.flowCtx, "アクション定義"));
   } else if (phases) {
     parts.push(
       `<label>フェーズ<select id="phaseFilter"><option value="">すべて</option>${phases.map((p) => `<option value="${esc(p)}" ${S.phase === p ? "selected" : ""}>${esc(phaseLabel(p))}（${S.M.nodes.filter((n) => n.phase === p).length}）</option>`).join("")}</select></label>`,
@@ -993,6 +1014,7 @@ function initSub(): void {
     if (!(t instanceof HTMLSelectElement)) return;
     if (t.id === "ctxSel") {
       if (S.view === "ibd") S.ibdCtx = t.value;
+      else if (S.view === "afv") S.flowCtx = t.value;
       else S.seqCtx = t.value;
     } else if (t.id === "phaseFilter") S.phase = t.value;
     else return;

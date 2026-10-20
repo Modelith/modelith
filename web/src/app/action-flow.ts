@@ -116,3 +116,50 @@ export function flowBodyLines(e: Entry): string[] {
   const other = e.children.filter(isElse).map(name);
   return [...(then.length ? [`then: ${then.join(", ")}`] : []), ...(other.length ? [`else: ${other.join(", ")}`] : [])];
 }
+
+/**
+ * アクションの流れの図で、要素を上から並べる段を決める（自動の配置に使う）。継起の線（`succession`）だけを見て、
+ * 元から先へ最も長い道のりの段にする（同じ分岐から出た要素は同じ段になる）。繰り返しの戻りの線（深さ優先でたどったときに戻る線）は数えない。
+ * 順序付きの流れ（`successionFlow`）は段を決めない。
+ *
+ * @param list 並べる要素
+ * @param edges 図の線
+ * @returns 要素のキーから段（0 から）への対応。どの線にもつながらない要素は 0
+ * @example
+ * // start → a → fork f → b・c、b → j、c → j（join j）、d → a（戻りの線）
+ * flowLayers(nodes, edges) // → start: 0, a: 1, f: 2, b: 3, c: 3, j: 4, d: 0
+ */
+export function flowLayers(list: readonly ModelNode[], edges: readonly ModelEdge[]): Map<string, number> {
+  const keys = new Set(list.map((n) => n.key));
+  const lines = edges.filter((e) => e.kind === "succession" && e.from !== e.to && keys.has(e.from) && keys.has(e.to));
+  const outOf = (k: string): ModelEdge[] => lines.filter((e) => e.from === k);
+  // 深さ優先でたどり、たどっている途中の要素へ戻る線を、繰り返しの戻りの線とみなす
+  const state = new Map<string, "open" | "done">();
+  const back = new Set<ModelEdge>();
+  const visit = (k: string): void => {
+    state.set(k, "open");
+    for (const e of outOf(k)) {
+      const s = state.get(e.to);
+      if (s === "open") back.add(e);
+      else if (!s) visit(e.to);
+    }
+    state.set(k, "done");
+  };
+  const roots = list.filter((n) => !lines.some((e) => e.to === n.key));
+  for (const n of [...roots, ...list]) if (!state.has(n.key)) visit(n.key);
+  // 戻りの線を除いた線で、最も長い道のりの段にする（入る線を数え終えた要素から順に）
+  const dag = lines.filter((e) => !back.has(e));
+  const layer = new Map(list.map((n) => [n.key, 0]));
+  const pending = new Map(list.map((n) => [n.key, dag.filter((e) => e.to === n.key).length]));
+  const queue = list.filter((n) => !pending.get(n.key)).map((n) => n.key);
+  while (queue.length) {
+    const k = queue.shift() as string;
+    for (const e of dag.filter((x) => x.from === k)) {
+      layer.set(e.to, Math.max(layer.get(e.to) ?? 0, (layer.get(k) ?? 0) + 1));
+      const left = (pending.get(e.to) ?? 1) - 1;
+      pending.set(e.to, left);
+      if (!left) queue.push(e.to);
+    }
+  }
+  return layer;
+}
