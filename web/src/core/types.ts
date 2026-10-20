@@ -208,6 +208,11 @@ export interface ModelNode {
   junction?: boolean;
   /** 一般の図のメモ（8.2.3.4 の comment）。`entry` はコメントの宣言。 */
   note?: boolean;
+  /**
+   * アクションの流れの図の要素（8.2.3.17）。形は種類（`start`・`done`・`fork`・`decide`・`send` など）で決まる。
+   * 開始・終了の `entry` は、図の対象のアクション定義。
+   */
+  flow?: boolean;
   /** 内部ブロック図で、この部品を中に描く外の部品のキー（入れ子の 2 段目）。 */
   container?: string;
   /** ポートを追加する先（使用の場合は型の定義）。 */
@@ -219,10 +224,12 @@ export interface ModelNode {
  * 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency`・`allocate` は特殊化・部分集合・再定義・参照・依存・
  * 割り当て（8.2.3）で、Rust のコアだけが作る。`bind` は内部ブロック図の結び付け（8.2.3.13 の binding-connection）、
  * `connect` は n 項の接続の点から端への線（8.2.3.13 の n-ary-segment）。`annotate` はメモから注釈する要素への破線（8.2.3.4 の annotation-link）。
+ * `succession`・`successionFlow` はアクションの流れの図の継起と順序付きの流れ（8.2.3.17）。
  */
 export type EdgeKind =
   | "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message"
-  | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate" | "bind" | "connect" | "annotate";
+  | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate" | "bind" | "connect" | "annotate"
+  | "succession" | "successionFlow";
 
 /** 図に投影する関係。 */
 export interface ModelEdge {
@@ -297,6 +304,32 @@ export interface Model {
   phaseOf: (e: Entry) => PhaseInfo | null;
   /** 図に描くメモ（コメント、8.2.3.4）。Rust のコアだけが作る。 */
   notes?: ModelNote[];
+  /** アクション定義ごとの、アクションの流れの図（ActionFlowView、8.2.3.17）。Rust のコアだけが作る。 */
+  actionFlows?: ModelActionFlow[];
+}
+
+/** アクションの流れの図の要素 1 つ（アクション・制御の節・送受信などと、暗黙の開始・終了）。 */
+export interface ModelFlowNode {
+  /** 図の要素のキー（`a:名前`・`a:#番号`・`a:start`・`a:done`）。 */
+  key: string;
+  /** 名前（名前の無い要素は空文字列）。 */
+  name: string;
+  /** 種類（`action`・`fork`・`send` など。開始・終了は `start`・`done`）。 */
+  kind: string;
+  /** 宣言。開始・終了は宣言を持たないので null。 */
+  entry: Entry | null;
+}
+
+/** アクション定義 1 つの、アクションの流れの図（8.2.3.17）。 */
+export interface ModelActionFlow {
+  /** アクション定義の、図の要素のキー。 */
+  key: string;
+  /** アクション定義の宣言。 */
+  entry: Entry;
+  /** 要素（開始、書いた順の要素、終了の順）。 */
+  nodes: ModelFlowNode[];
+  /** 継起（succession）と順序付きの流れ（successionFlow）の線。端は nodes のキー。 */
+  edges: ModelEdge[];
 }
 
 /** 図に描くメモ 1 つ（注釈する要素のうち、図に描く要素があるコメント）。 */

@@ -179,6 +179,7 @@ export interface RawModel {
   phases: string[] | null;
   phaseEnum: string | null;
   notes?: { key: string; entry: number; targets: string[] }[];
+  actionFlows?: { key: string; entry: number; nodes: { key: string; name: string; kind: string; entry?: number }[]; edges: RawEdge[] }[];
 }
 
 /**
@@ -240,8 +241,14 @@ function toModel(raw: RawModel, P: ParseResult): Model {
     return null;
   };
   const notes = (raw.notes ?? []).map((n) => ({ ...n, entry: entry(n.entry) }));
+  const actionFlows = (raw.actionFlows ?? []).map((f) => ({
+    key: f.key,
+    entry: entry(f.entry),
+    nodes: f.nodes.map((n) => ({ key: n.key, name: n.name, kind: n.kind, entry: n.entry == null ? null : entry(n.entry) })),
+    edges: f.edges.map(({ rel: _rel, ...e }) => e),
+  }));
   return {
-    nodes, views, edges, problems: raw.problems, nodeOf, byName, rels: P.rels, phases: raw.phases, phaseEnum: raw.phaseEnum, phaseOf, notes,
+    nodes, views, edges, problems: raw.problems, nodeOf, byName, rels: P.rels, phases: raw.phases, phaseEnum: raw.phaseEnum, phaseOf, notes, actionFlows,
   };
 }
 
