@@ -105,6 +105,53 @@ export async function typeAtEnd(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text);
 }
 
+/**
+ * テキストの中の語が画面に描かれている矩形の中心を返す（色付けの層 #hl の文字で調べる）。
+ *
+ * @param page ページ
+ * @param needle 探すテキスト（最初に現れる所）
+ * @param from 語の始まりを needle の中で何文字目にするか
+ * @param length 語の長さ
+ * @returns 語の中心の画面の座標
+ */
+export async function wordCenter(page: Page, needle: string, from: number, length: number): Promise<{ x: number; y: number }> {
+  return page.evaluate(
+    ([needle, from, length]) => {
+      const start = (document.querySelector<HTMLTextAreaElement>("#ed")!.value.indexOf(needle)) + from;
+      const walker = document.createTreeWalker(document.querySelector("#hl")!, NodeFilter.SHOW_TEXT);
+      let pos = 0;
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const len = n.textContent!.length;
+        if (start < pos + len) {
+          const r = document.createRange();
+          r.setStart(n, start - pos);
+          r.setEnd(n, start - pos + length);
+          const b = r.getBoundingClientRect();
+          return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+        }
+        pos += len;
+      }
+      throw new Error(`見つかりません: ${needle}`);
+    },
+    [needle, from, length] as const,
+  );
+}
+
+/** テキスト欄を text に置き換えて、図への反映を待つ。 */
+export async function replaceText(page: Page, text: string): Promise<void> {
+  await page.locator("#ed").fill(text);
+  await page.waitForTimeout(400);
+}
+
+/** 狭い画面で起動してテキストのタブを開き、「編集」で text に書き換えてから、読み取り専用に戻す（F-EDIT-10）。 */
+export async function openReadOnlyText(page: Page, text: string): Promise<void> {
+  await openApp(page);
+  await page.locator("#tabText").click();
+  await page.locator("#btnEditText").click();
+  await replaceText(page, text);
+  await page.locator("#btnEditText").click();
+}
+
 /** 図に描かれている要素のキー（中に部品を描く部品は、線の下の層 #gEdges にある）。 */
 export const nodeKeys = (page: Page): Promise<string[]> =>
   page.locator("#gNodes .node, #gNodes .lifeline, #gEdges .node").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset["key"] ?? ""));

@@ -660,6 +660,14 @@ package ModelithRequirements {
                 verify PlainWordsReq;
             }
         }
+        verification def MobileE2E {
+            doc /* web/e2e/mobile.spec.ts：iPhone（devices["iPhone 13"]、WebKit）と Android（devices["Pixel 5"]、Chromium）の端末の設定で、テキストの読み取り専用とダブルタップの案内、「編集」のタップでの切り替え、ダブルタップでの語の選択と説明（キーワードと標準ライブラリの型） */
+            objective {
+                verify PhoneTextReq;
+                verify WordHelpReq;
+                verify NarrowScreenReq;
+            }
+        }
         verification def FilesE2E {
             doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き・最後のファイルを閉じた後の画面、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
             objective {

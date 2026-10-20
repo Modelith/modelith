@@ -1,53 +1,14 @@
 // テキストの語の説明（F-EDIT-9）と狭い画面のテキスト（F-EDIT-10）。広い画面のツールチップと、カーソルのある語の説明の行、
 // 幅 390px の読み取り専用と「編集」ボタン。
-import { editorText, expect, openApp, test } from "./fixtures";
-import type { Page } from "@playwright/test";
+import { editorText, expect, openApp, openReadOnlyText, replaceText, test, wordCenter } from "./fixtures";
 
 const TEXT = "package Kettle {\n    // part の説明はしない\n    part def Heater;\n    attribute power : Real;\n}\n";
-
-/**
- * テキストの中の語が画面に描かれている矩形の中心を返す（色付けの層 #hl の文字で調べる）。
- *
- * @param page ページ
- * @param needle 探すテキスト（最初に現れる所）
- * @param from 語の始まりを needle の中で何文字目にするか
- * @param length 語の長さ
- * @returns 語の中心の画面の座標
- */
-async function wordCenter(page: Page, needle: string, from: number, length: number): Promise<{ x: number; y: number }> {
-  return page.evaluate(
-    ([needle, from, length]) => {
-      const start = (document.querySelector<HTMLTextAreaElement>("#ed")!.value.indexOf(needle)) + from;
-      const walker = document.createTreeWalker(document.querySelector("#hl")!, NodeFilter.SHOW_TEXT);
-      let pos = 0;
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const len = n.textContent!.length;
-        if (start < pos + len) {
-          const r = document.createRange();
-          r.setStart(n, start - pos);
-          r.setEnd(n, start - pos + length);
-          const b = r.getBoundingClientRect();
-          return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
-        }
-        pos += len;
-      }
-      throw new Error(`見つかりません: ${needle}`);
-    },
-    [needle, from, length] as const,
-  );
-}
-
-/** テキストを置き換えて、図への反映を待つ。 */
-async function setText(page: Page, text: string): Promise<void> {
-  await page.locator("#ed").fill(text);
-  await page.waitForTimeout(400);
-}
 
 test.describe("語の説明", () => {
   test("F-EDIT-9: キーワードにマウスを乗せると、その意味をツールチップで示す", async ({ page }) => {
     // Arrange
     await openApp(page);
-    await setText(page, TEXT);
+    await replaceText(page, TEXT);
     const p = await wordCenter(page, "part def", 0, 4);
     // Act
     await page.mouse.move(p.x, p.y);
@@ -60,7 +21,7 @@ test.describe("語の説明", () => {
   test("F-EDIT-9: 標準ライブラリの型にマウスを乗せると、その意味を示す", async ({ page }) => {
     // Arrange
     await openApp(page);
-    await setText(page, TEXT);
+    await replaceText(page, TEXT);
     const p = await wordCenter(page, "Real", 0, 4);
     // Act
     await page.mouse.move(p.x, p.y);
@@ -71,7 +32,7 @@ test.describe("語の説明", () => {
   test("F-EDIT-9: コメントの中の語と利用者の付けた名前には、ツールチップを出さない", async ({ page }) => {
     // Arrange
     await openApp(page);
-    await setText(page, TEXT);
+    await replaceText(page, TEXT);
     const inComment = await wordCenter(page, "// part", 3, 4);
     const userName = await wordCenter(page, "Heater", 0, 6);
     // Act
@@ -88,7 +49,7 @@ test.describe("語の説明", () => {
   test("F-EDIT-9: カーソルのある語の意味を、テキストの下の行に示し、説明の無い語では行を消す", async ({ page }) => {
     // Arrange
     await openApp(page);
-    await setText(page, TEXT);
+    await replaceText(page, TEXT);
     const keyword = await wordCenter(page, "attribute", 2, 1);
     const userName = await wordCenter(page, "Heater", 2, 1);
     // Act
@@ -103,7 +64,7 @@ test.describe("語の説明", () => {
   test("F-EDIT-9: キーボードでカーソルを動かすと、説明の行も追いかける", async ({ page }) => {
     // Arrange
     await openApp(page);
-    await setText(page, "satisfy R by K;\n");
+    await replaceText(page, "satisfy R by K;\n");
     await page.locator("#ed").focus();
     await page.keyboard.press("Control+Home");
     // Act
@@ -167,15 +128,6 @@ test.describe("狭い画面のテキスト", () => {
 
 test.describe("狭い画面のテキストのダブルタップ", () => {
   test.use({ viewport: { width: 390, height: 800 }, hasTouch: true });
-
-  /** テキストのタブを開き、「編集」で text に書き換えてから、読み取り専用に戻す。 */
-  async function openReadOnlyText(page: Page, text: string): Promise<void> {
-    await openApp(page);
-    await page.locator("#tabText").click();
-    await page.locator("#btnEditText").click();
-    await setText(page, text);
-    await page.locator("#btnEditText").click();
-  }
 
   test("F-EDIT-10: 読み取り専用のテキストの下に、ダブルタップの案内を出す", async ({ page }) => {
     // Arrange
