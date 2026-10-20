@@ -1184,5 +1184,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(entry(text, "p")).toBeUndefined();
       });
     });
+
+    describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
+      it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; dependency A to B { doc /* why */ } alias C for A { doc /* al */ } }";
+        // Act
+        const p = entry(text, "P");
+        // Assert
+        expect(p?.doc).toBeUndefined();
+        expect(edges(text)).toEqual(["dependency|A|B"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
   });
 }

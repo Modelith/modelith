@@ -523,6 +523,34 @@ fn feature_named_like_a_kerml_keyword_is_not_kerml() {
 }
 
 #[test]
+fn annotations_in_a_relationship_body_are_not_put_on_the_outer_package() {
+    // Arrange（同値分割：依存・別名の本体の doc・comment・メタデータ。RelationshipBody、8.2.2.2）
+    let text = "package P { metadata def M; part def A; part def B; \
+        dependency A to B { doc /* why */ } \
+        alias C for A { doc /* al */ comment /* c */ @M; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let p = entry(&r, "P");
+    assert_eq!(p.doc, None);
+    assert_eq!(p.meta, None);
+    assert!(r.entries.iter().all(|e| e.kind != "comment"));
+    assert_eq!(r.rels.len(), 1);
+    assert_eq!(r.aliases.len(), 1);
+    assert!(r.errors.is_empty());
+}
+
+#[test]
+fn doc_in_the_package_body_is_still_the_package_doc() {
+    // Arrange（正常系の境界：関係の後に書いた package の doc）
+    let text = "package P { part def A; part def B; dependency A to B; doc /* p */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "P").doc.as_deref(), Some("p"));
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";

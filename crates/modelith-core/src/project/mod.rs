@@ -409,7 +409,7 @@ impl Ctx {
     ///
     /// `doc` は `pe` の宣言の `doc` に、`rep` は `pe` の宣言の `reps` に入れ、`comment` は種類 `comment` の宣言にする。本体 `{ … }` があれば、宣言ならその中を、宣言でなければ
     /// 無名ブロックを作ってその中を読み、`open`・`close`・`end` を記録する。まだ扱えない文の本体は読まない
-    /// （中の宣言を、外側の宣言の中身にしない）。終わっていない末尾の文は読まない。
+    /// （中の宣言を、外側の宣言の中身にしない）。依存・別名の本体（関係への注釈）も読まない。終わっていない末尾の文は読まない。
     ///
     /// # 引数
     ///
@@ -459,7 +459,10 @@ impl Ctx {
         let meta = self.open_meta.take();
         // まだ扱えない文の本体は読まない（中の宣言を、外側の宣言の中身と取り違えないように。F-EDIT-8）
         let is_unsupported = self.out.unsupported.len() > unsupported_before;
-        if term != Term::Open || is_unsupported {
+        // 依存・別名の本体（RelationshipBody、8.2.2.2）は関係への注釈（doc・comment・@M）だけを持つ。関係への注釈は
+        // まだ記録しないので読まない（外側の宣言の説明やメタデータと取り違えないように）
+        let is_relationship_body = matches!(n.kind(), DEPENDENCY | ALIAS);
+        if term != Term::Open || is_unsupported || is_relationship_body {
             return;
         }
         let Some(body) = child(n, BODY) else { return };
