@@ -1224,5 +1224,45 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(M.problems).toEqual([]);
       });
     });
+
+    describe("キーワードの無い特性と ref（DefaultReferenceUsage・ReferenceUsage、8.2.2.6）", () => {
+      it("x : Real;・y :> x;・z : Real = 3;・ref r; は、ref s : A; と同じく参照のパラメータにする", () => {
+        // Arrange
+        const text = "package P { part def A { x : Real; y :> x; z : Real = 3; ref r; ref s : A; } }";
+        // Act
+        const rows = ["x", "y", "z", "r", "s"].map((n) => {
+          const e = entry(text, n);
+          return [e?.kind, e?.dir, e?.type, e?.value ?? ""];
+        });
+        // Assert
+        expect(rows).toEqual([
+          ["param", "ref", "Real", ""],
+          ["param", "ref", "", ""],
+          ["param", "ref", "Real", "3"],
+          ["param", "ref", "", ""],
+          ["param", "ref", "A", ""],
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("要求の定義の中のキーワードの無い特性を、要求の式にしない（以前は区画に { z : Real = 3 } と出た）", () => {
+        // Arrange
+        const text = "package P { requirement def R { z : Real = 3; require constraint { z > 0 } } }";
+        // Act
+        const r = entry(text, "R");
+        // Assert
+        expect(r?.exprs.map((x) => x.text)).toEqual(["z > 0"]);
+        expect(entry(text, "z")?.pe?.name).toBe("R");
+      });
+
+      it("型が見つからなければ知らせる（異常系。以前は黙って捨てた）", () => {
+        // Arrange
+        const text = "package P { part def A { x : Nope; } }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["型「Nope」が見つかりません（x）"]);
+      });
+    });
   });
 }

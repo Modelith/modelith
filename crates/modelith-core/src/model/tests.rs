@@ -988,6 +988,17 @@ fn crossed_feature_is_written_at_the_part_end_without_a_line() {
 }
 
 #[test]
+fn keyword_less_feature_with_a_missing_type_is_reported() {
+    // Arrange（異常系：キーワードの無い特性の型が見つからない。以前は特性ごと捨てていた）
+    let text = "package P { part def A { x : Nope; y : Real; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
+}
+
+#[test]
 fn dependency_draws_a_line_per_client_and_supplier_with_its_label() {
     // Arrange（Dependency、8.2.2.3・8.2.3.3 の binary-dependency：名前・メタデータ・複数の相手）
     let text = "package P { part def A; part def B; part def C; metadata def trace; \

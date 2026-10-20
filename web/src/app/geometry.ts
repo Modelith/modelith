@@ -100,11 +100,12 @@ const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", 
  * featureText(attribute b : B :> a, c)               // → "b : B :> a :> c"
  * featureText(attribute m := 10)                     // → "m := 10"（初期値）
  * featureText(attribute m : Real default 10)         // → "m default 10"（既定値。型は書かない）
+ * featureText(ref r)                                // → "r"（型の無い参照。境界）
  */
 export function featureText(c: Entry): string {
   const specs = c.specs ?? [], m = c.multiplicity;
   const value = c.value ? `${c.valueOp ?? "="} ${c.value}` : "";
-  if (!specs.length && !m) return value ? `${c.name} ${value}` : `${c.name} : ${c.type}`;
+  if (!specs.length && !m) return value ? `${c.name} ${value}` : c.type ? `${c.name} : ${c.type}` : c.name;
   const first = specs[0];
   const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
   const parts = [unnamed ? "" : c.name];

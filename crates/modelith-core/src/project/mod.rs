@@ -188,6 +188,10 @@ struct Prev {
     initial: bool,
 }
 
+/// 種類のキーワードの無い参照の使用（`x : Real;`・`ref r;`、DefaultReferenceUsage・ReferenceUsage、8.2.2.6）の種類。
+/// 向きの付いたパラメータ（`in x : Real;`）と同じ種類にし、向きを `ref` にする。
+const REFERENCE_KIND: &str = "param";
+
 /// 利用者定義のキーワード（`#X def H;`・`#X h;`、8.2.2.27）で書いた宣言の、基の種類が決まらないときの種類。
 /// 定義は `"def"`、使用は `"usage"` にする（ツリーにだけ出す）。
 const EXTENDED_DEF_KIND: &str = "def";
@@ -786,8 +790,18 @@ impl Ctx {
             None if is_skipped(h) => return None,
             None => h,
         };
+        // `x : Real;`・`y :> x;`・`ref r;`（種類のキーワードの無い参照の使用。DefaultReferenceUsage・ReferenceUsage、8.2.2.6）は、
+        // `ref s : A;` と同じく参照のパラメータにする。列挙の定義の本体の `a = 1;` と、結果のパラメータ `return r : R;` は、
+        // これまでどおり読む（列挙値・パラメータとして扱うまで）
+        let reference = n.kind() == REFERENCE_USAGE
+            && (mods.is_empty() || mods == "ref")
+            && prefix_meta.is_empty()
+            && !has_keyword(n, "return")
+            && !pe.is_some_and(|pe| self.out.entries[pe].kind == "enum def")
+            && !decl_parts(n, false).name.is_empty();
         if let Some((kind, is_def)) = node
             .map(|k| (k, false))
+            .or_else(|| reference.then_some((REFERENCE_KIND, false)))
             .or_else(|| entry_kind(n, h, &mods, !prefix_meta.is_empty()))
         {
             let idx = self.out.entries.len();
@@ -855,6 +869,11 @@ impl Ctx {
                 state_actions: Vec::new(),
                 parallel: false,
             };
+            if reference {
+                // 参照の使用は、`ref` のパラメータと同じく向き `ref` で表す（修飾は持たない）
+                e.mods = None;
+                e.dir = Some("ref".to_owned());
+            }
             e.guard = self.guard(n);
             e.parallel = matches!(
                 n.kind(),
@@ -1636,10 +1655,13 @@ impl Ctx {
                 continue;
             }
             let is_def = self.out.entries[i].is_def;
+            // `:>> baseType = … meta SysML::PartUsage;` は、メタデータの定義の参照の使用（名前 baseType）として読んである
             if let Some(kind) = self.out.entries[d]
-                .exprs
+                .children
                 .iter()
-                .find_map(|x| base_metaclass(&x.text))
+                .map(|&c| &self.out.entries[c])
+                .filter(|c| c.name == "baseType")
+                .find_map(|c| c.value.as_deref().and_then(base_metaclass))
                 .and_then(|m| base_kind(m, is_def))
             {
                 self.out.entries[i].kind = kind.to_owned();
@@ -1982,27 +2004,28 @@ fn has_keyword(n: &SyntaxNode, kw: &str) -> bool {
         .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == kw))
 }
 
-/// メタデータの定義の本体の式 `:>> baseType = … meta SysML::PartUsage` から、基のメタクラスの名前を取り出す
+/// メタデータの定義の `:>> baseType = … meta SysML::PartUsage` の値から、基のメタクラスの名前を取り出す
 /// （SemanticMetadata の baseType、8.2.2.27）。
 ///
 /// # 引数
 ///
-/// - `text`：メタデータの定義の式（空白をまとめたもの）
+/// - `value`：`baseType` の値の式（空白をまとめたもの）
 ///
 /// # 戻り値
 ///
-/// `meta` の後ろの修飾名の最後の名前。`baseType` と `meta` が無ければ `None`。
+/// `meta` の後ろの修飾名の最後の名前。`meta` が無ければ `None`。
 ///
 /// # 例
 ///
 /// ```text
-/// base_metaclass(":>> baseType = parts meta SysML::PartUsage") → Some("PartUsage")
-/// base_metaclass("baseType = commands meta Usage")             → Some("Usage")
-/// base_metaclass(":>> annotatedElement = x")                   → None
+/// base_metaclass("parts meta SysML::PartUsage") → Some("PartUsage")
+/// base_metaclass("meta Usage")                  → Some("Usage")
+/// base_metaclass("x")                           → None
 /// ```
-fn base_metaclass(text: &str) -> Option<&str> {
-    let (_, rest) = text.split_once("baseType")?;
-    let (_, after) = rest.split_once(" meta ")?;
+fn base_metaclass(value: &str) -> Option<&str> {
+    let after = value
+        .strip_prefix("meta ")
+        .or_else(|| value.split_once(" meta ").map(|(_, a)| a))?;
     let qn = after.split([' ', ';']).next()?;
     let name = last_segment(qn);
     is_basic_name(name).then_some(name)

@@ -102,16 +102,19 @@ fn metadata_keeps_written_order_and_phase_value_position() {
 
 #[test]
 fn modifier_with_typed_name_is_a_parameter() {
-    // Arrange（同値クラス: 修飾あり・なし）
+    // Arrange（同値クラス: 修飾あり・なし。修飾の無い `y : Real;` は参照の使用、DefaultReferenceUsage、8.2.2.6）
     let r = run("constraint def C { in x : Real; y : Real; }");
     // Act
-    let x = entry(&r, "x");
+    let (x, y) = (entry(&r, "x"), entry(&r, "y"));
     // Assert
     assert_eq!(
         (x.kind.as_str(), x.dir.as_deref(), x.ty.as_str()),
         ("param", Some("in"), "Real")
     );
-    assert!(r.entries.iter().all(|e| e.name != "y"));
+    assert_eq!(
+        (y.kind.as_str(), y.dir.as_deref(), y.ty.as_str()),
+        ("param", Some("ref"), "Real")
+    );
 }
 
 #[test]
@@ -598,6 +601,64 @@ fn crosses_is_a_specialization_not_a_value() {
     assert_eq!(crossed("v"), [("crosses", "y.z".to_owned())]);
     assert_eq!(entry(&r, "w").value, None);
     assert!(r.errors.is_empty());
+}
+
+#[test]
+fn keyword_less_features_are_reference_usages() {
+    // Arrange（同値分割：型・部分集合・値・名前の無い再定義・型の無い ref。DefaultReferenceUsage・ReferenceUsage、8.2.2.6）
+    let text = "package P { part def A { x : Real; y :> x; z : Real = 3; :>> m = 1; ref r; ref s : A; } \
+        requirement def R { w : Real = 2; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let row = |name: &str| {
+        let e = entry(&r, name);
+        (
+            e.kind.as_str(),
+            e.dir.as_deref(),
+            e.ty.as_str(),
+            e.value.as_deref(),
+            e.specs.iter().map(|s| s.op).collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(row("x"), ("param", Some("ref"), "Real", None, vec![]));
+    assert_eq!(row("y"), ("param", Some("ref"), "", None, vec!["subsets"]));
+    assert_eq!(row("z"), ("param", Some("ref"), "Real", Some("3"), vec![]));
+    assert_eq!(
+        row("m"),
+        ("param", Some("ref"), "", Some("1"), vec!["redefines"])
+    );
+    assert_eq!(row("r"), ("param", Some("ref"), "", None, vec![]));
+    assert_eq!(row("s"), ("param", Some("ref"), "A", None, vec![]));
+    // 要求・制約の式にしない
+    assert!(entry(&r, "A").exprs.is_empty());
+    assert!(entry(&r, "R").exprs.is_empty());
+    assert_eq!(entry(&r, "w").pe, Some(entry(&r, "R").idx));
+    assert!(r.errors.is_empty() && r.unsupported.is_empty());
+}
+
+#[test]
+fn result_parameter_is_not_a_reference_usage() {
+    // Arrange（境界値：結果のパラメータ `return r : R;` は、パラメータとして扱うまでこれまでどおり）
+    let text = "verification def T { return verdict : VerdictKind; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.name != "verdict"));
+}
+
+#[test]
+fn value_in_an_enumeration_body_is_not_a_reference_usage() {
+    // Arrange（境界値：列挙の定義の本体の `a = 1;` は、これまでどおり参照の使用にしない）
+    let text = "enum def E { enum b; a = 1; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.name != "a"));
+    assert_eq!(
+        entry(&r, "E").enum_values.as_deref(),
+        Some(&["b".to_owned()][..])
+    );
 }
 
 #[test]

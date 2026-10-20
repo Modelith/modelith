@@ -120,6 +120,13 @@ describe("featureText（8.2.3 の usage-cp：区画の属性の行）", () => {
     expect([initial, byDefault, defaultInitial]).toEqual(["m := 10", "m default 10", "m [1] default := 10"]);
   });
 
+  it("型も値も無い参照（ref r）は、名前だけを書く（境界）", () => {
+    // Act
+    const t = featureText(attr({ name: "r", type: "" }));
+    // Assert
+    expect(t).toBe("r");
+  });
+
   it("範囲の無い多重度（nonunique だけ）は、括弧を書かない（境界）", () => {
     // Act
     const t = featureText(attr({ name: "n", type: "N", multiplicity: { range: "", ordered: false, nonunique: true } }));
