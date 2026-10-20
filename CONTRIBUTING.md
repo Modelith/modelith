@@ -16,3 +16,41 @@
 
 - Rust stable（`rust-toolchain.toml` で wasm32 ターゲットごと自動導入）
 - Node.js 22（`.nvmrc`）
+
+## 手元で動かす
+
+必要なもの：Rust（stable。`rust-toolchain.toml` が wasm32 ターゲットごと入れる）、Node.js 22、UI テストを動かすなら Docker。
+
+```bash
+git clone https://github.com/modelith/modelith.git
+cd modelith
+npm ci --prefix web
+scripts/build-wasm.sh          # Rust のコアを wasm にする（web の前に必要）
+npm run dev --prefix web       # http://localhost:5173/ で開く
+```
+
+```bash
+scripts/check.sh               # 静的検査 → 単体 → 結合 → 統合（CI と同じ。PR の前に必ず通す）
+scripts/check.sh --fast        # 静的検査と単体テストだけ
+```
+
+## 構成
+
+```
+crates/modelith-core   Rust のコア（SysML v2 のパーサ。ブラウザ・CLI・サーバで共有する）
+crates/modelith-wasm   ブラウザ向けの wasm
+crates/modelith-cli    modelith コマンド（準備中）
+web/                   Web アプリ（TypeScript + Vite）
+docs/                  文書（要求仕様・設計判断・開発の手順）
+```
+
+## 開発者向けの文書
+
+| 文書 | 内容 |
+| --- | --- |
+| [要求仕様](docs/reference/requirements.sysml) | 何を作るか。SysML v2 で書いた唯一の定義元 |
+| [設計判断（ADR）](docs/adr/) | なぜそう作るか |
+| [アーキテクチャ](docs/explanation/architecture.md) | 全体の構成と、この先の段階 |
+| [ブランチ戦略](docs/development/branching-strategy.md)・[テスト](docs/development/testing.md)・[リリース手順](docs/development/releasing.md) | 開発の進め方 |
+| [画面の言葉の手引き](docs/development/ui-writing.md) | 画面の文言の書き方 |
+| [CLAUDE.md](CLAUDE.md) | AI エージェント向けの作業ガイド |
