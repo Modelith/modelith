@@ -1012,6 +1012,86 @@ fn nary_connection_and_binding_report_a_missing_end() {
     );
 }
 
+// ---- 特徴の連鎖（FeatureChain、8.2.2.6。3 段目から先も型の中をたどる） ----
+
+/// 連鎖を確かめる部品の定義（V の中の部品 e・w は Eng、t は G を特殊化した T、u は型も本体も無い）。
+const CHAIN_MODEL: &str = "package P { port def Pt { in item x : Real; out item y : Real; } \
+     part def Cyl { port p : Pt; } part def Eng { part cyl : Cyl; } part def G { part g : Cyl; } part def T :> G; \
+     part def V { part e : Eng; part w : Eng; part t : T; part u; ";
+
+/// 連鎖の模型の V の本体に `body` を書いたときの、問題の文。
+fn chain_problems(body: &str) -> Vec<String> {
+    let (_, m) = run(&format!("{CHAIN_MODEL}{body} }} }}"));
+    m.problems.into_iter().map(|p| p.msg).collect()
+}
+
+#[test]
+fn chains_of_three_and_four_levels_resolve_through_part_and_port_types() {
+    // Arrange（正常系：3 段 e.cyl.p・4 段 e.cyl.p.y・一般の定義から引き継いだ部品 t.g.p）
+    let body = "connect e.cyl.p to w.cyl.p; flow from e.cyl.p.y to w.cyl.p.x; bind e.cyl = t.g; connect (e.cyl.p, w.cyl.p, t.g.p);";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert
+    assert!(msgs.is_empty(), "{msgs:?}");
+}
+
+#[test]
+fn missing_segment_of_a_chain_is_reported_with_its_name() {
+    // Arrange（異常系：3 段目・4 段目・2 段目（結び付けと n 項の接続）が無い。以前は 3 段目から先を捨てていた）
+    let body = "connect e.cyl.nope to w.cyl.p; flow from e.cyl.p.zz to w.cyl.p.x; bind e.cyl = w.nope; \
+                connect (e.cyl.p, w.cyl.p, t.bad);";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert
+    assert_eq!(
+        msgs,
+        [
+            "線の接続先「e.cyl.nope」の「nope」が見つかりません（connect）",
+            "線の接続先「e.cyl.p.zz」の「zz」が見つかりません（flow）",
+            "「結び付け」の相手「w.nope」の「nope」が見つかりません（bind）",
+            "線の接続先「t.bad」の「bad」が見つかりません（connect）",
+        ]
+    );
+}
+
+#[test]
+fn chain_through_an_element_without_type_or_body_is_not_reported() {
+    // Arrange（境界値：型も本体も無い部品 u と、ファイルの外の型 Lib の中は確かめられない）
+    let body = "part l : Lib; bind u.anything = l.inner.deep; bind e.cyl = e.cyl;";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert（Lib が見つからないことだけを知らせる）
+    assert_eq!(msgs, ["型「Lib」が見つかりません（l）"]);
+}
+
+#[test]
+fn second_segment_of_a_flow_end_is_checked_once_as_a_port() {
+    // Arrange（境界値：2 段目はポートの検査だけが知らせ、連鎖の検査は重ねて知らせない）
+    let body = "connect e.nope.p to w.cyl.p;";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert
+    assert_eq!(msgs, ["ポート「nope」が Eng にありません"]);
+}
+
+#[test]
+fn message_end_event_of_a_nested_part_is_checked() {
+    // Arrange（正常系 a.sub.e と、異常系 a.sub.x・a.x。2 段目から先を、ライフラインの部品の中でたどる）
+    let text = "package P { occurrence def S { part a { event occurrence e; part sub { event occurrence e; } } part b; \
+                message m1 from a.sub.e to b; message m2 from a.sub.x to a.x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "メッセージの相手「a.sub.x」の「x」が見つかりません（message）",
+            "メッセージの相手「a.x」の「x」が見つかりません（message）",
+        ]
+    );
+}
+
 // ---- メモ（Comment、8.2.2.4・8.2.3.4） ----
 
 #[test]

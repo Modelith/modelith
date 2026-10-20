@@ -1021,5 +1021,30 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(entry(text, "a")?.parallel).toBeUndefined();
       });
     });
+
+    describe("特徴の連鎖（FeatureChain、8.2.2.6・KerML 8.2.5。3 段目から先も型の中をたどる）", () => {
+      const CHAINS = "package P { port def Pt { in item x : Real; } part def Cyl { port p : Pt; } part def Eng { part cyl : Cyl; } part def V { part e : Eng; part w : Eng; ";
+
+      it("connect e.cyl.p・flow from e.cyl.p.x は、部品の型の中をたどって見つける", () => {
+        // Arrange
+        const text = CHAINS + "connect e.cyl.p to w.cyl.p; flow from e.cyl.p.x to w.cyl.p.x; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+
+      it("3 段目から先が見つからなければ、見つからない段を知らせる（以前は 3 段目から先を捨てていた）", () => {
+        // Arrange
+        const text = CHAINS + "connect e.cyl.nope to w.cyl.p; bind e.cyl = w.gone; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([
+          "線の接続先「e.cyl.nope」の「nope」が見つかりません（connect）",
+          "「結び付け」の相手「w.gone」の「gone」が見つかりません（bind）",
+        ]);
+      });
+    });
   });
 }
