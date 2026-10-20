@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { build, parse } from "../core/rust";
 import { emptyView } from "./layout";
 import { withNotes } from "./notes";
-import { CV, edgeStroke, svgMarkup } from "./svg";
+import { CV, edgeStroke, kindIcon, svgMarkup } from "./svg";
 
 describe("edgeStroke（8.2.3 の線の記法）", () => {
   it.each([
@@ -84,5 +84,25 @@ describe("メモ（8.2.3.4 の comment と annotation-link）", () => {
     expect(note).toContain("«comment» <tspan");
     expect(note).toContain(">安全のため</text>");
     expect(note).not.toContain('class="pin"');
+  });
+});
+
+describe("kindIcon の色（種類の系統）", () => {
+  it.each([
+    ["requirement def", "req"],
+    ["concern", "concern"],
+    ["verification def", "ver"],
+    ["analysis", "ver"],
+    ["constraint def", "con"],
+    ["calc", "con"],
+    ["state def", "beh"],
+    ["use case", "beh"],
+    ["part", "part"],
+    ["port def", "other"],
+  ])("%s は %s の色で描く", (kind, fam) => {
+    // Act
+    const icon = kindIcon(kind);
+    // Assert
+    expect(icon).toContain(`fill="var(--k-${fam}-bg)"`);
   });
 });

@@ -1,6 +1,6 @@
 // 図の SVG マークアップを作る。画面表示と SVG 書き出しで共用し、色は関数 C で差し替える。
 
-import { family } from "../core";
+import type { Family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./dom";
 import {
@@ -648,6 +648,26 @@ const ICON_L: Record<string, string> = {
 };
 /** アクションの流れの要素の種類（振る舞いの色で描く。8.2.2.17）。 */
 const FLOW_KINDS = ["fork", "join", "decide", "merge", "send", "accept", "assign", "terminate", "if", "while", "loop", "for", "succession flow"];
+
+/**
+ * 種類から色分けの系統を決める。図の要素の系統（ModelNode の fam）は Rust のコアが同じ規則で決める。
+ *
+ * @param kind 要素の種類（`part def`・`requirement` など、定義も使用も）
+ * @returns 色分けの系統。どれにも当たらなければ "other"
+ * @example
+ * family("requirement def") // → "req"
+ * family("state def")       // → "beh"
+ * family("port def")        // → "other"
+ */
+function family(kind: string): Family {
+  if (/^requirement/.test(kind)) return "req";
+  if (/^concern/.test(kind)) return "concern";
+  if (/^(verification|analysis)/.test(kind)) return "ver";
+  if (/^(constraint|calc)/.test(kind)) return "con";
+  if (/^(state|action|use case)/.test(kind)) return "beh";
+  if (/^part/.test(kind)) return "part";
+  return "other";
+}
 
 /**
  * 種類を表す小さなアイコン（ツリー・パレット・タブ）を SVG の文字列にする。package はフォルダ、ほかは種類の色の四角に略号（`P`・`R` など）を書く。
