@@ -511,7 +511,7 @@ package ModelithRequirements {
             }
         }
         verification def TextOpsTest {
-            doc /* web/src/core/text-ops.test.ts：図の操作に使うテキスト編集（挿入・削除・古い形式の配置コメントの削除） */
+            doc /* web/src/core/text.test.ts：コアが返したテキスト編集の適用と、古い形式の配置コメントの読み込み・削除（どう書き換えるかは RustEditTest） */
             objective {
                 verify DiagramToTextReq;
                 verify NoSilentWriteReq;

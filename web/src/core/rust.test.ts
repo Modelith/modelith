@@ -1,7 +1,7 @@
 // Rust のコア（wasm）との境界（ADR-0015）。解析は例外を投げず、失敗しても画面に知らせる（Q-5）。
 import { describe, expect, it } from "vitest";
 import { build, edit, parse, safeEdit, safeParse } from "./rust";
-import { applyTextEdits } from "./text-ops";
+import { applyTextEdits } from "./text";
 import type { ParseResult } from "./types";
 
 describe("parse（Rust のパーサ）", () => {

@@ -2,6 +2,7 @@
 // 正規表現で文を区切り、宣言・関係・メタデータを取り出す。Rust の CST パーサに置き換えるまでの実装で、
 // 出力は reference/golden/*.json と一致させる。
 
+import { readLayout } from "./text";
 import type { Block, Entry, ParseError, ParseResult, Rel, Scope, Unsupported } from "./types";
 
 export const DEF_KINDS = [
@@ -64,8 +65,6 @@ const SKIP_RE =
 const QNAME = `(?:${NAME})(?:::(?:${NAME}))*`;
 /** `expose A`・`expose A::*`・`expose A::**`・`expose A::*::**`、後ろに `[式]` の絞り込み（Expose、8.2.2.26.2）。 */
 const EXPOSE_RE = new RegExp(`^expose\\s+(${QNAME})(::\\*(?!\\*))?(::\\*\\*)?\\s*(?:\\[(.*)\\])?$`);
-/** 配置情報を埋め込むコメント（ADR-0005 の移行期の形式）。 */
-export const LAYOUT_RE = /\/\*\s*@layout\s*([\s\S]*?)\*\//;
 
 /**
  * 修飾名の最後の区切り（`::` の後ろ）を取り出す。
@@ -294,26 +293,4 @@ export function parse(text: string): ParseResult {
   if (m.slice(i).trim()) errors.push({ pos: i, msg: "末尾の文が「;」で終わっていません" });
   for (const b of stack) errors.push({ pos: b.start, msg: `「${(!b.anon && b.name) || b.head || "{"}」のブロックが閉じていません` });
   return { entries, rels, errors, layout: readLayout(text, errors), unsupported };
-}
-
-/**
- * `/* @layout {…} *\/` コメントの中身を読む（ADR-0005 の移行期の形式）。
- *
- * @param text SysML v2 のテキスト全文
- * @param errors 読めなかったときに誤りを書き足す先（書き換える）
- * @returns 配置情報の JSON。コメントが無ければ空のオブジェクト。JSON が読めなければ errors に足して空のオブジェクト
- * @example
- * readLayout('/* @layout {"A":{"x":1}} *\/', errors) // → { A: { x: 1 } }
- * readLayout("/* @layout {x *\/", errors)            // → {}（errors に「@layout コメントを読み込めません」）
- * readLayout("package P;", errors)                  // → {}
- */
-export function readLayout(text: string, errors: ParseError[]): Record<string, unknown> {
-  const lm = text.match(LAYOUT_RE);
-  if (!lm) return {};
-  try {
-    return JSON.parse(lm[1]!) as Record<string, unknown>;
-  } catch {
-    errors.push({ pos: lm.index ?? 0, msg: "@layout コメントを読み込めません" });
-    return {};
-  }
 }

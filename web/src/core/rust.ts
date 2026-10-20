@@ -3,7 +3,7 @@
 // モデル（ADR-0016 の手順 A）も同じく番号で返るので、`build` でオブジェクトの参照に戻す。
 // `@layout` コメント（移行期の形式）の中身は、ここで読む（読み取れないことは Rust が構文エラーとして返す）。
 
-import { readLayout } from "./parser";
+import { readLayout } from "./text";
 import type {
   Block, Entry, Model, ModelEdge, ModelNode, ModelView, ParseResult, PhaseInfo, Port, Problem, Rel, Scope, Unsupported,
 } from "./types";
