@@ -428,6 +428,27 @@ fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
 }
 
 #[test]
+fn keyword_led_result_expressions_are_kept_without_errors() {
+    // Arrange（ResultExpressionMember、8.2.2.19〜20：true・false・not で始まる式）
+    let text = "package P { constraint def C { true } calc def F { false } requirement def R { require constraint { not x } } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let exprs = |name: &str| -> Vec<String> {
+        entry(&r, name)
+            .exprs
+            .iter()
+            .map(|x| x.text.clone())
+            .collect()
+    };
+    assert_eq!(exprs("C"), ["true"]);
+    assert_eq!(exprs("F"), ["false"]);
+    assert_eq!(exprs("R"), ["not x"]);
+    assert!(r.errors.is_empty());
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
 fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
     // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [

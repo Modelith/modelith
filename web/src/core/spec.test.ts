@@ -1132,5 +1132,28 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         ]);
       });
     });
+
+    describe("キーワードで始まる結果の式（ResultExpressionMember 8.2.2.19〜20、KerML 8.2.5 の LiteralBoolean・単項の not）", () => {
+      it("constraint def C { true }・calc def F { false }・require constraint { not x } は、誤った構文エラーにせず式を持ち主に入れる", () => {
+        // Arrange
+        const text = "package P { constraint def C { true } calc def F { false } requirement def R { require constraint { not x } } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+        expect(entry(text, "C")?.exprs.map((x) => x.text)).toEqual(["true"]);
+        expect(entry(text, "R")?.exprs.map((x) => x.text)).toEqual(["not x"]);
+      });
+
+      it("not satisfy R by X は、これまでどおり否定の充足（境界値）", () => {
+        // Arrange
+        const text = "package P { requirement def R; part def X; not satisfy R by X; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual([]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
   });
 }

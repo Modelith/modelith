@@ -386,7 +386,7 @@ fn member(p: &mut Parser<'_>) {
         );
         return;
     }
-    if p.at(KEYWORD) {
+    if p.at(KEYWORD) && !at_expression_keyword(p) {
         let kind = keyword_member(p, owner);
         m.complete(p, kind);
         return;
@@ -434,6 +434,36 @@ fn member(p: &mut Parser<'_>) {
     } else {
         m.abandon();
     }
+}
+
+/// 式の頭になるキーワード（KerML 8.2.5 の LiteralBoolean・NullExpression・単項の `not`・InstantiationExpression の `new`）。
+const EXPRESSION_KEYWORDS: &[&str] = &["true", "false", "null", "not", "new"];
+
+/// 今のトークンが、式の頭になるキーワード（`EXPRESSION_KEYWORDS`）か。読み進めない。
+///
+/// 制約・要求・計算の本体の結果の式（ResultExpressionMember、8.2.2.19〜20）は、`true`・`not x` のように
+/// キーワードで始まってもよい。`not satisfy R;`（否定の充足、8.2.2.21）の `not` は式の頭にしない。
+///
+/// # 引数
+///
+/// - `p`：要素の頭にいるパーサ
+///
+/// # 戻り値
+///
+/// 式の頭になるキーワードなら `true`。
+///
+/// # 例
+///
+/// ```text
+/// at_expression_keyword("true }")         → true
+/// at_expression_keyword("not (a and b) }") → true
+/// at_expression_keyword("not satisfy R;") → false   // 否定の充足
+/// at_expression_keyword("part p;")        → false
+/// ```
+fn at_expression_keyword(p: &Parser<'_>) -> bool {
+    p.at(KEYWORD)
+        && EXPRESSION_KEYWORDS.contains(&p.nth_text(0))
+        && !(p.at_kw("not") && p.nth_at_kw(1, "satisfy"))
 }
 
 /// キーワードで始まる、種類キーワード以外の要素。

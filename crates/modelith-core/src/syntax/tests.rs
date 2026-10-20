@@ -445,6 +445,49 @@ fn less_than_after_a_name_is_a_comparison_not_a_declaration() {
 }
 
 #[test]
+fn result_expression_may_start_with_a_keyword() {
+    // Arrange（同値分割：真偽値・null・単項の not・new。ResultExpressionMember、8.2.2.19〜20、KerML 8.2.5）
+    let texts = [
+        "constraint def C { true }",
+        "constraint def C { false }",
+        "calc def F { null }",
+        "requirement def R { require constraint { not x } }",
+        "constraint c { not (a and b) }",
+        "calc def G { new T() }",
+        "constraint def D { true; }",
+    ];
+    for text in texts {
+        // Act
+        let actual = errors(text);
+        // Assert
+        assert_eq!(actual, vec![], "{text}");
+        assert!(node_kinds(text).contains(&EXPRESSION_MEMBER), "{text}");
+    }
+}
+
+#[test]
+fn not_before_satisfy_is_still_a_negated_satisfy() {
+    // Arrange（境界値：`not satisfy` は式ではなく否定の充足、8.2.2.21）
+    let text = "part def A { not satisfy R by B; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&SATISFY_REQUIREMENT_USAGE));
+    assert!(!kinds.contains(&EXPRESSION_MEMBER));
+}
+
+#[test]
+fn keyword_led_expression_without_its_semicolon_is_an_error() {
+    // Arrange（異常系：「;」を書かずに、改行の後に次の宣言が続く）
+    let text = "constraint def C { true\n part p; }";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(actual, vec![(23, "「;」がありません".to_owned())]);
+    assert!(node_kinds(text).contains(&PART_USAGE));
+}
+
+#[test]
 fn name_followed_by_short_name_is_still_a_declaration() {
     // Arrange（境界値：`x <s> …` は宣言のまま）
     let text = "part def A { x <s> : T; }";
