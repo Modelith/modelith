@@ -751,3 +751,52 @@ fn expose_with_a_qualified_name_looks_outward_from_the_view() {
         ["図「v」に出す要素「Q::Z」が見つかりません（expose）"]
     );
 }
+
+/// 線を「種類|元|先」の文字列にする（書いた順）。
+fn edge_list(m: &Model) -> Vec<String> {
+    m.edges
+        .iter()
+        .map(|e| format!("{}|{}|{}", e.kind, e.from, e.to))
+        .collect()
+}
+
+#[test]
+fn specialization_draws_a_line_to_every_supertype() {
+    // Arrange（SubclassificationPart、8.2.2.6・8.2.3 の subclassification：`:> A, Q::C` と `specializes`）
+    let text = "package P { part def A; package Q { part def C; } part def D; part def B :> A, Q::C specializes D; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        edge_list(&m),
+        ["specialize|B|A", "specialize|B|C", "specialize|B|D"]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn specialization_line_removes_only_its_target() {
+    // Arrange（線の範囲は、その相手だけを消す範囲）
+    let text = "package P { part def A; part def C; part def B :> A, C; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let srcs: Vec<&str> = m
+        .edges
+        .iter()
+        .map(|e| &text[e.src.start..e.src.end])
+        .collect();
+    assert_eq!(srcs, ["A, ", ", C"]);
+    assert_eq!(m.edges[0].id, "specialize|B|A|#1");
+}
+
+#[test]
+fn specialization_of_an_undrawn_or_missing_definition_is_not_a_problem() {
+    // Arrange（異常系：標準ライブラリ・見つからない相手・図に描かない定義・自分自身）
+    let text = "package P { part def A :> Part; part def B :> Nope; view def V :> GeneralView; part def S :> S; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（線も問題も出さない）
+    assert!(m.edges.is_empty(), "{:?}", m.edges);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
