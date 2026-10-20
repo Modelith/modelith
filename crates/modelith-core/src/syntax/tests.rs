@@ -307,6 +307,19 @@ fn then_with_kind_is_a_usage_of_that_kind() {
 }
 
 #[test]
+fn then_event_reference_is_one_event_usage() {
+    // Arrange（同値分割：then event occurrence e（宣言の形）・then event a.e（参照の形）、8.2.2.9。
+    // 以前は参照の形が、端の無い then と別のイベントの 2 つに分かれていた）
+    let text = "part a { event occurrence e1; then event occurrence e2; then event b.e3; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds.iter().filter(|k| **k == OCCURRENCE_USAGE).count(), 3);
+    assert!(!kinds.contains(&SUCCESSION_AS_USAGE));
+    assert!(parse(text).errors().is_empty());
+}
+
+#[test]
 fn statement_without_grammar_is_kept_as_unsupported() {
     // Arrange（F-EDIT-8：黙って捨てない）
     let text = "action def A { until x; }";

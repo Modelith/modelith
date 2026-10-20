@@ -460,6 +460,7 @@ fn member(p: &mut Parser<'_>) {
 /// keyword_member("if x > 0 then b;")   → SUCCESSION_AS_USAGE（GUARD_EXPRESSION を持つ）
 /// keyword_member("send x via p;")      → SEND_NODE
 /// keyword_member("then fork f;")       → FORK_NODE
+/// keyword_member("then event a.e;")    → OCCURRENCE_USAGE（参照の形のイベント）
 /// keyword_member("until x;")           → UNSUPPORTED_MEMBER   // 文法を持たない文
 /// ```
 fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
@@ -588,6 +589,9 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
                 }
                 declaration(p, owner, true, false);
                 usage
+            } else if p.at_kw("event") {
+                // `then event a.e;`（参照の形のイベント EventOccurrenceUsage の前の SourceSuccessionMember、8.2.2.9）
+                headed(p, owner, &["occurrence"], OCCURRENCE_USAGE)
             } else {
                 // `then b;`（TargetSuccessionMember、8.2.2.17）：直前の要素から b への継起
                 connector_end(p);
