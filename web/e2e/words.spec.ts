@@ -1,5 +1,6 @@
-// テキストの語の説明（F-EDIT-9）。広い画面のツールチップと、カーソルのある語の説明の行。
-import { expect, openApp, test } from "./fixtures";
+// テキストの語の説明（F-EDIT-9）と狭い画面のテキスト（F-EDIT-10）。広い画面のツールチップと、カーソルのある語の説明の行、
+// 幅 390px の読み取り専用と「編集」ボタン。
+import { editorText, expect, openApp, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const TEXT = "package Kettle {\n    // part の説明はしない\n    part def Heater;\n    attribute power : Real;\n}\n";
@@ -109,5 +110,57 @@ test.describe("語の説明", () => {
     await page.keyboard.press("ArrowRight");
     // Assert
     await expect(page.locator("#wordLine b")).toHaveText("満たす（satisfy）");
+  });
+});
+
+test.describe("狭い画面のテキスト", () => {
+  test.use({ viewport: { width: 390, height: 800 } });
+
+  test("F-EDIT-10・Q-2: 幅 390px では、テキストは初めは読み取り専用で、「編集」を押すと編集できる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#tabText").click();
+    const readOnlyAtFirst = await page.locator("#ed").isEditable();
+    // Act
+    await page.locator("#btnEditText").click();
+    await page.locator("#ed").press("End");
+    await page.keyboard.type("x");
+    // Assert
+    expect(readOnlyAtFirst).toBe(false);
+    await expect(page.locator("#btnEditText")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#ed")).toBeEditable();
+    await expect(page.locator("#ed")).toBeFocused();
+    expect(await editorText(page)).toContain("x");
+  });
+
+  test("F-EDIT-10: 「編集」をもう一度押すと、読み取り専用に戻る", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#tabText").click();
+    await page.locator("#btnEditText").click();
+    // Act
+    await page.locator("#btnEditText").click();
+    // Assert
+    await expect(page.locator("#btnEditText")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#ed")).not.toBeEditable();
+    await expect(page.locator("#ed")).not.toBeFocused();
+  });
+
+  test("F-EDIT-10: 広い画面に広げると編集でき、狭い画面に戻すと読み取り専用に戻る", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#tabText").click();
+    await page.locator("#btnEditText").click();
+    // Act
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const wideEditable = await page.locator("#ed").isEditable();
+    const buttonShown = await page.locator("#btnEditText").isVisible();
+    await page.setViewportSize({ width: 390, height: 800 });
+    // Assert
+    expect(wideEditable).toBe(true);
+    expect(buttonShown).toBe(false);
+    await page.locator("#tabText").click();
+    await expect(page.locator("#ed")).not.toBeEditable();
+    await expect(page.locator("#btnEditText")).toHaveAttribute("aria-pressed", "false");
   });
 });

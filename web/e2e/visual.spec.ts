@@ -89,9 +89,10 @@ test.describe("UI: 画面全体", () => {
     });
 
     test("F-VIEW-7・Q-2: 幅 390px の画面の状態遷移図", async ({ page }) => {
-      // Arrange（狭い画面では、テキストと図はタブで切り替える）
+      // Arrange（狭い画面では、テキストと図はタブで切り替え、テキストは「編集」を押してから書き換える）
       await openApp(page);
       await page.locator("#tabText").click();
+      await page.locator("#btnEditText").click();
       await page.locator("#ed").fill(LAMP_STATES);
       await page.waitForTimeout(400);
       await page.locator("#tabDiagram").click();

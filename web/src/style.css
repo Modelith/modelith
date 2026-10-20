@@ -333,3 +333,10 @@ main[data-nodoc] .toast{z-index:30}
 .wordtip{position:fixed;z-index:95;max-width:320px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:7px 10px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:12px;line-height:1.6;color:var(--ink2);pointer-events:none}
 .wordtip b{display:block;margin-right:0}
 .wordtip[hidden]{display:none}
+/* ---- 狭い画面のテキストの読み取り専用と「編集」ボタン（F-EDIT-10） ---- */
+.editbtn{display:none}
+@media (max-width:760px){
+  .editbtn{display:inline-block;flex:none;margin-left:auto;padding:4px 12px;font-size:12px}
+  .editbtn[aria-pressed="true"]{background:var(--selrange);border-color:var(--sel);color:var(--ink)}
+  #textInfo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}

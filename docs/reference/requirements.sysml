@@ -646,9 +646,11 @@ package ModelithRequirements {
             }
         }
         verification def WordHelpE2E {
-            doc /* web/e2e/words.spec.ts：キーワードと標準ライブラリの型にマウスを乗せたときのツールチップ、コメントの中の語と利用者の付けた名前では出さないこと、クリックとキー操作で動かしたカーソルのある語の説明の行（Chromium で操作） */
+            doc /* web/e2e/words.spec.ts：キーワードと標準ライブラリの型にマウスを乗せたときのツールチップ、コメントの中の語と利用者の付けた名前では出さないこと、クリックとキー操作で動かしたカーソルのある語の説明の行、幅 390px のテキストの読み取り専用と「編集」ボタンでの切り替え、画面の幅を変えたときの戻り方（Chromium で操作） */
             objective {
                 verify WordHelpReq;
+                verify PhoneTextReq;
+                verify NarrowScreenReq;
                 verify PlainWordsReq;
             }
         }

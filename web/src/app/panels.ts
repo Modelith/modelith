@@ -36,6 +36,8 @@ export function loadUi(): void {
  * パネルの設定（S.ui）を localStorage に保存する。
  */
 export const saveUi = (): void => store.set(UI_KEY, JSON.stringify(S.ui));
+/** 狭い画面のメディアクエリ（style.css の @media (max-width:760px) と同じ幅）。 */
+export const NARROW_QUERY = "(max-width:760px)";
 /**
  * 狭い画面（幅 760px 以下）か。狭い画面ではツリー・図・テキストをタブで切り替える（Q-2）。
  *
@@ -46,7 +48,7 @@ export const saveUi = (): void => store.set(UI_KEY, JSON.stringify(S.ui));
  * // 幅 1280px の画面
  * isNarrow() // → false
  */
-export const isNarrow = (): boolean => window.matchMedia("(max-width:760px)").matches;
+export const isNarrow = (): boolean => window.matchMedia(NARROW_QUERY).matches;
 
 /**
  * パネル（ツリー｜図｜テキスト）の表示と幅を画面に反映する。狭い画面では列の幅を CSS に任せる。
