@@ -576,6 +576,12 @@ package ModelithRequirements {
                 verify PlainWordsReq;
             }
         }
+        verification def TapTest {
+            doc /* web/src/app/tap.test.ts：タップ（動きと時間の上限）とダブルタップ（間の時間と離れ方の上限）の判定 */
+            objective {
+                verify PhoneTextReq;
+            }
+        }
         verification def LocalFolderProviderTest {
             doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す（偽のファイルシステムで） */
             objective {
@@ -646,7 +652,7 @@ package ModelithRequirements {
             }
         }
         verification def WordHelpE2E {
-            doc /* web/e2e/words.spec.ts：キーワードと標準ライブラリの型にマウスを乗せたときのツールチップ、コメントの中の語と利用者の付けた名前では出さないこと、クリックとキー操作で動かしたカーソルのある語の説明の行、幅 390px のテキストの読み取り専用と「編集」ボタンでの切り替え、画面の幅を変えたときの戻り方（Chromium で操作） */
+            doc /* web/e2e/words.spec.ts：キーワードと標準ライブラリの型にマウスを乗せたときのツールチップ、コメントの中の語と利用者の付けた名前では出さないこと、クリックとキー操作で動かしたカーソルのある語の説明の行、幅 390px のテキストの読み取り専用と「編集」ボタンでの切り替え、画面の幅を変えたときの戻り方、ダブルタップの案内とダブルタップでの語の選択と説明（Chromium のタッチで操作） */
             objective {
                 verify WordHelpReq;
                 verify PhoneTextReq;

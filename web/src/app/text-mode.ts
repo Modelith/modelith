@@ -4,17 +4,20 @@
 
 import { $ } from "./dom";
 import { isNarrow, NARROW_QUERY } from "./panels";
+import { resetWordLine } from "./word-help";
 
 /** 狭い画面で、利用者が「編集」ボタンで編集できるようにしたか。 */
 let editing = false;
 
 /**
  * 画面の幅と「編集」ボタンの状態を、テキスト欄の読み取り専用とボタンの表示に反映する。
+ * 語の説明の行も、読み取り専用ならダブルタップの案内に、編集できるなら空に戻す。
  */
 function applyTextMode(): void {
   const ed = $<HTMLTextAreaElement>("#ed");
   ed.readOnly = isNarrow() && !editing;
   $("#btnEditText").setAttribute("aria-pressed", String(editing));
+  resetWordLine();
 }
 
 /**

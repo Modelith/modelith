@@ -164,3 +164,52 @@ test.describe("狭い画面のテキスト", () => {
     await expect(page.locator("#btnEditText")).toHaveAttribute("aria-pressed", "false");
   });
 });
+
+test.describe("狭い画面のテキストのダブルタップ", () => {
+  test.use({ viewport: { width: 390, height: 800 }, hasTouch: true });
+
+  /** テキストのタブを開き、「編集」で text に書き換えてから、読み取り専用に戻す。 */
+  async function openReadOnlyText(page: Page, text: string): Promise<void> {
+    await openApp(page);
+    await page.locator("#tabText").click();
+    await page.locator("#btnEditText").click();
+    await setText(page, text);
+    await page.locator("#btnEditText").click();
+  }
+
+  test("F-EDIT-10: 読み取り専用のテキストの下に、ダブルタップの案内を出す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator("#tabText").click();
+    // Assert
+    await expect(page.locator("#wordLine")).toHaveText("語をダブルタップすると、意味を表示します。書き換えるには「編集」を押します。");
+  });
+
+  test("F-EDIT-9・F-EDIT-10: 語をダブルタップすると、その語を選び、意味を下の行に示す", async ({ page }) => {
+    // Arrange
+    await openReadOnlyText(page, TEXT);
+    const p = await wordCenter(page, "part def", 6, 1);
+    // Act
+    await page.touchscreen.tap(p.x, p.y);
+    await page.touchscreen.tap(p.x, p.y);
+    // Assert
+    await expect(page.locator("#wordLine b")).toHaveText("部品定義（part def）");
+    const sel = await page.locator("#ed").evaluate((e: HTMLTextAreaElement) => e.value.slice(e.selectionStart, e.selectionEnd));
+    expect(sel).toBe("part def");
+    await expect(page.locator("#ed")).not.toBeEditable();
+  });
+
+  test("F-EDIT-10: 離れた 2 か所を続けてタップしても、ダブルタップとみなさない", async ({ page }) => {
+    // Arrange
+    await openReadOnlyText(page, TEXT);
+    const first = await wordCenter(page, "package", 2, 1);
+    const second = await wordCenter(page, "Real", 2, 1);
+    // Act
+    await page.touchscreen.tap(first.x, first.y);
+    await page.touchscreen.tap(second.x, second.y);
+    // Assert（語は選ばない。1 回のタップはカーソルを置くだけ）
+    const selected = await page.locator("#ed").evaluate((e: HTMLTextAreaElement) => e.selectionEnd - e.selectionStart);
+    expect(selected).toBe(0);
+  });
+});

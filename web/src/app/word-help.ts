@@ -1,9 +1,12 @@
-// テキストの語の説明を画面に出す（F-EDIT-9）。語の表と探し方は glossary.ts。
+// テキストの語の説明を画面に出す（F-EDIT-9・F-EDIT-10）。語の表と探し方は glossary.ts。
 // 広い画面では、語にマウスを乗せるとツールチップを出し、カーソルのある語の説明をテキストの下の 1 行（#wordLine）に出す。
+// タッチでは、語をダブルタップすると、その語を選んで説明を同じ行に出す（ホバーが無いため）。
 
 import { $ } from "./dom";
 import { explainAt, type WordHelp } from "./glossary";
+import { highlight } from "./render";
 import { S } from "./state";
+import { isDoubleTap, isTap, type TouchPoint } from "./tap";
 
 /** マウスを止めてからツールチップを出すまでの時間（ミリ秒）。 */
 const TIP_DELAY = 350;
@@ -137,21 +140,98 @@ function onPointerMove(ev: PointerEvent): void {
   tipTimer = setTimeout(() => showTipAt(clientX, clientY), TIP_DELAY);
 }
 
+/** 読み取り専用のテキスト（狭い画面）で、説明する語が無いときに出す案内。 */
+const TAP_HINT = "語をダブルタップすると、意味を表示します。書き換えるには「編集」を押します。";
+
 /**
- * テキストの下の 1 行（#wordLine）に、位置にある語の説明を出す。説明の無い位置なら空にする（行は隠れる）。
- *
- * @param offset テキストの位置（UTF-16 の位置）
+ * テキストの下の 1 行（#wordLine）を、説明する語が無いときの中身にする。読み取り専用のテキスト（狭い画面）ならダブルタップの案内を、
+ * 編集できるテキストなら空にする（行は隠れる）。テキストの読み取り専用を切り替えたときにも呼ぶ。
  */
-export function showLineFor(offset: number): void {
+export function resetWordLine(): void {
   const line = $("#wordLine");
-  const help = explainAt(S.text, offset);
-  if (help) writeHelp(line, help);
+  if ($<HTMLTextAreaElement>("#ed").readOnly) line.replaceChildren(TAP_HINT);
   else line.replaceChildren();
 }
 
 /**
+ * テキストの下の 1 行（#wordLine）に、位置にある語の説明を出す。説明の無い位置なら、説明する語が無いときの中身にする。
+ *
+ * @param offset テキストの位置（UTF-16 の位置）
+ */
+export function showLineFor(offset: number): void {
+  const help = explainAt(S.text, offset);
+  if (help) writeHelp($("#wordLine"), help);
+  else resetWordLine();
+}
+
+/** ダブルタップで語に付けた印（S.textMark）があるか。次に触れたときに外す。 */
+let tapMark = false;
+
+/**
+ * 点にある語を選び、その説明を下の行に出す（ダブルタップ）。テキスト欄にフォーカスを移して語を選び
+ * （読み取り専用ならキーボードは出ない）、選択の見えにくい画面でも分かるよう、色付けの層にも印を付ける。
+ *
+ * @param x 画面の x 座標（clientX）
+ * @param y 画面の y 座標（clientY）
+ * @returns 説明のある語を選んだら true。語が無い・説明の無い語なら何もせず false
+ * @example
+ * // テキスト "part def A;" の "def" の上の点
+ * selectWordAt(x, y) // → true（"part def" を選び、「部品定義（part def）」の説明を出す）
+ * // 利用者の付けた名前 "A" の上の点
+ * selectWordAt(x, y) // → false
+ */
+function selectWordAt(x: number, y: number): boolean {
+  const offset = offsetAtPoint(x, y);
+  const help = offset === null ? null : explainAt(S.text, offset);
+  if (!help) return false;
+  const ed = $<HTMLTextAreaElement>("#ed");
+  ed.focus({ preventScroll: true });
+  ed.setSelectionRange(help.start, help.end);
+  S.textMark = [help.start, help.end];
+  tapMark = true;
+  highlight();
+  writeHelp($("#wordLine"), help);
+  return true;
+}
+
+/**
+ * タッチをつなぐ。指を置いて離すまでがタップなら覚えておき、続くタップがダブルタップなら、その語を選んで説明を出す。
+ * 説明する語を選んだときだけ、ブラウザのダブルタップの既定の動き（拡大や、ブラウザによる語の選択）を止める。
+ *
+ * @param ed テキスト欄
+ */
+function initDoubleTap(ed: HTMLTextAreaElement): void {
+  let start: TouchPoint | null = null;
+  let lastTap: TouchPoint | null = null;
+  ed.addEventListener("touchstart", (ev) => {
+    const t = ev.touches[0];
+    start = ev.touches.length === 1 && t ? { x: t.clientX, y: t.clientY, time: ev.timeStamp } : null;
+    if (tapMark) {
+      tapMark = false;
+      S.textMark = null;
+      highlight();
+    }
+  }, { passive: true });
+  ed.addEventListener("touchend", (ev) => {
+    const t = ev.changedTouches[0];
+    const end = t ? { x: t.clientX, y: t.clientY, time: ev.timeStamp } : null;
+    if (!start || !end || ev.touches.length > 0 || !isTap(start, end)) {
+      lastTap = null;
+      return;
+    }
+    if (lastTap && isDoubleTap(lastTap, end)) {
+      lastTap = null;
+      if (selectWordAt(end.x, end.y)) ev.preventDefault();
+      return;
+    }
+    lastTap = end;
+  });
+}
+
+/**
  * 語の説明をテキスト欄につなぐ。起動時に 1 回呼ぶ。マウスを語に乗せるとツールチップを出し、
- * クリック・キー操作でカーソルを動かすとカーソルのある語の説明を下の行に出す。テキスト欄を離れたら行を空にする。
+ * クリック・キー操作でカーソルを動かすとカーソルのある語の説明を下の行に出す。語をダブルタップすると、その語を選んで説明を出す。
+ * テキスト欄を離れたら、行を説明する語が無いときの中身に戻す。
  */
 export function initWordHelp(): void {
   const ed = $<HTMLTextAreaElement>("#ed");
@@ -163,5 +243,6 @@ export function initWordHelp(): void {
   const atCaret = (): void => showLineFor(ed.selectionStart);
   ed.addEventListener("click", atCaret);
   ed.addEventListener("keyup", atCaret);
-  ed.addEventListener("blur", () => $("#wordLine").replaceChildren());
+  ed.addEventListener("blur", resetWordLine);
+  initDoubleTap(ed);
 }
