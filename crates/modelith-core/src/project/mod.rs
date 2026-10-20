@@ -665,19 +665,9 @@ impl Ctx {
                     meta.entry(md, OrderedMap::default);
                 }
             }
-            let ends = connector_ends(n);
-            if let (true, [a, b, ..]) = (
-                matches!(n.kind(), CONNECTION_USAGE | INTERFACE_USAGE),
-                ends.as_slice(),
-            ) {
+            if let Some(kind) = connector_relation(n.kind(), connector_ends(n), &e.ty, idx) {
                 self.out.rels.push(Rel {
-                    kind: RelKind::Connect {
-                        a: a.clone(),
-                        b: b.clone(),
-                        item: e.ty.clone(),
-                        usage: idx,
-                        ends: ends.clone(),
-                    },
+                    kind,
                     pe,
                     start,
                     end,
@@ -1174,7 +1164,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// `timeslice`・`snapshot` の修飾だけの使用（PortionUsage）はその語を、`#X def H`（ExtendedDefinition）は `"def"`、
 /// 種類のキーワードの無い `#X h`（ExtendedUsage）は `"usage"`、`variant a`（VariantReference）は `"variant"`、
 /// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"`、`connect a to b`（`connection` の無い接続）は
-/// `"connection"` にする。
+/// `"connection"`、`bind a = b`・`binding bb bind a = b` は `"binding"` にする。
 ///
 /// # 引数
 ///
@@ -1226,6 +1216,8 @@ fn entry_kind(
         INCLUDE_USE_CASE_USAGE => Some(("include use case", false)),
         // `connect a to b;`（`connection` の無い ConnectionUsage、8.2.2.13.1）は名前の無い接続
         CONNECTION_USAGE if starts_with_word(h, "connect") => Some(("connection", false)),
+        // `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）
+        BINDING_CONNECTOR_AS_USAGE => Some(("binding", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
         REFERENCE_USAGE if is_mod("variant") => Some(("variant", false)),
         REFERENCE_USAGE
@@ -1638,6 +1630,50 @@ fn first_ref(n: &SyntaxNode) -> Option<String> {
     n.children()
         .find(|c| matches!(c.kind(), NAME | QUALIFIED_NAME | FEATURE_CHAIN))
         .map(|c| unquote(&compact(&c)).to_owned())
+}
+
+/// 接続の端を持つ使用（接続・インタフェース・結び付け）の、端の間の関係。
+///
+/// # 引数
+///
+/// - `kind`：使用の節の種類
+/// - `ends`：端の参照（`connector_ends` の結果。書いた順）
+/// - `ty`：使用の型の名前（接続の線のラベル。無ければ空）
+/// - `usage`：使用の宣言の番号
+///
+/// # 戻り値
+///
+/// 接続・インタフェースで端が 2 つ以上なら `Connect`、結び付けで端が 2 つなら `Bind`。それ以外は `None`。
+///
+/// # 例
+///
+/// ```text
+/// connector_relation(CONNECTION_USAGE, ["a", "b", "c"], "C", 3) → Some(Connect { a: "a", b: "b", ends: [a, b, c], item: "C", usage: 3 })
+/// connector_relation(BINDING_CONNECTOR_AS_USAGE, ["x", "y"], "", 4) → Some(Bind { a: "x", b: "y", usage: 4 })
+/// connector_relation(CONNECTION_USAGE, ["a"], "", 3)            → None   // 端が足りない
+/// connector_relation(PART_USAGE, [], "", 0)                     → None
+/// ```
+fn connector_relation(
+    kind: SyntaxKind,
+    ends: Vec<String>,
+    ty: &str,
+    usage: usize,
+) -> Option<RelKind> {
+    match (kind, ends.as_slice()) {
+        (CONNECTION_USAGE | INTERFACE_USAGE, [a, b, ..]) => Some(RelKind::Connect {
+            a: a.clone(),
+            b: b.clone(),
+            item: ty.to_owned(),
+            usage,
+            ends: ends.clone(),
+        }),
+        (BINDING_CONNECTOR_AS_USAGE, [a, b]) => Some(RelKind::Bind {
+            a: a.clone(),
+            b: b.clone(),
+            usage,
+        }),
+        _ => None,
+    }
 }
 
 /// 接続の端（`CONNECTOR_END`、8.2.2.13.1）の参照を、書いた順に集める。

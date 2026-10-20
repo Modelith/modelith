@@ -249,6 +249,13 @@ pub enum RelKind {
         ev: String,
         to: String,
     },
+    /// `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。両端は等しい値を持つ。
+    Bind {
+        a: String,
+        b: String,
+        /// 結び付けの使用（名前の無いものを含む。`ParseResult.entries` の番号）。
+        usage: usize,
+    },
 }
 
 /// 接続の端が 2 つ以下か（2 項の接続。端の一覧を TS に渡さない）。

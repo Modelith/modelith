@@ -205,6 +205,51 @@ fn connection_without_two_ends_has_no_relation() {
 }
 
 #[test]
+fn bind_is_a_binding_usage_and_not_an_expression_of_its_owner() {
+    // Arrange（同値分割：名前の無い `bind`・名前付きの `binding`、8.2.2.13.2）
+    let text = "part def H { part a; part b; bind a.x = b.y; binding bb bind a.z = b.w; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let h = entry(&r, "H");
+    assert!(h.exprs.is_empty(), "{:?}", h.exprs);
+    let bindings: Vec<(&str, usize)> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "binding")
+        .map(|e| (e.name.as_str(), e.idx))
+        .collect();
+    assert_eq!(bindings.iter().map(|b| b.0).collect::<Vec<_>>(), ["", "bb"]);
+    let rels: Vec<RelKind> = r.rels.iter().map(|x| x.kind.clone()).collect();
+    assert_eq!(
+        rels,
+        [
+            RelKind::Bind {
+                a: "a.x".to_owned(),
+                b: "b.y".to_owned(),
+                usage: bindings[0].1
+            },
+            RelKind::Bind {
+                a: "a.z".to_owned(),
+                b: "b.w".to_owned(),
+                usage: bindings[1].1
+            },
+        ]
+    );
+}
+
+#[test]
+fn binding_without_its_second_end_has_no_relation() {
+    // Arrange（異常系：`=` の右が無い）
+    let text = "part def H { bind a.x; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.rels.is_empty());
+    assert_eq!(r.errors.len(), 1);
+}
+
+#[test]
 fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() {
     // Arrange（異常系: 末尾の「;」の無い文は、暫定コアと同じく読まない）
     let text = "package P { allocation def C; }\npart def Tail";
