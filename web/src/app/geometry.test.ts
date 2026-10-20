@@ -1,7 +1,7 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelNode } from "../core";
-import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, W, type Box, type RouteEnd } from "./geometry";
+import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -193,7 +193,7 @@ describe("boxesOf・placeJunctions（内部ブロック図の n 項の接続の�
   });
 });
 
-describe("boxesOf・stackedHeight・placeNested（内部ブロック図の入れ子の 2 段目）", () => {
+describe("boxesOf・stackedHeight・stackedWidth・placeNested（内部ブロック図の入れ子）", () => {
   const node = (key: string, container?: string): ModelNode => ({
     key, name: key, short: "", kind: "part", isDef: false, fam: "part", trans: [], ports: [], phase: null, phaseOwn: false,
     ...(container ? { container } : {}),
@@ -224,6 +224,27 @@ describe("boxesOf・stackedHeight・placeNested（内部ブロック図の入れ
     // Assert
     expect([pos["u:a.x"], pos["u:a.y"]]).toEqual([[NEST_PAD, NEST_TOP], [NEST_PAD, NEST_TOP + 44 + 30]]);
     expect(boxesOf(nodes, pos).get("u:a")).toEqual({ x: 0, y: 0, w: W + 2 * NEST_PAD, h: stackedHeight(nodes[0] as ModelNode, nodes) });
+  });
+
+  it("3 段目の入れ子：中の中の部品の高さと幅まで数えて積み、外の部品の矩形はすべてを囲む", () => {
+    // Arrange（u:a の中に u:a.x（その中に u:a.x.v）と u:a.y）
+    const deep = [node("u:a"), node("u:a.x", "u:a"), node("u:a.x.v", "u:a.x"), node("u:a.y", "u:a")];
+    const pos: Record<string, [number, number]> = { "u:a": [0, 0] };
+    // Act
+    placeNested(deep, pos);
+    // Assert
+    const inner = NEST_TOP + 44 + NEST_PAD;
+    expect([pos["u:a.x"], pos["u:a.x.v"], pos["u:a.y"]]).toEqual([[NEST_PAD, NEST_TOP], [2 * NEST_PAD, 2 * NEST_TOP], [NEST_PAD, NEST_TOP + inner + 30]]);
+    expect(stackedHeight(deep[0] as ModelNode, deep)).toBe(NEST_TOP + inner + 30 + 44 + NEST_PAD);
+    expect(stackedWidth(deep[0] as ModelNode, deep)).toBe(W + 4 * NEST_PAD);
+    expect(boxesOf(deep, pos).get("u:a")).toEqual({ x: 0, y: 0, w: W + 4 * NEST_PAD, h: stackedHeight(deep[0] as ModelNode, deep) });
+  });
+
+  it("中に部品が無ければ、並べるときの幅はふつうの幅（境界値）", () => {
+    // Act
+    const w = stackedWidth(nodes[3] as ModelNode, nodes);
+    // Assert
+    expect(w).toBe(W);
   });
 
   it("外の部品に座標が無ければ、中の部品を置かない（異常系）", () => {

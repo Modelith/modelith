@@ -92,6 +92,21 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
     expect(edges.map((e) => [e.id, e.fromPort, e.toPort])).toEqual([["flow|u:a.x|u:b|#1", "port:p", "port:p"]]);
   });
 
+  it("3 段・4 段の連鎖の端（a.x.v.p）は、型の中をたどった部品を、中の部品のさらに中に描く（8.2.2.6 の特徴の連鎖）", () => {
+    // Arrange（以前は 3 段目から先を捨て、a.x の枠につないでいた）
+    const text = "package P { part def V { port p; } part def X { part v : V; } part def A { part x : X { part w { part deep; } } } part def C { part a : A; part b : V; connect a.x.v.p to b.p; } }";
+    const { M, c } = setup(text, "C");
+    // Act
+    const { nodes, edges } = ibdContentOf(M, c);
+    // Assert（本体に書いた部品は、どの深さでも描く）
+    expect(nodes.map((n) => [n.key, n.container])).toEqual([
+      ["u:a", undefined], ["u:a.x", "u:a"], ["u:a.x.w", "u:a.x"], ["u:a.x.w.deep", "u:a.x.w"], ["u:a.x.v", "u:a.x"], ["u:b", undefined],
+    ]);
+    expect(edges.map((e) => [e.id, e.fromPort, e.toPort])).toEqual([["flow|u:a.x.v|u:b|#1", "port:p", "port:p"]]);
+    // 同じ ID で、Rust のコアが同じ線を消せる
+    expect(edit(text, { op: "deleteEdge", id: "flow|u:a.x.v|u:b|#1", ctx: "C" })).not.toHaveProperty("refused");
+  });
+
   it("部品の型の中の線は、同じ型の部品ごとに、部品の中に描く", () => {
     // Arrange
     const text = "package P { part def X { port p; } part def A { port q; part x : X; connect q to x.p; } part def C { part a : A; part d : A; } }";

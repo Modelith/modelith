@@ -406,20 +406,44 @@ export function boxesOf(nodes: readonly ModelNode[], pos: Record<string, Pos>): 
 }
 
 /**
- * 中に部品を描く部品の、自動で並べるときの高さ（中の部品を縦に積んだ高さ）。中に部品が無ければ nodeH。
+ * 中に部品を描く部品の、自動で並べるときの高さ（中の部品を縦に積んだ高さ。中の部品がさらに中に部品を描くなら、その高さで数える）。中に部品が無ければ nodeH。
  *
  * @param n 図の要素
  * @param nodes 図に描く要素（中の部品を探す）
+ * @param depth たどった深さ（呼び出し側は省く）
  * @returns 高さ（図の座標の単位）
  * @example
  * // u:a の中に、行の無い部品が 2 つ
  * stackedHeight(a, nodes) // → 54 + 44 + 30 + 44 + 20 = 192
  * stackedHeight(b, nodes) // → 44（中に部品が無い）
  */
-export function stackedHeight(n: ModelNode, nodes: readonly ModelNode[]): number {
-  const inner = nodes.filter((c) => c.container === n.key);
+export function stackedHeight(n: ModelNode, nodes: readonly ModelNode[], depth = 0): number {
+  const inner = depth > NEST_DEPTH ? [] : nodes.filter((c) => c.container === n.key);
   if (!inner.length) return nodeH(n);
-  return NEST_TOP + inner.reduce((h, c) => h + nodeH(c), 0) + NEST_GAP * (inner.length - 1) + NEST_PAD;
+  return NEST_TOP + inner.reduce((h, c) => h + stackedHeight(c, nodes, depth + 1), 0) + NEST_GAP * (inner.length - 1) + NEST_PAD;
+}
+
+/** 中の部品をたどる深さの上限（輪があっても止まるように）。 */
+const NEST_DEPTH = 16;
+
+/**
+ * 中に部品を描く部品の、自動で並べるときの幅（中の部品を、左右に NEST_PAD の余白を付けて囲んだ幅。中の中の部品も）。中に部品が無ければ nodeW。
+ *
+ * @param n 図の要素
+ * @param nodes 図に描く要素（中の部品を探す）
+ * @param depth たどった深さ（呼び出し側は省く）
+ * @returns 幅（図の座標の単位）
+ * @example
+ * // u:a の中に、中に部品の無い部品が 1 つ
+ * stackedWidth(a, nodes) // → 20 + 224 + 20 = 264
+ * // u:a の中の u:a.x の中に、さらに部品が 1 つ（3 段の入れ子）
+ * stackedWidth(a, nodes) // → 20 + 264 + 20 = 304
+ * stackedWidth(b, nodes) // → 224（中に部品が無い）
+ */
+export function stackedWidth(n: ModelNode, nodes: readonly ModelNode[], depth = 0): number {
+  const inner = depth > NEST_DEPTH ? [] : nodes.filter((c) => c.container === n.key);
+  if (!inner.length) return nodeW(n);
+  return Math.max(nodeW(n), ...inner.map((c) => stackedWidth(c, nodes, depth + 1))) + 2 * NEST_PAD;
 }
 
 /**
@@ -448,7 +472,8 @@ export function placeNested(nodes: readonly ModelNode[], pos: Record<string, Pos
     for (const c of inner) {
       if (pos[c.key]) continue;
       pos[c.key] = [x, y];
-      y += nodeH(c) + NEST_GAP;
+      // 中の部品がさらに中に部品を描くなら、その高さの分だけ下げる（3 段目から先の入れ子）
+      y += stackedHeight(c, nodes) + NEST_GAP;
     }
   }
 }

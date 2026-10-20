@@ -2,7 +2,7 @@
 
 import { lineOf, type CoreClient, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
-import { autoPlace, nodeW, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight } from "./geometry";
+import { autoPlace, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight, stackedWidth } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
@@ -199,7 +199,7 @@ export function ensureLayout(): void {
       return p && !n.junction && !n.container ? [p[1] + heightOf(n)] : [];
     });
     const oy = placed.length ? Math.max(...placed) + 80 : 0;
-    autoPlace(missing, edges, L, v, S.M.phases?.[0] ?? null, oy, heightOf, nodeW);
+    autoPlace(missing, edges, L, v, S.M.phases?.[0] ?? null, oy, heightOf, (n) => stackedWidth(n, nodes));
   }
   placeNested(nodes, L);
   placeJunctions(nodes, edges, L);
