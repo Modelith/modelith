@@ -142,6 +142,10 @@ pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
         Intent::RemoveFromView { view, key } => {
             more::remove_from_view(d, view, &d.find(key, None)?)
         }
+        // 順序の線（継起）は、アクションの流れの図の要素のキー（開始・終了を含む）でつなぐ
+        Intent::Connect {
+            rel, from, to, ctx, ..
+        } if rel == "succession" => super::flow::add_succession(d, from, to, ctx.as_deref()),
         Intent::Connect {
             rel,
             from,
@@ -187,7 +191,7 @@ pub(super) struct Found {
 /// missing("Gone") → "操作する要素「Gone」が見つかりません。テキストが先に変わった可能性があります"
 /// missing("")     → "操作する要素「」が見つかりません。テキストが先に変わった可能性があります"
 /// ```
-fn missing(key: &str) -> Refusal {
+pub(super) fn missing(key: &str) -> Refusal {
     format!("操作する要素「{key}」が見つかりません。テキストが先に変わった可能性があります")
 }
 

@@ -2,7 +2,10 @@
 //!
 //! 要素のキー（`a:名前`・`a:#番号`・`a:start`・`a:done`）と線の ID は、モデルが決めたものをそのまま使う。
 
-use super::ops::EdgeAt;
+use super::Change;
+use super::more::sysml_name;
+use super::ops::{EdgeAt, missing};
+use super::text::insert_into;
 use super::{Doc, Refusal};
 
 use crate::model::ActionFlow;
@@ -92,4 +95,62 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// アクションの流れの図で、from の要素から to の要素への順序の線（継起）を書く。アクション定義の本体の終わりに
+/// `first a then b;`（SuccessionAsUsage、8.2.2.14）を足す。開始・終了は `start`・`done` と書く。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `from`・`to`：線の元と先の要素のキー（`a:名前`・`a:start`・`a:done`）
+/// - `ctx`：アクション定義のキー
+///
+/// # 戻り値
+///
+/// 書いた後のテキストと、光らせる範囲（足した文）。要素が無いとき・名前の無い要素のとき・終了から始まるとき・開始へ向かうときは
+/// 理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P {\n    action def A {\n        action a;\n        action b;\n    }\n}\n" のとき
+/// add_succession(d, "a:a", "a:b", Some("A")) → Ok(text に "        action b;\n        first a then b;\n    }")
+/// add_succession(d, "a:b", "a:start", Some("A")) → Err("開始の記号へ向かう順序の線は引けません")
+/// ```
+pub(super) fn add_succession(
+    d: &Doc<'_>,
+    from: &str,
+    to: &str,
+    ctx: Option<&str>,
+) -> Result<Change, Refusal> {
+    let c = d.context(ctx.unwrap_or_default())?;
+    if to == "a:start" {
+        return Err("開始の記号へ向かう順序の線は引けません".to_owned());
+    }
+    if from == "a:done" {
+        return Err("終了の記号から始まる順序の線は引けません".to_owned());
+    }
+    let flow = flow_of(d, c).ok_or_else(|| missing(ctx.unwrap_or_default()))?;
+    let name_of = |key: &str| -> Result<String, Refusal> {
+        let n = flow
+            .nodes
+            .iter()
+            .find(|n| n.key == key)
+            .ok_or_else(|| missing(key))?;
+        if n.name.is_empty() {
+            return Err(
+                "名前の無い要素は、図から順序の線でつなげません。テキストで名前を付けてから線を引いてください"
+                    .to_owned(),
+            );
+        }
+        Ok(sysml_name(&n.name))
+    };
+    let snippet = format!("first {} then {};", name_of(from)?, name_of(to)?);
+    let (text, a, b) = insert_into(d.text, d.target(c), &snippet);
+    Ok(Change {
+        text,
+        select: None,
+        flash: Some((a, b)),
+    })
 }

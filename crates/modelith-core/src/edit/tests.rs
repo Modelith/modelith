@@ -953,3 +953,34 @@ fn unknown_flow_line_or_element_is_refused() {
     assert!(refused(FLOW, line).contains("関係"));
     assert!(refused(FLOW, node).contains("a:x"));
 }
+
+#[test]
+fn connect_succession_writes_first_then_in_the_definition() {
+    // Arrange（同値分割：アクションどうし・終了へ、8.2.2.14）
+    let to_c = r#"{"op":"connect","rel":"succession","from":"a:a","to":"a:c","ctx":"A"}"#;
+    let to_done = r#"{"op":"connect","rel":"succession","from":"a:c","to":"a:done","ctx":"A"}"#;
+    // Act
+    let (after, out) = run(FLOW, to_c);
+    let (done, _) = run(FLOW, to_done);
+    // Assert
+    assert!(
+        after.ends_with("        first b then done;\n        first a then c;\n    }\n}\n"),
+        "{after}"
+    );
+    assert_eq!(flashed(&after, &out).trim(), "first a then c;");
+    assert!(done.contains("        first c then done;\n    }"), "{done}");
+}
+
+#[test]
+fn connect_succession_refuses_start_targets_and_unnamed_elements() {
+    // Arrange（異常系：開始へ・終了から・名前の無い要素）
+    let text =
+        "package P {\n    action def A {\n        action a;\n        send x to y;\n    }\n}\n";
+    let into_start = r#"{"op":"connect","rel":"succession","from":"a:b","to":"a:start","ctx":"A"}"#;
+    let from_done = r#"{"op":"connect","rel":"succession","from":"a:done","to":"a:b","ctx":"A"}"#;
+    let unnamed = r#"{"op":"connect","rel":"succession","from":"a:a","to":"a:#1","ctx":"A"}"#;
+    // Act / Assert
+    assert!(refused(FLOW, into_start).contains("開始の記号"));
+    assert!(refused(FLOW, from_done).contains("終了の記号"));
+    assert!(refused(text, unnamed).contains("名前の無い要素"));
+}
