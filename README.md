@@ -68,24 +68,24 @@
 ## SysML v2 の対応状況
 
 SysML v2 のテキストの書き方のうち、よく使う部分から対応しています。まだ読めない書き方は、エラーにせず、問題一覧に「まだ扱えない構文」として知らせます（一部は知らせずに読み飛ばします）。
-書き方ごとの詳しい状況は [対応表](docs/reference/sysml-conformance.md) をご覧ください（0.1.0-alpha.8 時点）。
+書き方ごとの詳しい状況は [対応表](docs/reference/sysml-conformance.md) をご覧ください（0.1.0-alpha.9 時点）。
 
 ### 使えるもの
 
 - **パッケージ**：`package`（入れ子を含む）、`library package`
 - **構造**：`part`・`item`・`attribute`・`port`・`enum`・`occurrence` の定義と使用、`event occurrence`・`timeslice`・`snapshot`、型付け `: A`・`typed by`、特殊化 `:>`・部分集合・再定義 `:>>`・参照 `::>`、多重度 `[0..4]`、値 `=`・`:=`・`default`、`in`・`out` などの向き、`constant`・`variant`・`variation`・`individual`
 - **つながり**：`connection`・`interface`・単独の `connect`（3 つ以上をつなぐ形を含む）、`bind`・`binding`、`flow`・`flow def`・名前付きのフロー、`message`、`allocation`・`allocate`、`dependency`
-- **振る舞い**：`action`・`perform action`・`then action`、`state`・`exhibit state`、`calc`、`constraint`
+- **振る舞い**：`action`・`perform action`・`then action`、アクションの順序 `first … then`・`succession`・`succession flow`、`fork`・`join`・`merge`・`decide`、`send`・`accept`・`assign`・`terminate`、`if`・`while`・`for`、`state`・`exhibit state`、遷移 `transition`（トリガ・ガード・効果と省略形）、状態の `entry`・`do`・`exit`・`parallel`、`calc`、`constraint`
 - **要求と検証**：`requirement`・`subject`・`stakeholder`・`actor`、`satisfy`（`by` の無い形・`assert satisfy`・`not satisfy` を含む）、`concern`・`frame`、`case`・`analysis`・`verification`、`use case`・`include use case`、`#derivation dependency`（導出）
-- **図（ビュー）**：`view`・`view def`、`expose`、標準のビュー定義のうち GeneralView・InterconnectionView・StateTransitionView・SequenceView。`viewpoint`・`rendering` はツリーに出す
+- **図（ビュー）**：`view`・`view def`、`expose`、`filter`（`and`・`or`・`not` などの式を含む）、`render`、標準のビュー定義のうち GeneralView・InterconnectionView・ActionFlowView・StateTransitionView・SequenceView。`viewpoint`・`rendering` はツリーに出す
 - **名前と注釈**：引用名 `'Fuel Tank'`、短い名前 `<R1>`、同じファイルの中の修飾名 `A::B` と `alias`、`doc`、`comment … about`（メモ）、`rep`、`metadata def`・前置のメタデータ `#M`・`metadata … about`、自分で決めたキーワード（`#X def`）
 
 ### 一部だけ使えるもの
 
 | 書き方 | 足りないところ | 対応の予定 |
 | --- | --- | --- |
-| 遷移 `transition`、`if`・`while`・`for`、`parallel` | 遷移は線にならず、条件や並行は記録しない | 0.1.0-alpha.9 |
-| ビューの `filter`・`render` | `and`・`or` などの式と、`render` の書き方の一部が使えない | 0.1.0-alpha.9 |
+| シーケンス図（SequenceView） | 分岐や繰り返しの枠（`alt`・`loop`）を描かず、図からイベントや順序を足せない | 0.3.0 以降 |
+| ビューの `filter` | メタデータの値を比べる式（`level > 1` など）は使えない | 0.3.0 以降 |
 | `expose`・修飾名 `A::B`・`alias` | `import` を通した名前と、他のファイルの名前を解決しない | 0.2.0 |
 | 式・単位 `1500 [kg]` | 文字列として持つだけで、計算しない | 0.3.0 以降 |
 
@@ -93,7 +93,6 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 
 | 書き方 | 対応の予定 |
 | --- | --- |
-| アクションの流れ（`first … then`・`succession`）、`fork`・`join`・`merge`・`decide`、`send`・`accept`・`terminate`、状態の `entry`・`do`・`exit`、ActionFlowView | 0.1.0-alpha.9 |
 | `import`、ファイルをまたぐモデル | 0.2.0 |
 | KerML、標準ライブラリ、式の計算と単位、GeometryView・GridView・BrowserView、表や文字の形の図、モデル交換の形式（`.kpar`） | 0.3.0 以降 |
 
