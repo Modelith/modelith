@@ -73,6 +73,20 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("app-narrow.png");
     });
 
+    test("F-FILE-14・Q-2: 幅 390px の画面で、開いているファイルが無いとき", async ({ page }) => {
+      // Arrange（狭い画面では、エクスプローラーはツリーのタブにある）
+      await openApp(page);
+      await page.locator("#tabTree").click();
+      await page.locator("#explorer [data-close]").click();
+      await page.locator('#dialogButtons [data-id="discard"]').click();
+      // Act
+      await page.locator("#tabDiagram").click();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("no-open-files-narrow.png");
+    });
+
     test("F-PLUG-8・Q-2: 幅 390px の画面のプラグインの一覧", async ({ page }) => {
       // Arrange（狭い画面ではエクスプローラーとメニューが畳まれるので、広い画面で開いてから狭める）
       await page.setViewportSize({ width: 1280, height: 800 });
@@ -206,6 +220,17 @@ const scenes: Scene[] = [
       await openSampleFolder(page, "package A;\n");
       await typeAtEnd(page, "// edited\n");
       return [page.locator(".treepane")];
+    },
+  },
+  {
+    title: "F-FILE-14: 開いているファイルが無いときの画面",
+    shot: "no-open-files",
+    act: async (page) => {
+      await page.locator("#explorer [data-close]").click();
+      await page.locator('#dialogButtons [data-id="discard"]').click();
+      await expect(page.locator("#noDoc")).toBeVisible();
+      await page.mouse.move(0, 0); // 案内のボタンにマウスが乗っていない状態で撮る
+      return [page.locator("#main")];
     },
   },
   {
