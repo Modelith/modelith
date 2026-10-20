@@ -226,7 +226,16 @@ fn standard_view_names_and_labels() {
     assert!(views::is_standard_view("iv"));
     assert!(!views::is_standard_view("MyView"));
     assert_eq!(views::std_view_label(Some("SequenceView")), "シーケンス図");
-    assert_eq!(views::std_view_label(None), "一般の図");
+    assert_eq!(
+        views::std_view_label(Some("ActionFlowView")),
+        "アクティビティ図"
+    );
+    assert_eq!(
+        views::std_view_label(Some("GeometryView")),
+        "ジオメトリビュー"
+    );
+    assert_eq!(views::std_view_label(Some("MyView")), "MyView");
+    assert_eq!(views::std_view_label(None), "一般ビュー");
 }
 
 #[test]

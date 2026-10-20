@@ -168,7 +168,7 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     // Assert
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Car", "Engine", "Wheel"]);
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/structure/);
-    await expect(page.locator("#subbar")).toContainText("保存された図「structure」：一般の図");
+    await expect(page.locator("#subbar")).toContainText("保存された図「structure」：一般ビュー");
   });
 
   test("F-VIEW-7: InterconnectionView は、expose した part def の内部ブロック図として描く", async ({ page }) => {

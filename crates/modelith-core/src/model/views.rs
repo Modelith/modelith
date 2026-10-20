@@ -21,14 +21,14 @@ const STANDARD_VIEWS: &[(&str, &str, Option<&str>)] = &[
 
 /// 標準ビュー定義の、画面での名前（ADR-0014）。
 const STD_LABEL: &[(&str, &str)] = &[
-    ("GeneralView", "一般の図"),
+    ("GeneralView", "一般ビュー"),
     ("InterconnectionView", "内部ブロック図"),
-    ("ActionFlowView", "アクションの流れ図"),
-    ("StateTransitionView", "状態遷移の図"),
+    ("ActionFlowView", "アクティビティ図"),
+    ("StateTransitionView", "状態遷移図"),
     ("SequenceView", "シーケンス図"),
-    ("GeometryView", "形状の図"),
-    ("GridView", "表の図"),
-    ("BrowserView", "一覧の図"),
+    ("GeometryView", "ジオメトリビュー"),
+    ("GridView", "グリッドビュー"),
+    ("BrowserView", "ブラウザビュー"),
 ];
 
 /// 標準のレンダリング（Views）と描き方。None は図にできない。
@@ -107,7 +107,7 @@ pub fn is_standard_view(t: &str) -> bool {
     standard_view(t).is_some()
 }
 
-/// 図の種類の、画面での名前（型の無い図は一般の図）。暫定コアの `stdViewLabel` と同じ。
+/// 図の種類の、画面での名前（型の無い図は一般ビュー）。暫定コアの `stdViewLabel` と同じ。
 ///
 /// # 引数
 ///
@@ -121,12 +121,12 @@ pub fn is_standard_view(t: &str) -> bool {
 ///
 /// ```text
 /// std_view_label(Some("SequenceView")) → "シーケンス図"
-/// std_view_label(None)                 → "一般の図"
+/// std_view_label(None)                 → "一般ビュー"
 /// std_view_label(Some("Other"))        → "Other"   // 表に無い
 /// ```
 pub fn std_view_label(std: Option<&str>) -> String {
     match std {
-        None => "一般の図".to_owned(),
+        None => "一般ビュー".to_owned(),
         Some(s) => STD_LABEL
             .iter()
             .find(|(n, _)| *n == s)
@@ -414,7 +414,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
         if kind.is_none() {
             let label = std_view_label(std);
             let msg = format!(
-                "図「{}」の種類（{label}）の描き方はまだ無いため、一般の図として描きます（{}）",
+                "図「{}」の種類（{label}）の描き方はまだ無いため、一般ビューとして描きます（{}）",
                 v.name,
                 std.unwrap_or("")
             );
