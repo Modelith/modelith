@@ -581,6 +581,26 @@ fn metadata_body_redefinitions_keep_their_value_on_the_metadata() {
 }
 
 #[test]
+fn crosses_is_a_specialization_not_a_value() {
+    // Arrange（同値分割：`=>` と `crosses`、名前の無い特性の `=>`。Crosses、8.2.2.6）
+    let text = "part def B { end part w : A => q.r; end part v : A crosses y.z; x => a.b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let crossed = |name: &str| -> Vec<(&str, String)> {
+        entry(&r, name)
+            .specs
+            .iter()
+            .map(|s| (s.op, s.target.clone()))
+            .collect()
+    };
+    assert_eq!(crossed("w"), [("crosses", "q.r".to_owned())]);
+    assert_eq!(crossed("v"), [("crosses", "y.z".to_owned())]);
+    assert_eq!(entry(&r, "w").value, None);
+    assert!(r.errors.is_empty());
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";

@@ -97,6 +97,7 @@ syntax_kinds! {
     REDEFINITION,
     /// 参照（ReferenceSubsetting、`::>`・`references`）。
     REFERENCE_SUBSETTING,
+    CROSS_SUBSETTING,
     /// 多重度（MultiplicityBounds、`[…]`）。
     MULTIPLICITY,
     /// 値（FeatureValue、`=`・`:=`・`default`）。

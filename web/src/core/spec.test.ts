@@ -1210,5 +1210,19 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("交差（Crosses、8.2.2.6。CROSSES = '=>' | 'crosses'）", () => {
+      it("end part w : A => q.r は値にせず、交差の相手として記録し、部品の線の端に書く", () => {
+        // Arrange
+        const text = "package P { part def A; part def B { end part w : A => q.r; end part v : A crosses y.z; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(entry(text, "w")?.value).toBeUndefined();
+        expect(entry(text, "w")?.specs?.map((s) => [s.op, s.target])).toEqual([["crosses", "q.r"]]);
+        expect(M.edges.map((e) => [e.label, e.endLabel])).toEqual([["w", "crosses q.r"], ["v", "crosses y.z"]]);
+        expect(M.problems).toEqual([]);
+      });
+    });
   });
 }

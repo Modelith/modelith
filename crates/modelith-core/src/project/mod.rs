@@ -1302,10 +1302,10 @@ impl Ctx {
         }
     }
 
-    /// 宣言の特殊化・部分集合・再定義・参照（8.2.2.6）を、相手ごとに書いた順に集める。
+    /// 宣言の特殊化・部分集合・再定義・参照・交差（8.2.2.6）を、相手ごとに書いた順に集める。
     ///
     /// 定義の `:>`・`specializes` は `specializes`、使用の `:>`・`specializes`・`subsets` は `subsets`、
-    /// `:>>`・`redefines` は `redefines`、`::>`・`references` は `references` にする。
+    /// `:>>`・`redefines` は `redefines`、`::>`・`references` は `references`、`=>`・`crosses` は `crosses` にする。
     ///
     /// # 引数
     ///
@@ -1321,6 +1321,7 @@ impl Ctx {
     /// ```text
     /// specs("part def B :> A, Q::C;", true) → [specializes A（範囲は "A, "）, specializes Q::C（範囲は ", Q::C"）]
     /// specs("part b : B :> a;", false)      → [subsets a（範囲 " :> a"）]
+    /// specs("end part w : A => q.r;", false) → [crosses q.r（範囲 " => q.r"）]
     /// specs("part c : C;", false)           → []
     /// ```
     fn specs(&self, n: &SyntaxNode, is_def: bool) -> Vec<Spec> {
@@ -1331,6 +1332,7 @@ impl Ctx {
                 SUBCLASSIFICATION | SUBSETTING => "subsets",
                 REDEFINITION => "redefines",
                 REFERENCE_SUBSETTING => "references",
+                CROSS_SUBSETTING => "crosses",
                 _ => continue,
             };
             let targets: Vec<SyntaxNode> = rel

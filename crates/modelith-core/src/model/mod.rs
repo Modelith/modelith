@@ -1480,7 +1480,7 @@ pub(crate) fn flow_label(name: &str, ty: &str, item: &str) -> String {
 }
 
 /// 部品として持つ線の、部品の側の端に書く文字（8.2.3 の multiplicity と c-adornment）。
-/// 多重度の範囲（`[4]`）、`ordered`・`nonunique`、部分集合・再定義・参照の相手（`subsets a` など）を、この順に空白でつなぐ。
+/// 多重度の範囲（`[4]`）、`ordered`・`nonunique`、部分集合・再定義・参照・交差の相手（`subsets a`・`crosses q.r` など）を、この順に空白でつなぐ。
 ///
 /// # 引数
 ///
@@ -1531,6 +1531,7 @@ fn end_label(e: &Entry) -> Option<String> {
 /// ```text
 /// spec_edge_kind("specializes") → Some("specialize")
 /// spec_edge_kind("redefines")   → Some("redefine")
+/// spec_edge_kind("crosses")     → None   // 交差は線にせず、部品の線の端に書く
 /// spec_edge_kind("bogus")       → None
 /// ```
 fn spec_edge_kind(op: &str) -> Option<&'static str> {

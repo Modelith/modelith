@@ -83,7 +83,7 @@ export function keywordOf(n: ModelNode): string {
 }
 
 /** 区画に書く、特殊化の種類の記号（テキスト記法と同じ。8.2.2.6）。 */
-const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>" };
+const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>", crosses: "=>" };
 
 /**
  * 区画に書く、属性・パラメータの 1 行（8.2.3 の usage-cp：テキスト記法の宣言と値）。

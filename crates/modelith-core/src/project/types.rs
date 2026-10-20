@@ -128,7 +128,7 @@ pub struct Entry {
     pub open: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub close: Option<usize>,
-    /// 特殊化・部分集合・再定義・参照（8.2.2.6）。相手ごとに、書いた順。
+    /// 特殊化・部分集合・再定義・参照・交差（8.2.2.6）。相手ごとに、書いた順。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub specs: Vec<Spec>,
     /// 多重度（MultiplicityPart、8.2.2.6）。書いていなければ `None`。
@@ -192,7 +192,7 @@ pub struct Multiplicity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Spec {
     /// 関係の種類。`specializes`（定義の `:>`・`specializes`）・`subsets`（使用の `:>`・`subsets`）・
-    /// `redefines`（`:>>`・`redefines`）・`references`（`::>`・`references`）のいずれか。
+    /// `redefines`（`:>>`・`redefines`）・`references`（`::>`・`references`）・`crosses`（`=>`・`crosses`）のいずれか。
     pub op: &'static str,
     /// 相手（書いた修飾名・特徴の連鎖から空白を除いたもの。引用符は残す）。
     pub target: String,

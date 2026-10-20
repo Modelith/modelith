@@ -557,6 +557,33 @@ fn kerml_declaration_is_one_unsupported_member_with_its_body() {
 }
 
 #[test]
+fn crosses_and_its_symbol_are_a_cross_subsetting() {
+    // Arrange（Crosses、8.2.2.6：CROSSES = '=>' | 'crosses'）
+    let texts = ["end part w : A => q.r;", "end part w : A crosses q.r;"];
+    for text in texts {
+        // Act
+        let kinds = node_kinds(text);
+        // Assert
+        assert!(kinds.contains(&CROSS_SUBSETTING), "{text}");
+        assert!(!kinds.contains(&FEATURE_VALUE), "{text}");
+        assert!(errors(text).is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn crosses_without_its_target_is_an_error() {
+    // Arrange（異常系：`=>` の後に相手が無い）
+    let text = "end part w : A => ;";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(
+        actual,
+        vec![(18, "関係の相手の名前がありません".to_owned())]
+    );
+}
+
+#[test]
 fn name_followed_by_short_name_is_still_a_declaration() {
     // Arrange（境界値：`x <s> …` は宣言のまま）
     let text = "part def A { x <s> : T; }";

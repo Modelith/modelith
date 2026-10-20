@@ -1242,8 +1242,8 @@ fn metadata_usage_tail(p: &mut Parser<'_>, owner: usize) {
 ///
 /// # 戻り値
 ///
-/// 今のトークンが関係の記号（`:`・`:>`・`:>>`・`::>`）か、名前の次が関係の記号・`=`・`:=`・`;`・`[`・`{`・
-/// `<名前>`・関係のキーワード（`redefines` など）なら `true`。それ以外（式など）は `false`。
+/// 今のトークンが関係の記号（`:`・`:>`・`:>>`・`::>`）か、名前の次が関係の記号（`=>` を含む）・`=`・`:=`・`;`・`[`・`{`・
+/// `<名前>`・関係のキーワード（`redefines`・`crosses` など）なら `true`。それ以外（式など）は `false`。
 ///
 /// # 例
 ///
@@ -1267,8 +1267,15 @@ fn is_feature_declaration(p: &Parser<'_>) -> bool {
         LT => p.nth_at_name(2) && p.nth_at(3, GT),
         KEYWORD => matches!(
             p.nth_text(1),
-            "redefines" | "subsets" | "references" | "defined" | "specializes" | "default"
+            "redefines"
+                | "subsets"
+                | "references"
+                | "crosses"
+                | "defined"
+                | "specializes"
+                | "default"
         ),
+        OP => p.nth_text(1) == "=>",
         _ => false,
     }
 }
@@ -1375,12 +1382,15 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<
             ),
             COLON_GT2 => relationship(p, 1, REDEFINITION),
             COLON2_GT => relationship(p, 1, REFERENCE_SUBSETTING),
+            // `=> q.r`・`crosses q.r`（Crosses の OwnedCrossSubsetting、8.2.2.6）
+            OP if p.nth_text(0) == "=>" => relationship(p, 1, CROSS_SUBSETTING),
             KEYWORD => match p.nth_text(0) {
                 "defined" if p.nth_at_kw(1, "by") => relationship(p, 2, FEATURE_TYPING),
                 "specializes" => relationship(p, 1, SUBCLASSIFICATION),
                 "subsets" => relationship(p, 1, SUBSETTING),
                 "redefines" => relationship(p, 1, REDEFINITION),
                 "references" => relationship(p, 1, REFERENCE_SUBSETTING),
+                "crosses" => relationship(p, 1, CROSS_SUBSETTING),
                 "default" => feature_value(p),
                 "connect" | "allocate" => connector_part(p),
                 "bind" => binding_part(p),
