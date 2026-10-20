@@ -47,6 +47,18 @@ export const stdViewLabel = (std: string | null): string => (std ? (STD_LABEL[st
  */
 export const isStandardView = (t: string): boolean => t in STANDARD_VIEWS;
 
+/**
+ * 標準ビュー定義の名前か短い名前を、標準ビュー定義の名前にそろえる（短い名前 `afv` → `ActionFlowView`）。
+ *
+ * @param t 型の名前（修飾なし）
+ * @returns 標準ビュー定義の名前。標準ビュー定義の名前でも短い名前でもなければ null
+ * @example
+ * standardViewName("afv")         // → "ActionFlowView"（短い名前）
+ * standardViewName("GeneralView") // → "GeneralView"
+ * standardViewName("MyView")      // → null
+ */
+export const standardViewName = (t: string): string | null => (Object.hasOwn(STANDARD_VIEWS, t) ? (STANDARD_VIEWS[t]?.std ?? null) : null);
+
 /** 標準のレンダリング（Views）と描き方。null は図にできない。 */
 const RENDERINGS: Record<string, ViewKind | null> = {
   asTreeDiagram: "general",

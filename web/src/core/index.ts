@@ -10,7 +10,7 @@ export type {
 export { CoreClient, STALE_EDIT, startCore } from "./client";
 export { readLayout } from "./parser";
 export { family, isLib } from "./model";
-export { stdViewLabel } from "./views";
+export { standardViewName, stdViewLabel } from "./views";
 export { applyEdits, applyTextEdits, diffRange, indentAt, insertEdit, insertInto, lineOf, lineStart, removeLayoutComment, removeRange } from "./text-ops";
 export type { Edit, InsertTarget } from "./text-ops";
 export type * from "./types";

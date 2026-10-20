@@ -562,7 +562,7 @@ package ModelithRequirements {
             }
         }
         verification def ViewNamesTest {
-            doc /* web/src/app/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・保存された図・タブ）、図の名前の候補の「〜の図」 */
+            doc /* web/src/app/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・保存された図・タブ）、標準ビュー定義の短い名前（afv など）の読み替え、図の名前の候補の「〜の図」 */
             objective {
                 verify PlainWordsReq;
                 verify BuiltInViewsReq;
