@@ -39,6 +39,8 @@ export interface ViewContent {
   packages?: PackageFrame[];
   ctx?: ModelNode;
   seq?: boolean;
+  /** 状態遷移の図で、中の要素を破線で区切った領域に描く並行の状態のキー（状態定義そのものが並行なら ""、8.2.3.18）。 */
+  regions?: string[];
 }
 
 export const VIEWS: ViewDef[] = [

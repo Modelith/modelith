@@ -2,6 +2,7 @@
 
 import type { Entry, ModelEdge, ModelNode, Port, PortDir } from "../core";
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
+import { isPseudoState, stateActionLines } from "./state-machine";
 import type { Pos, Side, ViewLayout } from "./layout";
 import type { ViewDef } from "./views";
 
@@ -141,9 +142,13 @@ export interface Line {
  * compartment(n) // → [{ t: "安全のため", cls: "doc" }]
  * // アクションの流れの図の if x { action a; } else { action b; }
  * compartment(n) // → [{ t: "then: a", cls: "attr" }, { t: "else: b", cls: "attr" }]
+ * // 状態遷移の図の state on { entry action init; }
+ * compartment(n) // → [{ t: "entry / init", cls: "attr" }]
  */
 export function compartment(n: ModelNode): Line[] {
   if (n.note) return noteLines(n.entry.body ?? "");
+  // 状態遷移の図の状態は、entry・do・exit の振る舞いを書く（開始・終了の記号は書かない）
+  if (n.state) return isPseudoState(n) ? [] : stateActionLines(n.entry).flatMap((t) => wrap(t, STATE_MAX_W - 18, 1).map((x) => ({ t: x, cls: "attr" as const })));
   // アクションの流れの図の if・while・loop・for は、本体のアクションの名前を書く
   if (n.flow) return flowBodyLines(n.entry).flatMap((t) => wrap(t, FLOW_W - 18, 1).map((x) => ({ t: x, cls: "attr" as const })));
   const e = n.entry;
@@ -236,7 +241,7 @@ export function linesOf(n: ModelNode): Line[] {
 /**
  * ノードの高さ。見出しの高さ HEAD（44）に、区画があれば行数 × LH（15）と余白 12 を足す。
  * メモは見出しを持たず、本文の上の余白（noteTop）に、本文の行数（少なくとも 1）× LH と下の余白 8 を足す。
- * アクションの流れの図の要素は、形ごとの大きさ（flowSize）。
+ * アクションの流れの図の要素は、形ごとの大きさ（flowSize）、状態遷移の図の要素は stateSize。
  *
  * @param n 図のノード
  * @returns 高さ（図の座標の単位）
@@ -252,6 +257,7 @@ export function linesOf(n: ModelNode): Line[] {
  */
 export function nodeH(n: ModelNode): number {
   if (n.flow) return flowSize(n).h;
+  if (n.state) return stateSize(n).h;
   const L = linesOf(n);
   if (n.note) return noteTop(n) + Math.max(1, L.length) * LH + 8;
   return HEAD + (L.length ? L.length * LH + 12 : 0);
@@ -293,26 +299,78 @@ export function flowSize(n: ModelNode): { w: number; h: number } {
   return { w: FLOW_W, h: HEAD + (both ? 14 : 0) + (L.length ? L.length * LH + 12 : 0) };
 }
 
+/** 状態遷移の図の、状態（角の丸い四角）の幅の最小と最大、見出しの高さ。 */
+export const STATE_W = 150;
+const STATE_MAX_W = 280;
+export const STATE_HEAD = 36;
+/** 状態遷移の図の、開始・終了の記号の大きさ（四方）。 */
+const STATE_SYMBOL: Record<string, number> = { start: 22, done: 26 };
+
 /**
- * 要素の幅。n 項の接続の点は DOT、アクションの流れの図の要素は flowSize の幅、ほかは W。
+ * 状態遷移の図の見出しに書く文字（状態の名前。型があれば `名前 : 型`）。
+ *
+ * @param n 状態遷移の図の要素
+ * @returns 見出しの文字列
+ * @example
+ * stateTitle(state off)          // → "off"
+ * stateTitle(state m : Modes)    // → "m : Modes"
+ */
+export const stateTitle = (n: ModelNode): string => n.name + (n.entry.type && !isPseudoState(n) ? ` : ${n.entry.type}` : "");
+
+/**
+ * 状態遷移の図（8.2.3.18）の要素の大きさ。開始・終了は決まった大きさの丸。状態は、名前と区画の行が収まる幅（STATE_W 〜 280）で、
+ * 高さは見出し STATE_HEAD に、区画（entry・do・exit）があれば行数 × LH と余白 10 を足す。中に状態を描く状態の大きさは boxesOf が決める。
+ *
+ * @param n 状態遷移の図の要素
+ * @returns 幅と高さ（図の座標の単位）
+ * @example
+ * stateSize(start)                       // → { w: 22, h: 22 }
+ * stateSize(state off)                   // → { w: 150, h: 36 }
+ * stateSize(state on { entry a; do b; }) // → { w: 150, h: 76 }（区画の 2 行）
+ */
+export function stateSize(n: ModelNode): { w: number; h: number } {
+  const symbol = STATE_SYMBOL[n.kind];
+  if (symbol && isPseudoState(n)) return { w: symbol, h: symbol };
+  const L = linesOf(n);
+  const text = Math.max(textWidth(stateTitle(n)) * 1.15 + 28, ...L.map((l) => textWidth(l.t) + 24));
+  const w = Math.min(STATE_MAX_W, Math.max(STATE_W, Math.ceil(text / 10) * 10));
+  return { w, h: STATE_HEAD + (L.length ? L.length * LH + 10 : 0) };
+}
+
+/**
+ * 要素の幅。n 項の接続の点は DOT、アクションの流れの図の要素は flowSize の幅、状態遷移の図の要素は stateSize の幅、ほかは W。
  *
  * @param n 図の要素
  * @returns 幅（図の座標の単位）
  * @example
  * nodeW(part def A) // → 224
  * nodeW(decide d)   // → 34
+ * nodeW(state off)  // → 150
  */
-export const nodeW = (n: ModelNode): number => (n.junction ? DOT : n.flow ? flowSize(n).w : W);
+export const nodeW = (n: ModelNode): number => (n.junction ? DOT : n.flow ? flowSize(n).w : n.state ? stateSize(n).w : W);
 /** 中に部品を描く部品（内部ブロック図の入れ子）の、中の部品の周りの余白（左右・下）と、見出しの分を含む上の余白。 */
 export const NEST_PAD = 20;
 export const NEST_TOP = HEAD + 10;
+
+/**
+ * 中に要素を描く要素の、中の要素の上の余白（見出しの分を含む）。内部ブロック図の部品は NEST_TOP、
+ * 状態遷移の図の状態は、見出しと区画（entry・do・exit）の高さに 14 を足す。
+ *
+ * @param n 中に要素を描く要素
+ * @returns 上の余白（図の座標の単位）
+ * @example
+ * nestTop(部品 a)                  // → 54
+ * nestTop(state on { entry a; … }) // → 36 + 15 + 10 + 14 = 75
+ */
+export const nestTop = (n: ModelNode): number => (n.state ? stateSize(n).h + 14 : NEST_TOP);
 /** 中に部品を描く部品の、中の部品どうしの縦の間隔。 */
 const NEST_GAP = 30;
 
 /**
- * 図の要素の矩形を、配置の座標から求める。n 項の接続の点は DOT 四方、アクションの流れの図の要素は形ごとの大きさ（flowSize）、
- * 中に部品を描く部品（`container` で指される部品）は
- * 中の部品をすべて囲む矩形（左右・下に NEST_PAD、上に見出しの分 NEST_TOP の余白）、ほかは幅 W・高さ nodeH。
+ * 図の要素の矩形を、配置の座標から求める。n 項の接続の点は DOT 四方、アクションの流れの図・状態遷移の図の要素は形ごとの大きさ、
+ * 中に要素を描く要素（`container` で指される部品・状態）は
+ * 中の要素をすべて囲む矩形（左右・下に NEST_PAD、上に見出しの分 nestTop の余白。中の要素がさらに中に要素を描くなら、その矩形を囲む）、
+ * ほかは幅 W・高さ nodeH。
  *
  * @param nodes 図に描く要素
  * @param pos 要素のキーから左上の座標への対応（座標の無い要素は (0, 0) に置く）
@@ -325,19 +383,26 @@ const NEST_GAP = 30;
  * boxesOf([], pos)     // → Map {}
  */
 export function boxesOf(nodes: readonly ModelNode[], pos: Record<string, Pos>): Map<string, Box> {
-  const own = (n: ModelNode): Box => {
+  const out = new Map<string, Box>();
+  const boxOf = (n: ModelNode, seen: Set<string>): Box => {
+    const done = out.get(n.key);
+    if (done) return done;
     const p = pos[n.key] ?? [0, 0];
-    return n.junction ? { x: p[0], y: p[1], w: DOT, h: DOT } : { x: p[0], y: p[1], w: nodeW(n), h: nodeH(n) };
+    // 中の要素の中の要素も囲む（状態遷移の図の入れ子。輪があっても止まる）
+    const inner = seen.has(n.key) ? [] : nodes.filter((c) => c.container === n.key).map((c) => boxOf(c, new Set([...seen, n.key])));
+    let b: Box;
+    if (!inner.length) {
+      b = n.junction ? { x: p[0], y: p[1], w: DOT, h: DOT } : { x: p[0], y: p[1], w: nodeW(n), h: nodeH(n) };
+    } else {
+      const x0 = Math.min(...inner.map((r) => r.x)) - NEST_PAD, y0 = Math.min(...inner.map((r) => r.y)) - nestTop(n);
+      const x1 = Math.max(...inner.map((r) => r.x + r.w), x0 + NEST_PAD + nodeW(n)) + NEST_PAD, y1 = Math.max(...inner.map((r) => r.y + r.h)) + NEST_PAD;
+      b = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    out.set(n.key, b);
+    return b;
   };
-  return new Map(
-    nodes.map((n) => {
-      const inner = nodes.filter((c) => c.container === n.key).map(own);
-      if (!inner.length) return [n.key, own(n)];
-      const x0 = Math.min(...inner.map((b) => b.x)) - NEST_PAD, y0 = Math.min(...inner.map((b) => b.y)) - NEST_TOP;
-      const x1 = Math.max(...inner.map((b) => b.x + b.w)) + NEST_PAD, y1 = Math.max(...inner.map((b) => b.y + b.h)) + NEST_PAD;
-      return [n.key, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
-    }),
-  );
+  for (const n of nodes) boxOf(n, new Set());
+  return new Map(nodes.map((n) => [n.key, out.get(n.key) as Box]));
 }
 
 /**
@@ -386,6 +451,150 @@ export function placeNested(nodes: readonly ModelNode[], pos: Record<string, Pos
       y += nodeH(c) + NEST_GAP;
     }
   }
+}
+
+/** 状態遷移の図の自動の配置で、列の間（遷移のラベルを書く分）と、列の中の状態の間の空き。 */
+const STATE_GAP_X = 110;
+const STATE_GAP_Y = 50;
+
+/**
+ * 状態遷移の図の要素を、本体ごとに左から右へ並べた座標（自動の配置、8.2.3.18）。内側の本体から先に並べ、中に状態を描く状態の大きさを決めてから、
+ * 外側の本体に並べる。本体の中は、遷移の向きに最も長い道のりの列にし（遷移の端は、その本体の直下の要素まで外へたどる。戻りの遷移は数えない）、
+ * 列の中は上から書いた順に積み、列を縦の中央でそろえる。並行の状態の中（`regions` のキー。状態定義そのものは ""）は、領域を上から下へ積む。
+ *
+ * @param nodes 図に描く要素（中の要素は `container` を持つ）
+ * @param edges 図の線（遷移）
+ * @param regions 中を破線で区切った領域に描く並行の状態のキー（状態定義そのものが並行なら ""）
+ * @returns 要素のキーから左上の座標への対応（中に状態を描く状態は、その矩形の左上）。外側の本体の左上が (0, 0)
+ * @example
+ * // 開始 → off → on（off・on は 150 × 36）
+ * layoutStates([start, off, on], edges, []) // → { "s:#start": [0, 7], "s:off": [132, 0], "s:on": [392, 0] }
+ * layoutStates([], [], [])                  // → {}
+ */
+export function layoutStates(nodes: readonly ModelNode[], edges: readonly ModelEdge[], regions: readonly string[]): Record<string, Pos> {
+  const rel = new Map<string, Pos>();
+  const size = new Map<string, { w: number; h: number }>();
+  const children = (k: string): ModelNode[] => nodes.filter((n) => (n.container ?? "") === k);
+  const parentOf = new Map(nodes.map((n) => [n.key, n.container ?? ""]));
+  // 線の端を、本体 k の直下の要素までたどる
+  const under = (key: string, k: string): string | null => {
+    for (let at: string | undefined = key, i = 0; at !== undefined && i < nodes.length + 1; at = parentOf.get(at), i++) {
+      if (parentOf.get(at) === k) return at;
+    }
+    return null;
+  };
+  const place = (k: string, seen: Set<string>): { w: number; h: number } => {
+    const kids = children(k);
+    for (const c of kids) {
+      if (!seen.has(c.key) && children(c.key).length) {
+        const inner = place(c.key, new Set([...seen, c.key]));
+        size.set(c.key, { w: Math.max(inner.w + 2 * NEST_PAD, nodeW(c) + 2 * NEST_PAD), h: inner.h + nestTop(c) + NEST_PAD });
+      } else size.set(c.key, { w: nodeW(c), h: nodeH(c) });
+    }
+    const sz = (c: ModelNode): { w: number; h: number } => size.get(c.key) ?? { w: 0, h: 0 };
+    if (regions.includes(k)) {
+      // 並行の状態の領域は、上から下へ積む
+      let y = 0;
+      for (const c of kids) {
+        rel.set(c.key, [0, y]);
+        y += sz(c).h + STATE_GAP_Y;
+      }
+      return { w: Math.max(0, ...kids.map((c) => sz(c).w)), h: Math.max(0, y - STATE_GAP_Y) };
+    }
+    const pairs = edges.flatMap((e) => {
+      const a = under(e.from, k), b = under(e.to, k);
+      return a && b && a !== b ? [[a, b] as const] : [];
+    });
+    const column = stateColumns(kids.map((c) => c.key), pairs);
+    const cols: ModelNode[][] = [];
+    for (const c of kids) (cols[column.get(c.key) ?? 0] ||= []).push(c);
+    const heights = cols.map((col) => (col ?? []).reduce((h, c) => h + sz(c).h, 0) + STATE_GAP_Y * Math.max(0, (col ?? []).length - 1));
+    const tallest = Math.max(0, ...heights);
+    let x = 0;
+    cols.forEach((col, i) => {
+      if (!col?.length) return;
+      const width = Math.max(...col.map((c) => sz(c).w));
+      let y = ((tallest - (heights[i] ?? 0)) / 2);
+      for (const c of col) {
+        rel.set(c.key, [x + (width - sz(c).w) / 2, y]);
+        y += sz(c).h + STATE_GAP_Y;
+      }
+      x += width + STATE_GAP_X;
+    });
+    return { w: Math.max(0, x - STATE_GAP_X), h: tallest };
+  };
+  place("", new Set());
+  const out: Record<string, Pos> = {};
+  const absolute = (k: string, ox: number, oy: number): void => {
+    for (const c of children(k)) {
+      const r = rel.get(c.key) ?? [0, 0];
+      const at: Pos = [Math.round(ox + r[0]), Math.round(oy + r[1])];
+      out[c.key] = at;
+      if (children(c.key).length) absolute(c.key, at[0] + NEST_PAD, at[1] + nestTop(c));
+    }
+  };
+  absolute("", 0, 0);
+  return out;
+}
+
+/**
+ * 状態遷移の図の本体の中の、要素ごとの列（0 から）。遷移の元から先へ、最も長い道のりの列にする。
+ * 深さ優先でたどったときに戻る遷移（繰り返し）と、自分への遷移は数えない。どの遷移にもつながらない要素は 0。
+ *
+ * @param keys 本体の直下の要素のキー（書いた順）
+ * @param pairs 遷移の元と先（どちらも keys のどれか）
+ * @returns 要素のキーから列への対応
+ * @example
+ * stateColumns(["start", "off", "on"], [["start", "off"], ["off", "on"], ["on", "off"]]) // → start: 0, off: 1, on: 2（on → off は戻り）
+ * stateColumns(["a"], [])                                                               // → a: 0
+ */
+export function stateColumns(keys: readonly string[], pairs: readonly (readonly [string, string])[]): Map<string, number> {
+  const state = new Map<string, "open" | "done">();
+  const back = new Set<readonly [string, string]>();
+  const visit = (k: string): void => {
+    state.set(k, "open");
+    for (const p of pairs.filter((x) => x[0] === k)) {
+      const st = state.get(p[1]);
+      if (st === "open") back.add(p);
+      else if (!st) visit(p[1]);
+    }
+    state.set(k, "done");
+  };
+  const roots = keys.filter((k) => !pairs.some((p) => p[1] === k));
+  for (const k of [...roots, ...keys]) if (!state.has(k)) visit(k);
+  const dag = pairs.filter((p) => !back.has(p));
+  const column = new Map(keys.map((k) => [k, 0]));
+  const pending = new Map(keys.map((k) => [k, dag.filter((p) => p[1] === k).length]));
+  const queue = keys.filter((k) => !pending.get(k));
+  while (queue.length) {
+    const k = queue.shift() as string;
+    for (const p of dag.filter((x) => x[0] === k)) {
+      column.set(p[1], Math.max(column.get(p[1]) ?? 0, (column.get(k) ?? 0) + 1));
+      const left = (pending.get(p[1]) ?? 1) - 1;
+      pending.set(p[1], left);
+      if (!left) queue.push(p[1]);
+    }
+  }
+  return column;
+}
+
+/**
+ * 並行の状態の領域を区切る破線の位置（8.2.3.18）。領域（中の要素）を上から並べ、隣り合う 2 つの間の真ん中に、
+ * 外の矩形の左端から右端まで横に引く。
+ *
+ * @param outer 外の矩形（並行の状態の矩形、状態定義そのものなら対象の枠）
+ * @param areas 領域の矩形
+ * @returns 破線の両端（y は同じ）。領域が 1 つ以下なら空
+ * @example
+ * regionSeparators({ x: 0, y: 0, w: 300, h: 200 }, [{ x: 20, y: 50, w: 100, h: 40 }, { x: 20, y: 140, w: 100, h: 40 }])
+ * // → [{ x1: 0, x2: 300, y: 115 }]
+ */
+export function regionSeparators(outer: Box, areas: readonly Box[]): { x1: number; x2: number; y: number }[] {
+  const sorted = [...areas].sort((a, b) => a.y - b.y);
+  return sorted.slice(1).map((b, i) => {
+    const a = sorted[i] as Box;
+    return { x1: outer.x, x2: outer.x + outer.w, y: Math.round((a.y + a.h + b.y) / 2) };
+  });
 }
 
 /**
@@ -774,7 +983,7 @@ interface RouteRec {
 
 /**
  * すべての線について、出口・入口の位置と経路を決める。接続点の決まっていない端は、
- * 同じ辺から出る線を相手の位置の順に等間隔に並べ、固定の接続点を避ける（アクションの流れの図の丸とひし形は、辺の中央に集める）。ラベルの位置も決める。
+ * 同じ辺から出る線を相手の位置の順に等間隔に並べ、固定の接続点を避ける（アクションの流れの図・状態遷移の図の丸とひし形は、辺の中央に集める）。ラベルの位置も決める。
  *
  * @param box ノードのキーから、ノードの矩形と接続点への対応
  * @param edges 描く線
@@ -825,7 +1034,7 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
     list.sort((u, v) => (horiz ? u.o[0] - v.o[0] : u.o[1] - v.o[1]));
     const fixed = b.pins.filter((p) => p.side === side).map((p) => p.t * len);
     // 開始・終了の丸とひし形は、線をその頂点（辺の中央）に集める
-    const point = !!b.n.flow && ["start", "done", "diamond"].includes(flowShape(b.n.kind));
+    const point = (!!b.n.flow && ["start", "done", "diamond"].includes(flowShape(b.n.kind))) || isPseudoState(b.n);
     list.forEach((it, i) => {
       if (point) {
         if (it.end === "f") it.rec.ft = 0.5;
