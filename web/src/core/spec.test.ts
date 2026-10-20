@@ -1155,5 +1155,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("本体付きの式（KerML 8.2.5 の BodyExpression。式の文法は 0.3.0 以降、ここでは文字列のまま持つ）", () => {
+      it("a.b->collect{in i; i*2} は、誤った構文エラーにせず値の文字列にする", () => {
+        // Arrange
+        const text = "package P { part def A { attribute s = a.b->collect{in i; i*2}; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+        expect(entry(text, "s")?.value).toBe("a.b->collect{in i; i*2}");
+        expect(entry(text, "A")?.exprs).toEqual([]);
+      });
+    });
   });
 }

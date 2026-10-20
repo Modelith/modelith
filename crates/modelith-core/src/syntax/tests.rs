@@ -488,6 +488,50 @@ fn keyword_led_expression_without_its_semicolon_is_an_error() {
 }
 
 #[test]
+fn body_expressions_are_read_as_part_of_the_expression() {
+    // Arrange（同値分割：-> の後の本体・.{ }・.?{ }・入れ子の本体。KerML 8.2.5 の BodyExpression）
+    let texts = [
+        "part def A { attribute s = a.b->collect{in i; i * 2}; }",
+        "part def A { attribute s = xs.{in x; x.m}; }",
+        "part def A { attribute s = xs.?{in x; x > 0}; }",
+        "constraint def C { xs->forAll{in x; x->exists{in y; y == x}} }",
+    ];
+    for text in texts {
+        // Act
+        let actual = errors(text);
+        // Assert
+        assert_eq!(actual, vec![], "{text}");
+    }
+}
+
+#[test]
+fn declaration_body_after_a_name_is_not_a_body_expression() {
+    // Arrange（境界値：名前の後の `{` は、`->` の後でなければ宣言の本体）
+    let text = "part def A { part p { part q; } }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds.iter().filter(|k| **k == BODY).count(), 2);
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn unclosed_body_expression_is_an_error() {
+    // Arrange（異常系：本体の `}` が無い）
+    let text = "attribute s = a->collect{in i; i";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(
+        actual,
+        vec![
+            (text.len(), "「{」に対応する「}」がありません".to_owned()),
+            (text.len(), "「;」がありません".to_owned())
+        ]
+    );
+}
+
+#[test]
 fn name_followed_by_short_name_is_still_a_declaration() {
     // Arrange（境界値：`x <s> …` は宣言のまま）
     let text = "part def A { x <s> : T; }";

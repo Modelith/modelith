@@ -2047,6 +2047,7 @@ fn expression_until(p: &mut Parser<'_>, stops: &[&str]) -> bool {
 }
 
 /// 式（段階 A）を読む本体。`;`・`{`・`}`・末尾・対応の無い閉じ括弧、改行の後の新しい要素の頭、括弧の外で `stop` が真になる所の手前で止まる。
+/// ただし式の中の本体（`a->collect{in i; i * 2}` の `{ … }`、BodyExpression）は、対応する `}` まで式として読む。
 ///
 /// 開いた括弧が閉じないまま止まったら「括弧が閉じていません」を置く。読んだトークンは `EXPRESSION` の節にする。
 ///
@@ -2063,6 +2064,7 @@ fn expression_until(p: &mut Parser<'_>, stops: &[&str]) -> bool {
 ///
 /// ```text
 /// expression_with("a + b;", |_, _| false)          → true（EXPRESSION は "a + b"）
+/// expression_with("a->collect{in i; i};", |_, _| false) → true（EXPRESSION は "a->collect{in i; i}"）
 /// expression_with("to y;", |p, _| p.at_kw("to"))   → false
 /// ```
 fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool) -> bool {
@@ -2070,6 +2072,11 @@ fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool)
     let mut depth = 0usize;
     let mut any = false;
     loop {
+        if p.at(L_BRACE) && body_expression_follows(p) {
+            expression_body(p);
+            any = true;
+            continue;
+        }
         if p.at_eof() || p.at(SEMI) || p.at(L_BRACE) || p.at(R_BRACE) {
             break;
         }
@@ -2097,6 +2104,66 @@ fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool)
         m.abandon();
     }
     any
+}
+
+/// 今の `{` が、式の中の本体（KerML 8.2.5 の BodyExpression）の始まりか。読み進めない。
+///
+/// `a->collect{…}`（FunctionOperationExpression の BodyArgument）・`a.{…}`（CollectExpression）・`a.?{…}`（SelectExpression）の
+/// `{` だけを本体とみなす。宣言の本体（`part p {`）の `{` はそうしない。
+///
+/// # 引数
+///
+/// - `p`：`{` にいるパーサ
+///
+/// # 戻り値
+///
+/// 直前が `.`、`.?`、`->` の後の名前なら `true`。
+///
+/// # 例
+///
+/// ```text
+/// // 直前まで読んだトークンが
+/// a . b -> collect   → true
+/// a .                → true
+/// a . ?              → true
+/// part p             → false
+/// ```
+fn body_expression_follows(p: &Parser<'_>) -> bool {
+    match p.behind(1) {
+        (DOT, _) => true,
+        (OP, "?") => p.behind(2).0 == DOT,
+        (IDENT | QUOTED_NAME, _) => p.behind(2) == (OP, "->"),
+        _ => false,
+    }
+}
+
+/// 式の中の本体 `{ … }`（BodyExpression の ExpressionBody、KerML 8.2.5）を、対応する `}` まで式の一部として読む。
+/// 中の `;` や入れ子の `{ … }` も読む。閉じていなければ「「{」に対応する「}」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：本体の開き `{` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// expression_body("{in i; i * 2};") → `{in i; i * 2}` を読む（`;` の手前で止まる）
+/// expression_body("{in i; i")       → 末尾まで読み、「「{」に対応する「}」がありません」
+/// ```
+fn expression_body(p: &mut Parser<'_>) {
+    let mut depth = 0usize;
+    while !p.at_eof() {
+        match p.current() {
+            L_BRACE => depth += 1,
+            R_BRACE => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        p.bump();
+        if depth == 0 {
+            return;
+        }
+    }
+    p.error_after_previous("「{」に対応する「}」がありません");
 }
 
 /// 対応する開きの無い `)`・`]` を、エラーとして読み飛ばす。

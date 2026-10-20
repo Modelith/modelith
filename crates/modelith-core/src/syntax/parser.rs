@@ -218,6 +218,31 @@ impl<'t> Parser<'t> {
         self.input.get(self.pos + n).map_or("", |t| t.text)
     }
 
+    /// 今の位置から `n` 個前に読んだトークン（1 が直前のトークン）。読み進めない。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：今の位置から戻る数（1 以上）
+    ///
+    /// # 戻り値
+    ///
+    /// トークンの種類と文字列。入力の先頭より前なら `(ERROR, "")`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 入力 [a(IDENT), ->(OP), b(IDENT)]、位置 3
+    /// behind(1) → (IDENT, "b")
+    /// behind(2) → (OP, "->")
+    /// behind(4) → (ERROR, "")   // 先頭より前
+    /// ```
+    pub fn behind(&self, n: usize) -> (SyntaxKind, &'t str) {
+        self.pos
+            .checked_sub(n)
+            .and_then(|i| self.input.get(i))
+            .map_or((SyntaxKind::ERROR, ""), |t| (t.kind, t.text))
+    }
+
     /// n 番目がキーワード `kw` か。
     ///
     /// # 引数
