@@ -1639,7 +1639,7 @@ fn first_ref(n: &SyntaxNode) -> Option<String> {
 ///
 /// # 戻り値
 ///
-/// `(connect の後の参照, to の後の参照)`。どちらかが無ければ `None`。
+/// `(connect の後の参照, to の後の参照)`。端が 2 つでなければ `None`。
 ///
 /// # 例
 ///
@@ -1648,7 +1648,41 @@ fn first_ref(n: &SyntaxNode) -> Option<String> {
 /// connect_ends("interface i : I;")                     → None
 /// ```
 fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
-    Some((ref_after(n, "connect")?, ref_after(n, "to")?))
+    match <[String; 2]>::try_from(connector_ends(n)) {
+        Ok([a, b]) => Some((a, b)),
+        Err(_) => None,
+    }
+}
+
+/// 接続の端（`CONNECTOR_END`、8.2.2.13.1）の参照を、書いた順に集める。
+///
+/// 端の名前（`e ::> a.p` の `e`）と多重度は除き、参照だけを空白を除いた文字列にする。
+///
+/// # 引数
+///
+/// - `n`：文の節（`connect`・`bind`・`allocate` を含む宣言）
+///
+/// # 戻り値
+///
+/// 端の参照の一覧。端が無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// connector_ends("connect (a.p, b, [1] e ::> c.r);") → ["a.p", "b", "c.r"]
+/// connector_ends("bind x = y.z;")                     → ["x", "y.z"]
+/// connector_ends("part a;")                           → []
+/// ```
+fn connector_ends(n: &SyntaxNode) -> Vec<String> {
+    n.children()
+        .filter(|c| c.kind() == CONNECTOR_END)
+        .filter_map(|end| {
+            end.children()
+                .filter(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+                .last()
+                .map(|c| compact(&c))
+        })
+        .collect()
 }
 
 /// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・遷移）。依存は `dependencies` で読む。

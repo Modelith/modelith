@@ -101,6 +101,8 @@ syntax_kinds! {
     MULTIPLICITY,
     /// 値（FeatureValue、`=`・`:=`・`default`）。
     FEATURE_VALUE,
+    /// 接続の端（ConnectorEnd、`a.p`・`[1] e ::> a.p`。`connect`・`bind`・`allocate` の相手）。
+    CONNECTOR_END,
     /// まだ文法として読まない式（段階 A。括弧の釣り合いだけで区切る）。
     EXPRESSION,
     /// 読めなかった部分。

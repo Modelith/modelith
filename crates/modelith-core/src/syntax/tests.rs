@@ -773,6 +773,147 @@ fn dependency_without_to_or_ends_is_an_error() {
 }
 
 #[test]
+fn connect_reads_binary_and_nary_connector_ends() {
+    // Arrange（同値分割：2 項（BinaryConnectorPart）・n 項（NaryConnectorPart）、8.2.2.13.1）
+    let binary = node_kinds("connection c : C connect a.p to b;");
+    let nary = node_kinds("connect (a.p, b, c.r);");
+    // Act / Assert
+    assert_eq!(
+        binary,
+        [
+            SOURCE_FILE,
+            CONNECTION_USAGE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            FEATURE_CHAIN,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME
+        ]
+    );
+    assert_eq!(
+        nary,
+        [
+            SOURCE_FILE,
+            CONNECTION_USAGE,
+            CONNECTOR_END,
+            FEATURE_CHAIN,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            FEATURE_CHAIN,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME
+        ]
+    );
+    assert!(errors("connect (a.p, b, c.r);").is_empty());
+}
+
+#[test]
+fn connector_end_may_have_multiplicity_and_a_name() {
+    // Arrange（境界値：ConnectorEnd の多重度と `名前 ::>`・`名前 references`）
+    let kinds = node_kinds("connect [1] e ::> a to [*] f references b;");
+    // Act / Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            CONNECTION_USAGE,
+            CONNECTOR_END,
+            MULTIPLICITY,
+            NAME,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            MULTIPLICITY,
+            NAME,
+            QUALIFIED_NAME
+        ]
+    );
+    assert!(errors("connect [1] e ::> a to [*] f references b;").is_empty());
+}
+
+#[test]
+fn bind_reads_both_ends_instead_of_a_value() {
+    // Arrange（BindingConnectorAsUsage、8.2.2.13.2：`=` の右は値ではなく端）
+    let bare = node_kinds("bind a.x = b;");
+    let named = node_kinds("binding bb bind a = b;");
+    // Act / Assert
+    assert_eq!(
+        bare,
+        [
+            SOURCE_FILE,
+            BINDING_CONNECTOR_AS_USAGE,
+            CONNECTOR_END,
+            FEATURE_CHAIN,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME
+        ]
+    );
+    assert_eq!(
+        named,
+        [
+            SOURCE_FILE,
+            BINDING_CONNECTOR_AS_USAGE,
+            NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME
+        ]
+    );
+}
+
+#[test]
+fn allocate_after_a_line_break_continues_the_allocation() {
+    // Arrange（AllocationUsageDeclaration、8.2.2.15：`allocate` は新しい文の頭にもなる語）
+    let text = "allocation a : A\n    allocate x to y;\nallocate z to w;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            ALLOCATION_USAGE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME,
+            ALLOCATION_USAGE,
+            CONNECTOR_END,
+            QUALIFIED_NAME,
+            CONNECTOR_END,
+            QUALIFIED_NAME
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn connector_without_its_separator_or_end_is_an_error() {
+    // Arrange（異常系：to・=・閉じ括弧・端の名前が無い）
+    let no_to = errors("connect a;");
+    let no_eq = errors("bind a;");
+    let unclosed = errors("connect (a, b;");
+    let no_end = errors("connect a to ;");
+    // Act / Assert
+    assert_eq!(no_to, [(9, "「to」がありません".to_owned())]);
+    assert_eq!(no_eq, [(6, "「=」がありません".to_owned())]);
+    assert_eq!(unclosed, [(13, "「)」がありません".to_owned())]);
+    assert_eq!(no_end, [(13, "関係の相手の名前がありません".to_owned())]);
+}
+
+#[test]
 #[ignore = "調査用"]
 fn dump() {
     let path = std::env::var("DUMP").unwrap_or_default();

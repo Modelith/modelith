@@ -332,6 +332,10 @@ fn member(p: &mut Parser<'_>) {
         let kind = if is_def { def } else { usage };
         if kind == METADATA_KEYWORD_USAGE {
             metadata_usage_tail(p, owner);
+        } else if let Some(kw) = connector_keyword(kind) {
+            // `allocation a\n    allocate x to y;` の改行の後の `allocate` は、新しい文ではなく続き
+            let name = declaration_tail(p, true, false, Some(kw));
+            end(p, owner, &name, true);
         } else {
             declaration(p, owner, true, is_def);
         }
@@ -536,18 +540,20 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
             declaration(p, owner, false, false);
             SUCCESSION_AS_USAGE
         }
+        // `bind a = b;`・`connect a to b;`・`allocate a to b;`（名前の無い BindingConnectorAsUsage・
+        // ConnectionUsage・AllocationUsage、8.2.2.13・8.2.2.15）
         "bind" => {
-            p.bump();
+            binding_part(p);
             declaration(p, owner, false, false);
             BINDING_CONNECTOR_AS_USAGE
         }
         "connect" => {
-            p.bump();
+            connector_part(p);
             declaration(p, owner, false, false);
             CONNECTION_USAGE
         }
         "allocate" => {
-            p.bump();
+            connector_part(p);
             declaration(p, owner, false, false);
             ALLOCATION_USAGE
         }
@@ -764,20 +770,22 @@ fn is_feature_declaration(p: &Parser<'_>) -> bool {
 /// declaration("a : T", owner, true, false)           → "a"（「;」がありません のエラー）
 /// ```
 fn declaration(p: &mut Parser<'_>, owner: usize, named: bool, is_def: bool) -> String {
-    let name = declaration_tail(p, named, is_def);
+    let name = declaration_tail(p, named, is_def, None);
     end(p, owner, &name, true);
     name
 }
 
 /// 宣言の名前より後ろを、終わり（`;`・`{`・`}`・末尾）の手前まで読む。終わりそのものは読まない。
 ///
-/// 改行の後に新しい要素の頭のキーワードが来たら、`;` の書き忘れとみなしてそこで止める。
+/// 改行の後に新しい要素の頭のキーワードが来たら、`;` の書き忘れとみなしてそこで止める（`keep` の語は除く）。
+/// `connect`・`allocate` の後は接続の端（`connector_part`）、`bind` の後は結び付ける端（`binding_part`）として読む。
 ///
 /// # 引数
 ///
 /// - `p`：種類のキーワードの直後にいるパーサ
 /// - `named`：最初の名前を新しい要素の名前（`NAME`）として読むか。名前の後ろが `.`・`::`・`to` なら参照として読む
 /// - `is_def`：定義か。真なら `:>` を `SUBCLASSIFICATION`、偽なら `SUBSETTING` にする
+/// - `keep`：改行の後に来ても、新しい文の頭とみなさないキーワード（`allocation` の後の `allocate` など）。無ければ `None`
 ///
 /// # 戻り値
 ///
@@ -786,11 +794,13 @@ fn declaration(p: &mut Parser<'_>, owner: usize, named: bool, is_def: bool) -> S
 /// # 例
 ///
 /// ```text
-/// declaration_tail("<P1> Engine :> Base {", true, true) → "Engine"（<P1> は SHORT_NAME）
-/// declaration_tail("kettle.heater;", true, false)       → ""（特徴の連鎖は参照）
-/// declaration_tail("b : B\n    part c : C;", true, false) → "b"（改行の後の part の手前で止まる）
+/// declaration_tail("<P1> Engine :> Base {", true, true, None) → "Engine"（<P1> は SHORT_NAME）
+/// declaration_tail("kettle.heater;", true, false, None)       → ""（特徴の連鎖は参照）
+/// declaration_tail("b : B\n    part c : C;", true, false, None) → "b"（改行の後の part の手前で止まる）
+/// declaration_tail("c : C connect (a, b);", true, false, None) → "c"（a・b は CONNECTOR_END）
+/// declaration_tail("a\n allocate x to y;", true, false, Some("allocate")) → "a"（allocate も読む）
 /// ```
-fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool) -> String {
+fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<&str>) -> String {
     let mut name = String::new();
     let mut name_slot = named;
     let mut first = true;
@@ -798,7 +808,7 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool) -> String {
         if p.at_eof() || p.at(SEMI) || p.at(L_BRACE) || p.at(R_BRACE) {
             break;
         }
-        if !first && p.newline_before() && at_member_start(p) {
+        if !first && p.newline_before() && at_member_start(p) && !keep.is_some_and(|k| p.at_kw(k)) {
             break;
         }
         first = false;
@@ -846,6 +856,8 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool) -> String {
                 "redefines" => relationship(p, 1, REDEFINITION),
                 "references" => relationship(p, 1, REFERENCE_SUBSETTING),
                 "default" => feature_value(p),
+                "connect" | "allocate" => connector_part(p),
+                "bind" => binding_part(p),
                 _ => p.bump(),
             },
             L_BRACK => bracketed(p, MULTIPLICITY),
@@ -859,6 +871,134 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool) -> String {
         name_slot = false;
     }
     name
+}
+
+/// 接続の端を持つ使用の種類（`allocation`・`binding`）の、端の前に来るキーワード（8.2.2.13.2・8.2.2.15）。
+///
+/// # 引数
+///
+/// - `kind`：使用の節の種類
+///
+/// # 戻り値
+///
+/// `ALLOCATION_USAGE` なら `Some("allocate")`、`BINDING_CONNECTOR_AS_USAGE` なら `Some("bind")`。ほかは `None`。
+///
+/// # 例
+///
+/// ```text
+/// connector_keyword(ALLOCATION_USAGE) → Some("allocate")
+/// connector_keyword(PART_USAGE)       → None
+/// ```
+fn connector_keyword(kind: SyntaxKind) -> Option<&'static str> {
+    match kind {
+        ALLOCATION_USAGE => Some("allocate"),
+        BINDING_CONNECTOR_AS_USAGE => Some("bind"),
+        _ => None,
+    }
+}
+
+/// `connect`・`allocate` の後ろの端（ConnectorPart、8.2.2.13.1）。2 項の `a to b` か、n 項の `( a, b, c )`。
+///
+/// 端は 1 つずつ `CONNECTOR_END` の節にする。2 項で `to` が無ければ「「to」がありません」、
+/// n 項で `)` が無ければ「「)」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`connect` か `allocate` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// connector_part("connect a.p to b.q;")   → CONNECTOR_END(a.p)・CONNECTOR_END(b.q)
+/// connector_part("connect (a, b, c);")    → CONNECTOR_END が 3 つ
+/// connector_part("connect a;")            → 「「to」がありません」
+/// ```
+fn connector_part(p: &mut Parser<'_>) {
+    p.bump();
+    if p.eat(L_PAREN) {
+        loop {
+            connector_end(p);
+            if !p.eat(COMMA) {
+                break;
+            }
+        }
+        if !p.eat(R_PAREN) {
+            p.error_after_previous("「)」がありません");
+        }
+        return;
+    }
+    connector_end(p);
+    if p.eat_kw("to") {
+        connector_end(p);
+    } else {
+        p.error_after_previous("「to」がありません");
+    }
+}
+
+/// `bind` の後ろの、結び付ける 2 つの端（BindingConnectorAsUsage、8.2.2.13.2）。`a = b`。
+///
+/// 端は `CONNECTOR_END` の節にする（`=` を値として読まない）。`=` が無ければ「「=」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`bind` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// binding_part("bind a.x = b.y;") → CONNECTOR_END(a.x)・CONNECTOR_END(b.y)
+/// binding_part("bind a.x;")       → 「「=」がありません」
+/// ```
+fn binding_part(p: &mut Parser<'_>) {
+    p.bump();
+    connector_end(p);
+    if p.eat(EQ) {
+        connector_end(p);
+    } else {
+        p.error_after_previous("「=」がありません");
+    }
+}
+
+/// 接続の端 1 つ（ConnectorEnd、8.2.2.13.1）。`[多重度]? (名前 ::>)? 参照` を `CONNECTOR_END` の節にする。
+///
+/// 参照が無ければ「関係の相手の名前がありません」を置く（多重度も名前も無ければ節を作らない）。
+///
+/// # 引数
+///
+/// - `p`：端の頭にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// connector_end("a.p to")         → CONNECTOR_END { FEATURE_CHAIN(a.p) }
+/// connector_end("[1] e ::> a to") → CONNECTOR_END { MULTIPLICITY, NAME(e), QUALIFIED_NAME(a) }
+/// connector_end(";")              → 「関係の相手の名前がありません」（節は作らない）
+/// ```
+fn connector_end(p: &mut Parser<'_>) {
+    let m = p.start();
+    let mut any = false;
+    if p.at(L_BRACK) {
+        bracketed(p, MULTIPLICITY);
+        any = true;
+    }
+    if p.at_name() && (p.nth_at(1, COLON2_GT) || p.nth_at_kw(1, "references")) {
+        let n = p.start();
+        p.bump();
+        n.complete(p, NAME);
+        p.bump();
+        any = true;
+    }
+    if p.at_name() {
+        reference(p);
+        any = true;
+    } else {
+        p.error("関係の相手の名前がありません");
+    }
+    if any {
+        m.complete(p, CONNECTOR_END);
+    } else {
+        m.abandon();
+    }
 }
 
 /// 宣言の終わり。`;` か本体 `{ … }`。どちらも無ければエラー。
