@@ -659,7 +659,7 @@ impl<'a> Builder<'a> {
     ///
     /// # 引数
     ///
-    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`・`specialize`・`subset`・`redefine`・`reference`）
+    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`・`dependency`・`specialize`・`subset`・`redefine`・`reference`）
     /// - `from`・`to`：線の両端の図の要素の番号（`model.nodes` の添字。範囲外なら panic する）
     /// - `label`：線のラベル（無ければ空文字列）
     /// - `src`：線のもとになった文の範囲（UTF-16 のオフセット）
@@ -832,7 +832,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 関係（satisfy・verify・frame・flow・connect・derivation・message・transition）を線や遷移にする。
+    /// 関係（satisfy・verify・frame・flow・connect・derivation・dependency・message・transition）を線や遷移にする。
     /// 相手が見つからない関係は問題にする（モデルの `edges`・`nodes` の `trans`・`problems` を書き換える）。暫定コアの `build` の関係の処理と同じ。
     fn relations(&mut self) {
         let p = self.p;
@@ -980,7 +980,29 @@ impl<'a> Builder<'a> {
                         self.model.nodes[a].trans.push(format!("{from} → {to}{ev}"));
                     }
                 }
-                RelKind::Dependency { .. } => {}
+                RelKind::Dependency {
+                    a: ra,
+                    b: rb,
+                    name,
+                    meta,
+                } => {
+                    let (ea, eb) = (self.resolve(ra, pe), self.resolve(rb, pe));
+                    if ea.is_none() || eb.is_none() {
+                        let who = if ea.is_none() { ra } else { rb };
+                        self.problem(
+                            r.start,
+                            format!("「依存」関係の相手「{who}」が見つかりません（dependency）"),
+                            None,
+                        );
+                        continue;
+                    }
+                    // 相手はあるが図の要素でない（package など）ときは、線にしない
+                    if let (Some(a), Some(b)) = (self.node_for(ea), self.node_for(eb))
+                        && a != b
+                    {
+                        self.add_edge("dependency", a, b, dependency_label(name, meta), src);
+                    }
+                }
             }
         }
     }
@@ -1200,6 +1222,33 @@ impl<'a> Builder<'a> {
             self.problem(pos, msg, Some("gap"));
         }
     }
+}
+
+/// 依存の線のラベル（8.2.3.3 の binary-dependency の名前）。前に付けたメタデータは «キーワード» にして名前の前に書く。
+///
+/// # 引数
+///
+/// - `name`：依存の名前（無ければ空）
+/// - `meta`：前に付けたメタデータの名前（無ければ空）
+///
+/// # 戻り値
+///
+/// ラベル。名前もメタデータも無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// dependency_label("d", "trace") → "«trace» d"
+/// dependency_label("", "trace")  → "«trace»"
+/// dependency_label("", "")       → ""
+/// ```
+fn dependency_label(name: &str, meta: &str) -> String {
+    let keyword = (!meta.is_empty()).then(|| format!("«{meta}»"));
+    keyword
+        .into_iter()
+        .chain((!name.is_empty()).then(|| name.to_owned()))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// 部品として持つ線の、部品の側の端に書く文字（8.2.3 の multiplicity と c-adornment）。

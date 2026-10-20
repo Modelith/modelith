@@ -855,3 +855,42 @@ fn composite_line_shows_multiplicity_and_adornments_at_the_part_end() {
     );
     assert_eq!(m.edges[0].id, "comp|V|W|w#1");
 }
+
+#[test]
+fn dependency_draws_a_line_per_client_and_supplier_with_its_label() {
+    // Arrange（Dependency、8.2.2.3・8.2.3.3 の binary-dependency：名前・メタデータ・複数の相手）
+    let text = "package P { part def A; part def B; part def C; metadata def trace; \
+                dependency A, B to C; #trace dependency d from A to B; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let lines: Vec<String> = m
+        .edges
+        .iter()
+        .map(|e| format!("{}|{}|{}|{}", e.kind, e.from, e.to, e.label))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "dependency|A|C|",
+            "dependency|B|C|",
+            "dependency|A|B|«trace» d"
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn dependency_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
+    // Arrange（異常系：見つからない相手。package どうしの依存は、相手があるので知らせない）
+    let text = "package P { part def A; dependency A to Nope; dependency from Q to P; package Q; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        ["「依存」関係の相手「Nope」が見つかりません（dependency）"]
+    );
+    assert!(m.edges.is_empty(), "{:?}", m.edges);
+}
