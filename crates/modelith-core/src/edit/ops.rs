@@ -820,7 +820,9 @@ pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
     for (ri, r) in d.p.rels.iter().enumerate().filter(|(_, r)| r.pe == Some(c)) {
         let (a, b, item, src) = match &r.kind {
             RelKind::Flow { a, b, item } => (a, b, item, line(r)),
-            RelKind::Connect { a, b, item, usage } => (
+            RelKind::Connect {
+                a, b, item, usage, ..
+            } => (
                 a,
                 b,
                 item,

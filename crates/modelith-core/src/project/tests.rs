@@ -130,7 +130,8 @@ fn relations_read_their_ends_from_the_tree() {
                 a: "a.p".to_owned(),
                 b: "b.q".to_owned(),
                 item: "I".to_owned(),
-                usage: i
+                usage: i,
+                ends: vec!["a.p".to_owned(), "b.q".to_owned()],
             },
             RelKind::Satisfy {
                 req: "R".to_owned(),
@@ -142,6 +143,65 @@ fn relations_read_their_ends_from_the_tree() {
             },
         ]
     );
+}
+
+/// 関係のうち、接続（`Connect`）の端と、接続の使用の番号。
+fn connections(r: &ParseResult) -> Vec<(Vec<&str>, usize)> {
+    r.rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Connect { ends, usage, .. } => {
+                Some((ends.iter().map(String::as_str).collect(), *usage))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn standalone_connect_is_an_anonymous_connection() {
+    // Arrange（`connection` の無い `connect a to b;`、8.2.2.13.1）
+    let text = "part def H { part a; part b; connect a.p to b.q; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let c = r
+        .entries
+        .iter()
+        .find(|e| e.kind == "connection")
+        .expect("名前の無い接続");
+    assert_eq!(
+        (c.name.as_str(), c.head.as_str()),
+        ("", "connect a.p to b.q")
+    );
+    assert_eq!(c.pe, Some(entry(&r, "H").idx));
+    assert_eq!(connections(&r), [(vec!["a.p", "b.q"], c.idx)]);
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn nary_connection_keeps_every_end() {
+    // Arrange（NaryConnectorPart、8.2.2.13.1。境界値：端が 3 つ）
+    let text = "part def H { connection c : C connect (a.p, b, [1] e ::> c.r); connect (x, y); }";
+    // Act
+    let r = run(text);
+    // Assert
+    let c = entry(&r, "c").idx;
+    let found = connections(&r);
+    assert_eq!(found[0], (vec!["a.p", "b", "c.r"], c));
+    assert_eq!(found[1].0, ["x", "y"]);
+    assert!(matches!(&r.rels[0].kind, RelKind::Connect { a, b, .. } if a == "a.p" && b == "b"));
+}
+
+#[test]
+fn connection_without_two_ends_has_no_relation() {
+    // Arrange（異常系：端が 1 つしかない）
+    let text = "part def H { connection c connect (a); }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(connections(&r).is_empty());
+    assert_eq!(entry(&r, "c").kind, "connection");
 }
 
 #[test]

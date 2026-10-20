@@ -239,12 +239,36 @@ pub enum RelKind {
         b: String,
         item: String,
         usage: usize,
+        /// 端すべて（書いた順。2 つ以上）。`a`・`b` は最初の 2 つ。n 項の `connect (a, b, c)`（8.2.2.13.1）で 3 つ以上になる。
+        /// TS には 3 つ以上のときだけ渡す（2 つなら `a`・`b` と同じ）。
+        #[serde(skip_serializing_if = "is_binary")]
+        ends: Vec<String>,
     },
     Transition {
         from: String,
         ev: String,
         to: String,
     },
+}
+
+/// 接続の端が 2 つ以下か（2 項の接続。端の一覧を TS に渡さない）。
+///
+/// # 引数
+///
+/// - `ends`：接続の端の一覧
+///
+/// # 戻り値
+///
+/// 端が 2 つ以下なら `true`。
+///
+/// # 例
+///
+/// ```text
+/// is_binary(["a", "b"])      → true
+/// is_binary(["a", "b", "c"]) → false
+/// ```
+fn is_binary(ends: &[String]) -> bool {
+    ends.len() <= 2
 }
 
 /// 要素間の関係を表す文。

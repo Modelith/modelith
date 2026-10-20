@@ -665,13 +665,18 @@ impl Ctx {
                     meta.entry(md, OrderedMap::default);
                 }
             }
-            if let Some((a, b)) = connect_ends(n) {
+            let ends = connector_ends(n);
+            if let (true, [a, b, ..]) = (
+                matches!(n.kind(), CONNECTION_USAGE | INTERFACE_USAGE),
+                ends.as_slice(),
+            ) {
                 self.out.rels.push(Rel {
                     kind: RelKind::Connect {
-                        a,
-                        b,
+                        a: a.clone(),
+                        b: b.clone(),
                         item: e.ty.clone(),
                         usage: idx,
+                        ends: ends.clone(),
                     },
                     pe,
                     start,
@@ -1168,7 +1173,8 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// `decl_kind` で決まる種類に加え、alpha.7 で読むようにした形を見分ける。
 /// `timeslice`・`snapshot` の修飾だけの使用（PortionUsage）はその語を、`#X def H`（ExtendedDefinition）は `"def"`、
 /// 種類のキーワードの無い `#X h`（ExtendedUsage）は `"usage"`、`variant a`（VariantReference）は `"variant"`、
-/// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"` にする。
+/// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"`、`connect a to b`（`connection` の無い接続）は
+/// `"connection"` にする。
 ///
 /// # 引数
 ///
@@ -1189,6 +1195,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// entry_kind("timeslice part p;", "part p", "timeslice", …) → Some(("part", false))
 /// entry_kind("#X def H;", "def H", "", true)                → Some(("def", true))
 /// entry_kind("#X h : T;", "h : T", "", true)                → Some(("usage", false))
+/// entry_kind("connect a to b;", "connect a to b", "", false) → Some(("connection", false))
 /// entry_kind("in #X x : T;", "x : T", "in", true)           → None   // パラメータとして読む
 /// entry_kind("a = 1;", "a = 1", "", false)                  → None
 /// ```
@@ -1217,6 +1224,8 @@ fn entry_kind(
     let is_mod = |w: &str| mods.split(' ').any(|m| m == w);
     match n.kind() {
         INCLUDE_USE_CASE_USAGE => Some(("include use case", false)),
+        // `connect a to b;`（`connection` の無い ConnectionUsage、8.2.2.13.1）は名前の無い接続
+        CONNECTION_USAGE if starts_with_word(h, "connect") => Some(("connection", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
         REFERENCE_USAGE if is_mod("variant") => Some(("variant", false)),
         REFERENCE_USAGE
@@ -1629,29 +1638,6 @@ fn first_ref(n: &SyntaxNode) -> Option<String> {
     n.children()
         .find(|c| matches!(c.kind(), NAME | QUALIFIED_NAME | FEATURE_CHAIN))
         .map(|c| unquote(&compact(&c)).to_owned())
-}
-
-/// `interface i : I connect a to b` の両端。
-///
-/// # 引数
-///
-/// - `n`：宣言の節
-///
-/// # 戻り値
-///
-/// `(connect の後の参照, to の後の参照)`。端が 2 つでなければ `None`。
-///
-/// # 例
-///
-/// ```text
-/// connect_ends("interface i : I connect a.p to b.q;") → Some(("a.p", "b.q"))
-/// connect_ends("interface i : I;")                     → None
-/// ```
-fn connect_ends(n: &SyntaxNode) -> Option<(String, String)> {
-    match <[String; 2]>::try_from(connector_ends(n)) {
-        Ok([a, b]) => Some((a, b)),
-        Err(_) => None,
-    }
 }
 
 /// 接続の端（`CONNECTOR_END`、8.2.2.13.1）の参照を、書いた順に集める。
