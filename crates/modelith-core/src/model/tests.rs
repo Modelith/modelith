@@ -800,3 +800,35 @@ fn specialization_of_an_undrawn_or_missing_definition_is_not_a_problem() {
     assert!(m.edges.is_empty(), "{:?}", m.edges);
     assert!(m.problems.is_empty(), "{:?}", m.problems);
 }
+
+#[test]
+fn subsetting_redefinition_and_reference_draw_lines_between_drawn_usages() {
+    // Arrange（8.2.2.6・8.2.3 の subsetting・redefinition・reference-subsetting。package の直下の部品と要求は図の要素）
+    let text = "package P { part def A; part a : A; part b :> a; part c :>> a; part d ::> a; \
+                requirement r1; requirement r2 subsets r1; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（型付けの線はこれまでどおり）
+    assert_eq!(
+        edge_list(&m),
+        [
+            "defined|a|A",
+            "subset|b|a",
+            "redefine|c|a",
+            "reference|d|a",
+            "subset|r2|r1"
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn feature_relations_inside_a_definition_are_not_lines_nor_problems() {
+    // Arrange（定義の中の特性は図の要素ではない。継承した特性・見つからない相手も知らせない）
+    let text = "package P { part def A { attribute m; } part def B :> A { attribute :>> m = 1; part x; part y :> x; part z :> nope; } part e :> missing; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(edge_list(&m), ["specialize|B|A"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}

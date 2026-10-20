@@ -659,7 +659,7 @@ impl<'a> Builder<'a> {
     ///
     /// # 引数
     ///
-    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`・`specialize`）
+    /// - `kind`：線の種類（`defined`・`comp`・`satisfy`・`verify`・`frame`・`flow`・`derive`・`specialize`・`subset`・`redefine`・`reference`）
     /// - `from`・`to`：線の両端の図の要素の番号（`model.nodes` の添字。範囲外なら panic する）
     /// - `label`：線のラベル（無ければ空文字列）
     /// - `src`：線のもとになった文の範囲（UTF-16 のオフセット）
@@ -983,8 +983,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 特殊化の線（8.2.3 の subclassification）。両端が図の要素のときだけ、特殊な側から一般な側へ引く（モデルの `edges` を書き換える）。
-    /// 相手が見つからなくても問題にしない（標準ライブラリの定義など、読んでいない相手を特殊化することが多いため）。
+    /// 特殊化・部分集合・再定義・参照の線（8.2.3 の subclassification・subsetting・redefinition・reference-subsetting）。
+    /// 両端が図の要素のときだけ、特殊な側から一般な側へ引く（モデルの `edges` を書き換える）。定義の相手は定義として、
+    /// 使用の相手は持ち主から外へ（`a.b` は型の中へ）探す。図の要素でない使用（定義の中の特性）の関係は、線にしない。
+    /// 相手が見つからなくても問題にしない（標準ライブラリの定義や、継承した特性など、読んでいない相手が多いため）。
     /// 線の範囲は、その相手だけを消す範囲にする（線を削除すると、その相手だけがテキストから消える）。
     fn specializations(&mut self) {
         let entries = self.entries;
@@ -996,7 +998,11 @@ impl<'a> Builder<'a> {
                 let Some(kind) = spec_edge_kind(s.op) else {
                     continue;
                 };
-                let target = self.def_of(&s.path, e.pe);
+                let target = if e.is_def {
+                    self.def_of(&s.path, e.pe)
+                } else {
+                    self.resolve(&s.target, e.pe)
+                };
                 let Some(&to) = target.and_then(|t| self.node_of.get(&t)) else {
                     continue;
                 };
@@ -1208,11 +1214,15 @@ impl<'a> Builder<'a> {
 ///
 /// ```text
 /// spec_edge_kind("specializes") → Some("specialize")
+/// spec_edge_kind("redefines")   → Some("redefine")
 /// spec_edge_kind("bogus")       → None
 /// ```
 fn spec_edge_kind(op: &str) -> Option<&'static str> {
     match op {
         "specializes" => Some("specialize"),
+        "subsets" => Some("subset"),
+        "redefines" => Some("redefine"),
+        "references" => Some("reference"),
         _ => None,
     }
 }
