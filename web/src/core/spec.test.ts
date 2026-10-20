@@ -1427,5 +1427,16 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(ps).toEqual(["扱う関心事「nope」が見つかりません（frame）"]);
       });
     });
+
+    describe("メタクラスのライブラリの型（Systems Library の SysML・Kernel Semantic Library の KerML、9 章）", () => {
+      it("metadata def M { :>> annotatedElement : SysML::PartDefinition; } は、型が見つからないと言わない", () => {
+        // Arrange
+        const text = "package P { metadata def M { :>> annotatedElement : SysML::PartDefinition; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+    });
   });
 }

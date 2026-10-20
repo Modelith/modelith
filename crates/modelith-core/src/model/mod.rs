@@ -103,6 +103,9 @@ const LIBRARY_TYPES: &[&str] = &[
     "Iso8601DateTime",
 ];
 
+/// メタクラスのライブラリのパッケージ（Systems Library の `SysML`・Kernel Semantic Library の `KerML`）。
+const METACLASS_PACKAGES: &[&str] = &["SysML", "KerML"];
+
 /// 量と単位のライブラリのパッケージ（Domain Libraries/Quantities and Units）。これを `import` したファイルと、
 /// これで修飾した名前（`ISQ::MassValue`）では、`…Value`・`…Kind` で終わる名前を標準ライブラリの型とみなす。
 const QUANTITY_PACKAGES: &[&str] = &[
@@ -155,7 +158,9 @@ fn is_quantity_path(path: &str) -> bool {
 
 /// 標準ライブラリの型か（未定義でも問題にしない。ライブラリは同梱していないので名前で判定する）。
 ///
-/// 最後の名前が `LIBRARY_TYPES` にあれば標準とみなす（`ScalarValues::Real` も）。`…Value`・`…Kind` で終わる名前は、
+/// 最後の名前が `LIBRARY_TYPES` にあれば標準とみなす（`ScalarValues::Real` も）。メタクラスのライブラリ
+/// （`SysML::PartDefinition`・`KerML::Feature` のように `SysML`・`KerML` で修飾した名前。メタデータの定義の
+/// `:>> annotatedElement : SysML::PartDefinition;` などに書く）も標準とみなす。`…Value`・`…Kind` で終わる名前は、
 /// ファイルが量と単位のライブラリ（ISQ・SI など）を `import` しているか、名前をそのパッケージで修飾しているときだけ標準とみなす。
 ///
 /// # 引数
@@ -175,12 +180,17 @@ fn is_quantity_path(path: &str) -> bool {
 /// is_lib("MassValue", true)        → true    // ISQ などを import している
 /// is_lib("MassValue", false)       → false   // import が無い
 /// is_lib("ISQ::MassValue", false)  → true    // 量のパッケージで修飾している
+/// is_lib("SysML::PartDefinition", false) → true   // メタクラス
 /// is_lib("MyTypoValue", false)     → false
 /// is_lib("", false)                → false   // 空の名前
 /// ```
 pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
     let name = path.rsplit("::").next().unwrap_or(path);
-    if LIBRARY_TYPES.contains(&name) {
+    if LIBRARY_TYPES.contains(&name)
+        || METACLASS_PACKAGES
+            .iter()
+            .any(|p| path.strip_prefix(p).is_some_and(|r| r.starts_with("::")))
+    {
         return true;
     }
     let qualified = path.contains("::");

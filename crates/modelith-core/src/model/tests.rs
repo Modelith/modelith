@@ -336,7 +336,7 @@ fn family_and_library_types() {
 
 #[test]
 fn library_types_are_an_explicit_list_and_value_suffix_needs_a_quantity_import() {
-    // Arrange（同値クラス: 一覧にある名前・一覧に無い名前・…Value で終わる名前（import の有無・修飾の有無）、境界値: 空の名前）
+    // Arrange（同値クラス: 一覧にある名前・一覧に無い名前・…Value で終わる名前（import の有無・修飾の有無）・メタクラス、境界値: 空の名前・似た名前のパッケージ）
     let cases = [
         ("Real", false, true),
         ("Positive", false, true),
@@ -348,6 +348,10 @@ fn library_types_are_an_explicit_list_and_value_suffix_needs_a_quantity_import()
         ("MassValue", true, true),
         ("ISQ::MassValue", false, true),
         ("MyLib::MassValue", false, false),
+        ("SysML::PartDefinition", false, true),
+        ("KerML::Feature", false, true),
+        ("SysMLx::PartDefinition", false, false),
+        ("PartDefinition", false, false),
         ("", false, false),
     ];
     // Act
@@ -1076,6 +1080,16 @@ fn explicit_conjugated_port_definition_resolves_to_the_conjugate() {
     assert!(m.problems.is_empty(), "{:?}", m.problems);
     let y = &node(&m, "H").ports[0];
     assert_eq!((y.ty.as_str(), y.conj, y.dir), ("Pt", true, "out"));
+}
+
+#[test]
+fn metaclass_typed_feature_in_a_metadata_definition_is_not_a_missing_type() {
+    // Arrange（メタデータの定義の `:>> annotatedElement : SysML::PartDefinition;`、8.2.2.27）
+    let text = "package P { metadata def M { :>> annotatedElement : SysML::PartDefinition; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
 }
 
 #[test]
