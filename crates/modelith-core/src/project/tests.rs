@@ -1369,6 +1369,48 @@ fn succession_from_then_covers_only_the_keyword() {
 }
 
 #[test]
+fn then_event_occurrence_is_an_event_after_the_preceding_event() {
+    // Arrange（OccurrenceUsageMember の前の SourceSuccessionMember、8.2.2.9.3。以前は黙って捨てていた）
+    let text = "occurrence def S { part a { event occurrence e1; then event occurrence e2; then event e3; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (e1, e2) = (
+        r.entries.iter().position(|e| e.name == "e1"),
+        r.entries.iter().position(|e| e.name == "e2"),
+    );
+    assert_eq!(entry(&r, "e2").kind, "event occurrence");
+    assert_eq!(entry(&r, "e2").head, "event occurrence e2");
+    let s = |x: &str, y: &str, ae: Option<usize>, be: Option<usize>| {
+        (x.to_owned(), y.to_owned(), ae, be, String::new())
+    };
+    let e3 = r.entries.iter().position(|e| e.name == "e3");
+    assert_eq!(
+        successions(&r),
+        [s("e1", "e2", e1, e2), s("e2", "e3", e2, e3)]
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn event_in_a_state_body_is_not_the_source_of_then() {
+    // Arrange（境界値：状態の本体の then s; は、直前の状態からの遷移。イベントからにしない）
+    let text = "state def S { state a; event occurrence e; then b; state b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let from: Vec<&str> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Transition { from, .. } => Some(from.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(from, ["a"]);
+}
+
+#[test]
 fn successions_count_sources_per_body() {
     // Arrange（境界値：入れ子の本体の要素は、外の then の元にならない。本体の最初の then は元が無い）
     let text = "action def A { action a { action x; } then b; } action def B { then c; }";

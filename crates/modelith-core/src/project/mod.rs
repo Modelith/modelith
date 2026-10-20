@@ -861,7 +861,10 @@ impl Ctx {
                     end,
                 });
             }
-            let is_flow_node = ACTION_FLOW_KINDS.contains(&e.kind.as_str());
+            // イベントも、続く `then event occurrence e2;` の継起の元になる（OccurrenceUsageMember の SourceSuccessionMember、8.2.2.9.3）。
+            // 状態の本体では、`then s;` を直前の状態からの遷移として読むので、イベントを元にしない
+            let is_flow_node = ACTION_FLOW_KINDS.contains(&e.kind.as_str())
+                || (e.kind == "event occurrence" && !self.in_state(pe));
             let name = e.name.clone();
             self.push_entry(e, pe);
             if is_flow_node {
@@ -1227,8 +1230,8 @@ impl Ctx {
         })
     }
 
-    /// アクションの流れの要素（`action b;`・`fork f;` など）を読んだ後の処理。`then` で始まる要素（`then action b;`、
-    /// SourceSuccessionMember、8.2.2.17）なら、直前の要素からこの要素への継起を関係にし（範囲は `then` と後ろの空白だけ）、
+    /// アクションの流れの要素（`action b;`・`fork f;` など）とイベント（`event occurrence e;`）を読んだ後の処理。
+    /// `then` で始まる要素（`then action b;`・`then event occurrence e;`、SourceSuccessionMember、8.2.2.9.3・8.2.2.17）なら、直前の要素からこの要素への継起を関係にし（範囲は `then` と後ろの空白だけ）、
     /// この要素を、続く継起の元にする。
     ///
     /// # 引数

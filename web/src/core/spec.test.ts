@@ -491,6 +491,17 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
           ["event occurrence", "e", ""], ["timeslice", "t", "timeslice"], ["snapshot", "s", "snapshot"], ["part", "p", "timeslice"],
         ]);
       });
+
+      it("then event occurrence e2 は、直前のイベントからの継起の後のイベントになる（SourceSuccessionMember、8.2.2.9.3。以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part a { event occurrence e1; then event occurrence e2; then event b.e3; } } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.entries.filter((e) => e.kind === "event occurrence").map((e) => e.name)).toEqual(["e1", "e2", "e3"]);
+        expect(P.rels.flatMap((r) => (r.rel === "succession" ? [[r.a, r.b]] : []))).toEqual([["e1", "e2"], ["e2", "e3"]]);
+        expect(problems(text)).toEqual([]);
+      });
     });
 
     describe("typed by・constant・variant（TypedBy・UsagePrefix・VariantUsageMember、8.2.2.6）", () => {

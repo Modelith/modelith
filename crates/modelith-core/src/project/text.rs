@@ -307,9 +307,10 @@ pub fn strip_prefix_metadata(head: &str) -> (Vec<&str>, &str) {
     (names, rest)
 }
 
-/// `then action …` の `then `、`return …` の `return ` を外す。
+/// `then action …`・`then event …` の `then `、`return …` の `return ` を外す。
 ///
-/// `then` は後ろが `action` のときだけ外す（`then idle` のような継続はそのまま）。
+/// `then` は後ろが `action` か `event`（SourceSuccessionMember の後のアクション・イベント、8.2.2.9.3・8.2.2.17）のときだけ外す
+/// （`then idle` のような継続はそのまま）。
 ///
 /// # 引数
 ///
@@ -322,13 +323,18 @@ pub fn strip_prefix_metadata(head: &str) -> (Vec<&str>, &str) {
 /// # 例
 ///
 /// ```text
-/// strip_then_return("then action a")          → "action a"
-/// strip_then_return("then idle")              → "then idle"
-/// strip_then_return("return attribute x : T") → "attribute x : T"
+/// strip_then_return("then action a")             → "action a"
+/// strip_then_return("then event occurrence e")   → "event occurrence e"
+/// strip_then_return("then idle")                 → "then idle"
+/// strip_then_return("then eventually")           → "then eventually"   // 語の途中
+/// strip_then_return("return attribute x : T")    → "attribute x : T"
 /// ```
 pub fn strip_then_return(head: &str) -> &str {
     if let Some(rest) = head.strip_prefix("then ")
-        && (rest == "action" || rest.starts_with("action ") || rest.starts_with("action{"))
+        && ["action", "event"].iter().any(|w| {
+            rest.strip_prefix(w)
+                .is_some_and(|after| after.is_empty() || after.starts_with([' ', '{']))
+        })
     {
         return rest;
     }
@@ -534,9 +540,15 @@ mod tests {
     }
 
     #[test]
-    fn strip_then_return_removes_only_then_action_and_return() {
+    fn strip_then_return_removes_only_then_action_then_event_and_return() {
         assert_eq!(strip_then_return("then action a"), "action a");
+        assert_eq!(
+            strip_then_return("then event occurrence e"),
+            "event occurrence e"
+        );
         assert_eq!(strip_then_return("then idle"), "then idle");
+        // 境界値: event で始まる別の名前は外さない
+        assert_eq!(strip_then_return("then eventually"), "then eventually");
         assert_eq!(
             strip_then_return("return attribute x : T"),
             "attribute x : T"
