@@ -320,6 +320,29 @@ fn then_event_reference_is_one_event_usage() {
 }
 
 #[test]
+fn composite_render_names_its_rendering_and_reference_render_does_not() {
+    // Arrange（ViewRenderingUsage、8.2.2.26：合成形 render rendering r … と参照形 render asTreeDiagram …）
+    let text = "view v { render rendering r :> asTreeDiagram { doc /* x */ } render asTreeDiagram :> base; }";
+    // Act
+    let p = parse(text);
+    // Assert
+    let renders: Vec<(bool, String)> = p
+        .syntax()
+        .descendants()
+        .filter(|n| n.kind() == VIEW_RENDERING_USAGE)
+        .map(|n| {
+            let name = n.children().find(|c| c.kind() == NAME);
+            (
+                name.is_some(),
+                name.map(|c| c.text().to_string()).unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(renders, [(true, "r".to_owned()), (false, String::new())]);
+    assert!(p.errors().is_empty());
+}
+
+#[test]
 fn statement_without_grammar_is_kept_as_unsupported() {
     // Arrange（F-EDIT-8：黙って捨てない）
     let text = "action def A { until x; }";

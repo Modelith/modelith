@@ -509,7 +509,10 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
         }
         "render" => {
             p.bump();
-            declaration(p, owner, false, false);
+            // 合成形 `render rendering r :> asTreeDiagram { … }`（ViewRenderingUsage、8.2.2.26）は、続く名前を新しい要素の名前にする。
+            // 参照形 `render asTreeDiagram;` の名前は参照のまま
+            let named = p.eat_kw("rendering");
+            declaration(p, owner, named, false);
             VIEW_RENDERING_USAGE
         }
         "alias" => {
