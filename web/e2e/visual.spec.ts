@@ -88,6 +88,22 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("no-open-files-narrow.png");
     });
 
+    test("F-VIEW-7・Q-2: 幅 390px の画面の状態遷移図", async ({ page }) => {
+      // Arrange（狭い画面では、テキストと図はタブで切り替える）
+      await openApp(page);
+      await page.locator("#tabText").click();
+      await page.locator("#ed").fill(LAMP_STATES);
+      await page.waitForTimeout(400);
+      await page.locator("#tabDiagram").click();
+      // Act
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="lampStates"]').click();
+      await expect(page.locator('#canvas [data-key="s:off"]')).toBeVisible();
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("state-transition-narrow.png");
+    });
+
     test("F-PLUG-8・Q-2: 幅 390px の画面のプラグインの一覧", async ({ page }) => {
       // Arrange（狭い画面ではエクスプローラーとメニューが畳まれるので、広い画面で開いてから狭める）
       await page.setViewportSize({ width: 1280, height: 800 });
@@ -193,6 +209,15 @@ async function openScriptProject(page: Page, plugins: Record<string, unknown>, f
   await expect(page.locator("#dialogTitle")).toHaveText("プラグインの実行の許可");
 }
 
+/** 状態遷移図の場面のモデル（入れ子の状態・並行の領域・最初の遷移・終了・ガードと効果のある遷移）。 */
+const LAMP_STATES =
+  "package Lamp {\n    state def LampStates {\n        entry; then off;\n        state off;\n        accept PowerOn then on;\n" +
+  "        state on parallel {\n            state light {\n                entry; then dim;\n                state dim { entry action fadeIn; }\n" +
+  "                accept Brighter then bright;\n                state bright { do glow; exit action fadeOut; }\n" +
+  "                accept Dimmer if level > 1 then dim;\n            }\n            state fan;\n        }\n" +
+  "        transition switchOff first on accept PowerOff do beep then off;\n        transition first off accept Unplug then done;\n    }\n" +
+  "    view lampStates : StateTransitionView { expose Lamp::LampStates; }\n}\n";
+
 const scenes: Scene[] = [
   {
     title: "F-VIEW-7: アクティビティ図（ActionFlowView、8.2.3.17 の記号）",
@@ -209,6 +234,20 @@ const scenes: Scene[] = [
       await page.locator(".tabadd summary").click();
       await page.locator('[data-open-mv="boilFlow"]').click();
       await expect(page.locator('#canvas [data-key="a:done"]')).toBeVisible();
+      return [page.locator("#wrap")];
+    },
+  },
+  {
+    title: "F-VIEW-7: 状態遷移図（StateTransitionView、8.2.3.18 の記号）",
+    shot: "state-transition",
+    act: async (page) => {
+      await page.locator("#ed").fill(LAMP_STATES);
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="lampStates"]').click();
+      // 開いたときは文字が読める大きさで左上から見せるので、「全体」で図全体を撮る
+      await page.locator("#zFit").click();
+      await expect(page.locator('#canvas [data-key="s:#done"]')).toBeVisible();
       return [page.locator("#wrap")];
     },
   },

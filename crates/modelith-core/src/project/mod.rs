@@ -184,6 +184,8 @@ struct Prev {
     entry: Option<usize>,
     /// 名前（名前の無い宣言は空）。
     name: String,
+    /// 状態の本体の `entry …;`（EntryActionMember、8.2.2.18）か。続く `then s;` は、最初の遷移になる。
+    initial: bool,
 }
 
 /// 利用者定義のキーワード（`#X def H;`・`#X h;`、8.2.2.27）で書いた宣言の、基の種類が決まらないときの種類。
@@ -662,6 +664,13 @@ impl Ctx {
             }
             return None;
         }
+        // 遷移（`transition …;`、状態の中の `then b;`・`accept E then b;`・`if g then b;`、`entry; then s;`。8.2.2.18）
+        if self.transition(n, pe, start, end) {
+            return None;
+        }
+        if self.state_subaction(n, pe, h) {
+            return None;
+        }
         // 継起（`first a then b;`・`then b;`・`if g then b;`・`else b;`・`first start;`、8.2.2.14・8.2.2.17）
         if n.kind() == SUCCESSION_AS_USAGE {
             self.succession(n, pe, start, end);
@@ -821,8 +830,14 @@ impl Ctx {
                 about: Vec::new(),
                 reps: Vec::new(),
                 guard: None,
+                state_actions: Vec::new(),
+                parallel: false,
             };
             e.guard = self.guard(n);
+            e.parallel = matches!(
+                n.kind(),
+                STATE_DEFINITION | STATE_USAGE | EXHIBIT_STATE_USAGE
+            ) && has_keyword(n, "parallel");
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
                 for md in prefix_meta {
@@ -895,6 +910,8 @@ impl Ctx {
                 about: Vec::new(),
                 reps: Vec::new(),
                 guard: None,
+                state_actions: Vec::new(),
+                parallel: false,
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -947,6 +964,7 @@ impl Ctx {
                 Prev {
                     entry: None,
                     name: a.clone(),
+                    initial: false,
                 },
                 b.clone(),
             ),
@@ -955,6 +973,7 @@ impl Ctx {
                     *top = Some(Prev {
                         entry: None,
                         name: a.clone(),
+                        initial: false,
                     });
                 }
                 return;
@@ -979,11 +998,218 @@ impl Ctx {
         });
     }
 
+    /// 状態の本体（`state def`・`state`・`exhibit state` の本体、8.2.2.18）か。
+    ///
+    /// # 引数
+    ///
+    /// - `pe`：文を含む、いちばん近い宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// `pe` が状態の定義か使用なら `true`。ファイルの直下やほかの宣言なら `false`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "state def S { … }" の中の文（S が 0 番）
+    /// in_state(Some(0)) → true
+    /// in_state(None)    → false
+    /// ```
+    fn in_state(&self, pe: Option<usize>) -> bool {
+        pe.is_some_and(|i| {
+            matches!(
+                self.out.entries[i].kind.as_str(),
+                "state def" | "state" | "exhibit state"
+            )
+        })
+    }
+
+    /// 遷移の文（TransitionUsage・TargetTransitionUsage・EntryTransitionMember、8.2.2.18）を関係にする。
+    ///
+    /// `transition … first a … then b;` は書いた 2 つの端の間、`first` の無い `transition … then b;` と、状態の本体の
+    /// `then b;`・`if g do e then b;`・`accept E via p if g do e then b;` は、直前の状態から b へ。状態の本体の `entry …;` の直後の
+    /// `then s;`・`if g then s;` は、最初の遷移（`EntryTransition`）にする。トリガ（受けるもの）・`via`・ガード・効果・名前も記録する。
+    /// 状態の本体の `else b;` と `first a then b;` は、遷移にしない（継起として読む）。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：文の節
+    /// - `pe`：文を含む、いちばん近い宣言の番号
+    /// - `start`・`end`：文の範囲（UTF-16。`end` は `;` の位置）
+    ///
+    /// # 戻り値
+    ///
+    /// 遷移の文として読んだ（関係にしたか、行き先が無いので捨てた）なら `true`。遷移の文でなければ `false`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "state def S { state a; accept Go if x > 0 do beep then b; }" の accept の文
+    /// transition(…) → true（rels に Transition { from: "a", ev: "Go", to: "b", guard: "x > 0", effect: "beep", from_entry: Some(a の番号), … }）
+    /// // "state def S { entry; then idle; }" の then の文
+    /// transition(…) → true（rels に EntryTransition { to: "idle", guard: "" }）
+    /// // "action def A { action a; then b; }" の then の文
+    /// transition(…) → false（継起として読む）
+    /// ```
+    fn transition(&mut self, n: &SyntaxNode, pe: Option<usize>, start: usize, end: usize) -> bool {
+        let in_state = self.in_state(pe);
+        let shorthand = in_state
+            && match n.kind() {
+                SUCCESSION_AS_USAGE => !has_keyword(n, "first") && !has_keyword(n, "else"),
+                ACCEPT_NODE => child(n, CONNECTOR_END).is_some(),
+                _ => false,
+            };
+        if n.kind() != TRANSITION_USAGE && !shorthand {
+            return false;
+        }
+        let ends = connector_ends(n);
+        let guard = child(n, GUARD_EXPRESSION)
+            .and_then(|g| child(&g, EXPRESSION))
+            .map(|x| self.node_head(&x))
+            .unwrap_or_default();
+        let (from, to) = match (has_keyword(n, "first"), ends.as_slice()) {
+            (true, [a, b]) => (
+                Prev {
+                    entry: None,
+                    name: a.clone(),
+                    initial: false,
+                },
+                b.clone(),
+            ),
+            (false, [b]) => (self.current_prev(), b.clone()),
+            _ => return true,
+        };
+        let kind = if from.initial {
+            RelKind::EntryTransition { to, guard }
+        } else {
+            let (ev, via) = self.trigger(n);
+            RelKind::Transition {
+                from: from.name,
+                ev,
+                to,
+                name: child(n, NAME)
+                    .map(|c| unquote(&compact(&c)).to_owned())
+                    .unwrap_or_default(),
+                via,
+                guard,
+                effect: child(n, EFFECT_BEHAVIOR)
+                    .and_then(|x| child(&x, EXPRESSION))
+                    .map(|x| self.node_head(&x))
+                    .unwrap_or_default(),
+                from_entry: from.entry,
+            }
+        };
+        self.out.rels.push(Rel {
+            kind,
+            pe,
+            start,
+            end,
+        });
+        true
+    }
+
+    /// 遷移のトリガ（TriggerAction・省略形の `accept`、8.2.2.18）の、受けるものと `via` の後。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：遷移の文の節（`TRANSITION_USAGE` は `TRIGGER_ACTION` の中を、`ACCEPT_NODE` は直下を見る）
+    ///
+    /// # 戻り値
+    ///
+    /// （受けるもの, `via` の後）。どちらも空白をまとめて書いたとおり。無ければ空文字列。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// trigger("transition first a accept e : Go via p then b;") → ("e : Go", "p")
+    /// trigger("accept after 5 [s] then b;")                     → ("after 5 [s]", "")
+    /// trigger("then b;")                                        → ("", "")
+    /// ```
+    fn trigger(&self, n: &SyntaxNode) -> (String, String) {
+        let holder = if n.kind() == TRANSITION_USAGE {
+            child(n, TRIGGER_ACTION)
+        } else if n.kind() == ACCEPT_NODE {
+            Some(n.clone())
+        } else {
+            None
+        };
+        let Some(t) = holder else {
+            return (String::new(), String::new());
+        };
+        let mut params = t.children().filter(|c| c.kind() == NODE_PARAMETER);
+        let ev = params
+            .next()
+            .map(|x| self.node_head(&x))
+            .unwrap_or_default();
+        let via = if has_keyword(&t, "via") {
+            params
+                .next()
+                .map(|x| self.node_head(&x))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        (ev, via)
+    }
+
+    /// 状態の本体の `entry …;`・`do …;`・`exit …;`（StateSubactionMembership、8.2.2.18）を、状態の振る舞いとして記録する。
+    /// 振る舞いを書かない `entry;` は記録しない。`entry …;` の後は、続く `then s;` を最初の遷移にするため、直前の要素を「entry」にする。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：文の節（`STATE_SUBACTION_MEMBER` のときだけ働く）
+    /// - `pe`：文を含む、いちばん近い宣言の番号
+    /// - `h`：文の頭（修飾を外し、空白をまとめたもの。`entry action init` など）
+    ///
+    /// # 戻り値
+    ///
+    /// 状態の本体の振る舞いの文として読んだら `true`。ほかの文や、状態の本体の外なら `false`（何もしない）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "state def S { entry action init; }" の entry の文（S が 0 番）
+    /// state_subaction(…, Some(0), "entry action init") → true（S の state_actions に { kind: "entry", text: "action init" }）
+    /// state_subaction(…, Some(0), "entry")              → true（記録しないが、直前の要素を「entry」にする）
+    /// state_subaction(…, None, "do a")                 → false
+    /// ```
+    fn state_subaction(&mut self, n: &SyntaxNode, pe: Option<usize>, h: &str) -> bool {
+        let (Some(pe), STATE_SUBACTION_MEMBER) = (pe, n.kind()) else {
+            return false;
+        };
+        if !self.in_state(Some(pe)) {
+            return false;
+        }
+        let Some(kind) = ["entry", "do", "exit"]
+            .into_iter()
+            .find(|k| has_keyword(n, k))
+        else {
+            return false;
+        };
+        let text = h.strip_prefix(kind).unwrap_or(h).trim();
+        if !text.is_empty() {
+            self.out.entries[pe].state_actions.push(StateAction {
+                kind,
+                text: text.to_owned(),
+            });
+        }
+        if kind == "entry"
+            && let Some(top) = self.prev.last_mut()
+        {
+            *top = Some(Prev {
+                entry: None,
+                name: String::new(),
+                initial: true,
+            });
+        }
+        true
+    }
+
     /// 本体の中の、直前のアクションの流れの要素（継起の元）。無ければ、名前も番号も無い元。
     ///
     /// # 戻り値
     ///
-    /// 今の本体で直前に書いた要素。まだ無ければ `Prev { entry: None, name: "" }`。
+    /// 今の本体で直前に書いた要素。まだ無ければ `Prev { entry: None, name: "", initial: false }`。
     ///
     /// # 例
     ///
@@ -997,6 +1223,7 @@ impl Ctx {
         self.prev.last().cloned().flatten().unwrap_or(Prev {
             entry: None,
             name: String::new(),
+            initial: false,
         })
     }
 
@@ -1038,6 +1265,7 @@ impl Ctx {
             *top = Some(Prev {
                 entry: Some(idx),
                 name,
+                initial: false,
             });
         }
     }
@@ -1307,6 +1535,8 @@ impl Ctx {
             },
             reps: Vec::new(),
             guard: None,
+            state_actions: Vec::new(),
+            parallel: false,
         };
         self.push_entry(e, pe);
         if !about.is_empty() {
@@ -2265,7 +2495,7 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
         .collect()
 }
 
-/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・順序付きの流れ・遷移）。依存は `dependencies` で読む。
+/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・順序付きの流れ）。依存は `dependencies` で、遷移は `Ctx::transition` で読む。
 ///
 /// 流れと順序付きの流れは、名前の無いものだけを関係にする（名前付きのものは宣言を作るときに関係にする）。
 ///
@@ -2285,8 +2515,6 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
 /// relation("satisfy R;", "satisfy R")            → Some(Satisfy { req: "R", by: "", negated: false })
 /// relation("not satisfy R by A;", …)             → Some(Satisfy { req: "R", by: "A", negated: true })
 /// relation("verify R;", "verify R")              → Some(Verify { req: "R" })
-/// relation("transition t first idle accept Go then idle;", …)
-///   → Some(Transition { from: "idle", ev: "Go", to: "idle" })
 /// relation("succession flow of W from a.o to b.i;", …) → Some(SuccessionFlow { item: "W", a: "a.o", b: "b.i", … })
 /// relation("part a;", "part a")                  → None
 /// ```
@@ -2334,11 +2562,6 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         SUCCESSION_FLOW_USAGE if child(n, NAME).is_none() => {
             succession_flow_ends(n, String::new(), String::new(), None)
         }
-        TRANSITION_USAGE => Some(RelKind::Transition {
-            from: ref_after(n, "first")?,
-            ev: ref_after(n, "accept").unwrap_or_default(),
-            to: ref_after(n, "then")?,
-        }),
         _ => None,
     }
 }

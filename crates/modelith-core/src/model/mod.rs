@@ -6,6 +6,7 @@
 
 mod flows;
 mod names;
+mod states;
 mod types;
 mod views;
 
@@ -275,6 +276,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.edge_ids();
     b.notes();
     b.action_flows();
+    b.state_machines();
     b.parse_problems();
     b.phases();
     views::build_views(&mut b);
@@ -1033,7 +1035,9 @@ impl<'a> Builder<'a> {
                 }
                 // 継起と順序付きの流れは一般の図の線にしない（アクションの流れの図に描く）
                 RelKind::Succession { .. } | RelKind::SuccessionFlow { .. } => {}
-                RelKind::Transition { from, ev, to } => {
+                // 最初の遷移は、状態遷移の図にだけ描く
+                RelKind::EntryTransition { .. } => {}
+                RelKind::Transition { from, ev, to, .. } => {
                     if let Some(a) = self.node_ancestor(pe) {
                         let ev = if ev.is_empty() {
                             String::new()

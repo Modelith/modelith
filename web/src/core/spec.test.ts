@@ -943,5 +943,72 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(a?.exprs).toEqual([]);
       });
     });
+
+    describe("遷移（TransitionUsage・TargetTransitionUsage・EntryTransitionMember、8.2.2.18）", () => {
+      it("transition はトリガ・via・ガード・効果・名前も記録する（以前はガードと効果を捨てていた）", () => {
+        // Arrange
+        const text = "package P { state def S { state a; state b; transition t first a accept Go via p if x > 0 do beep then b; } }";
+        // Act
+        const rels = parse(text).rels.flatMap((r) => (r.rel === "transition" ? [[r.from, r.ev, r.to, r.name, r.via, r.guard, r.effect]] : []));
+        // Assert
+        expect(rels).toEqual([["a", "Go", "b", "t", "p", "x > 0", "beep"]]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("状態の中の accept E then b・if g then b・then b は、直前の状態からの遷移にする（以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { state def S { state a; accept Go then b; state b; if x then a; then a; } }";
+        // Act
+        const rels = parse(text).rels.flatMap((r) => (r.rel === "transition" ? [[r.from, r.ev, r.to, r.guard ?? ""]] : []));
+        // Assert
+        expect(rels).toEqual([["a", "Go", "b", ""], ["b", "", "a", "x"], ["b", "", "a", ""]]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("entry の直後の then s は、最初の遷移にする（継起にしない）", () => {
+        // Arrange
+        const text = "package P { state def S { entry; then idle; state idle; } }";
+        // Act
+        const rels = parse(text).rels.map((r) => [r.rel, r.rel === "entryTransition" ? r.to : ""]);
+        // Assert
+        expect(rels).toEqual([["entryTransition", "idle"]]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("遷移の相手が見つからなければ、問題として知らせる（以前は確かめなかった）", () => {
+        // Arrange
+        const text = "package P { state def S { state a; transition first a then nope; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["「遷移」の相手「nope」が見つかりません（transition）"]);
+      });
+    });
+
+    describe("状態の振る舞いと並行の状態（StateSubactionMembership・StateDefBody、8.2.2.18）", () => {
+      it("entry・do・exit の振る舞いを状態に記録する（以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { state def S { state on { entry action init; do heat; exit send Off() to h; } } }";
+        // Act
+        const on = entry(text, "on");
+        // Assert
+        expect(on?.stateActions).toEqual([
+          { kind: "entry", text: "action init" },
+          { kind: "do", text: "heat" },
+          { kind: "exit", text: "send Off() to h" },
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("parallel の状態は並行であることを記録する（以前は記録しなかった）", () => {
+        // Arrange
+        const text = "package P { state def S parallel { state a; state b; } }";
+        // Act
+        const S = entry(text, "S");
+        // Assert
+        expect(S?.parallel).toBe(true);
+        expect(entry(text, "a")?.parallel).toBeUndefined();
+      });
+    });
   });
 }

@@ -14,6 +14,7 @@ import { cancelConnect, clearSel, S, type Tab, type Tool, type UiPrefs } from ".
 import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "./svg";
 import { ensureLayout, toast } from "./sync";
 import { defaultFlowContext, flowContexts } from "./action-flow";
+import { defaultStateContext, isPseudoState, stateContexts } from "./state-machine";
 import { baseViewOf, CC, defaultIbdContext, edgeById, ibdContexts, modelView, nodeByKey, phaseLabel, seqContexts, VIEWS } from "./views";
 import { isCtxOpen } from "./ctxmenu";
 
@@ -156,7 +157,7 @@ let tabSeq = 1;
 const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
 
 /**
- * タブに出す名前を作る。保存された図はその名前、内部ブロック図・シーケンス図・アクションの流れの図は対象の名前つき、
+ * タブに出す名前を作る。保存された図はその名前、内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は対象の名前つき、
  * 他のビューはビューの名前（工程で絞っていれば工程の名前つき）にする。
  *
  * @param t タブ
@@ -167,6 +168,7 @@ const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
  * tabLabel({ id: 2, view: "ibd", ctx: "Vehicle", phase: "" })              // → "ibd Vehicle"
  * tabLabel({ id: 3, view: "seq", ctx: null, phase: "" })                   // → "sd （未選択）"
  * tabLabel({ id: 5, view: "afv", ctx: "Control", phase: "" })             // → "act Control"
+ * tabLabel({ id: 6, view: "stm", ctx: "KettleStates", phase: "" })        // → "stm KettleStates"
  * tabLabel({ id: 4, view: "all", ctx: null, phase: "", mv: "Overview" })    // → "Overview"
  */
 function tabLabel(t: Tab): string {
@@ -177,6 +179,7 @@ function tabLabel(t: Tab): string {
   if (t.view === "ibd") return `ibd ${nm || "（未選択）"}`;
   if (t.view === "seq") return `sd ${nm || "（未選択）"}`;
   if (t.view === "afv") return `act ${nm || "（未選択）"}`;
+  if (t.view === "stm") return `stm ${nm || "（未選択）"}`;
   return v.label + (t.phase ? `：${phaseLabel(t.phase)}` : "");
 }
 
@@ -215,12 +218,12 @@ function viewMenuItem(attr: string, icon: string, name: string, hint: string, no
 }
 
 /**
- * 表示中のタブに、今の対象（内部ブロック図・シーケンス図・アクションの流れの図）と工程の絞り込みを書き戻す。タブが無ければ何もしない。
+ * 表示中のタブに、今の対象（内部ブロック図・シーケンス図・アクティビティ図・状態遷移図）と工程の絞り込みを書き戻す。タブが無ければ何もしない。
  */
 function syncCurTab(): void {
   const t = curTab();
   if (!t) return;
-  t.ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : null;
+  t.ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : S.view === "stm" ? S.stateCtx : null;
   t.phase = S.phase || "";
 }
 
@@ -249,7 +252,7 @@ export function renderTabs(): void {
       })
       .join("") +
     `<details class="menu tabadd"><summary aria-label="図を開く" title="図を開く">＋</summary><div class="pop pop-left">` +
-    VIEWS.map((v) => viewMenuItem(`data-open="${v.id}"`, viewIcon(v.id), v.label, viewHint(v.label, v.std), v2ViewNote(v.label, v.std))).join("") +
+    VIEWS.filter((v) => !v.hidden).map((v) => viewMenuItem(`data-open="${v.id}"`, viewIcon(v.id), v.label, viewHint(v.label, v.std), v2ViewNote(v.label, v.std))).join("") +
     `<div class="phead">保存された図</div>` +
     (S.M.views.length
       ? S.M.views.map((v) => viewMenuItem(`data-open-mv="${esc(v.name)}"`, viewIcon(baseViewOf(v)), v.name, savedViewHint(v.std), savedViewHint(v.std))).join("")
@@ -260,7 +263,8 @@ export function renderTabs(): void {
 /**
  * タブに切り替える（F-VIEW-2）。今のタブの対象と表示位置を保存してから、切り替え先のビュー・対象・工程を
  * S に反映し、選択と道具を解き、タブ・パレット・サブバー・図・インスペクタを描き直す。
- * 切り替え先に表示位置があれば戻し、無いか fit を指定したら全体を表示する。タブを保存する。id のタブが無ければ何もしない。
+ * 切り替え先に表示位置があれば戻し、無いか fit を指定したら全体を表示する（アクションの流れの図・状態遷移の図は、文字が読める大きさを保つ）。
+ * タブを保存する。id のタブが無ければ何もしない。
  *
  * @param id 切り替え先のタブの id
  * @param opts keepSel：選択を解かない・fit：全体を表示する
@@ -282,6 +286,7 @@ export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean
   if (t.view === "ibd") S.ibdCtx = t.ctx;
   if (t.view === "seq") S.seqCtx = t.ctx;
   if (t.view === "afv") S.flowCtx = t.ctx;
+  if (t.view === "stm") S.stateCtx = t.ctx;
   cancelConnect();
   S.tool = null;
   if (!opts.keepSel) clearSel();
@@ -295,7 +300,7 @@ export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean
   if (t.tf && !opts.fit) {
     S.tf = { ...t.tf };
     applyTf();
-  } else fit();
+  } else fit({ readable: true });
   saveTabs();
 }
 
@@ -318,11 +323,11 @@ export function openModelView(name: string): void {
  * ビューを開く（同じビュー・同じ対象のタブがあればそれに切り替える。F-VIEW-2）。新しいタブを作ったときは全体を表示する。
  *
  * @param view ビューの ID（"trace"・"ibd" など）
- * @param ctx 内部ブロック図・シーケンス図・アクションの流れの図の対象のキー。指定しなければ null（同じビューのタブがあればそれを使う）
+ * @param ctx 内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図の対象のキー。指定しなければ null（同じビューのタブがあればそれを使う）
  * @param opts keepSel：選択を解かない
  */
 export function openTab(view: string, ctx?: string | null, opts: { keepSel?: boolean } = {}): void {
-  const ex = S.tabs.find((t) => !t.mv && t.view === view && (!["ibd", "seq", "afv"].includes(view) || !ctx || t.ctx === ctx));
+  const ex = S.tabs.find((t) => !t.mv && t.view === view && (!["ibd", "seq", "afv", "stm"].includes(view) || !ctx || t.ctx === ctx));
   if (ex && !(ctx && ex.ctx !== ctx)) {
     activateTab(ex.id, opts);
     return;
@@ -353,7 +358,7 @@ function closeTab(id: number): void {
 
 /**
  * 新しく開くタブの既定の対象を選ぶ。内部ブロック図は部品の最も多いブロック、シーケンス図は最初のシナリオ、
- * アクションの流れの図は線の最も多いアクション定義。
+ * アクションの流れの図は線の最も多いアクション定義、状態遷移の図は遷移の最も多い状態定義。
  *
  * @param view ビューの ID
  * @returns 対象のキー。対象を持たないビューや、対象が無ければ null
@@ -361,6 +366,7 @@ function closeTab(id: number): void {
  * // occurrence def Start がある
  * defaultCtx("seq")   // → "Start"
  * defaultCtx("afv")   // → "Control"（線の最も多いアクション定義）
+ * defaultCtx("stm")   // → "KettleStates"（遷移の最も多い状態定義）
  * defaultCtx("trace") // → null（対象を持たないビュー）
  */
 const defaultCtx = (view: string): string | null =>
@@ -370,7 +376,9 @@ const defaultCtx = (view: string): string | null =>
       ? (seqContexts(S.M)[0]?.key ?? null)
       : view === "afv"
         ? (defaultFlowContext(S.M)?.key ?? null)
-        : null;
+        : view === "stm"
+          ? (defaultStateContext(S.M)?.key ?? null)
+          : null;
 
 /**
  * localStorage に保存したタブを読む。
@@ -692,6 +700,8 @@ const pathOf = (e: Entry): string => {
  * openTarget(Engine)    // → { view: "structure", label: "ブロック定義図で開く" }
  * // action def Control
  * openTarget(Control)   // → { view: "afv", ctx: "Control", label: "アクティビティ図で開く" }
+ * // state def KettleStates
+ * openTarget(KettleStates) // → { view: "stm", ctx: "KettleStates", label: "状態遷移図で開く" }
  * // attribute（定義でない属性）
  * openTarget(attr)      // → null
  */
@@ -703,14 +713,14 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
   if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
   if (e.kind === "constraint def" || e.kind === "calc def") return { view: "control", label: "制御ループで開く" };
   if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクティビティ図で開く" };
-  if (e.kind === "state def") return { view: "behavior", label: "振る舞いで開く" };
+  if (e.kind === "state def") return { view: "stm", ctx: e.name, label: "状態遷移図で開く" };
   if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "ブロック定義図で開く" };
   return null;
 }
 
 /**
  * テキストの要素に当たる図の要素のキーを探す。内部ブロック図・シーケンス図の対象の中の部品は `u:`・`l:` のキー、
- * アクションの流れの図の対象の中の要素はその図の要素のキーにし、
+ * アクションの流れの図の対象の中の要素はその図の要素のキー、状態遷移の図では自身か最も近い外側の状態のキーにし、
  * それ以外は自身か、最も近い外側の、図に描く要素のキーにする。
  *
  * @param e テキストの要素
@@ -720,9 +730,18 @@ export function openTarget(e: Entry | null | undefined): { view: string; ctx?: s
  * keyForEntry(mass)   // → "Vehicle"
  * // 内部ブロック図で Vehicle を表示中、Vehicle の部品 engine
  * keyForEntry(engine) // → "u:engine"
+ * // 状態遷移の図で KettleStates を表示中、状態 on の中の状態 low
+ * keyForEntry(low)    // → "s:on.low"
  */
 function keyForEntry(e: Entry): string | null {
   const c = CC();
+  // 状態遷移の図では、入れ子の状態の中の要素も、自身か最も近い外側の状態にする（開始・終了の記号は宣言を持たない）
+  if (S.view === "stm") {
+    for (let a: Entry | null = e; a && a !== c.ctx?.entry; a = a.pe) {
+      const st = c.nodes.find((n) => n.state && !isPseudoState(n) && n.entry === a);
+      if (st) return st.key;
+    }
+  }
   if (c.ctx && e.pe === c.ctx.entry) {
     if (S.view === "ibd" && e.kind === "part") return "u:" + e.name;
     if (S.view === "seq") return "l:" + e.name;
@@ -1010,7 +1029,7 @@ export function renderSub(): void {
   const mv = modelView();
   if (S.modelView) {
     // 保存された図（view）：中身と対象は expose で決まるので、選ばせない
-    const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : null;
+    const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : S.view === "stm" ? S.stateCtx : null;
     const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
     parts.push(
       `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、保存された図の設定で決まります"}（view の expose・filter）">保存された図「${esc(S.modelView)}」：<span class="vkind" title="${esc(savedViewHint(mv?.std ?? null))}">${esc(stdViewLabel(mv?.std ?? null))}</span>${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
@@ -1024,6 +1043,9 @@ export function renderSub(): void {
   } else if (S.view === "afv") {
     CC();
     parts.push(ctxSel(flowContexts(S.M), S.flowCtx, "アクション定義"));
+  } else if (S.view === "stm") {
+    CC();
+    parts.push(ctxSel(stateContexts(S.M), S.stateCtx, "状態定義"));
   } else if (phases) {
     parts.push(
       `<label>フェーズ<select id="phaseFilter"><option value="">すべて</option>${phases.map((p) => `<option value="${esc(p)}" ${S.phase === p ? "selected" : ""}>${esc(phaseLabel(p))}（${S.M.nodes.filter((n) => n.phase === p).length}）</option>`).join("")}</select></label>`,
@@ -1048,6 +1070,7 @@ function initSub(): void {
     if (t.id === "ctxSel") {
       if (S.view === "ibd") S.ibdCtx = t.value;
       else if (S.view === "afv") S.flowCtx = t.value;
+      else if (S.view === "stm") S.stateCtx = t.value;
       else S.seqCtx = t.value;
     } else if (t.id === "phaseFilter") S.phase = t.value;
     else return;

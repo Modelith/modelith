@@ -2,6 +2,7 @@
 
 import type { ModelEdge, ModelNode } from "../core";
 import { flowName } from "./action-flow";
+import { isPseudoState, stateName } from "./state-machine";
 import { local, placeUsageAt, fit, toCanvas } from "./canvas";
 import { $, closest, esc } from "./dom";
 import type { Pin } from "./geometry";
@@ -119,6 +120,7 @@ function itemsForNode(n: ModelNode): CtxItem[] {
   }
   if (n.note) return itemsForNote(n);
   if (n.flow) return itemsForFlowNode(n);
+  if (n.state) return itemsForStateNode(n);
   items.push({ head: `«${n.kind}» ${n.name}` }, {
     label: "テキストで見る",
     act: () => {
@@ -180,6 +182,27 @@ function itemsForFlowNode(n: ModelNode): CtxItem[] {
   if (!implicit && n.name) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } });
   if (n.kind !== "done") items.push({ label: "順序の線を追加…", act: () => { selectOnly(n.key); act("connect"); } });
   if (!implicit) items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  return items;
+}
+
+/**
+ * 状態遷移の図の要素（8.2.3.18）の上で開くメニューの項目を作る。テキストで見る・名前を変更・遷移を追加・削除を並べる。
+ * 開始・終了の記号はテキストに宣言が無いので、名前だけを出す。名前の無い状態からは遷移を引けないので、追加を出さない。
+ *
+ * @param n 状態遷移の図の要素
+ * @returns メニューの項目
+ * @example
+ * itemsForStateNode(off).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["状態 off", "テキストで見る", "名前を変更", "遷移を追加…", "—", "削除"]
+ * itemsForStateNode(start).map((it) => "head" in it ? it.head : "label" in it ? it.label : "—")
+ * // → ["開始"]
+ */
+function itemsForStateNode(n: ModelNode): CtxItem[] {
+  if (isPseudoState(n)) return [{ head: stateName(n) }];
+  const items: CtxItem[] = [{ head: n.name ? `${kindLabel(n.kind)} ${n.name}` : stateName(n) }];
+  items.push({ label: "テキストで見る", act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } });
+  if (n.name) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } }, { label: "遷移を追加…", act: () => { selectOnly(n.key); act("connect"); } });
+  items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   return items;
 }
 
@@ -255,7 +278,7 @@ function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
 /**
  * 図の何も無いところで開くメニューの項目を作る。その位置に要素（内部ブロック図・シーケンス図では、
  * 部品定義を 12 個までの部品・ライフライン）を置く項目と、すべて選択・並べ直す・全体を表示を並べる。
- * アクションの流れの図では、置く項目を出さない（要素はテキストで書く）。
+ * アクションの流れの図・状態遷移の図では、置く項目を出さない（要素はテキストで書く）。
  *
  * @param lx 開いた位置の x（図の枠の中の座標、px）
  * @param ly 開いた位置の y（図の枠の中の座標、px）
@@ -273,8 +296,8 @@ function itemsForCanvas(lx: number, ly: number): CtxItem[] {
     for (const n of S.M.nodes.filter((x) => x.kind === "part def").slice(0, 12)) {
       items.push({ label: n.name, icon: kindIcon("part"), act: () => { S.tool = { usage: n.name }; placeTool(lx, ly); } });
     }
-  } else if (S.view !== "afv") {
-    // アクションの流れの図には、置く項目を出さない（要素はテキストで書く）
+  } else if (S.view !== "afv" && S.view !== "stm") {
+    // アクションの流れの図・状態遷移の図には、置く項目を出さない（要素はテキストで書く）
     items.push({ head: "ここに要素を追加" });
     for (const [k, l] of PALETTE[S.view] ?? PALETTE["all"] ?? []) items.push({ label: l, icon: kindIcon(k), act: () => { S.tool = { kind: k }; placeTool(lx, ly); } });
   }

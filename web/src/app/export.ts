@@ -3,7 +3,8 @@
 import { $, esc } from "./dom";
 import type { ModelNode } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
-import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, type Box, type NodeBox } from "./geometry";
+import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
+import { isPseudoState } from "./state-machine";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
 import { curLayout, curView, viewContent } from "./views";
@@ -38,9 +39,10 @@ const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
  * drawioEdgeStyle("bind")       // → "endArrow=none;"（結び付け・n 項の接続の線は矢印の無い実線）
  * drawioEdgeStyle("annotate")   // → "dashed=1;endArrow=none;"（メモから要素への線は矢印の無い破線）
  * drawioEdgeStyle("succession") // → "endArrow=open;"（順序は実線と開いた矢印、8.2.3.17）
+ * drawioEdgeStyle("transition") // → "endArrow=open;"（遷移も実線と開いた矢印、8.2.3.18）
  */
 export function drawioEdgeStyle(kind: string): string {
-  if (kind === "succession") return "endArrow=open;";
+  if (kind === "succession" || kind === "transition") return "endArrow=open;";
   if (kind === "comp") return "startArrow=diamondThin;startFill=1;endArrow=none;";
   if (kind === "bind" || kind === "connect") return "endArrow=none;";
   if (kind === "annotate") return "dashed=1;endArrow=none;";
@@ -75,8 +77,27 @@ export function drawioFlowCell(n: ModelNode): { style: string; value: string } {
 }
 
 /**
- * 現在のビューを draw.io の XML にする（F-EXP-2）。要素は配置の座標の箱（アクションの流れの図の要素は記号の図形）に、ポートは小さな箱に、
- * 線は経路の出口・入口を指定した直角の線にする。シーケンス図はライフラインとメッセージにする。
+ * 状態遷移の図の要素（8.2.3.18）を、draw.io の図形の形と文字にする。開始は塗った丸、終了は draw.io の終了の記号、
+ * 状態は角の丸い四角に名前を太字で書き、entry・do・exit の振る舞いを線の下に書く（中に状態を描く状態は、文字を上に寄せる）。
+ *
+ * @param n 状態遷移の図の要素
+ * @returns draw.io の style と、図形に書く文字（HTML）
+ * @example
+ * drawioStateCell(start)                          // → { style: "ellipse;html=1;fillColor=#1D2733;strokeColor=#1D2733;", value: "" }
+ * drawioStateCell(state on { entry action init; }) // → { style: "rounded=1;arcSize=20;html=1;whiteSpace=wrap;verticalAlign=top;…", value: "<b>on</b><hr>…entry / init…" }
+ */
+export function drawioStateCell(n: ModelNode): { style: string; value: string } {
+  const ink = LC("ink"), c = LC("k-beh"), bg = LC("k-beh-bg");
+  if (isPseudoState(n) && n.kind === "start") return { style: `ellipse;html=1;fillColor=${ink};strokeColor=${ink};`, value: "" };
+  if (isPseudoState(n)) return { style: `ellipse;html=1;shape=endState;fillColor=${ink};strokeColor=${ink};`, value: "" };
+  const lines = linesOf(n).map((x) => esc(x.t));
+  const value = `<b>${esc(stateTitle(n))}</b>` + (lines.length ? `<hr><div style="text-align:left;font-size:10px">${lines.join("<br>")}</div>` : "");
+  return { style: `rounded=1;arcSize=20;html=1;whiteSpace=wrap;verticalAlign=top;fillColor=${bg};strokeColor=${c};`, value };
+}
+
+/**
+ * 現在のビューを draw.io の XML にする（F-EXP-2）。要素は配置の座標の箱（アクションの流れの図・状態遷移の図の要素は記号の図形）に、
+ * ポートは小さな箱に、線は経路の出口・入口を指定した直角の線にする。並行の状態の領域は、破線で区切る。シーケンス図はライフラインとメッセージにする。
  *
  * @returns draw.io（app.diagrams.net）で読み込める mxfile の XML
  * @example
@@ -112,9 +133,11 @@ export function drawioXml(): string {
   }
   const rects = boxesOf(nodes, L.pos);
   const rect = (n: ModelNode): Box => rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
+  let frameRect: Box | undefined;
   if (cc.frame && nodes.length) {
     const x0 = Math.min(...nodes.map((n) => rect(n).x)) - 60, y0 = Math.min(...nodes.map((n) => rect(n).y)) - 80;
     const x1 = Math.max(...nodes.map((n) => rect(n).x + rect(n).w)) + 60, y1 = Math.max(...nodes.map((n) => rect(n).y + rect(n).h)) + 50;
+    frameRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     cells += `<mxCell id="n${id++}" value="${q(`«${cc.frame.kind}»<br><b>${esc(cc.frame.title)}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;align=left;spacingLeft=10;rounded=0;fillColor=#F3F7FB;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" as="geometry"/></mxCell>`;
   }
   for (const n of nodes) {
@@ -132,6 +155,14 @@ export function drawioXml(): string {
       const nid = "n" + id++;
       map.set(n.key, nid);
       const cell = drawioFlowCell(n);
+      cells += `<mxCell id="${nid}" value="${q(cell.value)}" style="${cell.style}" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+      continue;
+    }
+    if (n.state) {
+      // 状態遷移の図の要素（8.2.3.18）は、記号ごとの図形
+      const nid = "n" + id++;
+      map.set(n.key, nid);
+      const cell = drawioStateCell(n);
       cells += `<mxCell id="${nid}" value="${q(cell.value)}" style="${cell.style}" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
       continue;
     }
@@ -160,6 +191,13 @@ export function drawioXml(): string {
       map.set(n.key + "|port:" + pp.port.name, pid);
       cells += `<mxCell id="${pid}" value="${q(pp.port.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=${c};fontSize=9;${lp}" vertex="1" parent="${nid}"><mxGeometry x="${pq.x - 6}" y="${pq.y - 6}" width="12" height="12" as="geometry"/></mxCell>`;
     }
+  }
+  // 並行の状態の領域（8.2.3.18）を、破線で区切る（状態定義そのものが並行なら、対象の枠の中を区切る）
+  for (const k of cc.regions ?? []) {
+    const outer = k ? rects.get(k) : frameRect;
+    if (!outer) continue;
+    for (const sep of regionSeparators(outer, nodes.filter((n) => (n.container ?? "") === k).map(rect)))
+      cells += `<mxCell id="e${id++}" value="" style="endArrow=none;dashed=1;html=1;strokeColor=${LC("k-beh")};" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="${sep.x1}" y="${sep.y}" as="sourcePoint"/><mxPoint x="${sep.x2}" y="${sep.y}" as="targetPoint"/></mxGeometry></mxCell>`;
   }
   const box = new Map<string, NodeBox>(nodes.map((n) => [n.key, { ...rect(n), n, pins: n.junction || n.note ? [] : pinsOf(n, L, S.view) }]));
   const routes = computeRoutes(box, edges, L, "ortho");

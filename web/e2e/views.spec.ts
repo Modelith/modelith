@@ -506,8 +506,9 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
   });
 
   test("F-VIEW-7: 2 つのアクションの間に線を引くと、順序（first … then）をテキストに書く", async ({ page }) => {
-    // Arrange
+    // Arrange（開いたときは文字が読める大きさで上から見せるので、「全体」で図全体を表示してから線を引く）
     await openFlow(page);
+    await page.locator("#zFit").click();
     await page.locator('#gNodes [data-key="a:warmCup"]').click();
     await page.locator('#insp [data-act="connect"]').click();
     // Act
@@ -536,6 +537,140 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
     // Assert
     await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"afv:Boil": \{[\s\S]*"a:fill": \[/);
     expect(await readFile(page, "a.sysml")).toBe(FLOW);
+  });
+});
+
+test.describe("状態遷移図（StateTransitionView、F-VIEW-7、8.2.3.18）", () => {
+  const LAMP = `package Lamp {
+    state def LampStates {
+        entry; then off;
+        state off;
+        accept PowerOn then on;
+        state on parallel {
+            state light {
+                entry; then dim;
+                state dim { entry action fadeIn; }
+                accept Brighter then bright;
+                state bright { do glow; exit action fadeOut; }
+                accept Dimmer if level > 1 then dim;
+            }
+            state fan;
+        }
+        transition switchOff first on accept PowerOff do beep then off;
+        transition first off accept Unplug then done;
+    }
+    view lampStates : StateTransitionView { expose Lamp::LampStates; }
+}
+`;
+  /** モデルを書き、＋メニューの「保存された図」から状態遷移図を開く。 */
+  async function openStates(page: import("@playwright/test").Page): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(LAMP);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="lampStates"]').click();
+    await page.locator("#zFit").click();
+  }
+
+  test("F-VIEW-7: StateTransitionView は、expose した state def を状態と遷移の図として 8.2.3.18 の記号で描き、「まだ扱えない」と知らせない", async ({ page }) => {
+    // Arrange・Act
+    await openStates(page);
+    // Assert（開始は塗った丸、終了は丸の中の塗った丸、状態は角の丸い四角、入れ子の状態は外の状態の中、並行の領域は破線で区切る）
+    await expect
+      .poll(async () => (await nodeKeys(page)).sort())
+      .toEqual(["s:#done", "s:#start", "s:off", "s:on", "s:on.fan", "s:on.light", "s:on.light#start", "s:on.light.bright", "s:on.light.dim"]);
+    await expect(page.locator('[data-key="s:#start"] circle.body')).toBeVisible();
+    await expect(page.locator('[data-key="s:#done"] circle')).toHaveCount(2);
+    await expect(page.locator('[data-key="s:off"] rect.body')).toHaveAttribute("rx", "14");
+    await expect(page.locator('[data-key="s:on.light.bright"]')).toContainText("exit / fadeOut");
+    await expect(page.locator("#canvas line.region")).toHaveCount(1);
+    const labelled = page.locator('[data-edge="transition|s:on|s:off|PowerOff / beep#1"]');
+    await expect(labelled.locator("path.line")).toHaveAttribute("marker-end", "url(#mOpen)");
+    await expect(labelled.locator("text")).toHaveText("PowerOff / beep");
+    await expect(page.locator('[data-edge="transition|s:on.light.bright|s:on.light.dim|Dimmer [level > 1]#1"] text')).toHaveText("Dimmer [level > 1]");
+    await expect(page.locator("#subbar")).toContainText("保存された図「lampStates」：状態遷移図（LampStates）");
+    await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
+  });
+
+  test("F-VIEW-1: state def をツリーから開くと状態遷移図のタブになり、＋メニューの組み込みのビューは 8 つのまま", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#sideModel").click();
+    await page.locator("#treeSearch").fill("KettleStates");
+    // Act
+    const row = page.locator('#tree .ti:has([title="状態遷移図で開く"])').first();
+    await row.hover();
+    await row.locator('[title="状態遷移図で開く"]').click();
+    // Assert
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/stm KettleStates/);
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["s:#start", "s:fault", "s:heating", "s:idle", "s:keepWarm"]);
+    await page.locator(".tabadd summary").click();
+    await expect(page.locator(".tabadd [data-open]")).toHaveCount(8);
+    await expect(page.locator('.tabadd [data-open="stm"]')).toHaveCount(0);
+  });
+
+  test("F-VIEW-7: 遷移を図から削除すると、テキストからその文だけが消える", async ({ page }) => {
+    // Arrange
+    await openStates(page);
+    // 線の曲がり角の内側（矩形の中央）は線の上ではないので、ラベルを押して選ぶ
+    await page.locator('[data-edge="transition|s:off|s:on|PowerOn#1"] text').click();
+    // Act（2 回押しで削除）
+    await page.locator('#insp [data-act="delEdge"]').click();
+    await page.locator('#insp [data-act="delEdge"]').click();
+    // Assert
+    await expect(page.locator("#ed")).not.toHaveValue(/accept PowerOn then on;/);
+    await expect(page.locator("#ed")).toHaveValue(/state off;\n        state on parallel \{/);
+    await expect(page.locator('[data-edge^="transition|s:off|s:on|"]')).toHaveCount(0);
+  });
+
+  test("F-VIEW-7: 2 つの状態の間に線を引くと、遷移（transition first … then）をテキストに書く", async ({ page }) => {
+    // Arrange
+    await openStates(page);
+    await page.locator('#gNodes [data-key="s:on.light.dim"]').click();
+    await expect(page.locator("#insp")).toContainText("entry / fadeIn");
+    await page.locator('#insp [data-act="connect"]').click();
+    // Act
+    await page.locator('#gNodes [data-key="s:on.light.bright"]').click();
+    await page.locator('#insp [data-rel="transition"]').click();
+    // Assert
+    await expect(page.locator("#ed")).toHaveValue(/accept Dimmer if level > 1 then dim;\n                transition first dim then bright;\n            \}/);
+    await expect(page.locator('[data-edge="transition|s:on.light.dim|s:on.light.bright|#1"]')).toHaveCount(1);
+  });
+
+  test("F-VIEW-3: 状態遷移図で状態を動かして保存すると、状態定義ごとの配置として配置ファイルに書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await putFiles(page, { "a.sysml": LAMP });
+    await page.locator('[data-cmd="openFolder"]').click();
+    await page.locator('#explorer [data-file][title="a.sysml"]').click();
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="lampStates"]').click();
+    const b = (await page.locator('#gNodes [data-key="s:off"]').boundingBox())!;
+    // Act
+    await page.mouse.move(b.x + 20, b.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(b.x + 20, b.y + 120, { steps: 6 });
+    await page.mouse.up();
+    await page.keyboard.press("Control+s");
+    // Assert
+    await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"stm:LampStates": \{[\s\S]*"s:off": \[/);
+    expect(await readFile(page, "a.sysml")).toBe(LAMP);
+  });
+
+  test("F-VIEW-8: 「振る舞い」の図を保存すると、並べた要素のまま一般ビュー（GeneralView）として書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#ed").fill(LAMP);
+    await page.waitForTimeout(400);
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="behavior"]').click();
+    // Act
+    await page.locator("#btnSaveView").click();
+    await page.locator("#dialogInput").fill("behaviour");
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("    view behaviour : GeneralView {\n        expose Lamp::LampStates;\n    }\n");
+    await expect.poll(() => nodeKeys(page)).toContain("LampStates");
   });
 });
 

@@ -1219,7 +1219,7 @@ fn body_of_a_control_node_belongs_to_the_node() {
 }
 
 #[test]
-fn accept_shorthand_transition_is_still_skipped() {
+fn accept_shorthand_transition_is_not_an_action_node() {
     // Arrange（境界値：状態の中の省略形の遷移 accept E then b; は、アクションの節にしない）
     let text = "state def S { state a; accept Go then a; }";
     // Act
@@ -1432,4 +1432,179 @@ fn succession_flows_are_relations_and_named_ones_are_entries() {
     assert_eq!(entry(&r, "f").kind, "succession flow");
     assert_eq!(entry(&r, "f").ty, "FD");
     assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn transition_keeps_its_source_trigger_guard_effect_and_target() {
+    // Arrange（TransitionUsage、8.2.2.18：元・先は端、受けるもの・via はトリガの中）
+    let text = "state def S { state a; state b; transition t first a accept e : Go via p if x > 0 do send S() to q then b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let kinds: Vec<&RelKind> = r.rels.iter().map(|x| &x.kind).collect();
+    assert_eq!(
+        kinds,
+        [&RelKind::Transition {
+            from: "a".to_owned(),
+            ev: "e : Go".to_owned(),
+            to: "b".to_owned(),
+            name: "t".to_owned(),
+            via: "p".to_owned(),
+            guard: "x > 0".to_owned(),
+            effect: "send S() to q".to_owned(),
+            from_entry: None,
+        }]
+    );
+}
+
+/// 遷移の関係の（元, 受けるもの, 先, 元の宣言の名前）を、書いた順に並べる。
+fn transitions(r: &ParseResult) -> Vec<(String, String, String, Option<String>)> {
+    r.rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Transition {
+                from,
+                ev,
+                to,
+                from_entry,
+                ..
+            } => Some((
+                from.clone(),
+                ev.clone(),
+                to.clone(),
+                from_entry.map(|i| r.entries[i].name.clone()),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn shorthand_transitions_start_from_the_preceding_state() {
+    // Arrange（TargetTransitionUsage、8.2.2.18：accept … then・if … then・then・first の無い transition）
+    let text = "state def S { state a; accept Go then b; state b; if x then c; then a; state c; transition accept Stop then a; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a =
+        |f: &str, e: &str, t: &str| (f.to_owned(), e.to_owned(), t.to_owned(), Some(f.to_owned()));
+    assert_eq!(
+        transitions(&r),
+        [
+            a("a", "Go", "b"),
+            a("b", "", "c"),
+            a("b", "", "a"),
+            a("c", "Stop", "a")
+        ]
+    );
+    assert!(
+        r.rels
+            .iter()
+            .all(|x| !matches!(x.kind, RelKind::Succession { .. }))
+    );
+}
+
+#[test]
+fn then_after_entry_is_the_entry_transition() {
+    // Arrange（EntryTransitionMember、8.2.2.18：entry の直後の then・if … then）
+    let text = "state def S { entry; then idle; state idle; state on { entry action init; if ready then low; state low; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let kinds: Vec<&RelKind> = r.rels.iter().map(|x| &x.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            &RelKind::EntryTransition {
+                to: "idle".to_owned(),
+                guard: String::new(),
+            },
+            &RelKind::EntryTransition {
+                to: "low".to_owned(),
+                guard: "ready".to_owned(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn else_and_first_then_inside_a_state_stay_successions() {
+    // Arrange（境界値：状態の本体の else b; と first a then b; は遷移にしない）
+    let text = "state def S { state a; state b; first a then b; else b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(transitions(&r).is_empty());
+    assert_eq!(
+        r.rels
+            .iter()
+            .filter(|x| matches!(x.kind, RelKind::Succession { .. }))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn transition_without_target_is_not_recorded() {
+    // Arrange（異常系：then の行き先が無い）
+    let text = "state def S { state a; transition first a; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.rels.is_empty());
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn state_records_its_entry_do_and_exit_actions() {
+    // Arrange（StateSubactionMembership、8.2.2.18：参照・action・send。振る舞いを書かない entry; は記録しない）
+    let text =
+        "state def S { entry; state on { entry action init; do heat; exit send Off() to h; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let actions = |name: &str| -> Vec<(&str, String)> {
+        entry(&r, name)
+            .state_actions
+            .iter()
+            .map(|a| (a.kind, a.text.clone()))
+            .collect()
+    };
+    assert!(actions("S").is_empty());
+    assert_eq!(
+        actions("on"),
+        [
+            ("entry", "action init".to_owned()),
+            ("do", "heat".to_owned()),
+            ("exit", "send Off() to h".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn entry_outside_a_state_is_not_a_state_action() {
+    // Arrange（境界値：状態の本体の外の entry は、これまでどおり読み飛ばす）
+    let text = "action def A { entry a; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.state_actions.is_empty()));
+}
+
+#[test]
+fn parallel_states_are_marked() {
+    // Arrange（StateDefBody の isParallel、8.2.2.18：定義と使用）
+    let text = "state def S parallel { state a parallel { state x; } state b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let parallel: Vec<(&str, bool)> = r
+        .entries
+        .iter()
+        .map(|e| (e.name.as_str(), e.parallel))
+        .collect();
+    assert_eq!(
+        parallel,
+        [("S", true), ("a", true), ("x", false), ("b", false)]
+    );
 }

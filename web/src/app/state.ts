@@ -92,6 +92,8 @@ export interface AppState {
   seqCtx: string | null;
   /** アクションの流れの図の対象（アクション定義のキー）。 */
   flowCtx: string | null;
+  /** 状態遷移の図の対象（状態定義のキー）。 */
+  stateCtx: string | null;
   spaceDown: boolean;
   ui: UiPrefs;
   tabs: Tab[];
@@ -149,6 +151,7 @@ export const S: AppState = {
   ibdCtx: null,
   seqCtx: null,
   flowCtx: null,
+  stateCtx: null,
   spaceDown: false,
   ui: { tree: true, text: true, treeW: 250, textW: 440, mini: true },
   tabs: [],

@@ -93,9 +93,9 @@ describe("v2ViewNote・viewHint（SysML v2 の標準ビューの補足）", () =
     expect(hint).toBe("MyView（SysML v2 では MyView）");
   });
 
-  it("8 つの自動の図のツールチップは、当たる標準ビューを添える", () => {
+  it("＋メニューに出す 8 つの自動の図のツールチップは、当たる標準ビューを添える", () => {
     // Arrange
-    const views = VIEWS;
+    const views = VIEWS.filter((v) => !v.hidden);
     // Act
     const hints = views.map((v) => viewHint(v.label, v.std));
     // Assert
@@ -109,6 +109,15 @@ describe("v2ViewNote・viewHint（SysML v2 の標準ビューの補足）", () =
       "アクティビティ図（SysML v2 では ActionFlowView）",
       "すべて（SysML v2 では GeneralView で描く図）",
     ]);
+  });
+
+  it("一覧に出さない状態遷移図も、StateTransitionView を添える（ツリーから開いたタブのツールチップ）", () => {
+    // Arrange
+    const stm = VIEWS.find((v) => v.id === "stm");
+    // Act
+    const hint = stm ? viewHint(stm.label, stm.std) : null;
+    // Assert
+    expect(hint).toBe("状態遷移図（SysML v2 では StateTransitionView）");
   });
 });
 

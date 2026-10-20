@@ -51,6 +51,9 @@
 | 分岐（並行）・合流（並行）・分岐（条件）・合流（条件） | fork・join・decide・merge |
 | 送信・受信・代入・打ち切り | send・accept・assign・terminate |
 | 条件付きの実行・繰り返し・要素ごとの繰り返し | if・while（loop）・for |
+| 状態定義・状態・並行の状態 | state def・state（exhibit state）・parallel |
+| 遷移・遷移のきっかけ・条件・遷移で行うこと | transition・accept（トリガ）・if（ガード）・do（効果） |
+| 入るとき・その間・出るときの振る舞い | entry・do・exit |
 | メモ・メモを付ける相手 | comment・about（Comment） |
 | 別の言語での表し方 | rep・language（TextualRepresentation） |
 
