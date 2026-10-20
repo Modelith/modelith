@@ -752,6 +752,28 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect([ad?.kind, a?.kind, a?.type, f?.pe?.name]).toEqual(["allocation def", "allocation", "AD", "AD"]);
         expect(build(parse(text)).problems.filter((p) => p.kind === "unsupported")).toEqual([]);
       });
+
+      it("allocate x to y は、図に描く要素の間の «allocate» の線になる（8.2.3.15 の allocate-relationship）", () => {
+        // Arrange
+        const text = "package P { part def Logical; part def Physical; allocation def AD; allocate Logical to Physical; allocation a : AD allocate Logical to Physical; }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.edges.map((e) => `${e.kind}|${e.from}|${e.to}|${e.label}`)).toEqual([
+          "allocate|Logical|Physical|«allocate»",
+          "allocate|Logical|Physical|«allocate» a",
+        ]);
+        expect(M.problems).toEqual([]);
+      });
+
+      it("見つからない相手は、ほかの関係と同じ言い方で知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def Logical; allocate Logical to Nope; }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["「割り当て」関係の相手「Nope」が見つかりません（allocate）"]);
+      });
     });
 
     describe("フロー（FlowDefinition・FlowUsage、8.2.2.16）", () => {

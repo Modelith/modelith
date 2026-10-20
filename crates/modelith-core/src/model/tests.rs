@@ -894,3 +894,45 @@ fn dependency_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
     );
     assert!(m.edges.is_empty(), "{:?}", m.edges);
 }
+
+#[test]
+fn allocation_draws_a_line_between_drawn_elements() {
+    // Arrange（AllocationUsage 8.2.2.15・8.2.3.15 の allocate-relationship：名前の無い割り当てと名前付きの割り当て）
+    let text = "package P { part def L; part def Ph; allocation def AD; \
+                allocate L to Ph; allocation a : AD allocate L to Ph { } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let lines: Vec<String> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "allocate")
+        .map(|e| format!("{}|{}|{}", e.from, e.to, e.label))
+        .collect();
+    assert_eq!(lines, ["L|Ph|«allocate»", "L|Ph|«allocate» a"]);
+    let a = p.entries.iter().find(|e| e.name == "a").expect("a");
+    let named = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "allocate")
+        .nth(1)
+        .expect("線");
+    assert_eq!((named.src.start, named.src.end), (a.start, a.end));
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn allocation_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
+    // Arrange（異常系：見つからない相手。部品の中の特性への割り当ては、相手があるので知らせない）
+    let text = "package P { part def L { part f; } part def Ph; part l : L; \
+                allocate l.f to Ph; allocate L to Nope; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        ["「割り当て」関係の相手「Nope」が見つかりません（allocate）"]
+    );
+    assert!(m.edges.iter().all(|e| e.kind != "allocate"));
+}
