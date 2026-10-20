@@ -3,7 +3,7 @@
 Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示す。
 対象は、アプリが使う Rust のパーサ（`crates/modelith-core/src/syntax`・`project`、段階 A。ADR-0015）とモデル構築（`crates/modelith-core/src/model`。ADR-0016）と図（`web/src/app/`）。暫定の TS コア（`web/src/core/`）は、Rust のコアと同じテストで比べるために残している。
 
-- 照合日: 2026-10-20（アクションの流れの行を更新した。全体は 2026-10-19 に Rust のコアで照合し直した。その前は 2026-10-13、暫定の TS コアで照合）
+- 照合日: 2026-10-20（アクションの流れ・状態遷移・シーケンス図・ビューの式・特徴量の連鎖の行を更新した。全体は 2026-10-19 に Rust のコアで照合し直した。その前は 2026-10-13、暫定の TS コアで照合）
 - 照合したコミット: `516deae`（dev）
 - 解析器や図を変えたら、この表も更新する。要求は [requirements.sysml](requirements.sysml) にだけ書き（ADR-0011）、この表は「仕様のどこまでに対応しているか」の記録とする。
 
@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 79・△ 12・× 5。⚠ は 0 件。
+件数：テキスト記法（2 章）96 項目のうち ○ 82・△ 10・× 4。⚠ は 0 件。
+
+alpha.9 の 3 回目の更新で、ビューの `filter` の論理式（`and`・`or`・`xor`・`not`・括弧と `istype`・`hastype`）、`render` の合成形（`render rendering r :> asTreeDiagram { … }`）と標準の表し方を特殊化した `rendering` の参照、3 段以上の特徴量の連鎖（`a.b.c.p`）を読み、シーケンス図（SequenceView）にライフラインの上のイベント（入れ子の部品のイベントを含む）・イベントの間の順序・順序に合わせた段を描くようにした。`then event occurrence e;` も読む（Rust のコアだけ。ADR-0015）。それまでは ○ 79・△ 12・× 5 だった。
 
 alpha.9 の 2 回目の更新で、遷移の名前・トリガの `via`・ガード・効果、状態の中の省略形の遷移（`accept E then b`・`if g then b`・`then b`）、最初の遷移（`entry; then s;`）、`entry`・`do`・`exit`・`parallel` を読み、状態定義の状態と遷移を状態遷移図（StateTransitionView）に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 75・△ 14・× 7 だった。
 
@@ -129,7 +131,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `enum` の使用 `enum e : E;` | ○ | | 種類 `enum` の要素になる。`enum def` の中の `enum a;` はこれまでどおり列挙値 |
 | `occurrence def` / `occurrence` | ○ | | シーケンス図の文脈 |
 | `individual` | ○ | | 修飾として記録し（isIndividual）、図の見出しを «individual part def» のように書く。種類のキーワードの無い `individual def E;`・`individual e : E;`（IndividualDefinition・IndividualUsage）は `occurrence def`・`occurrence` として読む（以前は、定義を「まだ扱えない」と知らせ、使用を型付きのパラメータと取り違えていた） |
-| `timeslice` / `snapshot` / `event occurrence` | ○ | | 書いた語を種類にした使用の要素になる（`event e;` の参照の形も）。`timeslice part p` のように種類のキーワードが続けば、その種類の要素に `timeslice` を修飾として記録する |
+| `timeslice` / `snapshot` / `event occurrence` | ○ | | 書いた語を種類にした使用の要素になる（`event e;` の参照の形も）。`then event occurrence e;`・`then event a.e;` は、直前のイベントからの継起の後のイベントとして読む（SourceSuccessionMember、8.2.2.9.3。以前は黙って捨てていた）。シーケンス図では、ライフラインの上の白抜きの丸と `.e` の札で描く（8.2.3.9）。`timeslice part p` のように種類のキーワードが続けば、その種類の要素に `timeslice` を修飾として記録する |
 | `item def` / `item` | ○ | | |
 | `part def` / `part` | ○ | | |
 | `port def` / `port`、共役 `~` | ○ | | 向きを推定する |
@@ -142,13 +144,13 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 単独の `connect a to b;` | ○ | | 名前の無い接続（ConnectionUsage、8.2.2.13.1）として読み、`connection connect a to b;` と同じく内部ブロック図の線にする |
 | n 項の `connect (a, b, c)` | ○ | | 端をすべて残す（NaryConnectorPart、8.2.2.13.1）。内部ブロック図では、塗った点と、点から端ごとの矢印の無い線で描く（8.2.3.13 の n-ary-connection-dot・n-ary-segment）。一般ビューには線にしない。見つからない端は「見つかりません」と示す |
 | `bind` / `binding` | ○ | | 名前の無いもの・名前付きのものを結び付けの使用として読み（BindingConnectorAsUsage、8.2.2.13.2）、親の「式」に入れない。内部ブロック図に、矢印の無い実線と「=」で描く（8.2.3.13 の binding-connection）。見つからない相手は「見つかりません」と示す |
-| `succession` / `first … then` | ○ | | 継起（SuccessionAsUsage、8.2.2.14）として記録する（名前付きの `succession s first a then b;` の名前も）。アクション定義の中の継起は、アクションの流れ図に実線と開いた矢印で描く（8.2.3.17）。見つからない相手は「見つかりません」と示す。状態定義の中の継起は記録するが、まだ線にしない（状態遷移は 2.7 の行） |
+| `succession` / `first … then` | ○ | | 継起（SuccessionAsUsage、8.2.2.14）として記録する（名前付きの `succession s first a then b;` の名前も）。アクション定義の中の継起は、アクションの流れ図に実線と開いた矢印で描く（8.2.3.17）。シナリオ（`occurrence def`）の中の継起は、シーケンス図の段の順を決め、別のライフラインのイベントの間なら破線と開いた矢印で描く（8.2.3.9 の sq-succession）。循環する順序は知らせる。見つからない相手は「見つかりません」と示す。状態定義の中の継起は記録するが、まだ線にしない（状態遷移は 2.7 の行） |
 | `interface def` / `interface … connect` | ○ | | |
 | `allocation def` / `allocation` / `allocate` | ○ | | 定義と使用（`allocation` の無い `allocate x to y;` は名前の無い使用）として本体ごと読み（8.2.2.15）、図に描く要素の間に «allocate» の破線と開いた矢印を描く（8.2.3.15 の allocate-relationship）。見つからない相手は「見つかりません」と示す。n 項の `allocate (a, b, c)` は線にしない |
 | `flow of F from a.p to b.p` | ○ | | |
 | `flow def`、名前付きのフロー | ○ | | `flow def` は定義、`flow f : FD from a.p to b.q;`・`flow f of I from … to …;` は使用として本体ごと読む（8.2.2.16）。名前付きのフローは名前の無いフローと同じ線にし、ラベルに `f : FD`・`f of I` を書く（8.2.3.16 の flow-label） |
 | `succession flow` | ○ | | 順序付きの流れ（SuccessionFlowUsage、8.2.2.16）として記録し、名前付きのものは使用にする。アクションの流れ図に、破線と開いた矢印、アイテム（名前付きは名前と型）のラベルで描く。一般ビュー・内部ブロック図には描かない |
-| `message` | ○ | | シーケンス図 |
+| `message` | ○ | | シーケンス図。端の `a.ev`・`a.sub.ev` は、ライフラインの上のイベントにつなぐ。見つからない端は「見つかりません」と示す |
 
 ### 2.7 アクション・状態（8.2.2.17〜18）
 
@@ -195,9 +197,9 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `view def` | ViewDefinition | ○ | | 標準ビュー定義の特殊化（`:>`・`specializes`）をたどる。中の `filter`・`render` は、その型の `view` に引き継ぐ。図のノードにはしない |
 | `view` | ViewUsage | ○ | | 名前のある `view` を、＋メニューから図として開ける（F-VIEW-7）。型の無い `view` は GeneralView として描く |
 | `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 0.2.0 | 修飾名は view から外へ最初の段を探し、中へたどる。同じファイルの `alias` は解決する。`import` を通した名前は解決しない |
-| ビュー内の `filter` | ElementFilterMember | △ | alpha.9 | `@メタクラス`（`@SysML::PartDefinition` など）と `@メタデータ` だけ。`and`・`or` などの式は、知らせたうえで使わない |
-| `render`（参照形） | ViewRenderingMember | △ | 0.3.0 以降 | `asTreeDiagram`・`asInterconnectionDiagram` は型より優先する。`asTextualNotation`・`asElementTable` は知らせて図で描く |
-| `render`（合成形） | ViewRenderingMember | × | alpha.9 | 「まだ扱えない」と知らせる |
+| ビュー内の `filter` | ElementFilterMember | ○ | | `@メタクラス`（`@SysML::PartDefinition` など）・`@メタデータ`・`istype X`・`hastype X` を、`and`・`&`・`or`・`|`・`xor`・`not` と括弧で組み合わせた式（KerML 8.2.5.8.1 の優先順位）。expose の `[ ]` も同じ。メタデータの値の比較（`level > 1` など）を含む式は、知らせたうえで使わない（0.3.0 以降、式の評価と一緒に） |
+| `render`（参照形） | ViewRenderingMember | △ | 0.3.0 以降 | `asTreeDiagram`・`asInterconnectionDiagram` と、それを特殊化・再定義・参照した `rendering`（`rendering myIbd :> asInterconnectionDiagram;`）は型より優先する。特殊化や本体が続く形（`render asTreeDiagram :> base { … }`）も読む。`asTextualNotation`・`asElementTable` は知らせて図で描く |
+| `render`（合成形） | ViewRenderingUsage | ○ | | `render rendering r :> asTreeDiagram { … }`・`render rendering r redefines Views::asInterconnectionDiagram;` を view の中の `rendering` の使用として本体ごと読み、特殊化・再定義・参照の相手をたどって描き方を決める（以前は相手のある形を黙って捨て、ほかは「まだ扱えない」と知らせていた）。標準の表し方に行き着かない形（`render rendering r : R;`）は知らせて図で描く |
 | `viewpoint def` / `viewpoint` | ViewpointDefinition / Usage | ○ | | ツリーに出る要素になる（`view def` と同じく図のノードにはしない。`view` とは取り違えない）。中の `frame concern c : C;` は関係として記録するが、視点を図に描かないので線は引かない |
 | `rendering def` / `rendering` | RenderingDefinition / Usage | ○ | | ツリーに出る要素になる（図のノードにはしない） |
 
@@ -216,7 +218,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | 式・単位 `1500 [kg]` | △ | 0.3.0 以降 | 文字列として保持するだけ |
-| 特徴量の連鎖 `a.b.v` | △ | alpha.9 | 先頭の段で要素を決め、2 段目をポートとして探す。3 段目以降は捨てる |
+| 特徴量の連鎖 `a.b.v` | ○ | | 各段を、前の段の本体・型の定義（とその一般の定義）・部分集合や再定義の相手の中から探す（FeatureChain、8.2.2.6）。接続・フロー・結び付け・メッセージの端の 3 段目から先（`a.b.c.p`）も確かめ、見つからない段は「「a.b.x」の「x」が見つかりません」と示す。型の無い要素とファイルの外の型の中は確かめない。内部ブロック図では、どの深さの部品の中の部品にもつなぐ |
 | KerML のキーワード（`classifier`・`class`・`struct`・`feature`・`datatype`・`function` など） | × | 0.3.0 以降 | すべて黙って捨てる。`.kerml` ファイルは開けるが、中身は読めない |
 
 ## 3. 図・ビュー（言語仕様 7.26・8.2.3・9.2.20）
@@ -231,10 +233,10 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 標準ビュー定義 | 短い名前 | 画面の名前 | `view` の描き方 | 対応 | 予定 |
 | --- | --- | --- | --- | --- | --- |
 | GeneralView | `gv` | 一般ビュー | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
-| InterconnectionView | `iv` | 内部ブロック図 | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 2 段まで（部品の本体に書いた部品と、線の端 `a.b.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く）。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。3 段目より深い入れ子、対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
+| InterconnectionView | `iv` | 内部ブロック図 | 内部ブロック図（expose した part def、または part の型が対象） | △ 部品の本体に書いた部品（どの深さでも）と、線の端 `a.b.p`・`a.b.c.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
 | ActionFlowView | `afv` | アクティビティ図 | アクティビティ図（expose した action def が対象。自動の図「アクティビティ図」とツリーの「アクティビティ図で開く」でも開ける） | △ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータとその間のフロー、入れ子の本体の流れ、区画（swim lane）は無い | 0.3.0 以降 |
 | StateTransitionView | `stv` | 状態遷移図 | 状態遷移図（expose した state def が対象。ツリーの「状態遷移図で開く」でも開ける。組み込みのビューの一覧には出さない） | △ 状態・入れ子の状態・並行の領域（破線で区切る）・entry／do／exit の区画・開始と終了の記号と、遷移を `トリガ [ガード] / 効果` のラベルの線で、8.2.3.18 の記法で描く。本体ごとに、遷移の向きに左から並べる。図から遷移を消す・引く（`transition first a then b;`）。expose した state def が複数あっても最初の 1 つだけを描き、状態の使用（`exhibit state s { … }`）の中の遷移、効果の本体の中身、線の交差を避ける配置は無い | 0.3.0 以降 |
-| SequenceView | `sv` | シーケンス図 | シーケンス図（expose した occurrence def が対象） | △ メッセージだけ。イベント・継起・入れ子は無い | alpha.9 |
+| SequenceView | `sv` | シーケンス図 | シーケンス図（expose した occurrence def が対象） | △ ライフライン・メッセージ・ライフラインの上のイベント（白抜きの丸と `.ev` の札。入れ子の部品のイベントは `.sub.ev`、ライフラインの型の中のイベントも）・別のライフラインのイベントの間の順序（破線と開いた矢印）を、8.2.3.9 の記法で描く。時間は上から下へ進み、メッセージとメッセージの端でないイベントが 1 段ずつ使い、段は順序（`first … then`・`then event occurrence`）を守り、ほかは書いた順にする。図から順序の線を消す。複合フラグメント（`alt`・`loop` に当たるもの）、入れ子のシーケンス図（view の参照）、ライフラインの頭のポート（sq-port）、入れ子の部品ごとのライフライン、図からイベントや順序を足す操作は無い | 0.3.0 以降 |
 | GeometryView | `gev` | ジオメトリビュー | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |
 | GridView | `grv` | グリッドビュー | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |
 | BrowserView | `bv` | ブラウザビュー | ノードと線の図で代わりに描き、知らせる（ツリーは別にある） | × | 0.3.0 以降 |
