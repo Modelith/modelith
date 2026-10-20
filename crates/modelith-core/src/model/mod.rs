@@ -103,6 +103,9 @@ const LIBRARY_TYPES: &[&str] = &[
     "Iso8601DateTime",
 ];
 
+/// メタクラスのライブラリのパッケージ（Systems Library の `SysML`・Kernel Semantic Library の `KerML`）。
+const METACLASS_PACKAGES: &[&str] = &["SysML", "KerML"];
+
 /// 量と単位のライブラリのパッケージ（Domain Libraries/Quantities and Units）。これを `import` したファイルと、
 /// これで修飾した名前（`ISQ::MassValue`）では、`…Value`・`…Kind` で終わる名前を標準ライブラリの型とみなす。
 const QUANTITY_PACKAGES: &[&str] = &[
@@ -155,7 +158,9 @@ fn is_quantity_path(path: &str) -> bool {
 
 /// 標準ライブラリの型か（未定義でも問題にしない。ライブラリは同梱していないので名前で判定する）。
 ///
-/// 最後の名前が `LIBRARY_TYPES` にあれば標準とみなす（`ScalarValues::Real` も）。`…Value`・`…Kind` で終わる名前は、
+/// 最後の名前が `LIBRARY_TYPES` にあれば標準とみなす（`ScalarValues::Real` も）。メタクラスのライブラリ
+/// （`SysML::PartDefinition`・`KerML::Feature` のように `SysML`・`KerML` で修飾した名前。メタデータの定義の
+/// `:>> annotatedElement : SysML::PartDefinition;` などに書く）も標準とみなす。`…Value`・`…Kind` で終わる名前は、
 /// ファイルが量と単位のライブラリ（ISQ・SI など）を `import` しているか、名前をそのパッケージで修飾しているときだけ標準とみなす。
 ///
 /// # 引数
@@ -175,12 +180,17 @@ fn is_quantity_path(path: &str) -> bool {
 /// is_lib("MassValue", true)        → true    // ISQ などを import している
 /// is_lib("MassValue", false)       → false   // import が無い
 /// is_lib("ISQ::MassValue", false)  → true    // 量のパッケージで修飾している
+/// is_lib("SysML::PartDefinition", false) → true   // メタクラス
 /// is_lib("MyTypoValue", false)     → false
 /// is_lib("", false)                → false   // 空の名前
 /// ```
 pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
     let name = path.rsplit("::").next().unwrap_or(path);
-    if LIBRARY_TYPES.contains(&name) {
+    if LIBRARY_TYPES.contains(&name)
+        || METACLASS_PACKAGES
+            .iter()
+            .any(|p| path.strip_prefix(p).is_some_and(|r| r.starts_with("::")))
+    {
         return true;
     }
     let qualified = path.contains("::");
@@ -854,58 +864,70 @@ impl<'a> Builder<'a> {
             };
             let pe = r.pe;
             match &r.kind {
+                // 型も名前も無い宣言する形（`verify requirement;`）は、新しい要求の使用そのものなので描かない
+                RelKind::Satisfy { req, .. } | RelKind::Verify { req } if req.is_empty() => {}
                 RelKind::Satisfy { req, by, negated } => {
-                    // `by` の無い `satisfy R;` は、持ち主（使用なら型の定義）が満たす（8.2.2.21）
-                    let a = if by.is_empty() {
-                        self.node_for(pe).or_else(|| self.owner_node(pe))
+                    // 相手は名前で探し、見つからないときだけ知らせる（図の要素でない相手、視点 viewpoint なども見つかればよい）
+                    let er = self.resolve(req, pe);
+                    let eb = (!by.is_empty()).then(|| self.resolve(by, pe));
+                    let missing = if er.is_none() {
+                        Some(req)
+                    } else if eb == Some(None) {
+                        Some(by)
                     } else {
-                        self.node_for(self.resolve(by, pe))
+                        None
                     };
-                    let b = self.node_for(self.resolve(req, pe));
-                    match (a, b) {
-                        // 否定の充足（not satisfy）は線にせず、トレースの抜けの検出にも数えない
-                        (_, Some(_)) if *negated => {}
-                        (Some(a), Some(b)) => {
-                            self.add_edge("satisfy", a, b, "«satisfy»".into(), src);
-                        }
-                        // 相手はあるが、満たす持ち主が図に無い（`by` の無い文）。相手が無いとは言わない
-                        (None, Some(_)) if by.is_empty() => {}
-                        _ => {
-                            let who = if b.is_none() { req } else { by };
-                            self.problem(
-                                r.start,
-                                format!("「満たす」関係の相手「{who}」が見つかりません（satisfy）"),
-                                None,
-                            );
-                        }
+                    if let Some(who) = missing {
+                        self.problem(
+                            r.start,
+                            format!("「満たす」関係の相手「{who}」が見つかりません（satisfy）"),
+                            None,
+                        );
+                        continue;
+                    }
+                    // 否定の充足（not satisfy）は線にせず、トレースの抜けの検出にも数えない
+                    if *negated {
+                        continue;
+                    }
+                    // `by` の無い `satisfy R;` は、持ち主（使用なら型の定義）が満たす（8.2.2.21）
+                    let a = match eb {
+                        Some(e) => self.node_for(e),
+                        None => self.node_for(pe).or_else(|| self.owner_node(pe)),
+                    };
+                    // 満たす側・満たされる側が図に無い（視点、型の無い使用の中など）ときは、線にしない
+                    if let (Some(a), Some(b)) = (a, self.node_for(er)) {
+                        self.add_edge("satisfy", a, b, "«satisfy»".into(), src);
                     }
                 }
                 RelKind::Verify { req } => {
-                    let a = self.owner_node(pe);
-                    let b = self.node_for(self.resolve(req, pe));
-                    match (a, b) {
-                        (Some(a), Some(b)) => {
-                            self.add_edge("verify", a, b, "«verify»".into(), src);
-                        }
-                        // 相手はあるが、線を引く元が図に無い（型の無い使用の中など）。相手が無いとは言わない
-                        (None, Some(_)) => {}
-                        _ => self.problem(
+                    let er = self.resolve(req, pe);
+                    if er.is_none() {
+                        self.problem(
                             r.start,
                             format!("「検証する」関係の相手「{req}」が見つかりません（verify）"),
                             None,
-                        ),
+                        );
+                        continue;
+                    }
+                    // 線を引く元か相手が図に無い（型の無い使用の中など）ときは、線にしない
+                    if let (Some(a), Some(b)) = (self.owner_node(pe), self.node_for(er)) {
+                        self.add_edge("verify", a, b, "«verify»".into(), src);
                     }
                 }
                 RelKind::Frame { ty, path, .. } => {
                     let a = self.owner_node(pe);
-                    let tn = self
+                    // `frame concern c : C;` は型の定義、`frame cu;`（参照の形）は既にある関心事の使用（線はその型の定義へ）
+                    let found = self
                         .def_of(path, pe)
-                        .and_then(|t| self.node_of.get(&t).copied());
+                        .or_else(|| self.resolve(path, pe).filter(|&u| !self.e(u).is_def));
+                    let tn = found.and_then(|t| self.node_for(Some(t)));
                     match (a, tn) {
                         (Some(a), Some(tn)) => {
                             self.add_edge("frame", a, tn, "«frame»".into(), src);
                         }
                         (None, Some(_)) => {}
+                        // 関心事はあるが、型の無い使用などで図に無い
+                        (_, None) if found.is_some() => {}
                         _ => {
                             let shown = if path.is_empty() { ty } else { path };
                             self.problem(
@@ -946,8 +968,17 @@ impl<'a> Builder<'a> {
                     };
                     let pa: Vec<&str> = ra.split('.').collect();
                     let pb: Vec<&str> = rb.split('.').collect();
-                    let a = self.node_for(self.resolve(pa[0], pe));
-                    let b = self.node_for(self.resolve(pb[0], pe));
+                    let (ea, eb) = (self.resolve(pa[0], pe), self.resolve(pb[0], pe));
+                    if ea.is_none() || eb.is_none() {
+                        let who = if ea.is_none() { ra } else { rb };
+                        self.problem(
+                            r.start,
+                            format!("線の接続先「{who}」が見つかりません（{rel}）"),
+                            None,
+                        );
+                        continue;
+                    }
+                    let (a, b) = (self.node_for(ea), self.node_for(eb));
                     // 接続と名前付きのフローは、使用の範囲（本体を含む）を指す
                     let usage = match &r.kind {
                         RelKind::Connect { usage, .. } => Some(*usage),
@@ -958,27 +989,23 @@ impl<'a> Builder<'a> {
                         start: p.entries[u].start,
                         end: p.entries[u].end,
                     });
-                    match (a, b) {
+                    // 2 段目のポート（`a.p` の `p`）は port_end が確かめるので、連鎖は 3 段目から確かめる。
+                    // 端はあるが一般ビューの要素でない（定義の中の型の無い部品など）ときは、線にせず（内部ブロック図に描く）、
+                    // 2 段目から部品の本体の中をたどって確かめる
+                    let checked = match (a, b) {
                         (Some(a), Some(b)) => {
                             let ed = self.add_edge("flow", a, b, label, s);
                             self.model.edges[ed].rel = Some(ri);
                             self.port_end(ed, a, pa.get(1).copied(), true, r.start);
                             self.port_end(ed, b, pb.get(1).copied(), false, r.start);
-                            // 3 段目から先（`a.b.p` の `p`）も、部品の型の中をたどって確かめる。2 段目は port_end が確かめる
-                            for (head, x) in [(pa[0], ra), (pb[0], rb)] {
-                                if let Some(miss) = self.chain_miss(self.resolve(head, pe), x, 1) {
-                                    let msg = format!("線の接続先{miss}が見つかりません（{rel}）");
-                                    self.problem(r.start, msg, None);
-                                }
-                            }
+                            1
                         }
-                        _ => {
-                            let who = if a.is_none() { ra } else { rb };
-                            self.problem(
-                                r.start,
-                                format!("線の接続先「{who}」が見つかりません（{rel}）"),
-                                None,
-                            );
+                        _ => 0,
+                    };
+                    for (head, x) in [(ea, ra), (eb, rb)] {
+                        if let Some(miss) = self.chain_miss(head, x, checked) {
+                            let msg = format!("線の接続先{miss}が見つかりません（{rel}）");
+                            self.problem(r.start, msg, None);
                         }
                     }
                 }
@@ -1480,7 +1507,7 @@ pub(crate) fn flow_label(name: &str, ty: &str, item: &str) -> String {
 }
 
 /// 部品として持つ線の、部品の側の端に書く文字（8.2.3 の multiplicity と c-adornment）。
-/// 多重度の範囲（`[4]`）、`ordered`・`nonunique`、部分集合・再定義・参照の相手（`subsets a` など）を、この順に空白でつなぐ。
+/// 多重度の範囲（`[4]`）、`ordered`・`nonunique`、部分集合・再定義・参照・交差の相手（`subsets a`・`crosses q.r` など）を、この順に空白でつなぐ。
 ///
 /// # 引数
 ///
@@ -1531,6 +1558,7 @@ fn end_label(e: &Entry) -> Option<String> {
 /// ```text
 /// spec_edge_kind("specializes") → Some("specialize")
 /// spec_edge_kind("redefines")   → Some("redefine")
+/// spec_edge_kind("crosses")     → None   // 交差は線にせず、部品の線の端に書く
 /// spec_edge_kind("bogus")       → None
 /// ```
 fn spec_edge_kind(op: &str) -> Option<&'static str> {

@@ -336,7 +336,7 @@ fn family_and_library_types() {
 
 #[test]
 fn library_types_are_an_explicit_list_and_value_suffix_needs_a_quantity_import() {
-    // Arrange（同値クラス: 一覧にある名前・一覧に無い名前・…Value で終わる名前（import の有無・修飾の有無）、境界値: 空の名前）
+    // Arrange（同値クラス: 一覧にある名前・一覧に無い名前・…Value で終わる名前（import の有無・修飾の有無）・メタクラス、境界値: 空の名前・似た名前のパッケージ）
     let cases = [
         ("Real", false, true),
         ("Positive", false, true),
@@ -348,6 +348,10 @@ fn library_types_are_an_explicit_list_and_value_suffix_needs_a_quantity_import()
         ("MassValue", true, true),
         ("ISQ::MassValue", false, true),
         ("MyLib::MassValue", false, false),
+        ("SysML::PartDefinition", false, true),
+        ("KerML::Feature", false, true),
+        ("SysMLx::PartDefinition", false, false),
+        ("PartDefinition", false, false),
         ("", false, false),
     ];
     // Act
@@ -969,6 +973,126 @@ fn composite_line_shows_multiplicity_and_adornments_at_the_part_end() {
 }
 
 #[test]
+fn crossed_feature_is_written_at_the_part_end_without_a_line() {
+    // Arrange（Crosses、8.2.2.6：`=>`・`crosses` は線にせず、部品として持つ線の端に書く）
+    let text = "package P { part def A; part def B { end part w : A => q.r; end part v : A crosses y.z; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let ends: Vec<(&str, Option<&str>)> = m
+        .edges
+        .iter()
+        .map(|e| (e.label.as_str(), e.end_label.as_deref()))
+        .collect();
+    assert_eq!(
+        ends,
+        [("w", Some("crosses q.r")), ("v", Some("crosses y.z"))]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn keyword_less_feature_with_a_missing_type_is_reported() {
+    // Arrange（異常系：キーワードの無い特性の型が見つからない。以前は特性ごと捨てていた）
+    let text = "package P { part def A { x : Nope; y : Real; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
+}
+
+#[test]
+fn untyped_parts_in_a_definition_can_be_connection_ends() {
+    // Arrange（ConnectorEnd、8.2.2.13：定義の中の型の無い部品。一般ビューの要素ではないので線にしない）
+    let text = "package P { part def S { part t { port o; } part e; connect t to e; flow from t.o to e; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert!(m.edges.iter().all(|e| e.kind != "flow"));
+}
+
+#[test]
+fn missing_feature_of_an_untyped_part_end_is_reported() {
+    // Arrange（異常系：型の無い部品の本体に無い 2 段目・どこにも無い端）
+    let text = "package P { part def S { part t { port o; } part e; flow from t.x to e; connect t to nope; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "線の接続先「t.x」の「x」が見つかりません（flow）",
+            "線の接続先「nope」が見つかりません（connect）"
+        ]
+    );
+}
+
+#[test]
+fn declaring_satisfy_and_verify_draw_to_the_requirement_type() {
+    // Arrange（SatisfyRequirementUsage・RequirementVerificationUsage の宣言する形、8.2.2.21・8.2.2.24）
+    let text = "package P { requirement def R; part v; satisfy requirement sr : R by v; \
+        verification def T { objective { verify requirement r2 : R; verify requirement; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(edge_list(&m), ["satisfy|v|R", "verify|T|R"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn satisfying_a_viewpoint_in_a_view_definition_is_not_a_missing_target() {
+    // Arrange（view def の `satisfy vp;`：視点は図に描かないので線にしないが、見つかっている）
+    let text = "package P { viewpoint def VP; viewpoint vp : VP; view def VD { satisfy vp; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert!(m.edges.is_empty());
+}
+
+#[test]
+fn declaring_satisfy_with_a_missing_type_or_subject_is_reported() {
+    // Arrange（異常系：型も満たす要素も見つからない）
+    let text = "package P { part v; satisfy requirement s1 : Nope by v; requirement def R; satisfy requirement s2 : R by gone; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "「満たす」関係の相手「Nope」が見つかりません（satisfy）",
+            "「満たす」関係の相手「gone」が見つかりません（satisfy）"
+        ]
+    );
+}
+
+#[test]
+fn explicit_conjugated_port_definition_resolves_to_the_conjugate() {
+    // Arrange（ConjugatedPortDefinition、8.2.2.12：`Pt::'~Pt'` は `~Pt` と同じ）
+    let text = "package P { port def Pt { in item x : Real; } part def H { port y : Pt::'~Pt'; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    let y = &node(&m, "H").ports[0];
+    assert_eq!((y.ty.as_str(), y.conj, y.dir), ("Pt", true, "out"));
+}
+
+#[test]
+fn metaclass_typed_feature_in_a_metadata_definition_is_not_a_missing_type() {
+    // Arrange（メタデータの定義の `:>> annotatedElement : SysML::PartDefinition;`、8.2.2.27）
+    let text = "package P { metadata def M { :>> annotatedElement : SysML::PartDefinition; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
 fn dependency_draws_a_line_per_client_and_supplier_with_its_label() {
     // Arrange（Dependency、8.2.2.3・8.2.3.3 の binary-dependency：名前・メタデータ・複数の相手）
     let text = "package P { part def A; part def B; part def C; metadata def trace; \
@@ -1481,6 +1605,116 @@ fn succession_line_points_to_its_statement_or_then() {
         .map(|e| &text[e.src.start..e.src.end])
         .collect();
     assert_eq!(srcs, ["then ", "first a then b;"]);
+}
+
+#[test]
+fn flows_and_messages_without_from_are_lines_like_the_long_forms() {
+    // Arrange（FlowDeclaration・MessageDeclaration の 2 つ目の形 `a to b`、8.2.2.16）
+    let text = "package P { item def W; part def T { port o; } part def U { port i; } \
+        part def H { part t : T; part u : U; flow t.o to u.i; } \
+        action def A { action a; action b; succession flow a.d to b.d; } \
+        occurrence def S { part x; part y; message x to y; message of W y to x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        m.edges
+            .iter()
+            .filter(|e| e.kind == "flow")
+            .map(|e| format!("{}|{}|{}", e.from, e.to, &text[e.src.start..e.src.end]))
+            .collect::<Vec<_>>(),
+        ["T|U|flow t.o to u.i;"]
+    );
+    let af: Vec<(&str, &str)> = flow(&m, "A")
+        .edges
+        .iter()
+        .map(|e| (e.kind, &text[e.src.start..e.src.end]))
+        .collect();
+    assert_eq!(af, [("successionFlow", "succession flow a.d to b.d;")]);
+    let s = sequence_of(&m);
+    let msgs: Vec<String> = s
+        .messages
+        .iter()
+        .map(|x| format!("{}→{}", x.from, x.to))
+        .collect();
+    assert_eq!(msgs, ["l:x→l:y", "l:y→l:x"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn flow_without_from_to_a_missing_end_is_reported() {
+    // Arrange（異常系：from を省いた形の端が見つからない）
+    let text = "package P { part def S { part t; flow t to gone; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["線の接続先「gone」が見つかりません（flow）"]);
+}
+
+#[test]
+fn interface_without_connect_is_a_connection_like_the_long_form() {
+    // Arrange（BinaryInterfacePart、8.2.2.14：`interface x.p to y.p;` は `interface connect x.p to y.p;` と同じ）
+    let text = "package P { port def Pt; part def X { port p : Pt; } part def Y { port p : ~Pt; } \
+        part def H { part x : X; part y : Y; interface x.p to y.p; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let connects: Vec<(&str, &str)> = p
+        .rels
+        .iter()
+        .filter_map(|r| match &r.kind {
+            RelKind::Connect { a, b, .. } => Some((a.as_str(), b.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(connects, [("x.p", "y.p")]);
+    let lines: Vec<String> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "flow")
+        .map(|e| format!("{}|{}", e.from, e.to))
+        .collect();
+    assert_eq!(lines, ["X|Y"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn perform_reference_is_an_action_in_the_flow() {
+    // Arrange（`perform x.y;`、PerformActionUsage の参照の形、8.2.2.17）
+    let text = "package P { action def G { action y; } action def F { action x : G; perform x.y; then done; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let names: Vec<String> = flow(&m, "F")
+        .nodes
+        .iter()
+        .map(|n| format!("{}:{}", n.kind, n.name))
+        .collect();
+    assert!(names.contains(&"perform action:y".to_owned()), "{names:?}");
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn frame_reference_draws_to_the_type_of_the_concern() {
+    // Arrange（`frame cu;`：既にある関心事の使用の型へ «frame» を引く、8.2.2.21）
+    let text = "package P { concern def C; requirement def R { concern cu : C; concern un; frame cu; frame un; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(edge_list(&m).contains(&"frame|R|C".to_owned()));
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn frame_reference_to_a_missing_concern_is_reported() {
+    // Arrange（異常系：参照の形の相手が無い）
+    let text = "package P { requirement def R { frame nope; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["扱う関心事「nope」が見つかりません（frame）"]);
 }
 
 #[test]

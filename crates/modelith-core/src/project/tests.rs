@@ -102,16 +102,19 @@ fn metadata_keeps_written_order_and_phase_value_position() {
 
 #[test]
 fn modifier_with_typed_name_is_a_parameter() {
-    // Arrange（同値クラス: 修飾あり・なし）
+    // Arrange（同値クラス: 修飾あり・なし。修飾の無い `y : Real;` は参照の使用、DefaultReferenceUsage、8.2.2.6）
     let r = run("constraint def C { in x : Real; y : Real; }");
     // Act
-    let x = entry(&r, "x");
+    let (x, y) = (entry(&r, "x"), entry(&r, "y"));
     // Assert
     assert_eq!(
         (x.kind.as_str(), x.dir.as_deref(), x.ty.as_str()),
         ("param", Some("in"), "Real")
     );
-    assert!(r.entries.iter().all(|e| e.name != "y"));
+    assert_eq!(
+        (y.kind.as_str(), y.dir.as_deref(), y.ty.as_str()),
+        ("param", Some("ref"), "Real")
+    );
 }
 
 #[test]
@@ -428,6 +431,42 @@ fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
 }
 
 #[test]
+fn keyword_led_result_expressions_are_kept_without_errors() {
+    // Arrange（ResultExpressionMember、8.2.2.19〜20：true・false・not で始まる式）
+    let text = "package P { constraint def C { true } calc def F { false } requirement def R { require constraint { not x } } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let exprs = |name: &str| -> Vec<String> {
+        entry(&r, name)
+            .exprs
+            .iter()
+            .map(|x| x.text.clone())
+            .collect()
+    };
+    assert_eq!(exprs("C"), ["true"]);
+    assert_eq!(exprs("F"), ["false"]);
+    assert_eq!(exprs("R"), ["not x"]);
+    assert!(r.errors.is_empty());
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn body_expression_stays_in_the_value() {
+    // Arrange（KerML 8.2.5 の BodyExpression：本体の中の文を持ち主の式にしない）
+    let text = "part def A { attribute s = a.b->collect{in i; i*2}; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        entry(&r, "s").value.as_deref(),
+        Some("a.b->collect{in i; i*2}")
+    );
+    assert!(entry(&r, "A").exprs.is_empty());
+    assert!(r.errors.is_empty());
+}
+
+#[test]
 fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
     // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [
@@ -442,6 +481,301 @@ fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
         assert_eq!(r.unsupported.len(), 1, "{text}");
         assert!(r.blocks.is_empty(), "{text}");
     }
+}
+
+#[test]
+fn kerml_declarations_are_unsupported_and_keep_their_body() {
+    // Arrange（同値分割：KerML の分類子・関数・前に付く語・本体の無い宣言。KerML 8.2.3〜8.2.5）
+    for (text, head) in [
+        ("package K { classifier C { part p : X; } }", "classifier C"),
+        ("package K { function F { in x : Real; } }", "function F"),
+        ("package K { abstract struct S { feature f; } }", "struct S"),
+        (
+            "package K { composite feature f : T; }",
+            "composite feature f : T",
+        ),
+        (
+            "package K { part def H { feature g { part q; } } }",
+            "feature g",
+        ),
+    ] {
+        // Act
+        let r = run(text);
+        // Assert
+        let names: Vec<&str> = r.entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.iter().all(|n| !["p", "x", "f", "q"].contains(n)),
+            "{text}: {names:?}"
+        );
+        let heads: Vec<&str> = r.unsupported.iter().map(|u| u.head.as_str()).collect();
+        assert_eq!(heads, [head], "{text}");
+        assert!(r.errors.is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn feature_named_like_a_kerml_keyword_is_not_kerml() {
+    // Arrange（境界値：KerML の語を名前にした特性 `type : T;`・`feature = 1;`）
+    let text = "part def A { type : T; feature = 1; part step; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.unsupported.is_empty());
+    assert!(r.errors.is_empty());
+    assert_eq!(entry(&r, "step").kind, "part");
+}
+
+#[test]
+fn annotations_in_a_relationship_body_are_not_put_on_the_outer_package() {
+    // Arrange（同値分割：依存・別名の本体の doc・comment・メタデータ。RelationshipBody、8.2.2.2）
+    let text = "package P { metadata def M; part def A; part def B; \
+        dependency A to B { doc /* why */ } \
+        alias C for A { doc /* al */ comment /* c */ @M; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let p = entry(&r, "P");
+    assert_eq!(p.doc, None);
+    assert_eq!(p.meta, None);
+    assert!(r.entries.iter().all(|e| e.kind != "comment"));
+    assert_eq!(r.rels.len(), 1);
+    assert_eq!(r.aliases.len(), 1);
+    assert!(r.errors.is_empty());
+}
+
+#[test]
+fn doc_in_the_package_body_is_still_the_package_doc() {
+    // Arrange（正常系の境界：関係の後に書いた package の doc）
+    let text = "package P { part def A; part def B; dependency A to B; doc /* p */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "P").doc.as_deref(), Some("p"));
+}
+
+#[test]
+fn metadata_body_redefinitions_keep_their_value_on_the_metadata() {
+    // Arrange（同値分割：:>>・redefines・値の無い再定義・入れ子の本体。MetadataBodyUsage、8.2.2.27）
+    let text = "package P { metadata def M { attribute x : Integer; attribute y : Integer; } \
+        requirement def R { @M { :>> x = 1; redefines y = E::V; } } \
+        part def Q { @M { :>> x; :>> y { :>> z = 3; } } } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (rq, q) = (entry(&r, "R"), entry(&r, "Q"));
+    let fields = |e: &Entry| -> Vec<(String, String)> {
+        e.meta
+            .iter()
+            .flat_map(|m| m.0.iter())
+            .flat_map(|(_, f)| f.0.iter().cloned())
+            .collect()
+    };
+    assert_eq!(
+        fields(rq),
+        [
+            ("x".to_owned(), "1".to_owned()),
+            ("y".to_owned(), "V".to_owned())
+        ]
+    );
+    assert!(fields(q).is_empty());
+    assert!(rq.exprs.is_empty() && q.exprs.is_empty());
+    assert!(r.entries.iter().all(|e| e.name != "z"));
+    assert!(r.errors.is_empty());
+}
+
+#[test]
+fn crosses_is_a_specialization_not_a_value() {
+    // Arrange（同値分割：`=>` と `crosses`、名前の無い特性の `=>`。Crosses、8.2.2.6）
+    let text = "part def B { end part w : A => q.r; end part v : A crosses y.z; x => a.b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let crossed = |name: &str| -> Vec<(&str, String)> {
+        entry(&r, name)
+            .specs
+            .iter()
+            .map(|s| (s.op, s.target.clone()))
+            .collect()
+    };
+    assert_eq!(crossed("w"), [("crosses", "q.r".to_owned())]);
+    assert_eq!(crossed("v"), [("crosses", "y.z".to_owned())]);
+    assert_eq!(entry(&r, "w").value, None);
+    assert!(r.errors.is_empty());
+}
+
+#[test]
+fn keyword_less_features_are_reference_usages() {
+    // Arrange（同値分割：型・部分集合・値・名前の無い再定義・型の無い ref。DefaultReferenceUsage・ReferenceUsage、8.2.2.6）
+    let text = "package P { part def A { x : Real; y :> x; z : Real = 3; :>> m = 1; ref r; ref s : A; } \
+        requirement def R { w : Real = 2; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let row = |name: &str| {
+        let e = entry(&r, name);
+        (
+            e.kind.as_str(),
+            e.dir.as_deref(),
+            e.ty.as_str(),
+            e.value.as_deref(),
+            e.specs.iter().map(|s| s.op).collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(row("x"), ("param", Some("ref"), "Real", None, vec![]));
+    assert_eq!(row("y"), ("param", Some("ref"), "", None, vec!["subsets"]));
+    assert_eq!(row("z"), ("param", Some("ref"), "Real", Some("3"), vec![]));
+    assert_eq!(
+        row("m"),
+        ("param", Some("ref"), "", Some("1"), vec!["redefines"])
+    );
+    assert_eq!(row("r"), ("param", Some("ref"), "", None, vec![]));
+    assert_eq!(row("s"), ("param", Some("ref"), "A", None, vec![]));
+    // 要求・制約の式にしない
+    assert!(entry(&r, "A").exprs.is_empty());
+    assert!(entry(&r, "R").exprs.is_empty());
+    assert_eq!(entry(&r, "w").pe, Some(entry(&r, "R").idx));
+    assert!(r.errors.is_empty() && r.unsupported.is_empty());
+}
+
+#[test]
+fn result_parameter_is_not_a_reference_usage() {
+    // Arrange（境界値：結果のパラメータ `return r : R;` は、パラメータとして扱うまでこれまでどおり）
+    let text = "verification def T { return verdict : VerdictKind; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.name != "verdict"));
+}
+
+#[test]
+fn value_in_an_enumeration_body_is_not_a_reference_usage() {
+    // Arrange（境界値：列挙の定義の本体の `a = 1;` は、これまでどおり参照の使用にしない）
+    let text = "enum def E { enum b; a = 1; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.name != "a"));
+    assert_eq!(
+        entry(&r, "E").enum_values.as_deref(),
+        Some(&["b".to_owned()][..])
+    );
+}
+
+#[test]
+fn flow_payload_name_is_not_its_type() {
+    // Arrange（同値分割：名前付きの流れるもの・型だけ・名前付きのフロー。FlowPayloadFeature、8.2.2.16）
+    let text = "part def S { part t; part e; flow of ff : Fuel from t to e; flow of Water from t to e; \
+        flow f of g : Heat from t to e; message m of x : Sig from t to e; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let items: Vec<&str> = r
+        .rels
+        .iter()
+        .map(|x| match &x.kind {
+            RelKind::Flow { item, .. } | RelKind::Message { item, .. } => item.as_str(),
+            _ => "?",
+        })
+        .collect();
+    assert_eq!(items, ["Fuel", "Water", "Heat", "Sig"]);
+    // 名前付きのフローの型は、流れるものの型ではない
+    assert_eq!(entry(&r, "f").ty, "");
+    assert!(r.errors.is_empty());
+}
+
+#[test]
+fn declaring_satisfy_and_verify_point_to_the_requirement_type() {
+    // Arrange（同値分割：型・部分集合・名前だけ・名前も無い。'requirement' UsageDeclaration、8.2.2.21・8.2.2.24）
+    let text = "satisfy requirement sr : R by v; verify requirement r2 : Q::R; \
+        verify requirement r3 :> r1; verify requirement R4; verify requirement;";
+    // Act
+    let r = run(text);
+    // Assert
+    let reqs: Vec<(&str, &str)> = r
+        .rels
+        .iter()
+        .map(|x| match &x.kind {
+            RelKind::Satisfy { req, by, .. } => (req.as_str(), by.as_str()),
+            RelKind::Verify { req } => (req.as_str(), ""),
+            _ => ("?", "?"),
+        })
+        .collect();
+    assert_eq!(
+        reqs,
+        [("R", "v"), ("Q::R", ""), ("r1", ""), ("R4", ""), ("", "")]
+    );
+}
+
+#[test]
+fn conjugated_port_definition_name_is_the_conjugate_of_its_owner() {
+    // Arrange（同値分割：Pt::'~Pt'・修飾名の中・名前の合わない '~X'。ConjugatedPortDefinition、8.2.2.12）
+    let text = "part def H { port y : Pt::'~Pt'; port z : Q::Pt::'~Pt'; port w : Pt::'~Other'; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let ty = |name: &str| {
+        let e = entry(&r, name);
+        (e.ty.clone(), e.ty_path.clone(), e.conj)
+    };
+    assert_eq!(ty("y"), ("Pt".to_owned(), "Pt".to_owned(), Some(true)));
+    assert_eq!(ty("z"), ("Pt".to_owned(), "Q::Pt".to_owned(), Some(true)));
+    assert_eq!(
+        ty("w"),
+        ("~Other".to_owned(), "Pt::~Other".to_owned(), Some(false))
+    );
+}
+
+#[test]
+fn perform_and_exhibit_references_are_usages_that_reference_the_target() {
+    // Arrange（OwnedReferenceSubsetting の形、PerformActionUsage 8.2.2.17・ExhibitStateUsage 8.2.2.18）
+    let text = "part def H { action x : F; state st; perform x.y; exhibit st; perform action a : F; \
+        perform use case u : U; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let rows: Vec<String> = r
+        .entries
+        .iter()
+        .filter(|e| matches!(e.kind.as_str(), "perform action" | "exhibit state"))
+        .map(|e| {
+            let specs: Vec<String> = e
+                .specs
+                .iter()
+                .map(|s| format!("{} {}", s.op, s.target))
+                .collect();
+            format!("{} {} [{}]", e.kind, e.name, specs.join(", "))
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "perform action y [references x.y]",
+            "exhibit state st [references st]",
+            "perform action a []",
+        ]
+    );
+    // 境界値：`perform` の後が参照でない形（`perform use case`）は、これまでどおりまだ扱えない
+    let heads: Vec<&str> = r.unsupported.iter().map(|u| u.head.as_str()).collect();
+    assert_eq!(heads, ["perform use case u : U"]);
+}
+
+#[test]
+fn frame_reference_is_a_frame_relation() {
+    // Arrange（FramedConcernMember の OwnedReferenceSubsetting の形、8.2.2.21）
+    let text = "requirement def R { concern cu : C; frame cu; frame concern fc : C; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let frames: Vec<(&str, &str)> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Frame { name, ty, .. } => Some((name.as_str(), ty.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(frames, [("cu", "cu"), ("fc", "C")]);
+    assert!(r.unsupported.is_empty());
 }
 
 #[test]

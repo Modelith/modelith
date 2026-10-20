@@ -264,6 +264,7 @@ fn punct(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
         ("<=", OP),
         (">=", OP),
         ("->", OP),
+        ("=>", OP),
         ("..", OP),
         ("??", OP),
         ("@@", OP),

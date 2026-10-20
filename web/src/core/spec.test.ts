@@ -1132,5 +1132,311 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         ]);
       });
     });
+
+    describe("キーワードで始まる結果の式（ResultExpressionMember 8.2.2.19〜20、KerML 8.2.5 の LiteralBoolean・単項の not）", () => {
+      it("constraint def C { true }・calc def F { false }・require constraint { not x } は、誤った構文エラーにせず式を持ち主に入れる", () => {
+        // Arrange
+        const text = "package P { constraint def C { true } calc def F { false } requirement def R { require constraint { not x } } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+        expect(entry(text, "C")?.exprs.map((x) => x.text)).toEqual(["true"]);
+        expect(entry(text, "R")?.exprs.map((x) => x.text)).toEqual(["not x"]);
+      });
+
+      it("not satisfy R by X は、これまでどおり否定の充足（境界値）", () => {
+        // Arrange
+        const text = "package P { requirement def R; part def X; not satisfy R by X; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual([]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("本体付きの式（KerML 8.2.5 の BodyExpression。式の文法は 0.3.0 以降、ここでは文字列のまま持つ）", () => {
+      it("a.b->collect{in i; i*2} は、誤った構文エラーにせず値の文字列にする", () => {
+        // Arrange
+        const text = "package P { part def A { attribute s = a.b->collect{in i; i*2}; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+        expect(entry(text, "s")?.value).toBe("a.b->collect{in i; i*2}");
+        expect(entry(text, "A")?.exprs).toEqual([]);
+      });
+    });
+
+    describe("KerML の宣言（KerML 8.2.3〜8.2.5。KerML は 0.3.0 以降）", () => {
+      it("classifier C { part p : X; }・function F { in x : Real; } は、まだ扱えないと知らせ、本体の中身を package の要素にしない", () => {
+        // Arrange
+        const text = "package K { classifier C { part p : X; } function F { in x : Real; } part def Ok; }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.nodes.map((n) => n.key)).toEqual(["Ok"]);
+        expect(M.problems.map((p) => p.msg)).toEqual([
+          "「classifier C」は Modelith ではまだ扱えないため、図とツリーに出ません",
+          "「function F」は Modelith ではまだ扱えないため、図とツリーに出ません",
+        ]);
+        expect(entry(text, "p")).toBeUndefined();
+      });
+    });
+
+    describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
+      it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
+        // Arrange
+        const text = "package P { part def A; part def B; dependency A to B { doc /* why */ } alias C for A { doc /* al */ } }";
+        // Act
+        const p = entry(text, "P");
+        // Assert
+        expect(p?.doc).toBeUndefined();
+        expect(edges(text)).toEqual(["dependency|A|B"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("メタデータの本体の再定義の形（MetadataBodyUsage、8.2.2.27）", () => {
+      it("@M { :>> x = 1; redefines y = 2; } は、値をメタデータに残し、持ち主の式にしない", () => {
+        // Arrange
+        const text = "package P { metadata def M { attribute x : Integer; attribute y : Integer; } requirement def R { @M { :>> x = 1; redefines y = 2; } } }";
+        // Act
+        const r = entry(text, "R");
+        // Assert
+        expect(r?.meta).toEqual({ M: { x: "1", y: "2" } });
+        expect(r?.exprs).toEqual([]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("交差（Crosses、8.2.2.6。CROSSES = '=>' | 'crosses'）", () => {
+      it("end part w : A => q.r は値にせず、交差の相手として記録し、部品の線の端に書く", () => {
+        // Arrange
+        const text = "package P { part def A; part def B { end part w : A => q.r; end part v : A crosses y.z; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(entry(text, "w")?.value).toBeUndefined();
+        expect(entry(text, "w")?.specs?.map((s) => [s.op, s.target])).toEqual([["crosses", "q.r"]]);
+        expect(M.edges.map((e) => [e.label, e.endLabel])).toEqual([["w", "crosses q.r"], ["v", "crosses y.z"]]);
+        expect(M.problems).toEqual([]);
+      });
+    });
+
+    describe("キーワードの無い特性と ref（DefaultReferenceUsage・ReferenceUsage、8.2.2.6）", () => {
+      it("x : Real;・y :> x;・z : Real = 3;・ref r; は、ref s : A; と同じく参照のパラメータにする", () => {
+        // Arrange
+        const text = "package P { part def A { x : Real; y :> x; z : Real = 3; ref r; ref s : A; } }";
+        // Act
+        const rows = ["x", "y", "z", "r", "s"].map((n) => {
+          const e = entry(text, n);
+          return [e?.kind, e?.dir, e?.type, e?.value ?? ""];
+        });
+        // Assert
+        expect(rows).toEqual([
+          ["param", "ref", "Real", ""],
+          ["param", "ref", "", ""],
+          ["param", "ref", "Real", "3"],
+          ["param", "ref", "", ""],
+          ["param", "ref", "A", ""],
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("要求の定義の中のキーワードの無い特性を、要求の式にしない（以前は区画に { z : Real = 3 } と出た）", () => {
+        // Arrange
+        const text = "package P { requirement def R { z : Real = 3; require constraint { z > 0 } } }";
+        // Act
+        const r = entry(text, "R");
+        // Assert
+        expect(r?.exprs.map((x) => x.text)).toEqual(["z > 0"]);
+        expect(entry(text, "z")?.pe?.name).toBe("R");
+      });
+
+      it("型が見つからなければ知らせる（異常系。以前は黙って捨てた）", () => {
+        // Arrange
+        const text = "package P { part def A { x : Nope; } }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["型「Nope」が見つかりません（x）"]);
+      });
+    });
+
+    describe("名前付きの流れるもの（FlowPayloadFeature、8.2.2.16）", () => {
+      it("flow of ff : Fuel from … は、流れるものの型 Fuel をラベルにする（名前 ff を型と取り違えない）", () => {
+        // Arrange
+        const text = "package P { item def Fuel; part def T { port p; } part def U { port q; } part def S { part t : T; part u : U; flow of ff : Fuel from t.p to u.q; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.edges.filter((e) => e.kind === "flow").map((e) => `${e.from}|${e.to}|${e.label}`)).toEqual(["T|U|Fuel"]);
+        expect(M.problems).toEqual([]);
+      });
+    });
+
+    describe("定義の中の型の無い部品を端にした接続（ConnectorEnd 8.2.2.13・FlowEnd 8.2.2.16）", () => {
+      it("part def S { part t; part e; connect t to e; flow from t to e; } は、端を見つけ、誤って「見つかりません」と言わない", () => {
+        // Arrange
+        const text = "package P { part def S { part t; part e; connect t to e; flow from t to e; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+
+      it("型の無い部品の本体に無い 2 段目は知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part def S { part t { port o; } part e; flow from t.x to e; } }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["線の接続先「t.x」の「x」が見つかりません（flow）"]);
+      });
+    });
+
+    describe("宣言する形の satisfy・verify と視点の satisfy（SatisfyRequirementUsage 8.2.2.21・RequirementVerificationUsage 8.2.2.24・ViewDefinition 8.2.2.26）", () => {
+      it("satisfy requirement sr : R by v; は、新しい使用の名前 sr ではなく型 R を満たす線にする", () => {
+        // Arrange
+        const text = "package P { requirement def R; part v; satisfy requirement sr : R by v; }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["satisfy|v|R"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("verify requirement r2 : R; は、型 R を検証する線にする", () => {
+        // Arrange
+        const text = "package P { requirement def R; verification def T { objective { verify requirement r2 : R; } } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toEqual(["verify|T|R"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("view def の中の satisfy vp;（視点を満たす）は、誤って「見つかりません」と言わない", () => {
+        // Arrange
+        const text = "package P { viewpoint def VP; viewpoint vp : VP; view def VD { satisfy vp; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+
+      it("宣言する形でも、型が見つからなければ知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { part v; satisfy requirement sr : Nope by v; }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["「満たす」関係の相手「Nope」が見つかりません（satisfy）"]);
+      });
+    });
+
+    describe("共役のポートの定義の名前（ConjugatedPortDefinition・ConjugatedPortTyping、8.2.2.12 の Note 1・2）", () => {
+      it("port y : Pt::'~Pt'; は ~Pt と同じく Pt の共役として読み、誤って「型が見つかりません」と言わない", () => {
+        // Arrange
+        const text = "package P { port def Pt { in item x : Real; } part def H { port y : Pt::'~Pt'; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.problems).toEqual([]);
+        expect(M.nodes.find((n) => n.key === "H")?.ports.map((p) => [p.name, p.type, p.conj, p.dir])).toEqual([["y", "Pt", true, "out"]]);
+      });
+    });
+
+    describe("from を省いたフロー・順序付きの流れ・メッセージ（FlowDeclaration・MessageDeclaration の a to b の形、8.2.2.16）", () => {
+      it("flow t.o to u.i; は、flow from t.o to u.i; と同じ流れの線にする（以前は黙って捨てた）", () => {
+        // Arrange
+        const text = "package P { part def T { port o; } part def U { port i; } part def H { part t : T; part u : U; flow t.o to u.i; } }";
+        // Act
+        const es = edges(text).filter((e) => e.startsWith("flow|"));
+        // Assert
+        expect(es).toEqual(["flow|T|U"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("succession flow a.d to b.d; は、アクティビティ図の順序付きの流れにする", () => {
+        // Arrange
+        const text = "package P { action def A { action a; action b; succession flow a.d to b.d; } }";
+        // Act
+        const af = build(parse(text)).actionFlows?.find((f) => f.key === "A");
+        // Assert
+        expect(af?.edges.map((e) => e.kind)).toEqual(["successionFlow"]);
+      });
+
+      it("message x to y; は、シーケンス図のメッセージにする", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part x; part y; message x to y; } }";
+        // Act
+        const sq = build(parse(text)).sequences?.find((s) => s.key === "S");
+        // Assert
+        expect(sq?.messages.map((m) => `${m.from}→${m.to}`)).toEqual(["l:x→l:y"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("connect を省いたインタフェース（BinaryInterfacePart・NaryInterfacePart、8.2.2.14）", () => {
+      it("interface x.p to y.p; は、interface connect x.p to y.p; と同じ接続の線にする（以前は要素だけで線が無かった）", () => {
+        // Arrange
+        const text = "package P { port def Pt; part def X { port p : Pt; } part def Y { port p : ~Pt; } part def H { part x : X; part y : Y; interface x.p to y.p; } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.rels.filter((r) => r.rel === "connect").map((r) => (r.rel === "connect" ? `${r.a}|${r.b}` : ""))).toEqual(["x.p|y.p"]);
+        expect(edges(text).filter((e) => e.startsWith("flow|"))).toEqual(["flow|X|Y"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
+
+    describe("既にある要素を指す perform・exhibit・frame（OwnedReferenceSubsetting の形。PerformActionUsage 8.2.2.17・ExhibitStateUsage 8.2.2.18・FramedConcernMember 8.2.2.21）", () => {
+      it("perform x.y; と exhibit st; は、指したアクション・状態を参照する使用にする（以前は「まだ扱えない」）", () => {
+        // Arrange
+        const text = "package P { action def F { action y; } state def SD; part def H { action x : F; state st : SD; perform x.y; exhibit st; } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.unsupported).toEqual([]);
+        expect(P.entries.filter((e) => e.kind === "perform action" || e.kind === "exhibit state").map((e) => [e.kind, e.name, e.specs?.[0]?.target])).toEqual([
+          ["perform action", "y", "x.y"],
+          ["exhibit state", "st", "st"],
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("frame cu; は、関心事の使用 cu の型への «frame» の線にする（以前は「まだ扱えない」）", () => {
+        // Arrange
+        const text = "package P { concern def C; requirement def R { concern cu : C; frame cu; } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toContain("frame|R|C");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("frame の相手が無ければ知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { requirement def R { frame nope; } }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["扱う関心事「nope」が見つかりません（frame）"]);
+      });
+    });
+
+    describe("メタクラスのライブラリの型（Systems Library の SysML・Kernel Semantic Library の KerML、9 章）", () => {
+      it("metadata def M { :>> annotatedElement : SysML::PartDefinition; } は、型が見つからないと言わない", () => {
+        // Arrange
+        const text = "package P { metadata def M { :>> annotatedElement : SysML::PartDefinition; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+    });
   });
 }

@@ -83,7 +83,7 @@ export function keywordOf(n: ModelNode): string {
 }
 
 /** 区画に書く、特殊化の種類の記号（テキスト記法と同じ。8.2.2.6）。 */
-const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>" };
+const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>", crosses: "=>" };
 
 /**
  * 区画に書く、属性・パラメータの 1 行（8.2.3 の usage-cp：テキスト記法の宣言と値）。
@@ -100,11 +100,12 @@ const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", 
  * featureText(attribute b : B :> a, c)               // → "b : B :> a :> c"
  * featureText(attribute m := 10)                     // → "m := 10"（初期値）
  * featureText(attribute m : Real default 10)         // → "m default 10"（既定値。型は書かない）
+ * featureText(ref r)                                // → "r"（型の無い参照。境界）
  */
 export function featureText(c: Entry): string {
   const specs = c.specs ?? [], m = c.multiplicity;
   const value = c.value ? `${c.valueOp ?? "="} ${c.value}` : "";
-  if (!specs.length && !m) return value ? `${c.name} ${value}` : `${c.name} : ${c.type}`;
+  if (!specs.length && !m) return value ? `${c.name} ${value}` : c.type ? `${c.name} : ${c.type}` : c.name;
   const first = specs[0];
   const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
   const parts = [unnamed ? "" : c.name];

@@ -104,8 +104,8 @@ export interface Rep {
 
 /** 宣言の特殊化の相手 1 つ（SubclassificationPart・FeatureSpecializationPart、8.2.2.6）。 */
 export interface Spec extends Span {
-  /** 定義の `:>`・`specializes` は specializes、使用の `:>`・`subsets` は subsets、`:>>` は redefines、`::>` は references。 */
-  op: "specializes" | "subsets" | "redefines" | "references";
+  /** 定義の `:>`・`specializes` は specializes、使用の `:>`・`subsets` は subsets、`:>>` は redefines、`::>` は references、`=>`・`crosses` は crosses。 */
+  op: "specializes" | "subsets" | "redefines" | "references" | "crosses";
   /** 相手（書いた修飾名・特徴の連鎖。空白を除き、引用符は残す）。 */
   target: string;
 }

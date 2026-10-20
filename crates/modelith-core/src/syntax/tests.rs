@@ -445,6 +445,222 @@ fn less_than_after_a_name_is_a_comparison_not_a_declaration() {
 }
 
 #[test]
+fn result_expression_may_start_with_a_keyword() {
+    // Arrange（同値分割：真偽値・null・単項の not・new。ResultExpressionMember、8.2.2.19〜20、KerML 8.2.5）
+    let texts = [
+        "constraint def C { true }",
+        "constraint def C { false }",
+        "calc def F { null }",
+        "requirement def R { require constraint { not x } }",
+        "constraint c { not (a and b) }",
+        "calc def G { new T() }",
+        "constraint def D { true; }",
+    ];
+    for text in texts {
+        // Act
+        let actual = errors(text);
+        // Assert
+        assert_eq!(actual, vec![], "{text}");
+        assert!(node_kinds(text).contains(&EXPRESSION_MEMBER), "{text}");
+    }
+}
+
+#[test]
+fn not_before_satisfy_is_still_a_negated_satisfy() {
+    // Arrange（境界値：`not satisfy` は式ではなく否定の充足、8.2.2.21）
+    let text = "part def A { not satisfy R by B; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&SATISFY_REQUIREMENT_USAGE));
+    assert!(!kinds.contains(&EXPRESSION_MEMBER));
+}
+
+#[test]
+fn keyword_led_expression_without_its_semicolon_is_an_error() {
+    // Arrange（異常系：「;」を書かずに、改行の後に次の宣言が続く）
+    let text = "constraint def C { true\n part p; }";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(actual, vec![(23, "「;」がありません".to_owned())]);
+    assert!(node_kinds(text).contains(&PART_USAGE));
+}
+
+#[test]
+fn body_expressions_are_read_as_part_of_the_expression() {
+    // Arrange（同値分割：-> の後の本体・.{ }・.?{ }・入れ子の本体。KerML 8.2.5 の BodyExpression）
+    let texts = [
+        "part def A { attribute s = a.b->collect{in i; i * 2}; }",
+        "part def A { attribute s = xs.{in x; x.m}; }",
+        "part def A { attribute s = xs.?{in x; x > 0}; }",
+        "constraint def C { xs->forAll{in x; x->exists{in y; y == x}} }",
+    ];
+    for text in texts {
+        // Act
+        let actual = errors(text);
+        // Assert
+        assert_eq!(actual, vec![], "{text}");
+    }
+}
+
+#[test]
+fn declaration_body_after_a_name_is_not_a_body_expression() {
+    // Arrange（境界値：名前の後の `{` は、`->` の後でなければ宣言の本体）
+    let text = "part def A { part p { part q; } }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds.iter().filter(|k| **k == BODY).count(), 2);
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn unclosed_body_expression_is_an_error() {
+    // Arrange（異常系：本体の `}` が無い）
+    let text = "attribute s = a->collect{in i; i";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(
+        actual,
+        vec![
+            (text.len(), "「{」に対応する「}」がありません".to_owned()),
+            (text.len(), "「;」がありません".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn kerml_declaration_is_one_unsupported_member_with_its_body() {
+    // Arrange（KerML の宣言は SysML の字句では名前で始まる。KerML 8.2.3〜8.2.5）
+    let text = "classifier C { part p : X; } composite feature f;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            UNSUPPORTED_MEMBER,
+            NAME,
+            BODY,
+            PART_USAGE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME,
+            UNSUPPORTED_MEMBER,
+            NAME
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn crosses_and_its_symbol_are_a_cross_subsetting() {
+    // Arrange（Crosses、8.2.2.6：CROSSES = '=>' | 'crosses'）
+    let texts = ["end part w : A => q.r;", "end part w : A crosses q.r;"];
+    for text in texts {
+        // Act
+        let kinds = node_kinds(text);
+        // Assert
+        assert!(kinds.contains(&CROSS_SUBSETTING), "{text}");
+        assert!(!kinds.contains(&FEATURE_VALUE), "{text}");
+        assert!(errors(text).is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn crosses_without_its_target_is_an_error() {
+    // Arrange（異常系：`=>` の後に相手が無い）
+    let text = "end part w : A => ;";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(
+        actual,
+        vec![(18, "関係の相手の名前がありません".to_owned())]
+    );
+}
+
+#[test]
+fn flow_payload_is_its_own_node() {
+    // Arrange（FlowPayloadFeatureMember、8.2.2.16）
+    let text = "flow of ff : Fuel from a to b;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            FLOW_USAGE,
+            FLOW_PAYLOAD_FEATURE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn flow_payload_without_anything_is_an_error() {
+    // Arrange（異常系：of の後に流れるものが無い）
+    let text = "flow of from a to b;";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(actual, vec![(8, "流れるものがありません".to_owned())]);
+}
+
+#[test]
+fn interface_without_connect_reads_its_ends() {
+    // Arrange（同値分割：2 項・n 項。BinaryInterfacePart・NaryInterfacePart、8.2.2.14）
+    for (text, ends) in [
+        ("interface x.p to y.p;", 2),
+        ("interface (a.p, b.p, c.p);", 3),
+    ] {
+        // Act
+        let kinds = node_kinds(text);
+        // Assert
+        assert_eq!(kinds[1], INTERFACE_USAGE, "{text}");
+        assert_eq!(
+            kinds.iter().filter(|k| **k == CONNECTOR_END).count(),
+            ends,
+            "{text}"
+        );
+        assert!(errors(text).is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn named_interface_is_still_a_declaration() {
+    // Arrange（境界値：名前で始まる interface は、端の並びではなく宣言）
+    let text = "interface i : I connect a.p to b.p;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&NAME));
+    assert_eq!(kinds.iter().filter(|k| **k == CONNECTOR_END).count(), 2);
+}
+
+#[test]
+fn interface_without_connect_and_its_second_end_is_an_error() {
+    // Arrange（異常系：to の後の端が無い）
+    let text = "interface x.p to ;";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(
+        actual,
+        vec![(17, "関係の相手の名前がありません".to_owned())]
+    );
+}
+
+#[test]
 fn name_followed_by_short_name_is_still_a_declaration() {
     // Arrange（境界値：`x <s> …` は宣言のまま）
     let text = "part def A { x <s> : T; }";

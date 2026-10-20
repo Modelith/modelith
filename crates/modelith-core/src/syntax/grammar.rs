@@ -5,6 +5,7 @@
 //! どの入力でも止まらず、読めない部分は `ERROR` か `UNSUPPORTED_MEMBER` に入れて続きを読む。
 
 use super::kind::SyntaxKind::{self, *};
+use super::kind::{KERML_DECLARATION_KEYWORDS, KERML_PREFIX_KEYWORDS};
 use super::parser::{ErrorAt, Parser};
 
 /// ファイル全体（RootNamespace）。入力の末尾まで要素を読み、`SOURCE_FILE` の節にする。
@@ -340,6 +341,15 @@ fn member(p: &mut Parser<'_>) {
     }
     let owner = m.token;
 
+    if let Some(n) = kerml_declaration_head(p) {
+        // KerML の宣言（`classifier C { … }`・`function F { … }`）。まだ扱わないので、本体ごと 1 つの文として残す（F-EDIT-8）
+        for _ in 0..n {
+            p.bump();
+        }
+        declaration(p, owner, true, false);
+        m.complete(p, UNSUPPORTED_MEMBER);
+        return;
+    }
     if p.at_kw("action") && action_node_follows(p, 1) {
         // `action s send x;`・`action a accept E;`（ActionNodeUsageDeclaration、8.2.2.17）
         p.bump();
@@ -361,6 +371,10 @@ fn member(p: &mut Parser<'_>) {
             succession_declaration(p, owner);
         } else if kind == TRANSITION_USAGE {
             transition_declaration(p, owner);
+        } else if kind == INTERFACE_USAGE && interface_part_follows(p) {
+            // `interface x.p to y.p;`・`interface (a, b, c);`（`connect` を省いた BinaryInterfacePart・NaryInterfacePart、8.2.2.14）
+            connector_ends_part(p);
+            end(p, owner, "", true);
         } else if let Some(kw) = connector_keyword(kind) {
             // `allocation a\n    allocate x to y;` の改行の後の `allocate` は、新しい文ではなく続き
             let name = declaration_tail(p, true, false, Some(kw));
@@ -386,7 +400,7 @@ fn member(p: &mut Parser<'_>) {
         );
         return;
     }
-    if p.at(KEYWORD) {
+    if p.at(KEYWORD) && !at_expression_keyword(p) {
         let kind = keyword_member(p, owner);
         m.complete(p, kind);
         return;
@@ -434,6 +448,71 @@ fn member(p: &mut Parser<'_>) {
     } else {
         m.abandon();
     }
+}
+
+/// KerML だけの宣言の頭（`classifier C`・`composite feature f`・`assoc struct A` など、KerML 8.2.3〜8.2.5）の語の数。読み進めない。
+///
+/// KerML の予約語は SysML の字句では名前（`IDENT`）なので、前に付く語（`composite` など）の後に宣言の頭の語があり、
+/// その後に名前・短い名前・本体が続くときだけ KerML の宣言とみなす（`type : T;` のような、名前が `type` の特性は除く）。
+///
+/// # 引数
+///
+/// - `p`：要素の頭（SysML の前置きの語の後）にいるパーサ
+///
+/// # 戻り値
+///
+/// KerML の宣言なら、頭の語（前に付く語と宣言の頭の語）の数。そうでなければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// kerml_declaration_head("classifier C { … }")      → Some(1)
+/// kerml_declaration_head("composite feature f : T;") → Some(2)
+/// kerml_declaration_head("inv { x > 0 }")            → Some(1)
+/// kerml_declaration_head("type : T;")                → None   // 名前が type の特性
+/// kerml_declaration_head("part p;")                  → None
+/// ```
+fn kerml_declaration_head(p: &Parser<'_>) -> Option<usize> {
+    let is = |i: usize, words: &[&str]| p.nth_at(i, IDENT) && words.contains(&p.nth_text(i));
+    let mut i = 0;
+    while is(i, KERML_PREFIX_KEYWORDS) {
+        i += 1;
+    }
+    if !is(i, KERML_DECLARATION_KEYWORDS) {
+        return None;
+    }
+    let next = i + 1;
+    (p.nth_at_name(next) || p.nth_at(next, LT) || p.nth_at(next, L_BRACE)).then_some(next)
+}
+
+/// 式の頭になるキーワード（KerML 8.2.5 の LiteralBoolean・NullExpression・単項の `not`・InstantiationExpression の `new`）。
+const EXPRESSION_KEYWORDS: &[&str] = &["true", "false", "null", "not", "new"];
+
+/// 今のトークンが、式の頭になるキーワード（`EXPRESSION_KEYWORDS`）か。読み進めない。
+///
+/// 制約・要求・計算の本体の結果の式（ResultExpressionMember、8.2.2.19〜20）は、`true`・`not x` のように
+/// キーワードで始まってもよい。`not satisfy R;`（否定の充足、8.2.2.21）の `not` は式の頭にしない。
+///
+/// # 引数
+///
+/// - `p`：要素の頭にいるパーサ
+///
+/// # 戻り値
+///
+/// 式の頭になるキーワードなら `true`。
+///
+/// # 例
+///
+/// ```text
+/// at_expression_keyword("true }")         → true
+/// at_expression_keyword("not (a and b) }") → true
+/// at_expression_keyword("not satisfy R;") → false   // 否定の充足
+/// at_expression_keyword("part p;")        → false
+/// ```
+fn at_expression_keyword(p: &Parser<'_>) -> bool {
+    p.at(KEYWORD)
+        && EXPRESSION_KEYWORDS.contains(&p.nth_text(0))
+        && !(p.at_kw("not") && p.nth_at_kw(1, "satisfy"))
 }
 
 /// キーワードで始まる、種類キーワード以外の要素。
@@ -979,12 +1058,67 @@ fn required_parameter(p: &mut Parser<'_>, stops: &[&str]) {
 /// payload_parameter(";", TRANSITION_STOPS)                  → 「受けるものがありません」
 /// ```
 fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
-    const TRIGGERS: &[&str] = &["when", "at", "after"];
+    if !payload_feature(p, stops, &["when", "at", "after"], NODE_PARAMETER) {
+        p.error("受けるものがありません");
+    }
+}
+
+/// `flow`・`message` の `of` の後の、流れるもの（FlowPayloadFeature、8.2.2.16）。`FLOW_PAYLOAD_FEATURE` の節にする。
+///
+/// `of ff : Fuel`（名前と型）・`of Fuel`（型だけ）・`of Fuel[1]` を読む。流れるものが無ければ「流れるものがありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`of` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// flow_payload("of ff : Fuel from a to b;") → FLOW_PAYLOAD_FEATURE { NAME(ff), FEATURE_TYPING(Fuel) }（from の手前で止まる）
+/// flow_payload("of Fuel from a to b;")      → FLOW_PAYLOAD_FEATURE { QUALIFIED_NAME(Fuel) }
+/// flow_payload("of from a to b;")           → 「流れるものがありません」
+/// ```
+fn flow_payload(p: &mut Parser<'_>) {
+    p.bump();
+    if !payload_feature(p, &[], &[], FLOW_PAYLOAD_FEATURE) {
+        p.error("流れるものがありません");
+    }
+}
+
+/// 受けるもの・流れるもの（PayloadFeature、8.2.2.16〜17）を、節の種類 `kind` で読む。
+///
+/// `e : E`（名前と型）、`E`（型だけ）、`triggers` のキーワードの後の式（`accept` の `when 式`・`at 式`・`after 式`）を読む。
+/// 式は `stops` のキーワードの手前で止める。
+///
+/// # 引数
+///
+/// - `p`：受けるもの・流れるものの頭にいるパーサ
+/// - `stops`：`triggers` の後の式を止めるキーワード
+/// - `triggers`：変化・時刻・時間の経過で受けるときのキーワード（流れるものでは空）
+/// - `kind`：節の種類（`NODE_PARAMETER`・`FLOW_PAYLOAD_FEATURE`）
+///
+/// # 戻り値
+///
+/// 何か読んで節を作ったら `true`。何も読まなかったら `false`（節も作らない）。
+///
+/// # 例
+///
+/// ```text
+/// payload_feature("e : E via p;", …, NODE_PARAMETER)        → true（NODE_PARAMETER { NAME(e), FEATURE_TYPING(E) }）
+/// payload_feature("Fuel from a", &[], &[], FLOW_PAYLOAD_FEATURE) → true（FLOW_PAYLOAD_FEATURE { QUALIFIED_NAME(Fuel) }）
+/// payload_feature(";", …)                                    → false
+/// ```
+fn payload_feature(
+    p: &mut Parser<'_>,
+    stops: &[&str],
+    triggers: &[&str],
+    kind: SyntaxKind,
+) -> bool {
     let m = p.start();
     let mut any = false;
     if p.at_name()
         && (matches!(p.nth(1), COLON | COLON_GT | COLON_GT2 | COLON2_GT)
-            || TRIGGERS.iter().any(|k| p.nth_at_kw(1, k)))
+            || triggers.iter().any(|k| p.nth_at_kw(1, k)))
     {
         let n = p.start();
         p.bump();
@@ -999,7 +1133,7 @@ fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
             COLON2_GT => relationship(p, 1, REFERENCE_SUBSETTING),
             L_BRACK => bracketed(p, MULTIPLICITY),
             IDENT | QUOTED_NAME if !any => reference(p),
-            KEYWORD if TRIGGERS.iter().any(|k| p.at_kw(k)) => {
+            KEYWORD if triggers.iter().any(|k| p.at_kw(k)) => {
                 p.bump();
                 if !expression_until(p, stops) {
                     p.error("値の式がありません");
@@ -1010,11 +1144,11 @@ fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
         any = true;
     }
     if any {
-        m.complete(p, NODE_PARAMETER);
+        m.complete(p, kind);
     } else {
         m.abandon();
-        p.error("受けるものがありません");
     }
+    any
 }
 
 /// `dependency` の後ろ（DependencyDeclaration、8.2.2.3）。`( Identification 'from' )? 参照 ( ',' 参照 )* 'to' 参照 ( ',' 参照 )*` と終わり。
@@ -1167,8 +1301,8 @@ fn metadata_usage_tail(p: &mut Parser<'_>, owner: usize) {
 ///
 /// # 戻り値
 ///
-/// 今のトークンが関係の記号（`:`・`:>`・`:>>`・`::>`）か、名前の次が関係の記号・`=`・`:=`・`;`・`[`・`{`・
-/// `<名前>`・関係のキーワード（`redefines` など）なら `true`。それ以外（式など）は `false`。
+/// 今のトークンが関係の記号（`:`・`:>`・`:>>`・`::>`）か、名前の次が関係の記号（`=>` を含む）・`=`・`:=`・`;`・`[`・`{`・
+/// `<名前>`・関係のキーワード（`redefines`・`crosses` など）なら `true`。それ以外（式など）は `false`。
 ///
 /// # 例
 ///
@@ -1192,8 +1326,15 @@ fn is_feature_declaration(p: &Parser<'_>) -> bool {
         LT => p.nth_at_name(2) && p.nth_at(3, GT),
         KEYWORD => matches!(
             p.nth_text(1),
-            "redefines" | "subsets" | "references" | "defined" | "specializes" | "default"
+            "redefines"
+                | "subsets"
+                | "references"
+                | "crosses"
+                | "defined"
+                | "specializes"
+                | "default"
         ),
+        OP => p.nth_text(1) == "=>",
         _ => false,
     }
 }
@@ -1300,12 +1441,17 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<
             ),
             COLON_GT2 => relationship(p, 1, REDEFINITION),
             COLON2_GT => relationship(p, 1, REFERENCE_SUBSETTING),
+            // `=> q.r`・`crosses q.r`（Crosses の OwnedCrossSubsetting、8.2.2.6）
+            OP if p.nth_text(0) == "=>" => relationship(p, 1, CROSS_SUBSETTING),
             KEYWORD => match p.nth_text(0) {
                 "defined" if p.nth_at_kw(1, "by") => relationship(p, 2, FEATURE_TYPING),
                 "specializes" => relationship(p, 1, SUBCLASSIFICATION),
                 "subsets" => relationship(p, 1, SUBSETTING),
                 "redefines" => relationship(p, 1, REDEFINITION),
                 "references" => relationship(p, 1, REFERENCE_SUBSETTING),
+                "crosses" => relationship(p, 1, CROSS_SUBSETTING),
+                // `flow of ff : Fuel from …`・`message of M …`（FlowPayloadFeatureMember、8.2.2.16）
+                "of" => flow_payload(p),
                 "default" => feature_value(p),
                 "connect" | "allocate" => connector_part(p),
                 "bind" => binding_part(p),
@@ -1322,6 +1468,38 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<
         name_slot = false;
     }
     name
+}
+
+/// `interface` の直後に、`connect` を省いた端の並び（BinaryInterfacePart・NaryInterfacePart、8.2.2.14）が続くか。読み進めない。
+///
+/// # 引数
+///
+/// - `p`：`interface` の直後にいるパーサ
+///
+/// # 戻り値
+///
+/// `(` か、参照（修飾名・特徴の連鎖）の直後の `to` なら `true`。名前で始まる宣言（`interface i : I …`）なら `false`。
+///
+/// # 例
+///
+/// ```text
+/// interface_part_follows("x.p to y.p;")        → true
+/// interface_part_follows("(a, b, c);")         → true
+/// interface_part_follows("i : I connect a to b;") → false
+/// interface_part_follows("i x.p to y.p;")      → false   // 名前の後の端（BNF に無い形）
+/// ```
+fn interface_part_follows(p: &Parser<'_>) -> bool {
+    if p.at(L_PAREN) {
+        return true;
+    }
+    if !p.at_name() {
+        return false;
+    }
+    let mut i = qualified_name_len(p, 0);
+    while p.nth_at(i, DOT) && p.nth_at_name(i + 1) {
+        i += 1 + qualified_name_len(p, i + 1);
+    }
+    p.nth_at_kw(i, "to")
 }
 
 /// 接続の端を持つ使用の種類（`allocation`・`binding`）の、端の前に来るキーワード（8.2.2.13.2・8.2.2.15）。
@@ -1366,6 +1544,26 @@ fn connector_keyword(kind: SyntaxKind) -> Option<&'static str> {
 /// ```
 fn connector_part(p: &mut Parser<'_>) {
     p.bump();
+    connector_ends_part(p);
+}
+
+/// 接続の端の並び（ConnectorPart・InterfacePart、8.2.2.13〜14）。2 項の `a to b` か、n 項の `( a, b, c )`。
+///
+/// 端は 1 つずつ `CONNECTOR_END` の節にする。2 項で `to` が無ければ「「to」がありません」、
+/// n 項で `)` が無ければ「「)」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：最初の端か `(` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// connector_ends_part("a.p to b.q;") → CONNECTOR_END(a.p)・CONNECTOR_END(b.q)
+/// connector_ends_part("(a, b, c);")  → CONNECTOR_END が 3 つ
+/// connector_ends_part("a;")          → 「「to」がありません」
+/// ```
+fn connector_ends_part(p: &mut Parser<'_>) {
     if p.eat(L_PAREN) {
         loop {
             connector_end(p);
@@ -2017,6 +2215,7 @@ fn expression_until(p: &mut Parser<'_>, stops: &[&str]) -> bool {
 }
 
 /// 式（段階 A）を読む本体。`;`・`{`・`}`・末尾・対応の無い閉じ括弧、改行の後の新しい要素の頭、括弧の外で `stop` が真になる所の手前で止まる。
+/// ただし式の中の本体（`a->collect{in i; i * 2}` の `{ … }`、BodyExpression）は、対応する `}` まで式として読む。
 ///
 /// 開いた括弧が閉じないまま止まったら「括弧が閉じていません」を置く。読んだトークンは `EXPRESSION` の節にする。
 ///
@@ -2033,6 +2232,7 @@ fn expression_until(p: &mut Parser<'_>, stops: &[&str]) -> bool {
 ///
 /// ```text
 /// expression_with("a + b;", |_, _| false)          → true（EXPRESSION は "a + b"）
+/// expression_with("a->collect{in i; i};", |_, _| false) → true（EXPRESSION は "a->collect{in i; i}"）
 /// expression_with("to y;", |p, _| p.at_kw("to"))   → false
 /// ```
 fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool) -> bool {
@@ -2040,6 +2240,11 @@ fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool)
     let mut depth = 0usize;
     let mut any = false;
     loop {
+        if p.at(L_BRACE) && body_expression_follows(p) {
+            expression_body(p);
+            any = true;
+            continue;
+        }
         if p.at_eof() || p.at(SEMI) || p.at(L_BRACE) || p.at(R_BRACE) {
             break;
         }
@@ -2067,6 +2272,66 @@ fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool)
         m.abandon();
     }
     any
+}
+
+/// 今の `{` が、式の中の本体（KerML 8.2.5 の BodyExpression）の始まりか。読み進めない。
+///
+/// `a->collect{…}`（FunctionOperationExpression の BodyArgument）・`a.{…}`（CollectExpression）・`a.?{…}`（SelectExpression）の
+/// `{` だけを本体とみなす。宣言の本体（`part p {`）の `{` はそうしない。
+///
+/// # 引数
+///
+/// - `p`：`{` にいるパーサ
+///
+/// # 戻り値
+///
+/// 直前が `.`、`.?`、`->` の後の名前なら `true`。
+///
+/// # 例
+///
+/// ```text
+/// // 直前まで読んだトークンが
+/// a . b -> collect   → true
+/// a .                → true
+/// a . ?              → true
+/// part p             → false
+/// ```
+fn body_expression_follows(p: &Parser<'_>) -> bool {
+    match p.behind(1) {
+        (DOT, _) => true,
+        (OP, "?") => p.behind(2).0 == DOT,
+        (IDENT | QUOTED_NAME, _) => p.behind(2) == (OP, "->"),
+        _ => false,
+    }
+}
+
+/// 式の中の本体 `{ … }`（BodyExpression の ExpressionBody、KerML 8.2.5）を、対応する `}` まで式の一部として読む。
+/// 中の `;` や入れ子の `{ … }` も読む。閉じていなければ「「{」に対応する「}」がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：本体の開き `{` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// expression_body("{in i; i * 2};") → `{in i; i * 2}` を読む（`;` の手前で止まる）
+/// expression_body("{in i; i")       → 末尾まで読み、「「{」に対応する「}」がありません」
+/// ```
+fn expression_body(p: &mut Parser<'_>) {
+    let mut depth = 0usize;
+    while !p.at_eof() {
+        match p.current() {
+            L_BRACE => depth += 1,
+            R_BRACE => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        p.bump();
+        if depth == 0 {
+            return;
+        }
+    }
+    p.error_after_previous("「{」に対応する「}」がありません");
 }
 
 /// 対応する開きの無い `)`・`]` を、エラーとして読み飛ばす。

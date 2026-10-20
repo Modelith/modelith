@@ -97,12 +97,14 @@ syntax_kinds! {
     REDEFINITION,
     /// 参照（ReferenceSubsetting、`::>`・`references`）。
     REFERENCE_SUBSETTING,
+    CROSS_SUBSETTING,
     /// 多重度（MultiplicityBounds、`[…]`）。
     MULTIPLICITY,
     /// 値（FeatureValue、`=`・`:=`・`default`）。
     FEATURE_VALUE,
     /// 接続の端（ConnectorEnd、`a.p`・`[1] e ::> a.p`。`connect`・`bind`・`allocate` の相手）。
     CONNECTOR_END,
+    FLOW_PAYLOAD_FEATURE,
     /// まだ文法として読まない式（段階 A。括弧の釣り合いだけで区切る）。
     EXPRESSION,
     /// 読めなかった部分。
@@ -442,6 +444,67 @@ pub fn is_keyword(word: &str) -> bool {
     KEYWORDS.binary_search(&word).is_ok()
 }
 
+/// KerML だけの予約語のうち、宣言の前に付く語（KerML-textual-bnf の RESERVED_KEYWORD にあり、SysML に無いもの）。
+/// SysML の字句では名前（`IDENT`）として読む。
+pub const KERML_PREFIX_KEYWORDS: &[&str] = &["composite", "const", "member", "portion", "var"];
+
+/// KerML だけの予約語のうち、宣言の頭になる語（KerML 8.2.3〜8.2.5 の Classifier・Feature・関係の宣言など）。
+/// Modelith は KerML の宣言をまだ扱わない（0.3.0 以降）。SysML の字句では名前（`IDENT`）として読む。
+pub const KERML_DECLARATION_KEYWORDS: &[&str] = &[
+    "assoc",
+    "behavior",
+    "bool",
+    "class",
+    "classifier",
+    "conjugation",
+    "connector",
+    "datatype",
+    "disjoining",
+    "expr",
+    "feature",
+    "featuring",
+    "function",
+    "interaction",
+    "inv",
+    "inverting",
+    "metaclass",
+    "multiplicity",
+    "namespace",
+    "predicate",
+    "redefinition",
+    "specialization",
+    "step",
+    "struct",
+    "subclassifier",
+    "subset",
+    "subtype",
+    "type",
+    "typing",
+];
+
+/// KerML だけの予約語で、宣言の頭か前に付く語か（`KERML_PREFIX_KEYWORDS`・`KERML_DECLARATION_KEYWORDS`）。
+///
+/// # 引数
+///
+/// - `word`：調べる語
+///
+/// # 戻り値
+///
+/// どちらかの表にあれば `true`。
+///
+/// # 例
+///
+/// ```text
+/// is_kerml_keyword("classifier") → true
+/// is_kerml_keyword("composite")  → true
+/// is_kerml_keyword("part")       → false   // SysML の予約語
+/// is_kerml_keyword("chains")     → false   // 宣言の途中の語
+/// ```
+pub fn is_kerml_keyword(word: &str) -> bool {
+    KERML_PREFIX_KEYWORDS.binary_search(&word).is_ok()
+        || KERML_DECLARATION_KEYWORDS.binary_search(&word).is_ok()
+}
+
 impl From<SyntaxKind> for rowan::SyntaxKind {
     fn from(kind: SyntaxKind) -> Self {
         Self(kind as u16)
@@ -460,6 +523,30 @@ mod tests {
         sorted.sort_unstable();
         // Assert
         assert_eq!(sorted, KEYWORDS);
+    }
+
+    #[test]
+    fn kerml_keywords_are_sorted_and_not_sysml_keywords() {
+        // Arrange
+        let lists = [KERML_PREFIX_KEYWORDS, KERML_DECLARATION_KEYWORDS];
+        for list in lists {
+            let mut sorted = list.to_vec();
+            // Act
+            sorted.sort_unstable();
+            // Assert（二分探索のため並べてあり、SysML の予約語と重ならない）
+            assert_eq!(sorted, list);
+            assert!(list.iter().all(|w| !is_keyword(w)), "{list:?}");
+        }
+    }
+
+    #[test]
+    fn is_kerml_keyword_matches_only_kerml_declaration_words() {
+        // Arrange / Act / Assert（同値クラス: 宣言の頭・前に付く語・SysML の予約語・宣言の途中の語・名前）
+        assert!(is_kerml_keyword("classifier"));
+        assert!(is_kerml_keyword("composite"));
+        assert!(!is_kerml_keyword("part"));
+        assert!(!is_kerml_keyword("chains"));
+        assert!(!is_kerml_keyword("Classifier"));
     }
 
     #[test]

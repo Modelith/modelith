@@ -445,6 +445,37 @@ pub fn meta_assignment(head: &str) -> Option<(&str, &str)> {
     (!value.is_empty()).then_some((key, value))
 }
 
+/// メタデータの本体の文（MetadataBodyUsage、8.2.2.27）の名前と値。`key = 式` に加え、再定義の形
+/// `:>> key = 式`・`redefines key = 式`・`ref :>> key = 式` も読む。
+///
+/// # 引数
+///
+/// - `head`：メタデータの本体の文（`;` の手前まで。空白をまとめたもの）
+///
+/// # 戻り値
+///
+/// `Some((キー, 値))`（`meta_assignment` と同じ）。値の無い文や、キーが基本名でない文は `None`。
+///
+/// # 例
+///
+/// ```text
+/// metadata_body_assignment("stage = K::X")          → Some(("stage", "K::X"))
+/// metadata_body_assignment(":>> x = 1")             → Some(("x", "1"))
+/// metadata_body_assignment("ref redefines x = a+b") → Some(("x", "a+b"))
+/// metadata_body_assignment(":>> x")                 → None   // 値が無い
+/// ```
+pub fn metadata_body_assignment(head: &str) -> Option<(&str, &str)> {
+    let rest = head.strip_prefix("ref ").unwrap_or(head);
+    let rest = rest
+        .strip_prefix(":>>")
+        .or_else(|| {
+            rest.strip_prefix("redefines")
+                .filter(|r| !r.starts_with(is_word))
+        })
+        .unwrap_or(rest);
+    meta_assignment(rest.trim_start())
+}
+
 /// メタデータの値として記録する文字列。列挙値などの修飾名（`E::V`）は最後の名前だけ、ほかの式は全体にする。
 ///
 /// フェーズ（`stage = PhaseKind::X`）は列挙値の名前で比べるので、修飾名は最後の名前にする。
@@ -581,6 +612,24 @@ mod tests {
         let got: Vec<_> = cases.iter().map(|h| meta_assignment(h)).collect();
         // Assert
         assert_eq!(got, [Some(("k", "1 + 2")), Some(("a", "(b)")), None]);
+    }
+
+    #[test]
+    fn metadata_body_assignment_reads_the_redefinition_forms() {
+        // Arrange / Act / Assert（同値クラス：key = 値・:>>・redefines・ref・値の無い文・語の途中）
+        assert_eq!(metadata_body_assignment("k = 1"), Some(("k", "1")));
+        assert_eq!(metadata_body_assignment(":>> x = 1"), Some(("x", "1")));
+        assert_eq!(metadata_body_assignment(":>>x = 1"), Some(("x", "1")));
+        assert_eq!(
+            metadata_body_assignment("redefines x = E::V"),
+            Some(("x", "E::V"))
+        );
+        assert_eq!(metadata_body_assignment("ref :>> x = 2"), Some(("x", "2")));
+        assert_eq!(metadata_body_assignment(":>> x"), None);
+        assert_eq!(
+            metadata_body_assignment("redefinesx = 1"),
+            Some(("redefinesx", "1"))
+        );
     }
 
     #[test]

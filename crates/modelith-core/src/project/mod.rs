@@ -188,6 +188,10 @@ struct Prev {
     initial: bool,
 }
 
+/// 種類のキーワードの無い参照の使用（`x : Real;`・`ref r;`、DefaultReferenceUsage・ReferenceUsage、8.2.2.6）の種類。
+/// 向きの付いたパラメータ（`in x : Real;`）と同じ種類にし、向きを `ref` にする。
+const REFERENCE_KIND: &str = "param";
+
 /// 利用者定義のキーワード（`#X def H;`・`#X h;`、8.2.2.27）で書いた宣言の、基の種類が決まらないときの種類。
 /// 定義は `"def"`、使用は `"usage"` にする（ツリーにだけ出す）。
 const EXTENDED_DEF_KIND: &str = "def";
@@ -409,7 +413,7 @@ impl Ctx {
     ///
     /// `doc` は `pe` の宣言の `doc` に、`rep` は `pe` の宣言の `reps` に入れ、`comment` は種類 `comment` の宣言にする。本体 `{ … }` があれば、宣言ならその中を、宣言でなければ
     /// 無名ブロックを作ってその中を読み、`open`・`close`・`end` を記録する。まだ扱えない文の本体は読まない
-    /// （中の宣言を、外側の宣言の中身にしない）。終わっていない末尾の文は読まない。
+    /// （中の宣言を、外側の宣言の中身にしない）。依存・別名の本体（関係への注釈）も読まない。終わっていない末尾の文は読まない。
     ///
     /// # 引数
     ///
@@ -459,7 +463,13 @@ impl Ctx {
         let meta = self.open_meta.take();
         // まだ扱えない文の本体は読まない（中の宣言を、外側の宣言の中身と取り違えないように。F-EDIT-8）
         let is_unsupported = self.out.unsupported.len() > unsupported_before;
-        if term != Term::Open || is_unsupported {
+        // 依存・別名の本体（RelationshipBody、8.2.2.2）は関係への注釈（doc・comment・@M）だけを持つ。関係への注釈は
+        // まだ記録しないので読まない（外側の宣言の説明やメタデータと取り違えないように）
+        let is_relationship_body = matches!(n.kind(), DEPENDENCY | ALIAS);
+        // メタデータの本体の文の本体（`@M { :>> x { … } }`）も、持ち主の中身にしない
+        let in_metadata_body =
+            matches!(owner, Some(Scope::Block(b)) if self.meta_blocks.contains_key(&b));
+        if term != Term::Open || is_unsupported || is_relationship_body || in_metadata_body {
             return;
         }
         let Some(body) = child(n, BODY) else { return };
@@ -622,17 +632,21 @@ impl Ctx {
         let (mods, h) = strip_mods(raw);
         let (start, end) = (self.utf16(hs), self.utf16(end_pos));
 
-        // メタデータの本体（@Phase { stage = PhaseKind::X; }・metadata M about A { k = 1 + 2; }）
+        // メタデータの本体（@Phase { stage = PhaseKind::X; }・metadata M about A { k = 1 + 2; }・@M { :>> x = 1; }）。
+        // 本体の文はメタデータの特性（MetadataBodyUsage、8.2.2.27）なので、値の無いものも持ち主の宣言や式にしない
         if let Some(Scope::Block(b)) = owner
             && let Some(mb) = self.meta_blocks.get(&b).cloned()
-            && let Some((key, val)) = meta_assignment(h)
         {
-            match mb.target {
-                MetaTarget::Owner(Some(pe)) => self.set_owner_meta(pe, b, &mb.md, key, val, hs),
-                MetaTarget::Owner(None) => {}
-                MetaTarget::About(a) => self.annotations[a]
-                    .fields
-                    .push((key.to_owned(), meta_value(val).to_owned())),
+            if let Some((key, val)) = metadata_body_assignment(h) {
+                match mb.target {
+                    MetaTarget::Owner(Some(pe)) => {
+                        self.set_owner_meta(pe, b, &mb.md, key, val, hs);
+                    }
+                    MetaTarget::Owner(None) => {}
+                    MetaTarget::About(a) => self.annotations[a]
+                        .fields
+                        .push((key.to_owned(), meta_value(val).to_owned())),
+                }
             }
             return None;
         }
@@ -727,6 +741,15 @@ impl Ctx {
             VIEW_RENDERING_USAGE => h.strip_prefix("render ").unwrap_or(h),
             _ => h,
         };
+        // KerML の宣言（`classifier C { … }` など）は、まだ扱えない文として知らせ、本体を外側の中身にしない（F-EDIT-8）
+        if n.kind() == UNSUPPORTED_MEMBER && crate::syntax::is_kerml_keyword(first_word(h)) {
+            self.out.unsupported.push(Unsupported {
+                start,
+                end,
+                head: h.to_owned(),
+            });
+            return None;
+        }
         if n.kind() == ALIAS {
             if let Some(a) = alias(n, pe) {
                 self.out.aliases.push(a);
@@ -767,16 +790,31 @@ impl Ctx {
             None if is_skipped(h) => return None,
             None => h,
         };
+        // `x : Real;`・`y :> x;`・`ref r;`（種類のキーワードの無い参照の使用。DefaultReferenceUsage・ReferenceUsage、8.2.2.6）は、
+        // `ref s : A;` と同じく参照のパラメータにする。列挙の定義の本体の `a = 1;` と、結果のパラメータ `return r : R;` は、
+        // これまでどおり読む（列挙値・パラメータとして扱うまで）
+        let reference = n.kind() == REFERENCE_USAGE
+            && (mods.is_empty() || mods == "ref")
+            && prefix_meta.is_empty()
+            && !has_keyword(n, "return")
+            && !pe.is_some_and(|pe| self.out.entries[pe].kind == "enum def")
+            && !decl_parts(n, false).name.is_empty();
         if let Some((kind, is_def)) = node
             .map(|k| (k, false))
+            .or_else(|| reference.then_some((REFERENCE_KIND, false)))
             .or_else(|| entry_kind(n, h, &mods, !prefix_meta.is_empty()))
         {
             let idx = self.out.entries.len();
             let parts = decl_parts(n, is_def);
             let name = if parts.name.is_empty()
-                && matches!(n.kind(), INCLUDE_USE_CASE_USAGE | OCCURRENCE_USAGE)
-            {
-                // `include U;`・`event e;` は、参照した特徴の名前を名前にする（OwnedReferenceSubsetting）
+                && matches!(
+                    n.kind(),
+                    INCLUDE_USE_CASE_USAGE
+                        | OCCURRENCE_USAGE
+                        | PERFORM_ACTION_USAGE
+                        | EXHIBIT_STATE_USAGE
+                ) {
+                // `include U;`・`event e;`・`perform x.y;`・`exhibit s;` は、参照した特徴の名前を名前にする（OwnedReferenceSubsetting）
                 first_ref(n)
                     .map(|r| last_segment(r.rsplit('.').next().unwrap_or(&r)).to_owned())
                     .unwrap_or_default()
@@ -836,6 +874,14 @@ impl Ctx {
                 state_actions: Vec::new(),
                 parallel: false,
             };
+            if reference {
+                // 参照の使用は、`ref` のパラメータと同じく向き `ref` で表す（修飾は持たない）
+                e.mods = None;
+                e.dir = Some("ref".to_owned());
+            }
+            if let Some(spec) = self.performed_reference(n) {
+                e.specs.insert(0, spec);
+            }
             e.guard = self.guard(n);
             e.parallel = matches!(
                 n.kind(),
@@ -1283,10 +1329,10 @@ impl Ctx {
         }
     }
 
-    /// 宣言の特殊化・部分集合・再定義・参照（8.2.2.6）を、相手ごとに書いた順に集める。
+    /// 宣言の特殊化・部分集合・再定義・参照・交差（8.2.2.6）を、相手ごとに書いた順に集める。
     ///
     /// 定義の `:>`・`specializes` は `specializes`、使用の `:>`・`specializes`・`subsets` は `subsets`、
-    /// `:>>`・`redefines` は `redefines`、`::>`・`references` は `references` にする。
+    /// `:>>`・`redefines` は `redefines`、`::>`・`references` は `references`、`=>`・`crosses` は `crosses` にする。
     ///
     /// # 引数
     ///
@@ -1302,6 +1348,7 @@ impl Ctx {
     /// ```text
     /// specs("part def B :> A, Q::C;", true) → [specializes A（範囲は "A, "）, specializes Q::C（範囲は ", Q::C"）]
     /// specs("part b : B :> a;", false)      → [subsets a（範囲 " :> a"）]
+    /// specs("end part w : A => q.r;", false) → [crosses q.r（範囲 " => q.r"）]
     /// specs("part c : C;", false)           → []
     /// ```
     fn specs(&self, n: &SyntaxNode, is_def: bool) -> Vec<Spec> {
@@ -1312,6 +1359,7 @@ impl Ctx {
                 SUBCLASSIFICATION | SUBSETTING => "subsets",
                 REDEFINITION => "redefines",
                 REFERENCE_SUBSETTING => "references",
+                CROSS_SUBSETTING => "crosses",
                 _ => continue,
             };
             let targets: Vec<SyntaxNode> = rel
@@ -1334,6 +1382,43 @@ impl Ctx {
             }
         }
         out
+    }
+
+    /// 参照の形の `perform x.y;`・`exhibit s;`（PerformActionUsage・ExhibitStateUsage の OwnedReferenceSubsetting、8.2.2.17〜18）が
+    /// 指す、既にあるアクション・状態。`::>` と同じ参照（`references`）の相手にする。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：文の節
+    ///
+    /// # 戻り値
+    ///
+    /// 参照の相手（範囲は参照そのもの。UTF-16）。`perform action a : A;` のような宣言する形や、ほかの文なら `None`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// performed_reference("perform x.y;")        → Some(Spec { op: "references", target: "x.y", … })
+    /// performed_reference("exhibit s;")          → Some(Spec { op: "references", target: "s", … })
+    /// performed_reference("perform action a;")   → None
+    /// ```
+    fn performed_reference(&self, n: &SyntaxNode) -> Option<Spec> {
+        if !matches!(n.kind(), PERFORM_ACTION_USAGE | EXHIBIT_STATE_USAGE) {
+            return None;
+        }
+        let r = reference_form(n)?;
+        let range = r.text_range();
+        Some(Spec {
+            op: "references",
+            target: compact(&r),
+            path: if r.kind() == QUALIFIED_NAME {
+                path_of(&r)
+            } else {
+                compact(&r)
+            },
+            start: self.utf16(range.start().into()),
+            end: self.utf16(range.end().into()),
+        })
     }
 
     /// 宣言を `entries` の末尾に足し、`pe` の宣言の `children` にその番号を足す。
@@ -1414,7 +1499,7 @@ impl Ctx {
     /// - `pe`：書き込む宣言の番号
     /// - `b`：メタデータの本体の無名ブロックの番号
     /// - `md`：メタデータの定義の名前
-    /// - `key`・`val`：本体の文の名前と値の式（`meta_assignment` の結果）
+    /// - `key`・`val`：本体の文の名前と値の式（`metadata_body_assignment` の結果）
     /// - `hs`：本体の文の始まり（バイトオフセット。値の位置を探し始める所）
     fn set_owner_meta(&mut self, pe: usize, b: usize, md: &str, key: &str, val: &str, hs: usize) {
         let at = self
@@ -1615,10 +1700,13 @@ impl Ctx {
                 continue;
             }
             let is_def = self.out.entries[i].is_def;
+            // `:>> baseType = … meta SysML::PartUsage;` は、メタデータの定義の参照の使用（名前 baseType）として読んである
             if let Some(kind) = self.out.entries[d]
-                .exprs
+                .children
                 .iter()
-                .find_map(|x| base_metaclass(&x.text))
+                .map(|&c| &self.out.entries[c])
+                .filter(|c| c.name == "baseType")
+                .find_map(|c| c.value.as_deref().and_then(base_metaclass))
                 .and_then(|m| base_kind(m, is_def))
             {
                 self.out.entries[i].kind = kind.to_owned();
@@ -1849,6 +1937,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// entry_kind("#X h : T;", "h : T", "", true)                → Some(("usage", false))
 /// entry_kind("connect a to b;", "connect a to b", "", false) → Some(("connection", false))
 /// entry_kind("individual def E;", "def E", "individual", false) → Some(("occurrence def", true))
+/// entry_kind("perform x.y;", "perform x.y", "", false)     → Some(("perform action", false))
 /// entry_kind("in #X x : T;", "x : T", "in", true)           → None   // パラメータとして読む
 /// entry_kind("a = 1;", "a = 1", "", false)                  → None
 /// ```
@@ -1884,6 +1973,9 @@ fn entry_kind(
         // `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）
         BINDING_CONNECTOR_AS_USAGE => Some(("binding", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
+        // `perform x.y;`・`exhibit s;`（既にあるアクション・状態を指す形、8.2.2.17〜18）
+        PERFORM_ACTION_USAGE if reference_form(n).is_some() => Some(("perform action", false)),
+        EXHIBIT_STATE_USAGE if reference_form(n).is_some() => Some(("exhibit state", false)),
         // `individual def H;`・`individual h : H;`（IndividualDefinition・IndividualUsage、8.2.2.9）
         OCCURRENCE_DEFINITION if starts_with_word(h, "def") => Some(("occurrence def", true)),
         OCCURRENCE_USAGE if is_mod("individual") => Some(("occurrence", false)),
@@ -1961,27 +2053,28 @@ fn has_keyword(n: &SyntaxNode, kw: &str) -> bool {
         .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == kw))
 }
 
-/// メタデータの定義の本体の式 `:>> baseType = … meta SysML::PartUsage` から、基のメタクラスの名前を取り出す
+/// メタデータの定義の `:>> baseType = … meta SysML::PartUsage` の値から、基のメタクラスの名前を取り出す
 /// （SemanticMetadata の baseType、8.2.2.27）。
 ///
 /// # 引数
 ///
-/// - `text`：メタデータの定義の式（空白をまとめたもの）
+/// - `value`：`baseType` の値の式（空白をまとめたもの）
 ///
 /// # 戻り値
 ///
-/// `meta` の後ろの修飾名の最後の名前。`baseType` と `meta` が無ければ `None`。
+/// `meta` の後ろの修飾名の最後の名前。`meta` が無ければ `None`。
 ///
 /// # 例
 ///
 /// ```text
-/// base_metaclass(":>> baseType = parts meta SysML::PartUsage") → Some("PartUsage")
-/// base_metaclass("baseType = commands meta Usage")             → Some("Usage")
-/// base_metaclass(":>> annotatedElement = x")                   → None
+/// base_metaclass("parts meta SysML::PartUsage") → Some("PartUsage")
+/// base_metaclass("meta Usage")                  → Some("Usage")
+/// base_metaclass("x")                           → None
 /// ```
-fn base_metaclass(text: &str) -> Option<&str> {
-    let (_, rest) = text.split_once("baseType")?;
-    let (_, after) = rest.split_once(" meta ")?;
+fn base_metaclass(value: &str) -> Option<&str> {
+    let after = value
+        .strip_prefix("meta ")
+        .or_else(|| value.split_once(" meta ").map(|(_, a)| a))?;
     let qn = after.split([' ', ';']).next()?;
     let name = last_segment(qn);
     is_basic_name(name).then_some(name)
@@ -2143,6 +2236,7 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
 /// type_of(": ~Fuel")  → Some({ name: "Fuel", conj: true, path: "Fuel" })
 /// type_of(": A::B")   → Some({ name: "B", conj: false, path: "A::B" })
 /// type_of(": a.b")    → Some({ name: "b", conj: false, path: "b" })   // 特徴の連鎖
+/// type_of(": Q::Pt::'~Pt'") → Some({ name: "Pt", conj: true, path: "Q::Pt" })   // 共役のポートの定義
 /// type_of(":")        → None   // 相手が無い
 /// ```
 fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
@@ -2154,11 +2248,25 @@ fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
         .filter(|t| matches!(t.kind(), IDENT | QUOTED_NAME))
         .last()?;
     let name = unquote(last.text()).to_owned();
-    let path = if target.kind() == QUALIFIED_NAME {
-        path_of(&target)
-    } else {
-        name.clone()
-    };
+    if target.kind() != QUALIFIED_NAME {
+        return Some(TypeRef {
+            path: name.clone(),
+            name,
+            conj,
+        });
+    }
+    let path = path_of(&target);
+    // `Pt::'~Pt'` は、ポートの定義 Pt に含まれる共役のポートの定義（ConjugatedPortDefinition、8.2.2.12 の Note 1・2）。
+    // `~Pt` と同じく、Pt を共役にした型として読む
+    if let Some((owner, _)) = path.rsplit_once("::")
+        && name.strip_prefix('~') == Some(last_segment(owner))
+    {
+        return Some(TypeRef {
+            name: last_segment(owner).to_owned(),
+            conj: true,
+            path: owner.to_owned(),
+        });
+    }
     Some(TypeRef { name, conj, path })
 }
 
@@ -2428,6 +2536,49 @@ fn rendering_reference(e: &Entry) -> String {
         .unwrap_or_else(|| last_segment(&e.ty).to_owned())
 }
 
+/// 既にある要素を指す形（OwnedReferenceSubsetting。`perform x.y;`・`exhibit s;`・`frame c;`、8.2.2.17・8.2.2.18・8.2.2.21）の参照。
+/// 頭のキーワード（`perform`・`exhibit`・`frame`）の直後に参照が続くときだけ、その参照を返す。
+///
+/// # 引数
+///
+/// - `n`：文の節
+///
+/// # 戻り値
+///
+/// 頭のキーワードの直後の `QUALIFIED_NAME`・`FEATURE_CHAIN` の節。直後が種類のキーワード（`perform action a`）や
+/// ほかの語（`perform use case u`）なら `None`。
+///
+/// # 例
+///
+/// ```text
+/// reference_form("perform x.y;")            → Some(FEATURE_CHAIN(x.y))
+/// reference_form("private exhibit s;")      → Some(QUALIFIED_NAME(s))
+/// reference_form("perform action a : A;")   → None
+/// reference_form("perform use case u : U;") → None
+/// ```
+fn reference_form(n: &SyntaxNode) -> Option<SyntaxNode> {
+    let mut after_head = false;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind().is_trivia() || t.kind() == REGULAR_COMMENT => {
+            }
+            rowan::NodeOrToken::Token(t)
+                if t.kind() == KEYWORD && matches!(t.text(), "perform" | "exhibit" | "frame") =>
+            {
+                after_head = true;
+            }
+            rowan::NodeOrToken::Node(c)
+                if after_head && matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) =>
+            {
+                return Some(c);
+            }
+            _ if after_head => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 /// 最初の参照（名前として読んだ NAME も含む）。
 ///
 /// # 引数
@@ -2554,31 +2705,37 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
 /// relation("satisfy R;", "satisfy R")            → Some(Satisfy { req: "R", by: "", negated: false })
 /// relation("not satisfy R by A;", …)             → Some(Satisfy { req: "R", by: "A", negated: true })
 /// relation("verify R;", "verify R")              → Some(Verify { req: "R" })
+/// relation("satisfy requirement s : R by A;", …) → Some(Satisfy { req: "R", by: "A", negated: false })
+/// relation("verify requirement R;", …)           → Some(Verify { req: "R" })  // 型の無い宣言する形は書いた名前
 /// relation("succession flow of W from a.o to b.i;", …) → Some(SuccessionFlow { item: "W", a: "a.o", b: "b.i", … })
 /// relation("part a;", "part a")                  → None
 /// ```
 fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
     let name = || child(n, NAME).map(|c| unquote(&compact(&c)).to_owned());
     match n.kind() {
-        MESSAGE_USAGE => Some(RelKind::Message {
-            name: name().unwrap_or_default(),
-            item: ref_after(n, "of")
-                .map(|s| last_segment(&s).to_owned())
-                .unwrap_or_default(),
-            a: ref_after(n, "from")?,
-            b: ref_after(n, "to")?,
-        }),
-        // `satisfy R by X`・`satisfy R;`（持ち主が満たす）・`assert satisfy`・`not satisfy`（8.2.2.21）
+        MESSAGE_USAGE => {
+            let (a, b) = flow_end_refs(n)?;
+            Some(RelKind::Message {
+                name: name().unwrap_or_default(),
+                item: payload_type(n),
+                a,
+                b,
+            })
+        }
+        // `satisfy R by X`・`satisfy R;`（持ち主が満たす）・`assert satisfy`・`not satisfy`・
+        // `satisfy requirement r : R by X;`（宣言する形。満たすのは型の R）（8.2.2.21）
         SATISFY_REQUIREMENT_USAGE
             if ["satisfy", "assert", "not"]
                 .iter()
                 .any(|w| starts_with_word(h, w)) =>
         {
-            let req = name().or_else(|| {
+            let req = if has_keyword(n, "requirement") {
+                declared_requirement(n)
+            } else {
                 n.children()
                     .find(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
-                    .map(|c| compact(&c))
-            })?;
+                    .map(|c| compact(&c))?
+            };
             let negated = n
                 .children_with_tokens()
                 .any(|e| e.kind() == KEYWORD && e.as_token().is_some_and(|t| t.text() == "not"));
@@ -2588,7 +2745,31 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
                 negated,
             })
         }
-        REQUIREMENT_VERIFICATION_USAGE => Some(RelKind::Verify { req: first_ref(n)? }),
+        // `verify R;`・`verify requirement r : R;`（宣言する形。検証するのは型の R）（8.2.2.24）
+        REQUIREMENT_VERIFICATION_USAGE => Some(RelKind::Verify {
+            req: if has_keyword(n, "requirement") {
+                declared_requirement(n)
+            } else {
+                first_ref(n)?
+            },
+        }),
+        // `frame cu;`（既にある関心事を指す形、FramedConcernMember の OwnedReferenceSubsetting、8.2.2.21）
+        FRAMED_CONCERN_USAGE if reference_form(n).is_some() => {
+            let r = reference_form(n)?;
+            let reference = compact(&r);
+            Some(RelKind::Frame {
+                name: unquote(last_segment(
+                    reference.rsplit('.').next().unwrap_or(&reference),
+                ))
+                .to_owned(),
+                ty: reference.clone(),
+                path: if r.kind() == QUALIFIED_NAME {
+                    path_of(&r)
+                } else {
+                    reference
+                },
+            })
+        }
         FRAMED_CONCERN_USAGE => {
             let t = child(n, FEATURE_TYPING).and_then(|c| type_of(&c))?;
             Some(RelKind::Frame {
@@ -2603,6 +2784,45 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         }
         _ => None,
     }
+}
+
+/// 宣言する形の `satisfy requirement r : R …`・`verify requirement r : R;`（SatisfyRequirementUsage・
+/// RequirementVerificationUsage の 'requirement' UsageDeclaration、8.2.2.21・8.2.2.24）が満たす・検証する要求。
+/// 新しい要求の使用 `r` の型（無ければ特殊化・部分集合・再定義・参照の最初の相手）にする。
+/// 型も相手も無い `satisfy requirement R by X;` は、これまでどおり（モックとも同じく）書いた名前の要求を指すとみなす。
+///
+/// # 引数
+///
+/// - `n`：`SATISFY_REQUIREMENT_USAGE`・`REQUIREMENT_VERIFICATION_USAGE` の節（`requirement` を書いたもの）
+///
+/// # 戻り値
+///
+/// 要求の参照（空白を除いたもの）。型も相手も名前も無ければ空文字列（満たす・検証するのは、新しい要求の使用そのもの）。
+///
+/// # 例
+///
+/// ```text
+/// declared_requirement("satisfy requirement sr : Q::R by v;") → "Q::R"
+/// declared_requirement("verify requirement r2 :> r1;")        → "r1"
+/// declared_requirement("verify requirement SpeedReq;")        → "SpeedReq"   // 型も相手も無い
+/// declared_requirement("verify requirement;")                 → ""
+/// ```
+fn declared_requirement(n: &SyntaxNode) -> String {
+    n.children()
+        .filter(|c| {
+            matches!(
+                c.kind(),
+                FEATURE_TYPING | SUBSETTING | REDEFINITION | REFERENCE_SUBSETTING
+            )
+        })
+        .min_by_key(|c| c.kind() != FEATURE_TYPING)
+        .and_then(|rel| {
+            rel.children()
+                .find(|t| matches!(t.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+        })
+        .map(|t| compact(&t))
+        .or_else(|| child(n, NAME).map(|c| unquote(&compact(&c)).to_owned()))
+        .unwrap_or_default()
 }
 
 /// フロー（`flow of I from a to b`、FlowUsage、8.2.2.16）の流れの関係。
@@ -2623,19 +2843,57 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
 /// ```text
 /// flow_ends("flow of Heat from h.o to w.i;", "", "", None) → Some(Flow { item: "Heat", a: "h.o", b: "w.i", … })
 /// flow_ends("flow f : FD from a to b;", "f", "FD", Some(3)) → Some(Flow { item: "", a: "a", b: "b", name: "f", ty: "FD", usage: Some(3) })
+/// flow_ends("flow h.o to w.i;", "", "", None)               → Some(Flow { item: "", a: "h.o", b: "w.i", … })   // from を省いた形
 /// flow_ends("flow f : FD;", "f", "FD", Some(3))             → None
 /// ```
 fn flow_ends(n: &SyntaxNode, name: String, ty: String, usage: Option<usize>) -> Option<RelKind> {
+    let (a, b) = flow_end_refs(n)?;
     Some(RelKind::Flow {
-        item: ref_after(n, "of")
-            .map(|s| last_segment(&s).to_owned())
-            .unwrap_or_default(),
-        a: ref_after(n, "from")?,
-        b: ref_after(n, "to")?,
+        item: payload_type(n),
+        a,
+        b,
         name,
         ty,
         usage,
     })
+}
+
+/// フロー・順序付きの流れ・メッセージの 2 つの端（FlowDeclaration・MessageDeclaration、8.2.2.16）。
+/// `from a to b` の形と、`from` を省いた `a to b` の形（FlowEndMember 'to' FlowEndMember・MessageEventMember 'to' MessageEventMember）を読む。
+///
+/// # 引数
+///
+/// - `n`：`FLOW_USAGE`・`SUCCESSION_FLOW_USAGE`・`MESSAGE_USAGE` の節
+///
+/// # 戻り値
+///
+/// （元の参照, 先の参照）。空白を除いて書いたとおり。`to` の前後の参照が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// flow_end_refs("flow of W from h.o to w.i;") → Some(("h.o", "w.i"))
+/// flow_end_refs("flow h.o to w.i;")           → Some(("h.o", "w.i"))
+/// flow_end_refs("message a to b;")            → Some(("a", "b"))
+/// flow_end_refs("flow f : FD;")               → None
+/// ```
+fn flow_end_refs(n: &SyntaxNode) -> Option<(String, String)> {
+    let b = ref_after(n, "to")?;
+    if let Some(a) = ref_after(n, "from") {
+        return Some((a, b));
+    }
+    // `from` を省いた形：`to` の直前の参照が元
+    let mut before = None;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "to" => break,
+            rowan::NodeOrToken::Node(c) if matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) => {
+                before = Some(compact(&c));
+            }
+            _ => {}
+        }
+    }
+    Some((before?, b))
 }
 
 /// 順序付きの流れ（`succession flow of I from a to b`、SuccessionFlowUsage、8.2.2.16）の関係。
@@ -2674,6 +2932,38 @@ fn succession_flow_ends(
         ty,
         usage,
     })
+}
+
+/// `flow`・`message` の流れるもの（`of` の後、FlowPayloadFeature、8.2.2.16）の型の最後の名前。
+/// `of ff : Fuel` は型 `Fuel`（`ff` は流れるものの名前）、`of Fuel` は `Fuel` にする。
+///
+/// # 引数
+///
+/// - `n`：`FLOW_USAGE`・`SUCCESSION_FLOW_USAGE`・`MESSAGE_USAGE` の節
+///
+/// # 戻り値
+///
+/// 型の最後の名前（型付けの相手は引用符を外し、型だけの `of 'A'` はこれまでどおり書いたまま）。`of` が無いか、型が無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// payload_type("flow of ff : Q::Fuel from a to b;") → "Fuel"
+/// payload_type("flow of Fuel from a to b;")         → "Fuel"
+/// payload_type("flow from a to b;")                 → ""
+/// ```
+fn payload_type(n: &SyntaxNode) -> String {
+    let Some(payload) = child(n, FLOW_PAYLOAD_FEATURE) else {
+        return String::new();
+    };
+    if let Some(t) = child(&payload, FEATURE_TYPING).and_then(|t| type_of(&t)) {
+        return t.name;
+    }
+    payload
+        .children()
+        .find(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+        .map(|c| last_segment(&compact(&c)).to_owned())
+        .unwrap_or_default()
 }
 
 /// 依存（Dependency、8.2.2.3）を、依存する側とされる側の組ごとの関係にする。
