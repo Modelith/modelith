@@ -707,6 +707,25 @@ fn declaring_satisfy_and_verify_point_to_the_requirement_type() {
 }
 
 #[test]
+fn conjugated_port_definition_name_is_the_conjugate_of_its_owner() {
+    // Arrange（同値分割：Pt::'~Pt'・修飾名の中・名前の合わない '~X'。ConjugatedPortDefinition、8.2.2.12）
+    let text = "part def H { port y : Pt::'~Pt'; port z : Q::Pt::'~Pt'; port w : Pt::'~Other'; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let ty = |name: &str| {
+        let e = entry(&r, name);
+        (e.ty.clone(), e.ty_path.clone(), e.conj)
+    };
+    assert_eq!(ty("y"), ("Pt".to_owned(), "Pt".to_owned(), Some(true)));
+    assert_eq!(ty("z"), ("Pt".to_owned(), "Q::Pt".to_owned(), Some(true)));
+    assert_eq!(
+        ty("w"),
+        ("~Other".to_owned(), "Pt::~Other".to_owned(), Some(false))
+    );
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";

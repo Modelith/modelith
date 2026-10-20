@@ -1336,5 +1336,17 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(ps).toEqual(["「満たす」関係の相手「Nope」が見つかりません（satisfy）"]);
       });
     });
+
+    describe("共役のポートの定義の名前（ConjugatedPortDefinition・ConjugatedPortTyping、8.2.2.12 の Note 1・2）", () => {
+      it("port y : Pt::'~Pt'; は ~Pt と同じく Pt の共役として読み、誤って「型が見つかりません」と言わない", () => {
+        // Arrange
+        const text = "package P { port def Pt { in item x : Real; } part def H { port y : Pt::'~Pt'; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.problems).toEqual([]);
+        expect(M.nodes.find((n) => n.key === "H")?.ports.map((p) => [p.name, p.type, p.conj, p.dir])).toEqual([["y", "Pt", true, "out"]]);
+      });
+    });
   });
 }

@@ -1067,6 +1067,18 @@ fn declaring_satisfy_with_a_missing_type_or_subject_is_reported() {
 }
 
 #[test]
+fn explicit_conjugated_port_definition_resolves_to_the_conjugate() {
+    // Arrange（ConjugatedPortDefinition、8.2.2.12：`Pt::'~Pt'` は `~Pt` と同じ）
+    let text = "package P { port def Pt { in item x : Real; } part def H { port y : Pt::'~Pt'; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    let y = &node(&m, "H").ports[0];
+    assert_eq!((y.ty.as_str(), y.conj, y.dir), ("Pt", true, "out"));
+}
+
+#[test]
 fn dependency_draws_a_line_per_client_and_supplier_with_its_label() {
     // Arrange（Dependency、8.2.2.3・8.2.3.3 の binary-dependency：名前・メタデータ・複数の相手）
     let text = "package P { part def A; part def B; part def C; metadata def trace; \

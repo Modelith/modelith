@@ -2187,6 +2187,7 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
 /// type_of(": ~Fuel")  → Some({ name: "Fuel", conj: true, path: "Fuel" })
 /// type_of(": A::B")   → Some({ name: "B", conj: false, path: "A::B" })
 /// type_of(": a.b")    → Some({ name: "b", conj: false, path: "b" })   // 特徴の連鎖
+/// type_of(": Q::Pt::'~Pt'") → Some({ name: "Pt", conj: true, path: "Q::Pt" })   // 共役のポートの定義
 /// type_of(":")        → None   // 相手が無い
 /// ```
 fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
@@ -2198,11 +2199,25 @@ fn type_of(rel: &SyntaxNode) -> Option<TypeRef> {
         .filter(|t| matches!(t.kind(), IDENT | QUOTED_NAME))
         .last()?;
     let name = unquote(last.text()).to_owned();
-    let path = if target.kind() == QUALIFIED_NAME {
-        path_of(&target)
-    } else {
-        name.clone()
-    };
+    if target.kind() != QUALIFIED_NAME {
+        return Some(TypeRef {
+            path: name.clone(),
+            name,
+            conj,
+        });
+    }
+    let path = path_of(&target);
+    // `Pt::'~Pt'` は、ポートの定義 Pt に含まれる共役のポートの定義（ConjugatedPortDefinition、8.2.2.12 の Note 1・2）。
+    // `~Pt` と同じく、Pt を共役にした型として読む
+    if let Some((owner, _)) = path.rsplit_once("::")
+        && name.strip_prefix('~') == Some(last_segment(owner))
+    {
+        return Some(TypeRef {
+            name: last_segment(owner).to_owned(),
+            conj: true,
+            path: owner.to_owned(),
+        });
+    }
     Some(TypeRef { name, conj, path })
 }
 
