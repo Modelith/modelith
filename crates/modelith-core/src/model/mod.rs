@@ -246,7 +246,7 @@ fn has_word(mods: &str, w: &str) -> bool {
 }
 
 /// 解析結果からモデルを作る。暫定コアの `build`（`web/src/core/model.ts`）と同じ振る舞い。
-/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → 解析の問題 → フェーズ → view の順に組み立てる。
+/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → 解析の問題 → フェーズ → view の順に組み立てる。
 ///
 /// # 引数
 ///
@@ -272,6 +272,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.relations();
     b.specializations();
     b.edge_ids();
+    b.notes();
     b.parse_problems();
     b.phases();
     views::build_views(&mut b);
@@ -1147,6 +1148,46 @@ impl<'a> Builder<'a> {
         } else if self.child_named(node.entry, seg).is_none() {
             let msg = format!("ポート「{seg}」が {} にありません", node.name);
             self.problem(pos, msg, None);
+        }
+    }
+
+    /// 図に描くコメント（8.2.3.4）。注釈する要素のうち図に描く要素があるコメントだけを、書いた順に `notes` に足す。
+    /// キーは、名前があれば `note:名前`（同じ名前が続けば `note:名前#2`）、無ければ名前の無いメモの通し番号で `note:#1` から。
+    fn notes(&mut self) {
+        let mut taken: HashSet<String> = HashSet::new();
+        let mut unnamed = 0;
+        for (i, e) in self.entries.iter().enumerate() {
+            if e.kind != "comment" {
+                continue;
+            }
+            let targets: Vec<String> = e
+                .about
+                .iter()
+                .filter_map(|a| self.node_of.get(a))
+                .map(|&n| self.model.nodes[n].key.clone())
+                .collect();
+            if targets.is_empty() {
+                continue;
+            }
+            let key = if e.name.is_empty() {
+                unnamed += 1;
+                format!("note:#{unnamed}")
+            } else {
+                let base = format!("note:{}", e.name);
+                let mut key = base.clone();
+                let mut k = 1;
+                while taken.contains(&key) {
+                    k += 1;
+                    key = format!("{base}#{k}");
+                }
+                key
+            };
+            taken.insert(key.clone());
+            self.model.notes.push(Note {
+                key,
+                entry: i,
+                targets,
+            });
         }
     }
 

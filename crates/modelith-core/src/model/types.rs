@@ -57,6 +57,18 @@ pub struct Edge {
     pub end_label: Option<String>,
 }
 
+/// 図に描くコメント（メモの記号。8.2.3.4 の comment と annotation：角を折った四角と、注釈する要素への破線）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Note {
+    /// 図の要素のキー（名前があれば `note:名前`、無ければ `note:#番号`）。配置はこのキーで覚える。
+    pub key: String,
+    /// コメントの宣言（`ParseResult.entries` の番号）。
+    pub entry: usize,
+    /// 注釈する要素のうち、図に描く要素のキー（書いた順）。空のコメントは図に描かないので、作らない。
+    pub targets: Vec<String>,
+}
+
 /// 問題一覧の 1 行。`kind` が無ければエラー、`gap` はトレースの抜け、`unsupported` はまだ扱えない構文。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Problem {
@@ -100,4 +112,6 @@ pub struct Model {
     pub problems: Vec<Problem>,
     pub phases: Option<Vec<String>>,
     pub phase_enum: Option<String>,
+    /// 図に描くコメント（書いた順）。一般の図（GeneralView）にだけ描く。
+    pub notes: Vec<Note>,
 }
