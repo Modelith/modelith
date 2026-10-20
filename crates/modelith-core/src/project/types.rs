@@ -141,6 +141,20 @@ pub struct Entry {
     /// コメントが注釈する宣言の番号（`about` の相手。`about` が無ければ持ち主）。書いた順。見つからない相手は入れない。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub about: Vec<usize>,
+    /// 別の言語での表し方（`rep r language "x" /* … */`、TextualRepresentation、8.2.2.4）。書いた順。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reps: Vec<Rep>,
+}
+
+/// 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Rep {
+    /// 名前（`rep r` の `r`）。無ければ空文字列。
+    pub name: String,
+    /// 言語の名前（`language "OCL"` の引用符の中）。
+    pub language: String,
+    /// 本文（`/*`・`*/` を外し、共通の字下げと前後の空の行を除いたもの。行は改行でつなぐ）。
+    pub body: String,
 }
 
 /// 多重度と、その並びの性質（MultiplicityPart、8.2.2.6）。

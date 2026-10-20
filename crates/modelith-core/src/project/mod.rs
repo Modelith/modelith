@@ -368,9 +368,9 @@ impl Ctx {
 
     /// 要素 1 つを、宣言・関係・式・まだ扱えない文・無名ブロックのどれかにする（暫定コアの stmt と同じ順で判定する）。
     ///
-    /// `doc` は `pe` の宣言の `doc` に入れる。本体 `{ … }` があれば、宣言ならその中を、宣言でなければ
+    /// `doc` は `pe` の宣言の `doc` に、`rep` は `pe` の宣言の `reps` に入れ、`comment` は種類 `comment` の宣言にする。本体 `{ … }` があれば、宣言ならその中を、宣言でなければ
     /// 無名ブロックを作ってその中を読み、`open`・`close`・`end` を記録する。まだ扱えない文の本体は読まない
-    /// （中の宣言を、外側の宣言の中身にしない）。終わっていない末尾の文と、`rep` の文は読まない。
+    /// （中の宣言を、外側の宣言の中身にしない）。終わっていない末尾の文は読まない。
     ///
     /// # 引数
     ///
@@ -383,8 +383,12 @@ impl Ctx {
                 self.comment(n, owner, pe);
                 return;
             }
-            // テキストでの表し方（rep）は、まだ図にもツリーにも出さない（本文を残すのは後の版）
-            TEXTUAL_REPRESENTATION => return,
+            TEXTUAL_REPRESENTATION => {
+                if let (Some(pe), Some(rep)) = (pe, representation(n)) {
+                    self.out.entries[pe].reps.push(rep);
+                }
+                return;
+            }
             DOCUMENTATION => {
                 if let (Some(pe), Some(body)) = (
                     pe,
@@ -688,6 +692,7 @@ impl Ctx {
                 multiplicity: multiplicity(n),
                 body: None,
                 about: Vec::new(),
+                reps: Vec::new(),
             };
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
@@ -750,6 +755,7 @@ impl Ctx {
                 multiplicity: None,
                 body: None,
                 about: Vec::new(),
+                reps: Vec::new(),
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -1038,6 +1044,7 @@ impl Ctx {
             } else {
                 Vec::new()
             },
+            reps: Vec::new(),
         };
         self.push_entry(e, pe);
         if !about.is_empty() {
@@ -1648,6 +1655,40 @@ fn value_op(v: &SyntaxNode) -> Option<String> {
         .collect::<Vec<_>>()
         .join(" ");
     (op != "=").then_some(op)
+}
+
+/// 別の言語での表し方（`rep r language "x" /* … */`、TextualRepresentation、8.2.2.4）を読む。
+///
+/// # 引数
+///
+/// - `n`：`TEXTUAL_REPRESENTATION` の節
+///
+/// # 戻り値
+///
+/// 名前・言語の名前（引用符を外したもの）・本文。言語の名前か本文が欠けていれば `None`。
+///
+/// # 例
+///
+/// ```text
+/// representation("rep r language \"OCL\" /* self.m > 0 */") → Some({ name: "r", language: "OCL", body: "self.m > 0" })
+/// representation("language \"x\" /* a */")                   → Some({ name: "", language: "x", body: "a" })
+/// representation("rep r language;")                         → None   // 言語の名前と本文が無い
+/// ```
+fn representation(n: &SyntaxNode) -> Option<Rep> {
+    let token = |kind: SyntaxKind| {
+        n.children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| t.kind() == kind)
+    };
+    let language = token(STRING)?;
+    let body = token(REGULAR_COMMENT)?;
+    let lang = language.text();
+    let lang = lang.strip_prefix('"').unwrap_or(lang);
+    Some(Rep {
+        name: decl_parts(n, false).name,
+        language: lang.strip_suffix('"').unwrap_or(lang).to_owned(),
+        body: representation_body(body.text()),
+    })
 }
 
 /// 関係の相手 1 つだけを消すときの範囲（バイトオフセット）。消した後も、関係の書き方が崩れないようにする。
