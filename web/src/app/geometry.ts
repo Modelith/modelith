@@ -538,6 +538,53 @@ export function layoutStates(nodes: readonly ModelNode[], edges: readonly ModelE
 }
 
 /**
+ * 状態遷移の図の、座標の無い要素を置く（pos を変更する）。どれにも座標が無ければ自動の配置（layoutStates）のとおりに置く。
+ * 置いてある要素があれば、自動の配置での位置関係を保ったまま、外側の要素は置いてある要素の一番下から 80 下に、
+ * 置いてある状態の中に新しく入った要素は、その状態の中の一番下に置く（その要素の中の要素も、一緒に動かした位置に置く）。
+ *
+ * @param nodes 図に描く要素（外の要素が、その中の要素より前にあること）
+ * @param edges 図の線（遷移）
+ * @param regions 中を破線で区切った領域に描く並行の状態のキー
+ * @param pos 要素のキーから左上の座標への対応。置いた座標を書き込む
+ * @example
+ * // どれにも座標が無い
+ * placeStates(nodes, edges, [], pos) // → pos は layoutStates(nodes, edges, []) と同じ
+ * // s:off（0, 0、150 × 36）だけ置いてあり、s:on が新しい
+ * placeStates([off, on], edges, [], pos) // → pos["s:on"] = [自動の配置の x, 116]（36 + 80 下）
+ */
+export function placeStates(nodes: readonly ModelNode[], edges: readonly ModelEdge[], regions: readonly string[], pos: Record<string, Pos>): void {
+  const missing = new Set(nodes.filter((n) => !pos[n.key]).map((n) => n.key));
+  if (!missing.size) return;
+  const full = layoutStates(nodes, edges, regions);
+  const placedAtStart = nodes.filter((n) => !missing.has(n.key));
+  if (!placedAtStart.length) {
+    Object.assign(pos, full);
+    return;
+  }
+  const bottom = Math.max(...[...boxesOf(placedAtStart, pos).values()].map((b) => b.y + b.h));
+  const tops = nodes.filter((n) => !n.container && missing.has(n.key)).map((n) => full[n.key]?.[1] ?? 0);
+  const dy = bottom + 80 - (tops.length ? Math.min(...tops) : 0);
+  const shift = new Map<string, Pos>();
+  for (const n of nodes) {
+    if (!missing.has(n.key)) continue;
+    const f = full[n.key] ?? [0, 0];
+    const c = n.container;
+    let d: Pos;
+    if (!c) d = [0, dy];
+    else if (missing.has(c)) d = shift.get(c) ?? [0, dy];
+    else {
+      // 置いてある状態の中に新しく入った要素は、その状態の中の一番下に置く
+      const outer = nodes.find((x) => x.key === c);
+      const cb = outer ? boxesOf(nodes.filter((x) => pos[x.key]), pos).get(c) : undefined;
+      const at: Pos = cb ? [cb.x + NEST_PAD, cb.y + cb.h - NEST_PAD + NEST_GAP] : [f[0], f[1] + dy];
+      d = [at[0] - f[0], at[1] - f[1]];
+    }
+    shift.set(n.key, d);
+    pos[n.key] = [f[0] + d[0], f[1] + d[1]];
+  }
+}
+
+/**
  * 状態遷移の図の本体の中の、要素ごとの列（0 から）。遷移の元から先へ、最も長い道のりの列にする。
  * 深さ優先でたどったときに戻る遷移（繰り返し）と、自分への遷移は数えない。どの遷移にもつながらない要素は 0。
  *

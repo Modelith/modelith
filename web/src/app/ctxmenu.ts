@@ -255,7 +255,7 @@ function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
 /**
  * 図の何も無いところで開くメニューの項目を作る。その位置に要素（内部ブロック図・シーケンス図では、
  * 部品定義を 12 個までの部品・ライフライン）を置く項目と、すべて選択・並べ直す・全体を表示を並べる。
- * アクションの流れの図では、置く項目を出さない（要素はテキストで書く）。
+ * アクションの流れの図・状態遷移の図では、置く項目を出さない（要素はテキストで書く）。
  *
  * @param lx 開いた位置の x（図の枠の中の座標、px）
  * @param ly 開いた位置の y（図の枠の中の座標、px）
@@ -273,8 +273,8 @@ function itemsForCanvas(lx: number, ly: number): CtxItem[] {
     for (const n of S.M.nodes.filter((x) => x.kind === "part def").slice(0, 12)) {
       items.push({ label: n.name, icon: kindIcon("part"), act: () => { S.tool = { usage: n.name }; placeTool(lx, ly); } });
     }
-  } else if (S.view !== "afv") {
-    // アクションの流れの図には、置く項目を出さない（要素はテキストで書く）
+  } else if (S.view !== "afv" && S.view !== "stm") {
+    // アクションの流れの図・状態遷移の図には、置く項目を出さない（要素はテキストで書く）
     items.push({ head: "ここに要素を追加" });
     for (const [k, l] of PALETTE[S.view] ?? PALETTE["all"] ?? []) items.push({ label: l, icon: kindIcon(k), act: () => { S.tool = { kind: k }; placeTool(lx, ly); } });
   }

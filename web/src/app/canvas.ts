@@ -167,8 +167,8 @@ function onPointerDown(ev: PointerEvent): void {
       const q = L[key];
       return q ? [{ key, p: [q[0], q[1]] as Pos }] : [];
     };
-    // 中に部品を描く部品（内部ブロック図の入れ子）は、中の部品ごと動かす
-    const withInner = (key: string): string[] => [key, ...CC().nodes.filter((n) => n.container === key).map((n) => n.key)];
+    // 中に部品・状態を描く要素（内部ブロック図・状態遷移の図の入れ子）は、中の要素ごと（中の中の要素も）動かす
+    const withInner = (key: string): string[] => [key, ...CC().nodes.filter((n) => n.container === key).flatMap((n) => withInner(n.key))];
     const keys = S.selSet.size > 1 && S.selSet.has(k) ? selNodes().flatMap((n) => withInner(n.key)) : withInner(k);
     if (keys.length > 1) d.group = [...new Set(keys)].flatMap(at);
     drag = d;

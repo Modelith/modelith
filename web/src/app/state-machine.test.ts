@@ -1,7 +1,8 @@
 // 状態遷移の図（StateTransitionView、8.2.3.18）の中身と、その描き方。要素のキーと線の ID は、Rust のコアが決めたものを使う（ADR-0016）。
 import { describe, expect, it } from "vitest";
 import { build, parse, type Model, type ModelNode } from "../core";
-import { boxesOf, compartment, layoutStates, nodeH, nodeW, regionSeparators, stateColumns, stateSize, type NodeBox } from "./geometry";
+import { boxesOf, compartment, layoutStates, nodeH, nodeW, placeStates, regionSeparators, stateColumns, stateSize, type NodeBox } from "./geometry";
+import type { Pos } from "./layout";
 import { emptyView } from "./layout";
 import { defaultStateContext, isPseudoState, stateActionLines, stateContentOf, stateContexts } from "./state-machine";
 import { CV, edgeStroke, svgMarkup } from "./svg";
@@ -215,6 +216,47 @@ describe("入れ子の状態の配置（layoutStates・boxesOf）", () => {
     const pos = layoutStates([], [], []);
     // Assert
     expect(pos).toEqual({});
+  });
+});
+
+describe("座標の無い状態の置き方（placeStates）", () => {
+  const { M, c } = setup(TEXT, "S");
+  const { nodes, edges, regions } = stateContentOf(M, c);
+
+  it("どれにも座標が無ければ、自動の配置のとおりに置く", () => {
+    // Arrange
+    const pos: Record<string, Pos> = {};
+    // Act
+    placeStates(nodes, edges, regions, pos);
+    // Assert
+    expect(pos).toEqual(layoutStates(nodes, edges, regions));
+  });
+
+  it("置いてある状態は動かさず、新しい外側の状態はその下に、新しい中の状態は外の状態の中の一番下に置く", () => {
+    // Arrange（s:on.fan と s:#done が新しく入った）
+    const pos: Record<string, Pos> = { ...layoutStates(nodes, edges, regions) };
+    const before = structuredClone(pos);
+    delete pos["s:on.fan"];
+    delete pos["s:#done"];
+    const kept = Object.keys(pos);
+    // Act
+    placeStates(nodes, edges, regions, pos);
+    // Assert
+    for (const k of kept) expect(pos[k]).toEqual(before[k]);
+    const heat = boxesOf(nodes.filter((n) => n.key !== "s:on.fan" && n.key !== "s:#done"), before).get("s:on.heat")!;
+    expect(pos["s:on.fan"]?.[1]).toBeGreaterThan(heat.y + heat.h);
+    const bottom = Math.max(...[...boxesOf(nodes.filter((n) => kept.includes(n.key)), before).values()].map((b) => b.y + b.h));
+    expect(pos["s:#done"]?.[1]).toBeGreaterThan(bottom);
+  });
+
+  it("すべてに座標があれば、何も変えない（境界値）", () => {
+    // Arrange
+    const pos: Record<string, Pos> = { ...layoutStates(nodes, edges, regions) };
+    const before = structuredClone(pos);
+    // Act
+    placeStates(nodes, edges, regions, pos);
+    // Assert
+    expect(pos).toEqual(before);
   });
 });
 
