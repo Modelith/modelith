@@ -993,3 +993,36 @@ fn dependency_without_supplier_makes_no_relation() {
     assert!(r.rels.is_empty());
     assert_eq!(r.errors.len(), 1);
 }
+
+#[test]
+fn feature_value_keeps_how_the_value_is_given() {
+    // Arrange（FeatureValue、8.2.2.6。同値クラス: 束縛 `=`・初期値 `:=`・既定値 `default`・`default =`・`default :=`）
+    let text = "part def A { attribute b = 1; attribute i := 2; attribute d default 3; \
+                attribute de default = 4; attribute di default  := 5; attribute n; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let op = |name: &str| entry(&r, name).value_op.clone();
+    let value = |name: &str| entry(&r, name).value.clone();
+    assert_eq!(op("b"), None);
+    assert_eq!(op("i").as_deref(), Some(":="));
+    assert_eq!(op("d").as_deref(), Some("default"));
+    assert_eq!(op("de").as_deref(), Some("default ="));
+    assert_eq!(op("di").as_deref(), Some("default :="));
+    assert_eq!(op("n"), None);
+    assert_eq!(
+        ["b", "i", "d", "de", "di"].map(value),
+        ["1", "2", "3", "4", "5"].map(|v| Some(v.to_owned()))
+    );
+}
+
+#[test]
+fn default_without_expression_has_no_value_kind() {
+    // Arrange（異常系・境界値: `default` の後に式が無い）
+    let text = "part def A { attribute d default; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "d").value, None);
+    assert_eq!(entry(&r, "d").value_op, None);
+}

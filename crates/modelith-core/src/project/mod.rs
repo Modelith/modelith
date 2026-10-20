@@ -623,6 +623,10 @@ impl Ctx {
             if matches!(kind, EXTENDED_DEF_KIND | EXTENDED_USAGE_KIND) {
                 self.extended.push(idx);
             }
+            let value = child(n, FEATURE_VALUE)
+                .and_then(|v| child(&v, EXPRESSION))
+                .map(|x| self.node_head(&x))
+                .filter(|v| !v.is_empty());
             let mut e = Entry {
                 kind: kind.to_owned(),
                 is_def,
@@ -646,10 +650,10 @@ impl Ctx {
                 exprs: Vec::new(),
                 children: Vec::new(),
                 idx,
-                value: child(n, FEATURE_VALUE)
-                    .and_then(|v| child(&v, EXPRESSION))
-                    .map(|x| self.node_head(&x))
-                    .filter(|v| !v.is_empty()),
+                value: value.clone(),
+                value_op: value
+                    .and(child(n, FEATURE_VALUE))
+                    .and_then(|v| value_op(&v)),
                 doc: None,
                 meta: None,
                 phase_val: None,
@@ -709,6 +713,7 @@ impl Ctx {
                 children: Vec::new(),
                 idx,
                 value: None,
+                value_op: None,
                 doc: None,
                 meta: None,
                 phase_val: None,
@@ -1479,6 +1484,36 @@ fn multiplicity(n: &SyntaxNode) -> Option<Multiplicity> {
         ordered,
         nonunique,
     })
+}
+
+/// 値の書き方（FeatureValue、8.2.2.6）。式の前の記号とキーワードを、空白を 1 つにまとめて返す。
+///
+/// # 引数
+///
+/// - `v`：`FEATURE_VALUE` の節
+///
+/// # 戻り値
+///
+/// `:=`・`default`・`default =`・`default :=` のどれか。`=`（束縛）なら `None`。
+///
+/// # 例
+///
+/// ```text
+/// value_op("= 10")          → None
+/// value_op(":= 10")         → Some(":=")
+/// value_op("default 10")    → Some("default")
+/// value_op("default := 10") → Some("default :=")
+/// ```
+fn value_op(v: &SyntaxNode) -> Option<String> {
+    let op = v
+        .children_with_tokens()
+        .take_while(|e| e.kind() != EXPRESSION)
+        .filter_map(|e| e.into_token())
+        .filter(|t| !t.kind().is_trivia())
+        .map(|t| t.text().to_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    (op != "=").then_some(op)
 }
 
 /// 関係の相手 1 つだけを消すときの範囲（バイトオフセット）。消した後も、関係の書き方が崩れないようにする。

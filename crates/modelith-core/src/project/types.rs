@@ -104,6 +104,10 @@ pub struct Entry {
     pub idx: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    /// 値の書き方（FeatureValue、8.2.2.6）。`:=`（初期値）・`default`・`default =`・`default :=`（既定値）を、
+    /// 空白を 1 つにまとめて書いたとおりに持つ。`=`（束縛）と、値の無い宣言では `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_op: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
