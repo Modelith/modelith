@@ -1,8 +1,8 @@
 //! 内部ブロック図（InterconnectionView）の要素のキーと線の ID。UI の `web/src/app/views.ts` の `ibdContent` と同じ決め方にする
 //! （UI が描いた線や要素を、操作の意図のキーと ID から探し直すため。ADR-0016）。
 //!
-//! - 部品：対象の直下の部品は `u:a`。その中の部品（入れ子の 2 段目）は `u:a.b`。2 段目は、部品の本体に書いたものと、
-//!   線の端（`a.b.p`）が指す、部品の型の中の部品。
+//! - 部品：対象の直下の部品は `u:a`。その中の部品は `u:a.b`、さらに中は `u:a.b.c`（どの深さでも同じ）。中の部品は、部品の本体に書いたものと、
+//!   線の端（`a.b.p`・`a.b.c.p`）が指す、部品の型の中の部品。
 //! - 線：対象と、直下の部品の本体と、その型の定義の中に書いた流れ・接続・結び付け。2 項は `flow|端|端|ラベル#番号`・`bind|端|端|=#番号`、
 //!   n 項の接続（8.2.3.13 の n-ary-connection）は、点 `j:名前`（名前が無ければ `j:#番号`）から端ごとに `connect|点|端|#番号`。
 
@@ -111,11 +111,45 @@ fn inner_named(d: &Doc<'_>, u: usize, nm: &str) -> Option<usize> {
     inner_parts(d, u).into_iter().find(|&i| d.e(i).name == nm)
 }
 
-/// 線の端の参照（`a.p`・`a.b.p` など）を、図の要素のキーにする。
+/// 部品 `from`（キー `key`）から、連鎖の段 `segs` を、部品の中の部品へたどれるだけたどる（3 段目から先も。特徴の連鎖、8.2.2.6）。
 ///
-/// 対象そのものに書いた関係では、最初の段は直下の部品で、2 段目が入れ子の部品ならその部品（`u:a.b`）、
-/// そうでなければ直下の部品（`u:a`）。部品の本体・型の定義の中に書いた関係では、最初の段が入れ子の部品ならその部品、
-/// 1 段だけなら部品そのもの（部品のポート）。
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `from`：たどり始める部品の宣言の番号
+/// - `key`：その部品の要素のキー（`u:a` など）
+/// - `segs`：たどる段
+///
+/// # 戻り値
+///
+/// たどり着いた部品の要素のキーと、たどった段の数。
+///
+/// # 例
+///
+/// ```text
+/// // "part def X { part v; } part def A { part x : X; } part def C { part a : A; }" の a から
+/// walk(d, a, "u:a", ["x", "v", "p"]) → ("u:a.x.v", 2)
+/// walk(d, a, "u:a", ["p"])           → ("u:a", 0)
+/// ```
+fn walk(d: &Doc<'_>, from: usize, key: String, segs: &[&str]) -> (String, usize) {
+    let (mut cur, mut key) = (from, key);
+    let mut n = 0;
+    for seg in segs {
+        let Some(x) = inner_named(d, cur, seg) else {
+            break;
+        };
+        key = format!("{key}.{seg}");
+        cur = x;
+        n += 1;
+    }
+    (key, n)
+}
+
+/// 線の端の参照（`a.p`・`a.b.p`・`a.b.c.p` など）を、図の要素のキーにする。
+///
+/// 対象そのものに書いた関係では、最初の段は直下の部品で、続く段が部品の中の部品であるかぎりたどる（`u:a.b`・`u:a.b.c`）。
+/// 部品の本体・型の定義の中に書いた関係では、最初の段からその部品の中の部品をたどり、1 段もたどれなければ、
+/// 1 段だけの参照なら部品そのもの（部品のポート）。
 ///
 /// # 引数
 ///
@@ -135,6 +169,8 @@ fn inner_named(d: &Doc<'_>, u: usize, nm: &str) -> Option<usize> {
 /// end_key(d, C, 対象, "a.x.p") → Some("u:a.x")
 /// end_key(d, C, 対象, "b.q")   → Some("u:b")
 /// end_key(d, C, 対象, "z.q")   → None
+/// // A の中の x の型 X が part v を持つとき
+/// end_key(d, C, 対象, "a.x.v.p") → Some("u:a.x.v")
 /// // a の本体に書いた関係なら
 /// end_key(d, C, a の本体, "x.p") → Some("u:a.x")
 /// end_key(d, C, a の本体, "p")   → Some("u:a")
@@ -145,19 +181,14 @@ fn end_key(d: &Doc<'_>, c: usize, scope: Scope, path: &str) -> Option<String> {
     match scope.part {
         None => {
             let u = parts(d, c).into_iter().find(|&i| d.e(i).name == first)?;
-            let nested = segs
-                .get(1)
-                .and_then(|s| inner_named(d, u, s).map(|_| format!("u:{first}.{s}")));
-            Some(nested.unwrap_or_else(|| format!("u:{first}")))
+            Some(walk(d, u, format!("u:{first}"), &segs[1..]).0)
         }
         Some(u) => {
             let un = &d.e(u).name;
-            if inner_named(d, u, first).is_some() {
-                Some(format!("u:{un}.{first}"))
-            } else if segs.len() == 1 {
-                Some(format!("u:{un}"))
-            } else {
-                None
+            match walk(d, u, format!("u:{un}"), &segs) {
+                (key, n) if n > 0 => Some(key),
+                _ if segs.len() == 1 => Some(format!("u:{un}")),
+                _ => None,
             }
         }
     }
@@ -408,6 +439,7 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// // "part def A { part x; } part def C { part a : A; part b; part e; connect (a, b, e); }" のとき
 /// entry_of(d, C, "u:a")   → Some(a の番号)
 /// entry_of(d, C, "u:a.x") → Some(A の中の x の番号)
+/// entry_of(d, C, "u:a.x.v") → x の型の中の v の番号（3 段目から先も同じようにたどる）
 /// entry_of(d, C, "j:#1")  → Some(接続の使用の番号)
 /// entry_of(d, C, "u:z")   → None
 /// ```
@@ -419,16 +451,13 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Option<usize> {
         });
     }
     let path = key.strip_prefix("u:")?;
-    let (head, rest) = path.split_once('.').unwrap_or((path, ""));
+    let mut segs = path.split('.');
+    let head = segs.next().unwrap_or("");
     let u = parts(d, c).into_iter().find(|&i| d.e(i).name == head)?;
-    if rest.is_empty() {
-        Some(u)
-    } else {
-        inner_named(d, u, rest)
-    }
+    segs.try_fold(u, |cur, seg| inner_named(d, cur, seg))
 }
 
-/// 内部ブロック図の部品を、対象の中から指す参照（直下の部品は `a`、入れ子の部品は `a.b`）。
+/// 内部ブロック図の部品を、対象の中から指す参照（直下の部品は `a`、入れ子の部品は `a.b`・`a.b.c`）。
 ///
 /// # 引数
 ///
@@ -438,22 +467,57 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Option<usize> {
 ///
 /// # 戻り値
 ///
-/// 参照。直下の部品でも、直下の部品の中の部品でもなければ、その部品の名前。
+/// 参照。対象の中の部品をたどって見つからなければ、その部品の名前。
 ///
 /// # 例
 ///
 /// ```text
-/// // "part def A { part x; } part def C { part a : A; }" のとき
+/// // "part def X { part v; } part def A { part x : X; } part def C { part a : A; }" のとき
 /// path_of(d, C, a の番号) → "a"
 /// path_of(d, C, x の番号) → "a.x"
+/// path_of(d, C, v の番号) → "a.x.v"
 /// ```
 pub(super) fn path_of(d: &Doc<'_>, c: usize, u: usize) -> String {
     let name = &d.e(u).name;
-    if d.e(c).children.contains(&u) {
-        return name.clone();
-    }
     parts(d, c)
         .into_iter()
-        .find(|&p| inner_parts(d, p).contains(&u))
-        .map_or_else(|| name.clone(), |p| format!("{}.{name}", d.e(p).name))
+        .find_map(|p| find_path(d, p, u, PATH_DEPTH))
+        .unwrap_or_else(|| name.clone())
+}
+
+/// 部品の中の部品をたどる深さの上限（型が自分を部品に持つような輪で止まらないように）。
+const PATH_DEPTH: usize = 8;
+
+/// 部品 `from` から部品 `target` までの、部品の中の部品をたどる参照（`from` の名前から始まる）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `from`：たどり始める部品の宣言の番号
+/// - `target`：探す部品の宣言の番号
+/// - `depth`：あと何段たどってよいか
+///
+/// # 戻り値
+///
+/// `from.….target` の参照。見つからなければ None。
+///
+/// # 例
+///
+/// ```text
+/// // "part def X { part v; } part def A { part x : X; } part def C { part a : A; }" のとき
+/// find_path(d, a, v, 8) → Some("a.x.v")
+/// find_path(d, a, a, 8) → Some("a")
+/// ```
+fn find_path(d: &Doc<'_>, from: usize, target: usize, depth: usize) -> Option<String> {
+    let name = &d.e(from).name;
+    if from == target {
+        return Some(name.clone());
+    }
+    if depth == 0 {
+        return None;
+    }
+    inner_parts(d, from)
+        .into_iter()
+        .find_map(|p| find_path(d, p, target, depth - 1))
+        .map(|rest| format!("{name}.{rest}"))
 }
