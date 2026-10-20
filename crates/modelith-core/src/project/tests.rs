@@ -343,7 +343,7 @@ fn named_flow_without_ends_has_no_relation() {
 #[test]
 fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() {
     // Arrange（異常系: 末尾の「;」の無い文は、暫定コアと同じく読まない）
-    let text = "package P { send s; }\npart def Tail";
+    let text = "package P { until s; }\npart def Tail";
     // Act
     let r = run(text);
     // Assert
@@ -352,7 +352,7 @@ fn unknown_keyword_statement_is_unsupported_and_trailing_statement_is_ignored() 
             .iter()
             .map(|u| u.head.as_str())
             .collect::<Vec<_>>(),
-        vec!["send s"]
+        vec!["until s"]
     );
     assert!(r.entries.iter().all(|e| e.name != "Tail"));
     assert_eq!(r.errors.len(), 1);
@@ -431,9 +431,9 @@ fn assert_not_and_assume_constraint_put_their_expressions_on_the_owner() {
 fn body_of_an_unsupported_statement_is_not_read_into_the_owner() {
     // Arrange（同値分割：まだ扱えない定義・使用）
     for text in [
-        "package P { join j { part x; } }",
-        "package P { merge m { part x; } }",
-        "package P { part def H { send s { part x; } } }",
+        "package P { until u { part x; } }",
+        "package P { after a { part x; } }",
+        "package P { part def H { until u { part x; } } }",
     ] {
         // Act
         let r = run(text);
@@ -1167,5 +1167,64 @@ fn individual_is_kept_as_a_modifier_of_occurrences() {
             ("earth", "occurrence", false, "Earth", Some("individual")),
         ]
     );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn action_nodes_are_usages_of_the_kind_as_written() {
+    // Arrange（同値分割：制御の節・send・accept・assign・terminate、then の後の節、8.2.2.17）
+    let text = "action def A { fork f; join j; merge m; decide d; send S() to b; then accept e : E via p; \
+                action s send x; assign a.x := 1; terminate; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(&str, &str, &str)> = entry(&r, "A")
+        .children
+        .iter()
+        .map(|&i| {
+            let e = &r.entries[i];
+            (e.kind.as_str(), e.name.as_str(), e.head.as_str())
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("fork", "f", "fork f"),
+            ("join", "j", "join j"),
+            ("merge", "m", "merge m"),
+            ("decide", "d", "decide d"),
+            ("send", "", "send S() to b"),
+            ("accept", "", "accept e : E via p"),
+            ("send", "s", "action s send x"),
+            ("assign", "", "assign a.x := 1"),
+            ("terminate", "", "terminate"),
+        ]
+    );
+    assert!(r.unsupported.is_empty());
+    assert!(entry(&r, "A").exprs.is_empty());
+}
+
+#[test]
+fn body_of_a_control_node_belongs_to_the_node() {
+    // Arrange（正常系：制御の節の本体の中身は、その節の中身）
+    let text = "package P { join j { part x; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(
+        entry(&r, "x").pe,
+        Some(r.entries.iter().position(|e| e.name == "j").unwrap_or(0))
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn accept_shorthand_transition_is_still_skipped() {
+    // Arrange（境界値：状態の中の省略形の遷移 accept E then b; は、アクションの節にしない）
+    let text = "state def S { state a; accept Go then a; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.kind != "accept"));
     assert!(r.unsupported.is_empty());
 }

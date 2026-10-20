@@ -467,7 +467,7 @@ impl Ctx {
     ///
     /// メタデータの本体の `key = 値`、メタデータの使用（`@M`・`metadata M about …`）、列挙値、関係、
     /// view の `expose`・`filter`・`render`、別名、`import`、本体の無い名前付きの制約（`assert constraint c : CD`）、
-    /// 読み飛ばす文、宣言、パラメータ、式、まだ扱えない文の順に判定し、解析結果の該当する表に足す。
+    /// 読み飛ばす文、宣言（アクションの節を含む）、パラメータ、式、まだ扱えない文の順に判定し、解析結果の該当する表に足す。
     ///
     /// # 引数
     ///
@@ -492,8 +492,10 @@ impl Ctx {
     /// classify(…, "in x : Real", …, Semi)  → Some(1)（kind "param"、dir "in"、ty "Real"）
     /// // "satisfy R by A;"
     /// classify(…, "satisfy R by A", …)     → None（rels に Satisfy { req: "R", by: "A" }）
-    /// // "send s;"
-    /// classify(…, "send s", …)             → None（unsupported に "send s"）
+    /// // "action def A { then send s to b; }" の中の文（A が 0 番）
+    /// classify(…, "then send s to b", …)   → Some(1)（kind "send"、head "send s to b"）
+    /// // "until s;"
+    /// classify(…, "until s", …)            → None（unsupported に "until s"）
     /// ```
     #[allow(clippy::too_many_arguments)]
     fn classify(
@@ -628,10 +630,17 @@ impl Ctx {
             }
             return None;
         }
-        if is_skipped(h) {
-            return None;
-        }
-        if let Some((kind, is_def)) = entry_kind(n, h, &mods, !prefix_meta.is_empty()) {
+        // アクションの節（`fork f;`・`then send x to y;`・`accept e : E;` など）は、書いた語を種類にした使用（8.2.2.17）
+        let node = action_node_kind(n);
+        let h = match node {
+            Some(_) => h.strip_prefix("then ").unwrap_or(h),
+            None if is_skipped(h) => return None,
+            None => h,
+        };
+        if let Some((kind, is_def)) = node
+            .map(|k| (k, false))
+            .or_else(|| entry_kind(n, h, &mods, !prefix_meta.is_empty()))
+        {
             let idx = self.out.entries.len();
             let parts = decl_parts(n, is_def);
             let name = if parts.name.is_empty()
@@ -1390,6 +1399,40 @@ fn entry_kind(
         {
             Some((EXTENDED_USAGE_KIND, false))
         }
+        _ => None,
+    }
+}
+
+/// アクションの節（ActionNode、8.2.2.17）の、書いた語の種類。宣言の種類にする（`fork f;` は種類 `fork` の使用）。
+///
+/// 状態の中の省略形の遷移 `accept E then b;`（8.2.2.18）は、アクションの節にしない（遷移として読むまで、これまでどおり読み飛ばす）。
+///
+/// # 引数
+///
+/// - `n`：文の節
+///
+/// # 戻り値
+///
+/// `fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate` のどれか。アクションの節でなければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// action_node_kind("decide d;")        → Some("decide")
+/// action_node_kind("accept e : E;")    → Some("accept")
+/// action_node_kind("accept Go then b;") → None   // 状態の中の省略形の遷移
+/// action_node_kind("part p;")          → None
+/// ```
+fn action_node_kind(n: &SyntaxNode) -> Option<&'static str> {
+    match n.kind() {
+        FORK_NODE => Some("fork"),
+        JOIN_NODE => Some("join"),
+        MERGE_NODE => Some("merge"),
+        DECISION_NODE => Some("decide"),
+        SEND_NODE => Some("send"),
+        ACCEPT_NODE if child(n, CONNECTOR_END).is_none() => Some("accept"),
+        ASSIGNMENT_NODE => Some("assign"),
+        TERMINATE_NODE => Some("terminate"),
         _ => None,
     }
 }

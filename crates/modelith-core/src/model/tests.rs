@@ -110,7 +110,7 @@ fn flow_edge_points_to_its_relation_by_index() {
 fn unsupported_statement_head_is_shortened_to_40_utf16_units() {
     // Arrange（境界値：41 文字の頭）
     let name = "あ".repeat(41);
-    let text = format!("package P {{ send {name}; }}");
+    let text = format!("package P {{ until {name}; }}");
     // Act
     let (_, m) = run(&text);
     // Assert

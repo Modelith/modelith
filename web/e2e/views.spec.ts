@@ -94,11 +94,11 @@ test.describe("テキストと図の同期", () => {
     // Arrange
     await openApp(page);
     // Act
-    await page.locator("#ed").fill("package P {\n    part def A;\n    send s;\n}\n");
+    await page.locator("#ed").fill("package P {\n    part def A;\n    until s;\n}\n");
     // Assert
     const info = page.locator("#problems button.unsupported");
     await expect(info).toContainText("3 行目");
-    await expect(info).toContainText("「send s」は Modelith ではまだ扱えない");
+    await expect(info).toContainText("「until s」は Modelith ではまだ扱えない");
     await expect(page.locator("#syncText")).toHaveText("同期済み");
   });
 
