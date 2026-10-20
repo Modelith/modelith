@@ -784,3 +784,80 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     await expect(page.locator("#ctx button")).toContainText(["この図から外す", "モデルから削除"]);
   });
 });
+
+test.describe("シーケンス図のイベントと順序・ビューの式・3 段の連鎖（F-VIEW-10・F-VIEW-7）", () => {
+  const BOIL =
+    "package Kettle {\n    part def User;\n    part def Panel;\n    part def Heater;\n" +
+    "    occurrence def BoilWater {\n        part user : User { event occurrence press; }\n" +
+    "        part panel : Panel {\n            event occurrence pressed;\n            then event occurrence lampOn;\n            part lamp { event occurrence lit; }\n        }\n" +
+    "        part heater : Heater { event occurrence on; }\n" +
+    "        message pressStart from user.press to panel.pressed;\n        message heatOn from panel.lamp.lit to heater.on;\n" +
+    "        succession lampFirst first panel.lampOn then heater.on;\n    }\n" +
+    "    view boilSequence : SequenceView { expose Kettle::BoilWater; }\n}\n";
+
+  /** モデルを書き、保存された図を開く。 */
+  async function openView(page: import("@playwright/test").Page, text: string, view: string): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400);
+    await page.locator(".tabadd summary").click();
+    await page.locator(`[data-open-mv="${view}"]`).click();
+  }
+
+  test("F-VIEW-10: SequenceView に、ライフラインの上のイベント（入れ子の部品のものも）と、イベントの間の順序を描く", async ({ page }) => {
+    // Arrange・Act
+    await openView(page, BOIL, "boilSequence");
+    // Assert（8.2.3.9：イベントは丸と .ev の札、順序は破線と開いた矢印）
+    await expect(page.locator("#canvas .event")).toHaveCount(5);
+    await expect(page.locator('#canvas .event[data-key="e:panel.lamp.lit"] text')).toHaveText(".lamp.lit");
+    await expect(page.locator('[data-edge="succession|e:panel.lampOn|e:heater.on|lampFirst#1"] path.line')).toHaveAttribute("stroke-dasharray", "6 4");
+    await expect(page.locator('[data-edge="msg|1|heatOn"] text')).toHaveText("2. heatOn");
+    await expect(page.locator("#problems button")).toHaveCount(0);
+  });
+
+  test("F-VIEW-10: イベントの間の順序を選ぶと両端のイベントを示し、削除するとテキストからその文が消える", async ({ page }) => {
+    // Arrange
+    await openView(page, BOIL, "boilSequence");
+    await page.locator('[data-edge="succession|e:panel.lampOn|e:heater.on|lampFirst#1"] text').click();
+    await expect(page.locator("#insp")).toContainText("順序（succession）");
+    await expect(page.locator("#insp")).toContainText("panel.lampOn → heater.on");
+    // Act（2 回押しで削除）
+    await page.locator('#insp [data-act="delEdge"]').click();
+    await page.locator('#insp [data-act="delEdge"]').click();
+    // Assert
+    await expect(page.locator("#ed")).not.toHaveValue(/succession lampFirst/);
+    await expect(page.locator('[data-edge^="succession|"]')).toHaveCount(0);
+  });
+
+  test("F-VIEW-7: filter の and・or・not と、render の合成形で図を描き、「まだ扱えない」と知らせない", async ({ page }) => {
+    // Arrange
+    const text =
+      "package P {\n    metadata def Draft;\n    part def Engine { part cyl; }\n    #Draft part def Wheel;\n    requirement def Speed;\n    attribute def Mass;\n" +
+      "    view picked { expose P::*; filter (@PartDefinition or @RequirementDefinition) and not @Draft; }\n" +
+      "    view inside : GeneralView { expose P::Engine; render rendering r :> asInterconnectionDiagram; }\n}\n";
+    // Act
+    await openView(page, text, "picked");
+    // Assert
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Engine", "Speed"]);
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="inside"]').click();
+    // 型は GeneralView でも、render が内部ブロック図に当たるので、部品 cyl を内部ブロック図の部品として描く
+    await expect.poll(() => nodeKeys(page)).toEqual(["u:cyl"]);
+    await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
+  });
+
+  test("F-VIEW-7・F-EDIT-8: 3 段の連鎖の端（a.b.c.p）を、型の中をたどった部品の中の部品のポートにつなぐ", async ({ page }) => {
+    // Arrange
+    const text =
+      "package P {\n    port def Pwr;\n    part def Relay { port coil : Pwr; }\n    part def Board { part relay : Relay; }\n    part def Controller { part board : Board; }\n" +
+      "    part def Heater { port power : Pwr; }\n    part def Unit {\n        part controller : Controller;\n        part heater : Heater;\n" +
+      "        connect controller.board.relay.coil to heater.power;\n        connect controller.board.nope to heater.power;\n    }\n" +
+      "    view wiring : InterconnectionView { expose P::Unit; }\n}\n";
+    // Act
+    await openView(page, text, "wiring");
+    // Assert
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["u:controller", "u:controller.board", "u:controller.board.relay", "u:heater"]);
+    await expect(page.locator('[data-edge="flow|u:controller.board.relay|u:heater|#1"]')).toHaveCount(1);
+    await expect(page.locator("#problems")).toContainText("線の接続先「controller.board.nope」の「nope」が見つかりません（connect）");
+  });
+});
