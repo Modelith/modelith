@@ -78,7 +78,7 @@ type RawEntry = Omit<Entry, "owner" | "pe" | "children" | "phaseBlock"> & {
   phaseBlock?: RawScope;
 };
 type RawBlock = Omit<Block, "anon" | "owner"> & { owner: RawScope | null };
-/** 関係（相手は文字列、文の持ち主と接続の使用は番号）。 */
+/** 関係（相手は文字列、文の持ち主と使用（接続・名前付きのフローなど）は番号）。 */
 type RawRel = { rel: Rel["rel"]; pe: number | null; usage?: number; start: number; end: number } & Record<string, unknown>;
 
 /** Rust の `ParseResult`（JSON）。 */
@@ -151,7 +151,7 @@ function fromRaw(raw: RawParseResult, text: string): ParseResult {
   });
   const rels = raw.rels.map((r) => {
     const { usage, ...rest } = r;
-    const rel = r.rel === "connect" ? { ...rest, pe: entry(r.pe), usage: entry(usage) } : { ...rest, pe: entry(r.pe) };
+    const rel = typeof usage === "number" ? { ...rest, pe: entry(r.pe), usage: entry(usage) } : { ...rest, pe: entry(r.pe) };
     return rel as unknown as Rel;
   });
   // 読み取れない @layout コメントは Rust が構文エラーに入れているので、ここで足したエラーは捨てる

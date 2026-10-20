@@ -1,7 +1,7 @@
 // 内部ブロック図（InterconnectionView）の中身を、モデルから作る。
 // 要素のキーと線の ID は、Rust のコアの図の操作（crates/modelith-core/src/edit/ibd.rs）と同じ決め方にする（ADR-0016）。
 
-import type { Entry, Model, ModelEdge, ModelNode } from "../core";
+import type { Model, ModelEdge, ModelNode } from "../core";
 
 /** 内部ブロック図に描く要素と線。 */
 export interface IbdContent {
@@ -10,8 +10,26 @@ export interface IbdContent {
 }
 
 /**
+ * 流れの線のラベル（8.2.3.16 の flow-label）。Rust のコアの `flow_label` と同じ。名前の無いフローは、アイテムの型だけを書く。
+ *
+ * @param name フローの名前（名前の無いフローは空）
+ * @param type フローの型の名前（無ければ空）
+ * @param item 流れるアイテムの型の名前（`of` の後。無ければ空）
+ * @returns ラベル。書くことが無ければ空文字列
+ * @example
+ * flowLabel("f", "FD", "")    // → "f : FD"
+ * flowLabel("g", "", "Water") // → "g of Water"
+ * flowLabel("", "", "Heat")   // → "Heat"（名前の無いフロー）
+ */
+export function flowLabel(name: string, type: string, item: string): string {
+  if (!name) return item;
+  return name + (type ? ` : ${type}` : "") + (item ? ` of ${item}` : "");
+}
+
+/**
  * 内部ブロック図の内容を作る。対象の部品を `u:部品名` のノードにし、対象の中の flow・connect を、
- * 部品の間の線（ポートが分かれば接続点つき）にする。
+ * 部品の間の線（ポートが分かれば接続点つき）にする。名前付きのフローのラベルは名前と型（`flowLabel`）。
+ * 線は、接続と名前付きのフローなら使用（本体を含む）、名前の無いフローなら文の範囲を指す。
  *
  * @param M モデル
  * @param ctx 図の対象（部品を持つ part def のノード）
@@ -43,13 +61,13 @@ export function ibdContentOf(M: Model, ctx: ModelNode): IbdContent {
     const A = byN.get(pa[0] ?? "");
     const B = byN.get(pb[0] ?? "");
     if (!A || !B) continue;
-    const label = r.item || "";
+    const label = r.rel === "flow" ? flowLabel(r.name ?? "", r.type ?? "", r.item) : r.item;
     const base = `flow|${A.key}|${B.key}|${label}`;
     const k = (seen.get(base) ?? 0) + 1;
     seen.set(base, k);
     const e: ModelEdge = {
       id: base + "#" + k, kind: "flow", from: A.key, to: B.key, label, rel: r,
-      src: r.rel === "connect" ? { start: r.usage.start, end: r.usage.end } : { start: r.start, end: r.end + 1 },
+      src: r.usage ? { start: r.usage.start, end: r.usage.end } : { start: r.start, end: r.end + 1 },
     };
     if (pa[1] && A.ports.some((p) => p.name === pa[1])) e.fromPort = "port:" + pa[1];
     if (pb[1] && B.ports.some((p) => p.name === pb[1])) e.toPort = "port:" + pb[1];

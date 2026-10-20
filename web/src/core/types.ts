@@ -110,7 +110,8 @@ export type Rel =
   | (RelBase & { rel: "satisfy"; req: string; by: string })
   | (RelBase & { rel: "verify"; req: string })
   | (RelBase & { rel: "frame"; name: string; type: string })
-  | (RelBase & { rel: "flow"; item: string; a: string; b: string })
+  /** 名前付きのフロー（`flow f : FD from a to b;`、8.2.2.16）は、名前・型・使用を持つ。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "flow"; item: string; a: string; b: string; name?: string; type?: string; usage?: Entry })
   | (RelBase & { rel: "connect"; a: string; b: string; item: string; usage: Entry })
   | (RelBase & { rel: "transition"; from: string; ev: string; to: string });
 
