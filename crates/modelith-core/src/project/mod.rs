@@ -2334,11 +2334,22 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
         SUCCESSION_FLOW_USAGE if child(n, NAME).is_none() => {
             succession_flow_ends(n, String::new(), String::new(), None)
         }
-        TRANSITION_USAGE => Some(RelKind::Transition {
-            from: ref_after(n, "first")?,
-            ev: ref_after(n, "accept").unwrap_or_default(),
-            to: ref_after(n, "then")?,
-        }),
+        // 元と先は端（CONNECTOR_END）、受けるものはトリガ（TRIGGER_ACTION）の中にある（8.2.2.18）
+        TRANSITION_USAGE if has_keyword(n, "first") => {
+            let ends = connector_ends(n);
+            let ev = child(n, TRIGGER_ACTION)
+                .and_then(|t| child(&t, NODE_PARAMETER))
+                .and_then(|p| first_ref(&p))
+                .unwrap_or_default();
+            match ends.as_slice() {
+                [from, to] => Some(RelKind::Transition {
+                    from: from.clone(),
+                    ev,
+                    to: to.clone(),
+                }),
+                _ => None,
+            }
+        }
         _ => None,
     }
 }

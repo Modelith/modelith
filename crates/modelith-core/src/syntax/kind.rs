@@ -186,6 +186,8 @@ syntax_kinds! {
     /// キーワードの無い使用（`in x : T;`・`end a : P;`・`x = 1;` など）。
     REFERENCE_USAGE,
     MESSAGE_USAGE,
+    /// `transition t first a accept E if g do e then b;`（TransitionUsage・TargetTransitionUsage、8.2.2.18）。
+    /// 元と先は `CONNECTOR_END`、トリガは `TRIGGER_ACTION`、ガードは `GUARD_EXPRESSION`、効果は `EFFECT_BEHAVIOR`。
     TRANSITION_USAGE,
     /// `first a then b;`・`then b;`・`succession s first a then b;`・`first a if g then b;`・`if g then b;`・`else b;`・
     /// `first start;`（SuccessionAsUsage・TargetSuccessionMember・GuardedSuccession・DefaultTargetSuccession・InitialNodeMember）。
@@ -194,6 +196,10 @@ syntax_kinds! {
     SUCCESSION_FLOW_USAGE,
     /// 継起のガード `if g`（GuardExpressionMember）。`first a if g then b;`・`if g then b;` の中に置く。
     GUARD_EXPRESSION,
+    /// 遷移のトリガ `accept E via p`（TriggerActionMember、8.2.2.18）。受けるものと `via` の後を `NODE_PARAMETER` に持つ。
+    TRIGGER_ACTION,
+    /// 遷移の効果 `do e`（EffectBehaviorMember、8.2.2.18）。振る舞いを `EXPRESSION` に、本体があれば `BODY` に持つ。
+    EFFECT_BEHAVIOR,
     /// `fork f;`（ForkNode）。
     FORK_NODE,
     /// `join j;`（JoinNode）。

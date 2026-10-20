@@ -1433,3 +1433,21 @@ fn succession_flows_are_relations_and_named_ones_are_entries() {
     assert_eq!(entry(&r, "f").ty, "FD");
     assert!(r.unsupported.is_empty());
 }
+
+#[test]
+fn transition_keeps_its_source_trigger_and_target() {
+    // Arrange（TransitionUsage、8.2.2.18：元・先は端、受けるものはトリガの中）
+    let text = "state def S { state a; state b; transition t first a accept e : Go via p then b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let kinds: Vec<&RelKind> = r.rels.iter().map(|x| &x.kind).collect();
+    assert_eq!(
+        kinds,
+        [&RelKind::Transition {
+            from: "a".to_owned(),
+            ev: "e".to_owned(),
+            to: "b".to_owned(),
+        }]
+    );
+}
