@@ -65,12 +65,28 @@ export function wrap(s: string, maxW = W - 18, maxLines = 3): string[] {
   return out.slice(0, maxLines);
 }
 
+/**
+ * 要素の見出しに «» で囲んで書くキーワード（8.2.3 の記法）。個体（`individual`、8.2.2.9）なら、種類の前に `individual` を付ける。
+ *
+ * @param n 図の要素
+ * @returns «» の中に書く文字列
+ * @example
+ * keywordOf(part def Car)            // → "part def"
+ * keywordOf(individual part def Car) // → "individual part def"
+ * keywordOf(individual def Earth)    // → "individual occurrence def"（種類のキーワードを省いた形も、種類を書く）
+ */
+export function keywordOf(n: ModelNode): string {
+  const individual = (n.entry.mods ?? "").split(" ").includes("individual");
+  return individual ? `individual ${n.kind}` : n.kind;
+}
+
 /** 区画に書く、特殊化の種類の記号（テキスト記法と同じ。8.2.2.6）。 */
 const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", redefines: ":>>", references: "::>" };
 
 /**
  * 区画に書く、属性・パラメータの 1 行（8.2.3 の usage-cp：テキスト記法の宣言と値）。
- * 多重度も特殊化の相手も無ければ、これまでどおり `名前 = 値` か `名前 : 型` にする。
+ * 多重度も特殊化の相手も無ければ、これまでどおり `名前 = 値` か `名前 : 型` にする。値は書いた記号のまま
+ * （初期値は `名前 := 値`、既定値は `名前 default 値`。8.2.2.6 の FeatureValue）。
  * あれば `名前 : 型 [多重度] :>> 相手 = 値` の順に書き、名前を書かずに再定義した特性（`:>> mass`）は名前を省く。
  *
  * @param c 属性かパラメータの宣言
@@ -80,10 +96,13 @@ const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", 
  * featureText(attribute w : Wheel[4] ordered)        // → "w : Wheel [4] ordered"
  * featureText(attribute :>> mass = 1500)             // → ":>> mass = 1500"（名前は再定義した特性から）
  * featureText(attribute b : B :> a, c)               // → "b : B :> a :> c"
+ * featureText(attribute m := 10)                     // → "m := 10"（初期値）
+ * featureText(attribute m : Real default 10)         // → "m default 10"（既定値。型は書かない）
  */
 export function featureText(c: Entry): string {
   const specs = c.specs ?? [], m = c.multiplicity;
-  if (!specs.length && !m) return c.value ? `${c.name} = ${c.value}` : `${c.name} : ${c.type}`;
+  const value = c.value ? `${c.valueOp ?? "="} ${c.value}` : "";
+  if (!specs.length && !m) return value ? `${c.name} ${value}` : `${c.name} : ${c.type}`;
   const first = specs[0];
   const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
   const parts = [unnamed ? "" : c.name];
@@ -92,7 +111,7 @@ export function featureText(c: Entry): string {
   if (m?.ordered) parts.push("ordered");
   if (m?.nonunique) parts.push("nonunique");
   for (const s of specs) parts.push(`${SPEC_SYMBOL[s.op] ?? ":>"} ${s.target}`);
-  if (c.value) parts.push(`= ${c.value}`);
+  parts.push(value);
   return parts.filter(Boolean).join(" ");
 }
 
@@ -104,6 +123,7 @@ export interface Line {
 /**
  * ノードの区画（説明・式・属性など）に書く行を作る。要求などの説明（doc）、要求の require 式・制約の式、
  * part の属性、状態の一覧と遷移、アクションの手順を並べ、8 行を超えたら最後を「… ほか N 行」にまとめる。
+ * メモ（`note`）は本文の行（`noteLines`）にする。
  *
  * @param n 図のノード
  * @returns 区画の行（文字列と種類）。書くことが無ければ空の配列
@@ -116,8 +136,11 @@ export interface Line {
  * compartment(n) // → [{ t: "速く走る", cls: "doc" }, { t: "{ v > 10 }", cls: "expr" }]
  * // 中身の無い part def
  * compartment(n) // → []（境界）
+ * // 本文「安全のため」のメモ
+ * compartment(n) // → [{ t: "安全のため", cls: "doc" }]
  */
 export function compartment(n: ModelNode): Line[] {
+  if (n.note) return noteLines(n.entry.body ?? "");
   const e = n.entry;
   const L: Line[] = [];
   const push = (t: string, cls: Line["cls"], max = 2): void => {
@@ -146,6 +169,45 @@ export function compartment(n: ModelNode): Line[] {
   return L;
 }
 
+/** メモに書く本文の行数の上限。 */
+const NOTE_MAX_LINES = 6;
+
+/**
+ * メモ（8.2.3.4 の comment）に書く本文の行を作る。本文の改行を保ち、幅に収まるよう折り返し、6 行を超えたら最後の行を「…」で切る。
+ *
+ * @param body コメントの本文（行は改行でつなぐ）
+ * @returns 本文の行（種類はすべて doc）。本文が空なら空の配列
+ * @example
+ * noteLines("安全のため")       // → [{ t: "安全のため", cls: "doc" }]
+ * noteLines("1 行目\n2 行目")   // → [{ t: "1 行目", cls: "doc" }, { t: "2 行目", cls: "doc" }]
+ * noteLines("")                 // → []（境界）
+ */
+export function noteLines(body: string): Line[] {
+  const out: string[] = [];
+  for (const line of body.split("\n")) {
+    const ws = line ? wrap(line, W - 36, NOTE_MAX_LINES + 1) : [""];
+    out.push(...ws);
+    if (out.length > NOTE_MAX_LINES) break;
+  }
+  if (out.length > NOTE_MAX_LINES) {
+    out.length = NOTE_MAX_LINES;
+    const last = out[NOTE_MAX_LINES - 1] ?? "";
+    out[NOTE_MAX_LINES - 1] = last.endsWith("…") ? last : [...last].slice(0, -1).join("") + "…";
+  }
+  return body ? out.map((t) => ({ t, cls: "doc" as const })) : [];
+}
+
+/**
+ * メモの本文の 1 行目の上端（メモの上端から）。名前のあるメモは、上に «comment» と名前の行を書く。
+ *
+ * @param n メモ（`note` の図の要素）
+ * @returns 本文の上の余白（図の座標の単位）
+ * @example
+ * noteTop(名前の無いメモ) // → 10
+ * noteTop(名前 c のメモ)  // → 28
+ */
+export const noteTop = (n: ModelNode): number => (n.name ? 28 : 10);
+
 const linesCache = new WeakMap<ModelNode, Line[]>();
 /**
  * 区画の行を返す。compartment の結果をノードごとにキャッシュする（同じノードには同じ配列を返す）。
@@ -168,6 +230,7 @@ export function linesOf(n: ModelNode): Line[] {
 
 /**
  * ノードの高さ。見出しの高さ HEAD（44）に、区画があれば行数 × LH（15）と余白 12 を足す。
+ * メモは見出しを持たず、本文の上の余白（noteTop）に、本文の行数（少なくとも 1）× LH と下の余白 8 を足す。
  *
  * @param n 図のノード
  * @returns 高さ（図の座標の単位）
@@ -176,9 +239,12 @@ export function linesOf(n: ModelNode): Line[] {
  * nodeH(n) // → 71
  * // 区画の行が無い
  * nodeH(n) // → 44（境界）
+ * // 名前の無いメモで、本文が 2 行
+ * nodeH(n) // → 10 + 2 × 15 + 8 = 48
  */
 export function nodeH(n: ModelNode): number {
   const L = linesOf(n);
+  if (n.note) return noteTop(n) + Math.max(1, L.length) * LH + 8;
   return HEAD + (L.length ? L.length * LH + 12 : 0);
 }
 
@@ -305,6 +371,45 @@ export function placeJunctions(nodes: readonly ModelNode[], edges: readonly Mode
     const covered = [...boxes.entries()].some(([k, b]) => k !== j.key && pos[k] && cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h);
     if (covered) cy = Math.max(...ends.map((b) => b.y + b.h)) + 60;
     pos[j.key] = [Math.round(cx - DOT / 2), Math.round(cy - DOT / 2)];
+  }
+}
+
+/** メモと、注釈する要素の間の空き。 */
+const NOTE_GAP = 40;
+
+/**
+ * 座標の無いメモを、注釈する要素の近くに置く（pos を変更する）。最初の相手の右・上・左・下の順に、ほかの要素と重ならない所を選ぶ。
+ * どこも重なるなら右に置く。相手に座標が無ければ置かない（先に相手を並べること）。
+ *
+ * @param nodes 図に描く要素（メモを含む）
+ * @param edges 図の線（メモから相手への線で、相手を決める）
+ * @param pos 要素のキーから左上の座標への対応。メモの座標を書き込む
+ * @example
+ * // メモ note:#1 が A（0, 0、幅 224・高さ 44）を注釈し、ほかに要素が無い
+ * placeNotes([A, N], edges, pos) // → pos["note:#1"] = [264, 0]（A の右に 40 空けて）
+ * // A の右に B（264, 0）がある
+ * placeNotes([A, B, N], edges, pos) // → pos["note:#1"] = [0, -73]（A の上。メモの高さ 33 と 40 を空けて）
+ * // 相手に座標が無い
+ * placeNotes([N], edges, pos) // → pos を変えない
+ */
+export function placeNotes(nodes: readonly ModelNode[], edges: readonly ModelEdge[], pos: Record<string, Pos>): void {
+  for (const n of nodes) {
+    if (!n.note || pos[n.key]) continue;
+    const target = edges.find((e) => e.from === n.key && pos[e.to])?.to;
+    if (!target) continue;
+    const boxes = boxesOf(nodes.filter((x) => pos[x.key]), pos);
+    const t = boxes.get(target);
+    if (!t) continue;
+    const h = nodeH(n);
+    const tries: Pos[] = [
+      [t.x + t.w + NOTE_GAP, t.y],
+      [t.x, t.y - h - NOTE_GAP],
+      [t.x - W - NOTE_GAP, t.y],
+      [t.x, t.y + t.h + NOTE_GAP],
+    ];
+    const free = (p: Pos): boolean =>
+      ![...boxes.values()].some((b) => p[0] < b.x + b.w + 10 && p[0] + W + 10 > b.x && p[1] < b.y + b.h + 10 && p[1] + h + 10 > b.y);
+    pos[n.key] = tries.find(free) ?? (tries[0] as Pos);
   }
 }
 

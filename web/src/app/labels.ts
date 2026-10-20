@@ -17,6 +17,8 @@ const KIND_LABEL: Record<string, string> = {
   "event occurrence": "出来事", timeslice: "期間の出来事", snapshot: "時点の出来事", variant: "バリアント",
   "viewpoint def": "視点の定義", viewpoint: "視点", "rendering def": "描き方の定義", rendering: "描き方",
   def: "定義（利用者定義のキーワード）", usage: "使用（利用者定義のキーワード）",
+  // alpha.8 で読むようにした種類
+  comment: "メモ",
 };
 
 /**

@@ -2,7 +2,7 @@
 
 import { $, esc } from "./dom";
 import type { ModelNode } from "../core";
-import { boxesOf, computeRoutes, linesOf, pinPoint, pinsOf, type Box, type NodeBox } from "./geometry";
+import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, type Box, type NodeBox } from "./geometry";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
 import { curLayout, curView, viewContent } from "./views";
@@ -35,10 +35,12 @@ const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
  * drawioEdgeStyle("specialize") // → "endArrow=block;endFill=0;"
  * drawioEdgeStyle("satisfy")    // → "dashed=1;endArrow=open;"
  * drawioEdgeStyle("bind")       // → "endArrow=none;"（結び付け・n 項の接続の線は矢印の無い実線）
+ * drawioEdgeStyle("annotate")   // → "dashed=1;endArrow=none;"（メモから要素への線は矢印の無い破線）
  */
 export function drawioEdgeStyle(kind: string): string {
   if (kind === "comp") return "startArrow=diamondThin;startFill=1;endArrow=none;";
   if (kind === "bind" || kind === "connect") return "endArrow=none;";
+  if (kind === "annotate") return "dashed=1;endArrow=none;";
   if (kind === "flow") return "endArrow=block;endFill=1;strokeWidth=2;";
   if (["specialize", "subset", "redefine", "reference"].includes(kind)) return "endArrow=block;endFill=0;";
   return "dashed=1;endArrow=open;";
@@ -97,10 +99,18 @@ export function drawioXml(): string {
       cells += `<mxCell id="${nid}" value="${q(n.name)}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
       continue;
     }
+    if (n.note) {
+      // メモ（8.2.3.4 の comment）は、角を折った四角に本文を書く
+      const nid = "n" + id++;
+      map.set(n.key, nid);
+      const text = (n.name ? `«comment» <b>${esc(n.name)}</b><br>` : "") + linesOf(n).map((x) => esc(x.t)).join("<br>");
+      cells += `<mxCell id="${nid}" value="${q(text)}" style="shape=note;size=12;html=1;whiteSpace=wrap;align=left;verticalAlign=top;spacingLeft=8;fillColor=#FFFFFF;strokeColor=${c};" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+      continue;
+    }
     // 中に部品を描く部品（内部ブロック図の入れ子）は、区画の行を書かない
     const lines = nodes.some((c) => c.container === n.key) ? [] : linesOf(n).map((x) => esc(x.t));
     const label =
-      `«${n.kind}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? " : " + n.entry.type : ""))}</b>` +
+      `«${keywordOf(n)}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? " : " + n.entry.type : ""))}</b>` +
       (lines.length ? `<hr><div style="text-align:left;font-size:10px">${lines.join("<br>")}</div>` : "");
     const nid = "n" + id++;
     map.set(n.key, nid);
@@ -115,7 +125,7 @@ export function drawioXml(): string {
       cells += `<mxCell id="${pid}" value="${q(pp.port.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=${c};fontSize=9;${lp}" vertex="1" parent="${nid}"><mxGeometry x="${pq.x - 6}" y="${pq.y - 6}" width="12" height="12" as="geometry"/></mxCell>`;
     }
   }
-  const box = new Map<string, NodeBox>(nodes.map((n) => [n.key, { ...rect(n), n, pins: n.junction ? [] : pinsOf(n, L, S.view) }]));
+  const box = new Map<string, NodeBox>(nodes.map((n) => [n.key, { ...rect(n), n, pins: n.junction || n.note ? [] : pinsOf(n, L, S.view) }]));
   const routes = computeRoutes(box, edges, L, "ortho");
   const cp = (side: string, t: string, pre: string): string =>
     side === "l" ? `${pre}X=0;${pre}Y=${t};` : side === "r" ? `${pre}X=1;${pre}Y=${t};` : side === "t" ? `${pre}X=${t};${pre}Y=0;` : `${pre}X=${t};${pre}Y=1;`;

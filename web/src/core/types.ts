@@ -48,6 +48,11 @@ export interface Entry {
   children: Entry[];
   idx: number;
   value?: string;
+  /**
+   * 値の書き方（FeatureValue、8.2.2.6）。`:=` は初期値、`default`・`default =`・`default :=` は既定値。
+   * `=`（束縛）のときは無い。Rust のコアだけが作る。
+   */
+  valueOp?: string;
   doc?: string;
   meta?: Record<string, Record<string, string>>;
   phaseVal?: Span;
@@ -65,6 +70,22 @@ export interface Entry {
   specs?: Spec[];
   /** 多重度（MultiplicityPart、8.2.2.6）。Rust のコアだけが作る。 */
   multiplicity?: Multiplicity;
+  /** コメント（種類 `comment`、8.2.2.4）の本文。行は改行でつなぐ。Rust のコアだけが作る。 */
+  body?: string;
+  /** コメントが注釈する宣言（`about` の相手。無ければ持ち主）。Rust のコアだけが作る。 */
+  about?: Entry[];
+  /** 別の言語での表し方（`rep … language "x" /* … *\/`、TextualRepresentation、8.2.2.4）。Rust のコアだけが作る。 */
+  reps?: Rep[];
+}
+
+/** 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。 */
+export interface Rep {
+  /** 名前（`rep r` の `r`）。無ければ空文字列。 */
+  name: string;
+  /** 言語の名前（`language "OCL"` の OCL）。 */
+  language: string;
+  /** 本文（共通の字下げを除いたもの。行は改行でつなぐ）。 */
+  body: string;
 }
 
 /** 宣言の特殊化の相手 1 つ（SubclassificationPart・FeatureSpecializationPart、8.2.2.6）。 */
@@ -176,6 +197,8 @@ export interface ModelNode {
   lifeline?: boolean;
   /** 内部ブロック図の n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。`entry` は接続の使用。 */
   junction?: boolean;
+  /** 一般の図のメモ（8.2.3.4 の comment）。`entry` はコメントの宣言。 */
+  note?: boolean;
   /** 内部ブロック図で、この部品を中に描く外の部品のキー（入れ子の 2 段目）。 */
   container?: string;
   /** ポートを追加する先（使用の場合は型の定義）。 */
@@ -186,11 +209,11 @@ export interface ModelNode {
 /**
  * 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency`・`allocate` は特殊化・部分集合・再定義・参照・依存・
  * 割り当て（8.2.3）で、Rust のコアだけが作る。`bind` は内部ブロック図の結び付け（8.2.3.13 の binding-connection）、
- * `connect` は n 項の接続の点から端への線（8.2.3.13 の n-ary-segment）。
+ * `connect` は n 項の接続の点から端への線（8.2.3.13 の n-ary-segment）。`annotate` はメモから注釈する要素への破線（8.2.3.4 の annotation-link）。
  */
 export type EdgeKind =
   | "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message"
-  | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate" | "bind" | "connect";
+  | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate" | "bind" | "connect" | "annotate";
 
 /** 図に投影する関係。 */
 export interface ModelEdge {
@@ -263,4 +286,16 @@ export interface Model {
   phases: string[] | null;
   phaseEnum: string | null;
   phaseOf: (e: Entry) => PhaseInfo | null;
+  /** 図に描くメモ（コメント、8.2.3.4）。Rust のコアだけが作る。 */
+  notes?: ModelNote[];
+}
+
+/** 図に描くメモ 1 つ（注釈する要素のうち、図に描く要素があるコメント）。 */
+export interface ModelNote {
+  /** 図の要素のキー（`note:名前`・`note:#番号`）。 */
+  key: string;
+  /** コメントの宣言。 */
+  entry: Entry;
+  /** 注釈する、図に描く要素のキー。 */
+  targets: string[];
 }

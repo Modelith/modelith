@@ -920,3 +920,31 @@ fn dump() {
     let text = std::fs::read_to_string(path).unwrap_or_default();
     println!("{}", parse(&text).debug_tree());
 }
+
+#[test]
+fn individual_without_kind_keyword_is_an_occurrence() {
+    // Arrange（IndividualDefinition・IndividualUsage、8.2.2.9。比較: 種類のキーワードのある形）
+    let texts = [
+        "individual def Earth;",
+        "individual earth : Earth;",
+        "individual part def Car;",
+    ];
+    // Act
+    let kinds: Vec<Vec<SyntaxKind>> = texts.iter().map(|t| node_kinds(t)).collect();
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            vec![SOURCE_FILE, OCCURRENCE_DEFINITION, NAME],
+            vec![
+                SOURCE_FILE,
+                OCCURRENCE_USAGE,
+                NAME,
+                FEATURE_TYPING,
+                QUALIFIED_NAME
+            ],
+            vec![SOURCE_FILE, PART_DEFINITION, NAME],
+        ]
+    );
+    assert!(texts.iter().all(|t| errors(t).is_empty()));
+}

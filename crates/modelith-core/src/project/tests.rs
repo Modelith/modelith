@@ -398,7 +398,7 @@ fn readable_or_missing_layout_comment_is_not_an_error() {
 // ---- 取り違えの修正（F-EDIT-8、alpha.7） ----
 
 #[test]
-fn textual_representation_is_dropped_without_hiding_the_next_declaration() {
+fn textual_representation_does_not_hide_the_next_declaration() {
     // Arrange（TextualRepresentation、8.2.2.4：package の直下と、定義の本体の中）
     let text = "package P { rep r language \"x\" /* a */ part def B;\n part def A { rep language \"y\" /* b */\n part c; } }";
     // Act
@@ -992,4 +992,180 @@ fn dependency_without_supplier_makes_no_relation() {
     // Assert
     assert!(r.rels.is_empty());
     assert_eq!(r.errors.len(), 1);
+}
+
+#[test]
+fn feature_value_keeps_how_the_value_is_given() {
+    // Arrange（FeatureValue、8.2.2.6。同値クラス: 束縛 `=`・初期値 `:=`・既定値 `default`・`default =`・`default :=`）
+    let text = "part def A { attribute b = 1; attribute i := 2; attribute d default 3; \
+                attribute de default = 4; attribute di default  := 5; attribute n; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let op = |name: &str| entry(&r, name).value_op.clone();
+    let value = |name: &str| entry(&r, name).value.clone();
+    assert_eq!(op("b"), None);
+    assert_eq!(op("i").as_deref(), Some(":="));
+    assert_eq!(op("d").as_deref(), Some("default"));
+    assert_eq!(op("de").as_deref(), Some("default ="));
+    assert_eq!(op("di").as_deref(), Some("default :="));
+    assert_eq!(op("n"), None);
+    assert_eq!(
+        ["b", "i", "d", "de", "di"].map(value),
+        ["1", "2", "3", "4", "5"].map(|v| Some(v.to_owned()))
+    );
+}
+
+#[test]
+fn default_without_expression_has_no_value_kind() {
+    // Arrange（異常系・境界値: `default` の後に式が無い）
+    let text = "part def A { attribute d default; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "d").value, None);
+    assert_eq!(entry(&r, "d").value_op, None);
+}
+
+// ---- コメント（Comment、8.2.2.4） ----
+
+#[test]
+fn comment_about_keeps_its_body_and_annotated_elements() {
+    // Arrange（`about` の相手が 2 つ。修飾名と特徴の連鎖）
+    let text = "package P { package Q { part def A; } part def B { part c; } \
+                comment note about Q::A, B.c /* 安全のため\n * 二重にする */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let note = entry(&r, "note");
+    assert_eq!(note.kind, "comment");
+    assert_eq!(note.body.as_deref(), Some("安全のため\n二重にする"));
+    assert_eq!(note.about, [entry(&r, "A").idx, entry(&r, "c").idx]);
+    assert_eq!(note.pe, Some(entry(&r, "P").idx));
+    assert_eq!(note.head, "comment note about Q::A, B.c");
+    assert!(r.missing_comment_about.is_empty());
+}
+
+#[test]
+fn comment_without_about_annotates_its_owner() {
+    // Arrange（`about` の無い `comment /* … */`・`comment c locale "ja" /* … */`、名前の無いもの）
+    let text = "part def A { comment /* 1 つ目 */ comment c locale \"ja\" /* 2 つ目 */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a = entry(&r, "A").idx;
+    let comments: Vec<(&str, Option<&str>, &[usize])> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "comment")
+        .map(|e| (e.name.as_str(), e.body.as_deref(), e.about.as_slice()))
+        .collect();
+    assert_eq!(
+        comments,
+        [
+            ("", Some("1 つ目"), &[a][..]),
+            ("c", Some("2 つ目"), &[a][..])
+        ]
+    );
+    assert_eq!(entry(&r, "A").children.len(), 2);
+}
+
+#[test]
+fn plain_comment_and_top_level_comment_without_about_annotate_nothing() {
+    // Arrange（境界値: キーワードの無い `/* … */` は読み飛ばす。ファイルの直下の `comment` は持ち主が無い）
+    let text = "/* 見出し */ comment /* ファイルのメモ */ part def A { /* 注記 */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let comments: Vec<(&str, &[usize])> = r
+        .entries
+        .iter()
+        .filter(|e| e.kind == "comment")
+        .map(|e| (e.body.as_deref().unwrap_or(""), e.about.as_slice()))
+        .collect();
+    assert_eq!(comments, [("ファイルのメモ", &[][..])]);
+    assert!(entry(&r, "A").children.is_empty());
+}
+
+#[test]
+fn comment_about_missing_target_is_recorded() {
+    // Arrange（異常系: 相手の 1 つが無い）
+    let text = "package P { part def A; comment about A, Nope /* x */ }";
+    // Act
+    let r = run(text);
+    // Assert
+    let names: Vec<&str> = r
+        .missing_comment_about
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect();
+    assert_eq!(names, ["Nope"]);
+    let c = r.entries.iter().find(|e| e.kind == "comment");
+    assert_eq!(c.map(|c| c.about.clone()), Some(vec![entry(&r, "A").idx]));
+}
+
+// ---- 別の言語での表し方（TextualRepresentation、8.2.2.4） ----
+
+#[test]
+fn textual_representation_keeps_language_and_body_on_the_owner() {
+    // Arrange（名前のある `rep`・名前の無い `language` だけの形）
+    let text = "part def A {\n  rep inOCL language \"OCL\"\n    /* self.mass > 0 */\n  language \"Python\" /*\n    if a:\n        b()\n  */\n}";
+    // Act
+    let r = run(text);
+    // Assert
+    let reps: Vec<(&str, &str, &str)> = entry(&r, "A")
+        .reps
+        .iter()
+        .map(|x| (x.name.as_str(), x.language.as_str(), x.body.as_str()))
+        .collect();
+    assert_eq!(
+        reps,
+        [
+            ("inOCL", "OCL", "self.mass > 0"),
+            ("", "Python", "if a:\n    b()")
+        ]
+    );
+}
+
+#[test]
+fn textual_representation_without_owner_or_body_is_dropped() {
+    // Arrange（境界値: ファイルの直下。異常系: 本文が無い）
+    let text = "rep r language \"x\" /* a */\npart def A { rep s language \"y\"; }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert!(r.entries.iter().all(|e| e.reps.is_empty()));
+    assert_eq!(entry(&r, "A").children.len(), 0);
+}
+
+#[test]
+fn individual_is_kept_as_a_modifier_of_occurrences() {
+    // Arrange（8.2.2.9。同値クラス: 種類のキーワードあり・なし、定義・使用）
+    let text = "package P { individual part def Car; individual part c : Car; individual def Earth; individual earth : Earth; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(&str, &str, bool, &str, Option<&str>)> = ["Car", "c", "Earth", "earth"]
+        .map(|n| entry(&r, n))
+        .iter()
+        .map(|e| {
+            (
+                e.name.as_str(),
+                e.kind.as_str(),
+                e.is_def,
+                e.ty.as_str(),
+                e.mods.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("Car", "part def", true, "", Some("individual")),
+            ("c", "part", false, "Car", Some("individual")),
+            ("Earth", "occurrence def", true, "", Some("individual")),
+            ("earth", "occurrence", false, "Earth", Some("individual")),
+        ]
+    );
+    assert!(r.unsupported.is_empty());
 }

@@ -37,7 +37,7 @@ export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: E
 
 /**
  * a から b へ追加できる関係の一覧を作る。接続の案内（インスペクタ）で選べる候補になる。
- * 使用（usage）どうしなら flow だけ、ライフラインを含むなら無し。定義どうしなら持つ・満たす・検証する・扱う・導出する・flow から合うものを並べる。
+ * 使用（usage）どうしなら flow だけ、ライフラインかメモを含むなら無し。定義どうしなら持つ・満たす・検証する・扱う・導出する・flow から合うものを並べる。
  *
  * @param a 関係の元の要素（未選択なら null）
  * @param b 関係の先の要素（未選択なら null）
@@ -51,7 +51,7 @@ export function relOptions(a: ModelNode | null, b: ModelNode | null): { rel: Rel
   const o: { rel: RelKind; label: string }[] = [];
   if (!a || !b) return o;
   if (a.usage || b.usage) return a.usage && b.usage && a.key !== b.key ? [{ rel: "flow", label: "信号・物理量を流す（flow）" }] : o;
-  if (a.lifeline || b.lifeline) return o;
+  if (a.lifeline || b.lifeline || a.note || b.note) return o;
   const isReq = (n: ModelNode): boolean => /^requirement/.test(n.kind);
   if (a.isDef && b.isDef && a.key !== b.key && !["concern def", "item def", "port def"].includes(a.kind)) {
     o.push({ rel: "comp", label: `${kindLabel(KW_FOR[b.kind] ?? "part")}として持つ` });

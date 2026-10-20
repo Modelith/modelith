@@ -41,6 +41,7 @@ pub fn project(source: &str, parse: &Parse) -> ParseResult {
     let mut c = Ctx::new(source, parse);
     c.members(&parse.syntax(), None, None);
     c.apply_about_annotations();
+    c.apply_comment_abouts();
     c.resolve_extended_kinds();
     c.out.errors = parse
         .errors()
@@ -190,6 +191,18 @@ struct Annotation {
     fields: Vec<(String, String)>,
 }
 
+/// `comment c about A, B /* … */`（相手は読み終えてから、書いた場所から解決する）。
+struct CommentAbout {
+    /// コメントの宣言の番号。
+    entry: usize,
+    /// 相手の参照（修飾名・特徴の連鎖）。
+    about: Vec<String>,
+    /// 文を書いた宣言の番号（名前を探し始める場所）。
+    pe: Option<usize>,
+    /// 文の位置（UTF-16 のオフセット。相手が見つからないときの問題の位置）。
+    pos: usize,
+}
+
 /// 文の終わり。
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Term {
@@ -212,6 +225,8 @@ struct Ctx {
     annotations: Vec<Annotation>,
     /// 利用者定義のキーワードで書いた宣言の番号（基の種類を読み終えてから決める）。
     extended: Vec<usize>,
+    /// `about` の付いたコメント（書いた順）。相手は読み終えてから解決する。
+    comment_abouts: Vec<CommentAbout>,
 }
 
 impl Ctx {
@@ -264,6 +279,7 @@ impl Ctx {
             open_meta: None,
             annotations: Vec::new(),
             extended: Vec::new(),
+            comment_abouts: Vec::new(),
         }
     }
 
@@ -352,9 +368,9 @@ impl Ctx {
 
     /// 要素 1 つを、宣言・関係・式・まだ扱えない文・無名ブロックのどれかにする（暫定コアの stmt と同じ順で判定する）。
     ///
-    /// `doc` は `pe` の宣言の `doc` に入れる。本体 `{ … }` があれば、宣言ならその中を、宣言でなければ
+    /// `doc` は `pe` の宣言の `doc` に、`rep` は `pe` の宣言の `reps` に入れ、`comment` は種類 `comment` の宣言にする。本体 `{ … }` があれば、宣言ならその中を、宣言でなければ
     /// 無名ブロックを作ってその中を読み、`open`・`close`・`end` を記録する。まだ扱えない文の本体は読まない
-    /// （中の宣言を、外側の宣言の中身にしない）。終わっていない末尾の文と、`rep` の文は読まない。
+    /// （中の宣言を、外側の宣言の中身にしない）。終わっていない末尾の文は読まない。
     ///
     /// # 引数
     ///
@@ -363,8 +379,16 @@ impl Ctx {
     /// - `pe`：要素を含む、いちばん近い宣言の番号。無ければ `None`
     fn statement(&mut self, n: &SyntaxNode, owner: Option<Scope>, pe: Option<usize>) {
         match n.kind() {
-            // テキストでの表し方（rep）は、まだ図にもツリーにも出さない（本文を残すのは後の版）
-            COMMENT | TEXTUAL_REPRESENTATION => return,
+            COMMENT => {
+                self.comment(n, owner, pe);
+                return;
+            }
+            TEXTUAL_REPRESENTATION => {
+                if let (Some(pe), Some(rep)) = (pe, representation(n)) {
+                    self.out.entries[pe].reps.push(rep);
+                }
+                return;
+            }
             DOCUMENTATION => {
                 if let (Some(pe), Some(body)) = (
                     pe,
@@ -623,6 +647,10 @@ impl Ctx {
             if matches!(kind, EXTENDED_DEF_KIND | EXTENDED_USAGE_KIND) {
                 self.extended.push(idx);
             }
+            let value = child(n, FEATURE_VALUE)
+                .and_then(|v| child(&v, EXPRESSION))
+                .map(|x| self.node_head(&x))
+                .filter(|v| !v.is_empty());
             let mut e = Entry {
                 kind: kind.to_owned(),
                 is_def,
@@ -646,10 +674,10 @@ impl Ctx {
                 exprs: Vec::new(),
                 children: Vec::new(),
                 idx,
-                value: child(n, FEATURE_VALUE)
-                    .and_then(|v| child(&v, EXPRESSION))
-                    .map(|x| self.node_head(&x))
-                    .filter(|v| !v.is_empty()),
+                value: value.clone(),
+                value_op: value
+                    .and(child(n, FEATURE_VALUE))
+                    .and_then(|v| value_op(&v)),
                 doc: None,
                 meta: None,
                 phase_val: None,
@@ -662,6 +690,9 @@ impl Ctx {
                 close: None,
                 specs: self.specs(n, is_def),
                 multiplicity: multiplicity(n),
+                body: None,
+                about: Vec::new(),
+                reps: Vec::new(),
             };
             if !prefix_meta.is_empty() {
                 let meta = e.meta.get_or_insert_with(OrderedMap::default);
@@ -709,6 +740,7 @@ impl Ctx {
                 children: Vec::new(),
                 idx,
                 value: None,
+                value_op: None,
                 doc: None,
                 meta: None,
                 phase_val: None,
@@ -721,6 +753,9 @@ impl Ctx {
                 close: None,
                 specs: Vec::new(),
                 multiplicity: None,
+                body: None,
+                about: Vec::new(),
+                reps: Vec::new(),
             };
             self.push_entry(e, pe);
             return Some(idx);
@@ -931,6 +966,117 @@ impl Ctx {
                 for (k, v) in &a.fields {
                     // 要素自身に書いた値（`@M { k = … }`）を優先する
                     meta.entry(k, || v.clone());
+                }
+            }
+        }
+    }
+
+    /// コメント（Comment、8.2.2.4）を、種類 `comment` の宣言にする。`comment` か `locale` を書いたものだけを読み、
+    /// キーワードの無い `/* … */` はこれまでどおり読み飛ばす（コードの注釈に使われることが多いため）。
+    ///
+    /// `about` が無ければ持ち主の宣言 `pe` を注釈する（ファイルの直下なら何も注釈しない）。あれば相手を読み終えてから
+    /// 解決するよう `comment_abouts` に足す。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：`COMMENT` の節
+    /// - `owner`：コメントの持ち主（宣言か無名ブロックの番号）。ファイルの直下なら `None`
+    /// - `pe`：コメントを含む、いちばん近い宣言の番号。無ければ `None`
+    fn comment(&mut self, n: &SyntaxNode, owner: Option<Scope>, pe: Option<usize>) {
+        let is_element = n.children_with_tokens().any(|e| {
+            e.kind() == KEYWORD
+                && e.as_token()
+                    .is_some_and(|t| matches!(t.text(), "comment" | "locale"))
+        });
+        let body = n
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| t.kind() == REGULAR_COMMENT);
+        let (true, Some(body)) = (is_element, body) else {
+            return;
+        };
+        let range = n.text_range();
+        let (hs, be): (usize, usize) = (range.start().into(), body.text_range().start().into());
+        let idx = self.out.entries.len();
+        let parts = decl_parts(n, false);
+        let about: Vec<String> = n
+            .children()
+            .filter(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+            .map(|c| compact(&c))
+            .collect();
+        let start = self.utf16(hs);
+        let e = Entry {
+            kind: "comment".to_owned(),
+            is_def: false,
+            short: parts.short,
+            name: parts.name,
+            conj: None,
+            ty: String::new(),
+            ty_path: String::new(),
+            owner,
+            pe,
+            start,
+            head_end: self.utf16(be),
+            end: self.utf16(range.end().into()),
+            head: self.head_text(hs, be),
+            mods: None,
+            dir: None,
+            exprs: Vec::new(),
+            children: Vec::new(),
+            idx,
+            value: None,
+            value_op: None,
+            doc: None,
+            meta: None,
+            phase_val: None,
+            phase_block: None,
+            enum_values: None,
+            exposes: None,
+            filters: None,
+            render: None,
+            open: None,
+            close: None,
+            specs: Vec::new(),
+            multiplicity: None,
+            body: Some(comment_body(body.text())),
+            about: if about.is_empty() {
+                pe.into_iter().collect()
+            } else {
+                Vec::new()
+            },
+            reps: Vec::new(),
+        };
+        self.push_entry(e, pe);
+        if !about.is_empty() {
+            self.comment_abouts.push(CommentAbout {
+                entry: idx,
+                about,
+                pe,
+                pos: start,
+            });
+        }
+    }
+
+    /// `comment c about A, B` の相手を、文を書いた場所から解決し（`model` の名前の解決、修飾名と別名を含む）、
+    /// 見つかった宣言の番号をコメントの `about` に書いた順で入れる。見つからない相手は `missing_comment_about` に足す。
+    fn apply_comment_abouts(&mut self) {
+        if self.comment_abouts.is_empty() {
+            return;
+        }
+        let refs: Vec<(String, Option<usize>)> = self
+            .comment_abouts
+            .iter()
+            .flat_map(|c| c.about.iter().map(|r| (r.clone(), c.pe)))
+            .collect();
+        let mut found = crate::model::resolve_refs(&self.out, &refs).into_iter();
+        for c in std::mem::take(&mut self.comment_abouts) {
+            for r in &c.about {
+                match found.next().flatten() {
+                    Some(i) => self.out.entries[c.entry].about.push(i),
+                    None => self.out.missing_comment_about.push(MissingRef {
+                        pos: c.pos,
+                        name: r.clone(),
+                    }),
                 }
             }
         }
@@ -1173,7 +1319,9 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// `timeslice`・`snapshot` の修飾だけの使用（PortionUsage）はその語を、`#X def H`（ExtendedDefinition）は `"def"`、
 /// 種類のキーワードの無い `#X h`（ExtendedUsage）は `"usage"`、`variant a`（VariantReference）は `"variant"`、
 /// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"`、`connect a to b`（`connection` の無い接続）は
-/// `"connection"`、`allocate x to y` は `"allocation"`、`bind a = b`・`binding bb bind a = b` は `"binding"` にする。
+/// `"connection"`、`allocate x to y` は `"allocation"`、`bind a = b`・`binding bb bind a = b` は `"binding"`、
+/// 種類のキーワードの無い `individual def H`・`individual h`（IndividualDefinition・IndividualUsage）は
+/// `"occurrence def"`・`"occurrence"` にする。
 ///
 /// # 引数
 ///
@@ -1195,6 +1343,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// entry_kind("#X def H;", "def H", "", true)                → Some(("def", true))
 /// entry_kind("#X h : T;", "h : T", "", true)                → Some(("usage", false))
 /// entry_kind("connect a to b;", "connect a to b", "", false) → Some(("connection", false))
+/// entry_kind("individual def E;", "def E", "individual", false) → Some(("occurrence def", true))
 /// entry_kind("in #X x : T;", "x : T", "in", true)           → None   // パラメータとして読む
 /// entry_kind("a = 1;", "a = 1", "", false)                  → None
 /// ```
@@ -1230,6 +1379,9 @@ fn entry_kind(
         // `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）
         BINDING_CONNECTOR_AS_USAGE => Some(("binding", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
+        // `individual def H;`・`individual h : H;`（IndividualDefinition・IndividualUsage、8.2.2.9）
+        OCCURRENCE_DEFINITION if starts_with_word(h, "def") => Some(("occurrence def", true)),
+        OCCURRENCE_USAGE if is_mod("individual") => Some(("occurrence", false)),
         REFERENCE_USAGE if is_mod("variant") => Some(("variant", false)),
         REFERENCE_USAGE
             if has_prefix_meta
@@ -1478,6 +1630,70 @@ fn multiplicity(n: &SyntaxNode) -> Option<Multiplicity> {
         range: range.unwrap_or_default(),
         ordered,
         nonunique,
+    })
+}
+
+/// 値の書き方（FeatureValue、8.2.2.6）。式の前の記号とキーワードを、空白を 1 つにまとめて返す。
+///
+/// # 引数
+///
+/// - `v`：`FEATURE_VALUE` の節
+///
+/// # 戻り値
+///
+/// `:=`・`default`・`default =`・`default :=` のどれか。`=`（束縛）なら `None`。
+///
+/// # 例
+///
+/// ```text
+/// value_op("= 10")          → None
+/// value_op(":= 10")         → Some(":=")
+/// value_op("default 10")    → Some("default")
+/// value_op("default := 10") → Some("default :=")
+/// ```
+fn value_op(v: &SyntaxNode) -> Option<String> {
+    let op = v
+        .children_with_tokens()
+        .take_while(|e| e.kind() != EXPRESSION)
+        .filter_map(|e| e.into_token())
+        .filter(|t| !t.kind().is_trivia())
+        .map(|t| t.text().to_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    (op != "=").then_some(op)
+}
+
+/// 別の言語での表し方（`rep r language "x" /* … */`、TextualRepresentation、8.2.2.4）を読む。
+///
+/// # 引数
+///
+/// - `n`：`TEXTUAL_REPRESENTATION` の節
+///
+/// # 戻り値
+///
+/// 名前・言語の名前（引用符を外したもの）・本文。言語の名前か本文が欠けていれば `None`。
+///
+/// # 例
+///
+/// ```text
+/// representation("rep r language \"OCL\" /* self.m > 0 */") → Some({ name: "r", language: "OCL", body: "self.m > 0" })
+/// representation("language \"x\" /* a */")                   → Some({ name: "", language: "x", body: "a" })
+/// representation("rep r language;")                         → None   // 言語の名前と本文が無い
+/// ```
+fn representation(n: &SyntaxNode) -> Option<Rep> {
+    let token = |kind: SyntaxKind| {
+        n.children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| t.kind() == kind)
+    };
+    let language = token(STRING)?;
+    let body = token(REGULAR_COMMENT)?;
+    let lang = language.text();
+    let lang = lang.strip_prefix('"').unwrap_or(lang);
+    Some(Rep {
+        name: decl_parts(n, false).name,
+        language: lang.strip_suffix('"').unwrap_or(lang).to_owned(),
+        body: representation_body(body.text()),
     })
 }
 

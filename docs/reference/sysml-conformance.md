@@ -27,14 +27,16 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 | 印 | 意味 |
 | --- | --- |
-| ○ | モデルに入り、ツリーか図に出る |
+| ○ | モデルに入り、ツリーか図（要素に付ける情報はインスペクタ）に出る |
 | △ | 一部だけ取り込む。または構文は通すが中身を捨てる |
 | × | 取り込まない（エラーを出さずに捨てる場合を含む） |
 | ⚠ | 無視ではなく、別の意味に取り違えて誤った表示（誤ったエラー・警告、誤った要素）を出す |
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 65・△ 17・× 14。⚠ は 0 件。
+件数：テキスト記法（2 章）96 項目のうち ○ 69・△ 15・× 12。⚠ は 0 件。
+
+alpha.8 の 3 回目の更新で、`:=`・`default` の値の種類・`individual`・`comment … about`・`rep … language` の本文を記録し、メモを一般の図に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 65・△ 17・× 14 だった。
 
 alpha.8 の 2 回目の更新で、単独の `connect`・n 項の `connect`・`bind`・`binding`・`allocation def`・`allocation`・`allocate`・`flow def`・名前付きのフローを読み、内部ブロック図（入れ子は 2 段まで）と一般の図に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 60・△ 18・× 18 だった。
 
@@ -70,7 +72,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 引用名 `'Fuel Tank'` | NAME | ○ | | 宣言の名前と型の参照に使える（ADR-0013） |
 | 短い名前 `<'R1'>`・`<R1>` | Identification | ○ | | 引用あり・なしの両方（ADR-0013） |
 | 修飾名 `A::B` | QualifiedName | △ | 0.2.0 | 参照した場所から外へ最初の段を探し、中へたどる（同じファイルの中）。たどれなければ「見つかりません」と示す。`import` を通した名前と他のファイルは解決しない |
-| コメント `/* */`・`//` | 8.2.2.1.2 | ○ | | 解析では読み飛ばす。中の括弧も数えない |
+| コメント `/* */`・`//` | 8.2.2.1.2 | ○ | | 解析では読み飛ばす。中の括弧も数えない。`comment` を書いたコメントは要素にする（2.2 の `comment … about`） |
 | 文字列 `"a{b"` | STRING_VALUE | ○ | | 字句解析で 1 つの語にする。中の括弧で誤ったエラーを出さない（以前は ⚠） |
 | 知らない文 | — | △ | — | 予約語で始まり、どの読み方にも当たらない文は「まだ扱えない」と問題一覧に示す（エラーとしては数えない。ADR-0013）。予約語以外で始まる文と、読み飛ばしを決めている文（`import` など）は知らせない |
 
@@ -82,8 +84,8 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `#derivation dependency …` | Dependency + PrefixMetadataAnnotation | ○ | | derive の線になり、トレースの抜けの検出にも使う |
 | 他の `#X dependency` | 同上 | ○ | | 依存の線になり、ラベルに «X» を書く |
 | `doc` | Documentation | ○ | | locale は無視 |
-| `comment … about` | Comment | × | alpha.8 | 本文を黙って捨てる（後の宣言は残る） |
-| `rep … language` | TextualRepresentation | × | alpha.8 | 本文のコメントで文が終わり、続く宣言を正しく読む。表し方そのものはまだ捨てる |
+| `comment … about` | Comment | ○ | | `comment c about A, B /* … */`・`comment /* … */`・`comment c locale "ja" /* … */` を種類 `comment` の要素として読み、本文（各行の頭の `*` を除く）と注釈する相手（`about` が無ければ持ち主）を残す。要素を選ぶとインスペクタに「メモ」として本文を出し、一般の図では、相手が図にあれば角を折った四角と矢印の無い破線で描く（8.2.3.4 の comment-node・annotation-link。名前があれば «comment» と名前も書く）。メモを図から削除するとコメントが消える。名前のあるメモはツリーにも出る。見つからない相手は「見つかりません」と示す。キーワードの無い `/* … */` は、BNF では持ち主を注釈する Comment だが、テキストの注記として使われることが多いので、これまでどおり要素にしない |
+| `rep … language` | TextualRepresentation | ○ | | 名前・言語の名前・本文（字下げを保つ）を持ち主の要素に残し、要素を選ぶとインスペクタに「別の言語での表し方（言語）」として出す。`rep` の無い `language "x" /* … */` も同じ。図の記号（8.2.3.4 の textual-representation-node）は描かない。ファイルの直下の表し方は持ち主が無いので捨てる |
 
 ### 2.3 パッケージ（8.2.2.5）
 
@@ -110,7 +112,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 参照 `::>` / `references` | References | ○ | | 部分集合と同じ。線は三角の手前に 2 つの点を付ける（8.2.3 の reference-subsetting） |
 | 多重度 `[0..4]`、`ordered`、`nonunique` | MultiplicityPart | ○ | | 範囲と `ordered`・`nonunique` を記録し、部品として持つ線の部品の側の端（`[4] ordered`、8.2.3 の multiplicity）と、区画の属性の行（`w : Wheel [4]`）に書く |
 | 値 `= 式` | FeatureValue | ○ | | 文字列として保持し、図に出す |
-| `:=` / `default` | FeatureValue | △ | alpha.8 | 値として残るが、`=` と区別しない |
+| `:=` / `default` | FeatureValue | ○ | | `=`（束縛）・`:=`（初期値、isInitial）・`default`・`default =`・`default :=`（既定値、isDefault）を区別して記録し、区画に書いたとおり（`m := 10`・`m default 10`）書く。図からの名前の変更でも書き方は変わらない（値を書き換える図の操作は無い） |
 | `abstract`・`ref`・`derived`・`end`・`in`・`out`・`inout` など | Prefix 系 | ○ | | 記録する |
 | `constant`・`variant` | UsagePrefix 等 | ○ | | 後ろの宣言をそのまま読み、`constant`・`variant` を修飾として記録する。`variant a;`（VariantReference）は種類 `variant` の要素になる。`variation part def V { variant part a; }` も読む（バリアントの意味は持たない） |
 
@@ -122,7 +124,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `enum def`・列挙値 | ○ | | 列挙値はフェーズにも使う |
 | `enum` の使用 `enum e : E;` | ○ | | 種類 `enum` の要素になる。`enum def` の中の `enum a;` はこれまでどおり列挙値 |
 | `occurrence def` / `occurrence` | ○ | | シーケンス図の文脈 |
-| `individual` | △ | alpha.8 | 修飾子として記録するだけ |
+| `individual` | ○ | | 修飾として記録し（isIndividual）、図の見出しを «individual part def» のように書く。種類のキーワードの無い `individual def E;`・`individual e : E;`（IndividualDefinition・IndividualUsage）は `occurrence def`・`occurrence` として読む（以前は、定義を「まだ扱えない」と知らせ、使用を型付きのパラメータと取り違えていた） |
 | `timeslice` / `snapshot` / `event occurrence` | ○ | | 書いた語を種類にした使用の要素になる（`event e;` の参照の形も）。`timeslice part p` のように種類のキーワードが続けば、その種類の要素に `timeslice` を修飾として記録する |
 | `item def` / `item` | ○ | | |
 | `part def` / `part` | ○ | | |
@@ -223,7 +225,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 標準ビュー定義 | 短い名前 | `view` の描き方 | 対応 | 予定 |
 | --- | --- | --- | --- | --- |
-| GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度は 8.2.3 の記法で描く。注釈（`comment … about`）と、定義の中の特性どうしの線は無い | alpha.8 |
+| GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
 | InterconnectionView | `iv` | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 2 段まで（部品の本体に書いた部品と、線の端 `a.b.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く）。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。3 段目より深い入れ子、対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
 | ActionFlowView | `afv` | ノードと線の図で代わりに描き、知らせる | × | alpha.9 |
 | StateTransitionView | `stv` | 振る舞いの図（expose した要素） | △ 状態は描くが、遷移を線にしない | alpha.9 |

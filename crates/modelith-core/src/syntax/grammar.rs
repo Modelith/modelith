@@ -308,6 +308,7 @@ fn member(p: &mut Parser<'_>) {
     }
     let mut prefixed = false;
     let mut extended = false;
+    let mut individual = false;
     loop {
         if p.at(HASH) && p.nth_at_name(1) {
             let pm = p.start();
@@ -316,6 +317,7 @@ fn member(p: &mut Parser<'_>) {
             pm.complete(p, PREFIX_METADATA);
             extended = true;
         } else if p.at(KEYWORD) && PREFIX_KEYWORDS.contains(&p.nth_text(0)) {
+            individual |= p.at_kw("individual");
             p.bump();
         } else {
             break;
@@ -342,11 +344,19 @@ fn member(p: &mut Parser<'_>) {
         m.complete(p, kind);
         return;
     }
-    if extended && p.at_kw("def") {
+    if (extended || individual) && p.at_kw("def") {
         // `#X def H;`：利用者定義のキーワードで書く定義（ExtendedDefinition、8.2.2.27）
+        // `individual def H;`：種類のキーワードの無い個体の定義（IndividualDefinition、8.2.2.9）
         p.bump();
         declaration(p, owner, true, true);
-        m.complete(p, EXTENDED_DEFINITION);
+        m.complete(
+            p,
+            if extended {
+                EXTENDED_DEFINITION
+            } else {
+                OCCURRENCE_DEFINITION
+            },
+        );
         return;
     }
     if p.at(KEYWORD) {
@@ -362,7 +372,15 @@ fn member(p: &mut Parser<'_>) {
     }
     if prefixed || is_feature_declaration(p) {
         declaration(p, owner, true, false);
-        m.complete(p, REFERENCE_USAGE);
+        // `individual h : H;` は個体の使用（IndividualUsage : OccurrenceUsage、8.2.2.9）
+        m.complete(
+            p,
+            if individual {
+                OCCURRENCE_USAGE
+            } else {
+                REFERENCE_USAGE
+            },
+        );
         return;
     }
     if p.at(R_PAREN) || p.at(R_BRACK) {

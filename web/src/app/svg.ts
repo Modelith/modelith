@@ -2,7 +2,7 @@
 
 import { family } from "../core";
 import { esc } from "./dom";
-import { boxesOf, computeRoutes, DOT, endLabelPos, HEAD, LH, linesOf, packageRects, pinPoint, pinsOf, textWidth, type Box, type NodeBox } from "./geometry";
+import { boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, textWidth, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
 import { phaseLabel, type ViewContent } from "./views";
 
@@ -69,9 +69,12 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
 }
 
 /** 破線で描く線の種類。 */
-const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency", "allocate"];
-/** 矢印を付けない線の種類（結び付けと、n 項の接続の点から端への線は向きの無い実線、8.2.3.13 の binding-connection・n-ary-segment）。 */
-const UNDIRECTED_EDGES = ["bind", "connect"];
+const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency", "allocate", "annotate"];
+/**
+ * 矢印を付けない線の種類（結び付けと、n 項の接続の点から端への線は向きの無い実線、8.2.3.13 の binding-connection・n-ary-segment。
+ * メモから要素への線は向きの無い破線、8.2.3.4 の annotation-link）。
+ */
+const UNDIRECTED_EDGES = ["bind", "connect", "annotate"];
 /** 終わりの端の矢印（マーカーの ID）。無い種類は開いた矢印（mOpen）。特殊化・部分集合は白抜きの三角、再定義は三角と縦棒、参照は三角と 2 つの点（8.2.3）。 */
 const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri", subset: "mTri", redefine: "mRedef", reference: "mRef" };
 
@@ -86,6 +89,7 @@ const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri",
  * edgeStroke("satisfy")    // → ' stroke-dasharray="6 4" marker-end="url(#mOpen)"'
  * edgeStroke("comp")       // → ' marker-start="url(#mDiamond)"'
  * edgeStroke("bind")       // → ""（実線・矢印なし）
+ * edgeStroke("annotate")   // → ' stroke-dasharray="6 4"'（破線・矢印なし）
  */
 export function edgeStroke(kind: string): string {
   const dash = DASHED_EDGES.includes(kind) ? ' stroke-dasharray="6 4"' : "";
@@ -164,7 +168,7 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
     nodes.map((n) => {
       const r = rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
       const holds = nodes.some((c) => c.container === n.key);
-      return [n.key, { ...r, n, pins: n.junction ? [] : pinsOf(n, L, view), ...(holds ? { holds } : {}) }];
+      return [n.key, { ...r, n, pins: n.junction || n.note ? [] : pinsOf(n, L, view), ...(holds ? { holds } : {}) }];
     }),
   );
   let es = "";
@@ -233,6 +237,7 @@ function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, tex
  */
 function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
   if (b.n.junction) return junctionMarkup(C, b, opts, F);
+  if (b.n.note) return noteMarkup(C, b, opts, F);
   // 中に部品を描く部品は、区画の行を描かない（中の部品を描く場所にする）
   const n = b.n, fam = n.fam, L2 = b.holds ? [] : linesOf(n);
   const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
@@ -244,7 +249,7 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   if (opts.cands?.has(n.key)) s += `<rect x="-5" y="-5" width="${b.w + 10}" height="${b.h + 10}" rx="${rx + 4}" fill="none" stroke="${C("sel")}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
   s += `<rect class="body" width="${b.w}" height="${b.h}" rx="${rx}" fill="${C("k-" + fam + "-bg")}" stroke="${stroke}" stroke-width="${sw}"/>`;
   s += `<rect width="4" height="${b.h}" fill="${C("k-" + fam)}" rx="${rx ? 2 : 0}"/>`;
-  s += `<text x="${b.w / 2}" y="17" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${n.kind}»`)}</text>`;
+  s += `<text x="${b.w / 2}" y="17" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${keywordOf(n)}»`)}</text>`;
   if (opts.phases && n.phase)
     s += `<text x="${b.w}" y="-5" text-anchor="end" font-size="9" fill="${C("k-" + fam)}" font-family="${F}">${esc(phaseLabel(n.phase))}${n.phaseOwn ? "" : "（継承）"}</text>`;
   const title = (n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? ` : ${n.entry.type}` : "");
@@ -257,6 +262,36 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
       s += `<text x="12" y="${HEAD + 17 + k * LH}" font-size="${mono ? 10.5 : 11}" fill="${ln.cls === "more" ? C("ink2") : C("ink")}" font-family="${mono ? MONO : F}">${esc(ln.t)}</text>`;
     });
   }
+  return s + "</g>";
+}
+
+/** メモの右上の、折った角の大きさ。 */
+const NOTE_FOLD = 12;
+
+/**
+ * メモ（8.2.3.4 の comment）を SVG の文字列にする。右上の角を折った四角に本文を書き、名前があれば上に «comment» と名前を書く。
+ *
+ * @param C 色の関数
+ * @param b メモの矩形と、その要素
+ * @param opts 描き方（選択・光らせる要素・薄くする要素）
+ * @param F 文字のフォント
+ * @returns `<g class="node note" data-key="キー" transform="translate(x,y)">…</g>` の文字列
+ * @example
+ * // (300, 0) にある名前の無いメモ「安全のため」、選択なし
+ * noteMarkup(CV, b, { view: "all" }, "inherit")
+ * // → '<g class="node note" data-key="note:#1" transform="translate(300,0)"><path class="body" d="M0,0 H212 L224,12 V33 H0 Z" …/>…<text …>安全のため</text></g>'
+ */
+function noteMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): string {
+  const n = b.n, f = NOTE_FOLD, top = noteTop(n);
+  const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
+  const stroke = isSel ? C("sel") : C("k-other");
+  let s = `<g class="node note${opts.pulse?.has(n.key) ? " pulse" : ""}" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})"${opts.dim?.has(n.key) ? ' opacity=".42"' : ""}>`;
+  s += `<path class="body" d="M0,0 H${b.w - f} L${b.w},${f} V${b.h} H0 Z" fill="${C("panel")}" stroke="${stroke}" stroke-width="${isSel ? 2.6 : 1.1}"/>`;
+  s += `<path d="M${b.w - f},0 V${f} H${b.w}" fill="none" stroke="${stroke}" stroke-width="1.1"/>`;
+  if (n.name) s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«comment» <tspan font-weight="700" fill="${C("ink")}">${esc(n.name)}</tspan></text>`;
+  linesOf(n).forEach((ln, k) => {
+    s += `<text x="12" y="${top + 11 + k * LH}" font-size="11" fill="${C("ink")}" font-family="${F}">${esc(ln.t)}</text>`;
+  });
   return s + "</g>";
 }
 

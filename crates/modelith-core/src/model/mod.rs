@@ -246,7 +246,7 @@ fn has_word(mods: &str, w: &str) -> bool {
 }
 
 /// 解析結果からモデルを作る。暫定コアの `build`（`web/src/core/model.ts`）と同じ振る舞い。
-/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → 解析の問題 → フェーズ → view の順に組み立てる。
+/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → 解析の問題 → フェーズ → view の順に組み立てる。
 ///
 /// # 引数
 ///
@@ -272,6 +272,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.relations();
     b.specializations();
     b.edge_ids();
+    b.notes();
     b.parse_problems();
     b.phases();
     views::build_views(&mut b);
@@ -1150,6 +1151,46 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// 図に描くコメント（8.2.3.4）。注釈する要素のうち図に描く要素があるコメントだけを、書いた順に `notes` に足す。
+    /// キーは、名前があれば `note:名前`（同じ名前が続けば `note:名前#2`）、無ければ名前の無いメモの通し番号で `note:#1` から。
+    fn notes(&mut self) {
+        let mut taken: HashSet<String> = HashSet::new();
+        let mut unnamed = 0;
+        for (i, e) in self.entries.iter().enumerate() {
+            if e.kind != "comment" {
+                continue;
+            }
+            let targets: Vec<String> = e
+                .about
+                .iter()
+                .filter_map(|a| self.node_of.get(a))
+                .map(|&n| self.model.nodes[n].key.clone())
+                .collect();
+            if targets.is_empty() {
+                continue;
+            }
+            let key = if e.name.is_empty() {
+                unnamed += 1;
+                format!("note:#{unnamed}")
+            } else {
+                let base = format!("note:{}", e.name);
+                let mut key = base.clone();
+                let mut k = 1;
+                while taken.contains(&key) {
+                    k += 1;
+                    key = format!("{base}#{k}");
+                }
+                key
+            };
+            taken.insert(key.clone());
+            self.model.notes.push(Note {
+                key,
+                entry: i,
+                targets,
+            });
+        }
+    }
+
     /// 線の ID（種類・両端・ラベルが同じ線には、出てきた順に番号を付ける）。形は `種類|from|to|ラベル#番号`（`comp|A|B|b#1` など）で、モデルの `edges` を書き換える。
     fn edge_ids(&mut self) {
         let mut seen: HashMap<String, usize> = HashMap::new();
@@ -1161,7 +1202,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 構文解析のエラー、`metadata … about` の見つからない相手、まだ扱えない構文を問題一覧に加える（モデルの `problems` を書き換える）。
+    /// 構文解析のエラー、`metadata … about`・`comment … about` の見つからない相手、まだ扱えない構文を問題一覧に加える（モデルの `problems` を書き換える）。
     /// まだ扱えない構文は、頭を UTF-16 で 40 単位までに切って示し、種類を `unsupported` にする。
     fn parse_problems(&mut self) {
         let p = self.p;
@@ -1173,6 +1214,16 @@ impl<'a> Builder<'a> {
                 m.pos,
                 format!(
                     "メタデータを付ける相手「{}」が見つかりません（metadata about）",
+                    m.name
+                ),
+                None,
+            );
+        }
+        for m in &p.missing_comment_about {
+            self.problem(
+                m.pos,
+                format!(
+                    "メモを付ける相手「{}」が見つかりません（comment about）",
                     m.name
                 ),
                 None,

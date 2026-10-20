@@ -984,3 +984,70 @@ fn nary_connection_and_binding_report_a_missing_end() {
         ]
     );
 }
+
+// ---- メモ（Comment、8.2.2.4・8.2.3.4） ----
+
+#[test]
+fn comment_about_drawn_elements_becomes_a_note_with_targets() {
+    // Arrange（名前のあるメモ・名前の無いメモ 2 つ・`about` の無いメモ（持ち主が注釈の相手））
+    let text = "package P { part def A { comment /* A の中 */ } part def B; \
+                comment c about A, B /* 両方 */ comment about B /* 1 */ comment about A /* 2 */ }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let notes: Vec<(&str, &str, Vec<&str>)> = m
+        .notes
+        .iter()
+        .map(|n| {
+            let body = p.entries[n.entry].body.as_deref().unwrap_or("");
+            (
+                n.key.as_str(),
+                body,
+                n.targets.iter().map(String::as_str).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        notes,
+        [
+            ("note:#1", "A の中", vec!["A"]),
+            ("note:c", "両方", vec!["A", "B"]),
+            ("note:#2", "1", vec!["B"]),
+            ("note:#3", "2", vec!["A"]),
+        ]
+    );
+}
+
+#[test]
+fn comment_about_undrawn_elements_has_no_note() {
+    // Arrange（境界値: 相手が package・定義の中の特性だけ。名前が同じメモは 2 つ目に番号を付ける）
+    let text = "package P { part def A { part x; } comment about P /* p */ comment about A.x /* x */ \
+                comment n about A /* 1 */ comment n about A /* 2 */ }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let keys: Vec<&str> = m.notes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["note:n", "note:n#2"]);
+}
+
+#[test]
+fn comment_about_missing_target_is_a_problem() {
+    // Arrange（異常系: 相手が無い）
+    let text = "package P { part def A; comment about A, Nope /* x */ }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<(&str, Option<&str>)> = m
+        .problems
+        .iter()
+        .map(|p| (p.msg.as_str(), p.kind))
+        .collect();
+    assert_eq!(
+        msgs,
+        [(
+            "メモを付ける相手「Nope」が見つかりません（comment about）",
+            None
+        )]
+    );
+    assert_eq!(m.notes.len(), 1);
+}

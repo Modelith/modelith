@@ -140,6 +140,32 @@ fn rename_definition_changes_every_reference_but_not_comments_or_longer_names() 
 }
 
 #[test]
+fn rename_definition_keeps_value_operators_and_renames_comment_targets() {
+    // Arrange（FeatureValue の `:=`・`default`、Comment の `about`。本文の中の名前は変えない）
+    let text = "package P {\n    part def T;\n    part def C { attribute m : T := 1; attribute d : T default 2; }\n    comment about T /* T の説明 */\n}";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"T","name":"U"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def U;\n    part def C { attribute m : U := 1; attribute d : U default 2; }\n    comment about U /* T の説明 */\n}"
+    );
+}
+
+#[test]
+fn rename_usage_keeps_initial_and_default_operators() {
+    // Arrange（境界値: 名前のすぐ後が `default`。初期値の式の中の参照も変える）
+    let text = "package P { part def E; part def C { part e := f; part f : E default e; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:f","ctx":"C","name":"g"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def E; part def C { part e := g; part g : E default e; } }"
+    );
+}
+
+#[test]
 fn rename_usage_changes_declaration_and_paths_only() {
     // Arrange（使用の名前は、宣言と「名前.」の参照だけを変える。型の名前や a.e の e は変えない）
     let text = "package P { part def E { port e; } part def C { part e : E; part f : E; flow from e.e to f.e; } }";
@@ -192,6 +218,34 @@ fn delete_removes_whole_line_of_definition() {
     let (after, _) = run(text, r#"{"op":"delete","keys":["A"]}"#);
     // Assert
     assert_eq!(after, "package P {\n    part def B;\n}\n");
+}
+
+#[test]
+fn delete_note_removes_the_comment_and_keeps_the_annotated_element() {
+    // Arrange（メモのキー。名前の無いメモ `note:#1` と、名前のあるメモ `note:c`）
+    let text = "package P {\n    part def A;\n    comment about A /* 1 つ目 */\n    comment c about A /* 2 つ目 */\n}";
+    // Act
+    let (unnamed, _) = run(text, r#"{"op":"delete","keys":["note:#1"]}"#);
+    let (named, _) = run(text, r#"{"op":"delete","keys":["note:c"]}"#);
+    // Assert
+    assert_eq!(
+        unnamed,
+        "package P {\n    part def A;\n    comment c about A /* 2 つ目 */\n}"
+    );
+    assert_eq!(
+        named,
+        "package P {\n    part def A;\n    comment about A /* 1 つ目 */\n}"
+    );
+}
+
+#[test]
+fn delete_unknown_note_is_refused() {
+    // Arrange（異常系: 図に描かないメモ（相手が package）のキーは無い）
+    let text = "package P { comment /* p */ }";
+    // Act
+    let msg = refused(text, r#"{"op":"delete","keys":["note:#1"]}"#);
+    // Assert
+    assert!(msg.contains("note:#1"), "{msg}");
 }
 
 #[test]

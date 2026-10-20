@@ -104,6 +104,10 @@ pub struct Entry {
     pub idx: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    /// 値の書き方（FeatureValue、8.2.2.6）。`:=`（初期値）・`default`・`default =`・`default :=`（既定値）を、
+    /// 空白を 1 つにまとめて書いたとおりに持つ。`=`（束縛）と、値の無い宣言では `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_op: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -130,6 +134,27 @@ pub struct Entry {
     /// 多重度（MultiplicityPart、8.2.2.6）。書いていなければ `None`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multiplicity: Option<Multiplicity>,
+    /// コメント（種類 `comment`、Comment、8.2.2.4）の本文。`/*`・`*/` と、各行の頭の空白と `*` を除き、行は改行でつなぐ。
+    /// コメントでない宣言では `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    /// コメントが注釈する宣言の番号（`about` の相手。`about` が無ければ持ち主）。書いた順。見つからない相手は入れない。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub about: Vec<usize>,
+    /// 別の言語での表し方（`rep r language "x" /* … */`、TextualRepresentation、8.2.2.4）。書いた順。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reps: Vec<Rep>,
+}
+
+/// 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Rep {
+    /// 名前（`rep r` の `r`）。無ければ空文字列。
+    pub name: String,
+    /// 言語の名前（`language "OCL"` の引用符の中）。
+    pub language: String,
+    /// 本文（`/*`・`*/` を外し、共通の字下げと前後の空の行を除いたもの。行は改行でつなぐ）。
+    pub body: String,
 }
 
 /// 多重度と、その並びの性質（MultiplicityPart、8.2.2.6）。
@@ -356,4 +381,7 @@ pub struct ParseResult {
     /// `metadata M about A` の相手のうち、見つからなかったもの。問題一覧に出すためだけに使い、TS には渡さない。
     #[serde(skip)]
     pub missing_about: Vec<MissingRef>,
+    /// `comment c about A` の相手のうち、見つからなかったもの。問題一覧に出すためだけに使い、TS には渡さない。
+    #[serde(skip)]
+    pub missing_comment_about: Vec<MissingRef>,
 }

@@ -25,6 +25,13 @@ describe("drawioEdgeStyle（F-EXP-2）", () => {
     expect(style).toBe("endArrow=none;");
   });
 
+  it("メモから要素への線（annotate）は矢印の無い破線にする（8.2.3.4 の annotation-link）", () => {
+    // Act
+    const style = drawioEdgeStyle("annotate");
+    // Assert
+    expect(style).toBe("dashed=1;endArrow=none;");
+  });
+
   it.each([["derive"], ["allocate"]])("ほかの関係（%s）は破線と開いた矢印にする", (kind) => {
     // Act
     const style = drawioEdgeStyle(kind);
