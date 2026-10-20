@@ -164,6 +164,91 @@ fn no_phase_metadata_means_no_phases() {
 }
 
 #[test]
+fn view_filters_combine_tests_with_logical_operators() {
+    // Arrange（filter の or・not と、expose の [ ] の and・括弧。8.2.2.26・7.5.4）
+    let text = "package P { metadata def Safety; part def A; #Safety part def B; requirement def R; attribute def T; \
+                view v { expose P::*; filter @PartDefinition or @RequirementDefinition; filter not @Safety; } \
+                view w { expose P::*[@Definition and not (@AttributeDefinition or @RequirementDefinition)]; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let keys = |name: &str| {
+        m.views
+            .iter()
+            .find(|v| v.name == name)
+            .map(|v| v.node_keys.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(keys("v"), ["A", "R"]);
+    assert_eq!(keys("w"), ["A", "B"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn view_filter_with_a_value_comparison_is_reported_and_not_used() {
+    // Arrange（異常系：値の比較は扱えない式。知らせたうえで、絞り込まずに描く）
+    let text = "package P { metadata def Safety; part def A; view v { expose P::*; filter @Safety and level > 1; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(m.views[0].node_keys, ["A"]);
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "図「v」の絞り込み「@Safety and level > 1」はまだ扱えないため、絞り込まずに描きます（filter）"
+        ]
+    );
+}
+
+#[test]
+fn view_render_follows_renderings_to_a_standard_one() {
+    // Arrange（合成形・別に書いた rendering の参照・rendering から rendering への特殊化。8.2.2.26・9.2.19）
+    let text = "package P { part def A { part b; } rendering myTree :> asTreeDiagram; rendering deep :> myIbd; \
+                rendering myIbd redefines Views::asInterconnectionDiagram; \
+                view c : GeneralView { expose P::A; render rendering r :> asInterconnectionDiagram { } } \
+                view u : InterconnectionView { expose P::A; render myTree; } \
+                view d { expose P::A; render deep; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let kinds: Vec<(&str, &str)> = m.views.iter().map(|v| (v.name.as_str(), v.kind)).collect();
+    assert_eq!(
+        kinds,
+        [
+            ("c", "interconnection"),
+            ("u", "general"),
+            ("d", "interconnection")
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn view_render_that_reaches_no_standard_rendering_is_reported() {
+    // Arrange（異常系：型だけの合成形・循環する rendering）
+    let text = "package P { rendering def R; rendering x :> y; rendering y :> x; \
+                view a { render rendering r : R; } view b { render x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m
+        .problems
+        .iter()
+        .filter(|p| p.kind == Some("unsupported"))
+        .map(|p| p.msg.as_str())
+        .collect();
+    assert_eq!(
+        msgs,
+        [
+            "図「a」の表し方（r）はまだ扱えないため、図として描きます（render）",
+            "図「b」の表し方（x）はまだ扱えないため、図として描きます（render）",
+        ]
+    );
+    assert!(m.views.iter().all(|v| v.kind == "general"));
+}
+
+#[test]
 fn view_exposes_members_and_filters_by_metaclass() {
     // Arrange
     let text = "package P { part def A; part a : A; attribute def B; \
@@ -1010,6 +1095,250 @@ fn nary_connection_and_binding_report_a_missing_end() {
             "「結び付け」の相手「gone」が見つかりません（bind）"
         ]
     );
+}
+
+// ---- 特徴の連鎖（FeatureChain、8.2.2.6。3 段目から先も型の中をたどる） ----
+
+/// 連鎖を確かめる部品の定義（V の中の部品 e・w は Eng、t は G を特殊化した T、u は型も本体も無い）。
+const CHAIN_MODEL: &str = "package P { port def Pt { in item x : Real; out item y : Real; } \
+     part def Cyl { port p : Pt; } part def Eng { part cyl : Cyl; } part def G { part g : Cyl; } part def T :> G; \
+     part def V { part e : Eng; part w : Eng; part t : T; part u; ";
+
+/// 連鎖の模型の V の本体に `body` を書いたときの、問題の文。
+fn chain_problems(body: &str) -> Vec<String> {
+    let (_, m) = run(&format!("{CHAIN_MODEL}{body} }} }}"));
+    m.problems.into_iter().map(|p| p.msg).collect()
+}
+
+#[test]
+fn chains_of_three_and_four_levels_resolve_through_part_and_port_types() {
+    // Arrange（正常系：3 段 e.cyl.p・4 段 e.cyl.p.y・一般の定義から引き継いだ部品 t.g.p）
+    let body = "connect e.cyl.p to w.cyl.p; flow from e.cyl.p.y to w.cyl.p.x; bind e.cyl = t.g; connect (e.cyl.p, w.cyl.p, t.g.p);";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert
+    assert!(msgs.is_empty(), "{msgs:?}");
+}
+
+#[test]
+fn missing_segment_of_a_chain_is_reported_with_its_name() {
+    // Arrange（異常系：3 段目・4 段目・2 段目（結び付けと n 項の接続）が無い。以前は 3 段目から先を捨てていた）
+    let body = "connect e.cyl.nope to w.cyl.p; flow from e.cyl.p.zz to w.cyl.p.x; bind e.cyl = w.nope; \
+                connect (e.cyl.p, w.cyl.p, t.bad);";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert
+    assert_eq!(
+        msgs,
+        [
+            "線の接続先「e.cyl.nope」の「nope」が見つかりません（connect）",
+            "線の接続先「e.cyl.p.zz」の「zz」が見つかりません（flow）",
+            "「結び付け」の相手「w.nope」の「nope」が見つかりません（bind）",
+            "線の接続先「t.bad」の「bad」が見つかりません（connect）",
+        ]
+    );
+}
+
+#[test]
+fn chain_through_an_element_without_type_or_body_is_not_reported() {
+    // Arrange（境界値：型も本体も無い部品 u と、ファイルの外の型 Lib の中は確かめられない）
+    let body = "part l : Lib; bind u.anything = l.inner.deep; bind e.cyl = e.cyl;";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert（Lib が見つからないことだけを知らせる）
+    assert_eq!(msgs, ["型「Lib」が見つかりません（l）"]);
+}
+
+#[test]
+fn second_segment_of_a_flow_end_is_checked_once_as_a_port() {
+    // Arrange（境界値：2 段目はポートの検査だけが知らせ、連鎖の検査は重ねて知らせない）
+    let body = "connect e.nope.p to w.cyl.p;";
+    // Act
+    let msgs = chain_problems(body);
+    // Assert
+    assert_eq!(msgs, ["ポート「nope」が Eng にありません"]);
+}
+
+#[test]
+fn message_end_event_of_a_nested_part_is_checked() {
+    // Arrange（正常系 a.sub.e と、異常系 a.sub.x・a.x。2 段目から先を、ライフラインの部品の中でたどる）
+    let text = "package P { occurrence def S { part a { event occurrence e; part sub { event occurrence e; } } part b; \
+                message m1 from a.sub.e to b; message m2 from a.sub.x to a.x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "メッセージの相手「a.sub.x」の「x」が見つかりません（message）",
+            "メッセージの相手「a.x」の「x」が見つかりません（message）",
+        ]
+    );
+}
+
+// ---- シーケンス図（SequenceView、9.2.20.2.7・8.2.3.9） ----
+
+/// シナリオ S のシーケンス図。
+fn sequence_of(m: &Model) -> &Sequence {
+    m.sequences
+        .iter()
+        .find(|s| s.key == "S")
+        .unwrap_or_else(|| panic!("S のシーケンス図がありません"))
+}
+
+/// イベントのキーと段。
+fn event_rows(s: &Sequence) -> Vec<(&str, usize)> {
+    s.events.iter().map(|e| (e.key.as_str(), e.row)).collect()
+}
+
+#[test]
+fn sequence_has_lifelines_events_and_messages_in_rows() {
+    // Arrange（正常系：部品と出来事のライフライン、本体のイベント・入れ子の部品のイベント、メッセージの端のイベント）
+    let text = "package P { occurrence def S { part a { event occurrence e; part sub { event occurrence d; } } \
+                occurrence b { event occurrence r; } attribute x; message m1 of Go from a.e to b.r; message m2 from b to a.sub.d; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let lifelines: Vec<&str> = s.lifelines.iter().map(|l| l.key.as_str()).collect();
+    assert_eq!(lifelines, ["l:a", "l:b"]);
+    assert_eq!(
+        event_rows(s),
+        [("e:a.e", 0), ("e:b.r", 0), ("e:a.sub.d", 1)]
+    );
+    assert_eq!(s.events[2].label, ".sub.d");
+    assert_eq!(p.entries[s.events[2].entry.unwrap_or(0)].name, "d");
+    let msgs: Vec<String> = s
+        .messages
+        .iter()
+        .map(|x| {
+            let ev = |e: &Option<String>| e.clone().unwrap_or_default();
+            format!(
+                "{} {}({})→{}({}) 段 {}",
+                x.id,
+                x.from,
+                ev(&x.from_event),
+                x.to,
+                ev(&x.to_event),
+                x.row
+            )
+        })
+        .collect();
+    assert_eq!(
+        msgs,
+        [
+            "msg|0|m1 l:a(e:a.e)→l:b(e:b.r) 段 0",
+            "msg|1|m2 l:b()→l:a(e:a.sub.d) 段 1",
+        ]
+    );
+    assert_eq!(s.rows, 2);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn succession_between_messages_and_events_sets_the_rows() {
+    // Arrange（first m2 then m1 でメッセージを入れ替え、then event occurrence e2 で e2 を m1 の後ろに置く）
+    let text = "package P { occurrence def S { part a { event occurrence e1; then event occurrence e2; } part b; \
+                message m1 from a.e1 to b; message m2 from b to a; first m2 then m1; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let rows: Vec<(&str, usize)> = s.messages.iter().map(|x| (x.id.as_str(), x.row)).collect();
+    assert_eq!(rows, [("msg|1|m2", 0), ("msg|0|m1", 1)]);
+    assert_eq!(event_rows(s), [("e:a.e1", 1), ("e:a.e2", 2)]);
+    assert_eq!(s.rows, 3);
+}
+
+#[test]
+fn events_without_order_are_placed_by_written_position() {
+    // Arrange（境界値：順序の無いイベントとメッセージは、書いた位置の順）
+    let text = "package P { occurrence def S { part a { event occurrence e; } part b; message m from a to b; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    assert_eq!(event_rows(s), [("e:a.e", 0)]);
+    assert_eq!(s.messages[0].row, 1);
+}
+
+#[test]
+fn succession_between_events_of_two_lifelines_is_a_line() {
+    // Arrange（別のライフラインのイベントの間は線（sq-succession）、同じライフラインの上は線にしない）
+    let text = "package P { occurrence def S { part a { event occurrence e; then event occurrence f; } \
+                part b { event occurrence r; } succession s first a.e then b.r; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let lines: Vec<(&str, &str, &str, &str)> = s
+        .successions
+        .iter()
+        .map(|e| {
+            (
+                e.id.as_str(),
+                e.from.as_str(),
+                e.to.as_str(),
+                e.label.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        lines,
+        [("succession|e:a.e|e:b.r|s#1", "e:a.e", "e:b.r", "s")]
+    );
+    // メッセージの端でないイベントは、1 つずつ段を使う
+    assert_eq!(event_rows(s), [("e:a.e", 0), ("e:a.f", 1), ("e:b.r", 2)]);
+}
+
+#[test]
+fn event_from_the_type_of_a_lifeline_is_drawn_with_its_chain() {
+    // Arrange（ライフラインの型の中のイベントも、メッセージの端なら描く）
+    let text = "package P { part def A { event occurrence go; } occurrence def S { part a : A; part b; message m from a.go to b; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    assert_eq!(event_rows(s), [("e:a.go", 0)]);
+    assert_eq!(p.entries[s.events[0].entry.unwrap_or(0)].name, "go");
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn missing_succession_end_and_cyclic_order_are_reported() {
+    // Arrange（異常系：見つからない相手（名前・ライフラインの中の連鎖）と、循環する順序）
+    let text = "package P { occurrence def S { part a { event occurrence e; } part b; \
+                message m1 from a to b; message m2 from b to a; first m1 then m2; first m2 then m1; \
+                first nope then m1; first a.gone then m2; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "「順序」の相手「nope」が見つかりません（succession）",
+            "「順序」の相手「a.gone」が見つかりません（succession）",
+            "シナリオ「S」の順序が循環しています（succession）",
+        ]
+    );
+    // 循環していても、すべてを書いた位置の順に置く（イベント e、m1、m2）
+    let s = sequence_of(&m);
+    let rows: Vec<usize> = s.messages.iter().map(|x| x.row).collect();
+    assert_eq!((event_rows(s), rows), (vec![("e:a.e", 0)], vec![1, 2]));
+}
+
+#[test]
+fn message_to_something_that_is_not_a_lifeline_is_not_drawn() {
+    // Arrange（境界値：端がライフラインでないメッセージは描かない。番号は書いた順のまま）
+    let text = "package P { occurrence def S { part a; attribute x; message m1 from a to x; message m2 from a to a; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let ids: Vec<&str> = s.messages.iter().map(|x| x.id.as_str()).collect();
+    assert_eq!(ids, ["msg|1|m2"]);
 }
 
 // ---- メモ（Comment、8.2.2.4・8.2.3.4） ----

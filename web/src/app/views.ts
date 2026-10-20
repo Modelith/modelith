@@ -1,8 +1,9 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。
 
-import type { EdgeKind, Entry, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
+import type { EdgeKind, Entry, Model, ModelEdge, ModelNode, ModelSequenceEvent, ModelView, ViewKind } from "../core";
 import { defaultFlowContext, flowContentOf, flowContexts, flowLayers } from "./action-flow";
 import { ibdContentOf } from "./ibd";
+import { seqContentOf } from "./sequence";
 import { defaultStateContext, stateContentOf, stateContexts } from "./state-machine";
 import { emptyView, type ViewLayout } from "./layout";
 import { withNotes } from "./notes";
@@ -47,6 +48,10 @@ export interface ViewContent {
   packages?: PackageFrame[];
   ctx?: ModelNode;
   seq?: boolean;
+  /** シーケンス図のライフラインの上のイベント（8.2.3.9 の sq-proxy）。 */
+  events?: ModelSequenceEvent[];
+  /** シーケンス図の段の数（メッセージと、メッセージの端でないイベントが 1 段ずつ使う）。 */
+  rows?: number;
   /** 状態遷移の図で、中の要素を破線で区切った領域に描く並行の状態のキー（状態定義そのものが並行なら ""、8.2.3.18）。 */
   regions?: string[];
 }
@@ -268,32 +273,21 @@ function ibdContent(M: Model): ViewContent {
 }
 
 /**
- * シーケンス図の内容を作る。対象のシナリオ（S.seqCtx）の部品を `l:名前` のライフラインにし、
- * シナリオの中の message を書かれた順に線にする。
+ * シーケンス図の内容を作る。対象のシナリオ（S.seqCtx）のシーケンス図（`seqContentOf`）を、ライフライン・メッセージ・
+ * イベントの間の順序の線と、ライフラインの上のイベントにする（9.2.20.2.7・8.2.3.9）。
  *
  * @param M モデル
- * @returns ライフライン・メッセージ（seq: true）。シナリオが無ければ空で、作り方の案内（empty）を付ける
+ * @returns ライフライン・線・イベント・段の数（seq: true）。シナリオが無ければ空で、作り方の案内（empty）を付ける
  * @example
  * // S.seqCtx が "Start"。Start が部品 a・b と、a から b への message m を持つ
- * seqContent(M) // → { nodes: [l:a, l:b], edges: [{ id: "msg|0|m", kind: "message", from: "l:a", to: "l:b", … }], seq: true, ctx }
+ * seqContent(M) // → { nodes: [l:a, l:b], edges: [{ id: "msg|0|m", kind: "message", row: 0, from: "l:a", to: "l:b", … }], events: [], rows: 1, seq: true, ctx }
  * // S.seqCtx が null
  * seqContent(M) // → { nodes: [], edges: [], seq: true, empty: "シナリオがまだありません。…" }
  */
 function seqContent(M: Model): ViewContent {
   const ctx = seqContexts(M).find((n) => n.key === S.seqCtx);
   if (!ctx) return { nodes: [], edges: [], seq: true, empty: "シナリオがまだありません。上のパレットの「シナリオ」から作れます。" };
-  const nodes: ModelNode[] = ctx.entry.children
-    .filter((c) => (c.kind === "part" || c.kind === "occurrence") && c.name)
-    .map((u) => ({
-      key: "l:" + u.name, name: u.name, short: "", kind: u.kind, isDef: false, fam: "part", entry: u, trans: [], ports: [],
-      lifeline: true, phase: null, phaseOwn: false,
-    }));
-  const msgs = M.rels.filter((r): r is MessageRel => r.rel === "message" && r.pe === ctx.entry).sort((a, b) => a.start - b.start);
-  const edges: ModelEdge[] = msgs.map((r, i) => ({
-    id: `msg|${i}|${r.name}`, kind: "message", idx: i, from: "l:" + (r.a.split(".")[0] ?? ""), to: "l:" + (r.b.split(".")[0] ?? ""),
-    label: r.name, type: r.item, rel: r, src: { start: r.start, end: r.end + 1 },
-  }));
-  return { nodes, edges, seq: true, ctx };
+  return { ...seqContentOf(M, ctx), seq: true, ctx };
 }
 
 /**

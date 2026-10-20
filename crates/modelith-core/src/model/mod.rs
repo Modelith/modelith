@@ -4,8 +4,11 @@
 //! 一致は web の golden.test.ts・spec.test.ts が TS と Rust の両方で確かめる。
 //! SysML v2 の意味（名前解決・継承など）に沿った作り直しは、0.1.0 の後に行う。
 
+mod chains;
+mod filters;
 mod flows;
 mod names;
+mod sequences;
 mod states;
 mod types;
 mod views;
@@ -277,6 +280,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.notes();
     b.action_flows();
     b.state_machines();
+    b.sequences();
     b.parse_problems();
     b.phases();
     views::build_views(&mut b);
@@ -920,6 +924,9 @@ impl<'a> Builder<'a> {
                             format!("線の接続先「{who}」が見つかりません（connect）"),
                             None,
                         );
+                    } else if let Some(miss) = self.missing_chain(ends, pe) {
+                        let msg = format!("線の接続先{miss}が見つかりません（connect）");
+                        self.problem(r.start, msg, None);
                     }
                 }
                 RelKind::Flow {
@@ -957,6 +964,13 @@ impl<'a> Builder<'a> {
                             self.model.edges[ed].rel = Some(ri);
                             self.port_end(ed, a, pa.get(1).copied(), true, r.start);
                             self.port_end(ed, b, pb.get(1).copied(), false, r.start);
+                            // 3 段目から先（`a.b.p` の `p`）も、部品の型の中をたどって確かめる。2 段目は port_end が確かめる
+                            for (head, x) in [(pa[0], ra), (pb[0], rb)] {
+                                if let Some(miss) = self.chain_miss(self.resolve(head, pe), x, 1) {
+                                    let msg = format!("線の接続先{miss}が見つかりません（{rel}）");
+                                    self.problem(r.start, msg, None);
+                                }
+                            }
                         }
                         _ => {
                             let who = if a.is_none() { ra } else { rb };
@@ -990,20 +1004,29 @@ impl<'a> Builder<'a> {
                 RelKind::Message { a: ra, b: rb, .. } => {
                     for x in [ra, rb] {
                         let seg = x.split('.').next().unwrap_or("");
-                        if pe.and_then(|pe| self.child_named(pe, seg)).is_none() {
+                        let head = pe.and_then(|pe| self.child_named(pe, seg));
+                        if head.is_none() {
                             let owner = pe.map_or("", |pe| self.e(pe).name.as_str());
                             self.problem(r.start, format!("メッセージの相手「{seg}」が「{owner}」の中にありません（message）"), None);
+                        } else if let Some(miss) = self.chain_miss(head, x, 0) {
+                            // 2 段目から先（`a.sub.e` のイベント）も、部品の中をたどって確かめる
+                            let msg = format!("メッセージの相手{miss}が見つかりません（message）");
+                            self.problem(r.start, msg, None);
                         }
                     }
                 }
                 // 結び付けは内部ブロック図だけに描く（web）。ここでは相手があるかだけを確かめる
                 RelKind::Bind { a, b, .. } => {
-                    if let Some(who) = self.missing_end(&[a.clone(), b.clone()], pe) {
+                    let ends = [a.clone(), b.clone()];
+                    if let Some(who) = self.missing_end(&ends, pe) {
                         self.problem(
                             r.start,
                             format!("「結び付け」の相手「{who}」が見つかりません（bind）"),
                             None,
                         );
+                    } else if let Some(miss) = self.missing_chain(&ends, pe) {
+                        let msg = format!("「結び付け」の相手{miss}が見つかりません（bind）");
+                        self.problem(r.start, msg, None);
                     }
                 }
                 RelKind::Allocate {
@@ -1130,6 +1153,32 @@ impl<'a> Builder<'a> {
         ends.iter().find(|x| {
             let head = x.split('.').next().unwrap_or("");
             self.resolve(head, pe).is_none()
+        })
+    }
+
+    /// 接続・結び付けの端（`a.b.c` など）のうち、2 段目から先に見つからない段がある最初のもの（`chain_miss`）。
+    /// 最初の段は `missing_end` が確かめる。
+    ///
+    /// # 引数
+    ///
+    /// - `ends`：端の参照（書いた順）
+    /// - `pe`：文の持ち主の宣言の番号（最初の段を探し始める場所）
+    ///
+    /// # 戻り値
+    ///
+    /// 見つからない段のある端の `「連鎖」の「段」`。すべて見つかるか、確かめられなければ None。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def B { part c; } part def H { part a : B; part b; bind a.c = b; bind a.x = b; }" の H の中で
+    /// missing_chain(["a.c", "b"], Some(H の番号)) → None
+    /// missing_chain(["a.x", "b"], Some(H の番号)) → Some("「a.x」の「x」")
+    /// ```
+    fn missing_chain(&self, ends: &[String], pe: Option<usize>) -> Option<String> {
+        ends.iter().find_map(|x| {
+            let head = x.split('.').next().unwrap_or("");
+            self.chain_miss(self.resolve(head, pe), x, 0)
         })
     }
 

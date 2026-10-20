@@ -239,7 +239,7 @@ function itemsForEdge(ed: ModelEdge): CtxItem[] {
     items.push(
       { label: "名前・型を編集", act: () => { clearSel(); S.selEdge = ed.id; S.msgEdit = true; render(); renderInspector(); } },
       { label: "上へ移動", disabled: i === 0, act: () => MSGOPS.move(ed, -1) },
-      { label: "下へ移動", disabled: i === CC().edges.length - 1, act: () => MSGOPS.move(ed, 1) },
+      { label: "下へ移動", disabled: i === CC().edges.filter((x) => x.kind === "message").length - 1, act: () => MSGOPS.move(ed, 1) },
     );
   }
   // メモの線だけを削除する操作は無い（メモごと削除する）

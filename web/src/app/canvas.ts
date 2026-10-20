@@ -453,8 +453,8 @@ export function zoomBy(f: number): void {
   applyTf();
 }
 
-/** 開いたときに文字が読める大きさで描く図（アクションの流れの図・状態遷移の図）と、そのときの拡大率の下限。 */
-const READABLE_VIEWS = ["afv", "stm"];
+/** 開いたときに文字が読める大きさで描く図（アクションの流れの図・状態遷移の図・シーケンス図）と、そのときの拡大率の下限。 */
+const READABLE_VIEWS = ["afv", "stm", "seq"];
 const READABLE_MIN = 0.8;
 
 /**

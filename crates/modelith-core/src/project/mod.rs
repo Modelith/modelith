@@ -709,12 +709,11 @@ impl Ctx {
                         return None;
                     }
                 }
-                VIEW_RENDERING_USAGE => {
-                    if let Some(r) = h
-                        .strip_prefix("render ")
-                        .filter(|r| is_qualified_basic_name(r))
-                    {
-                        self.out.entries[pe].render = Some(last_segment(r).to_owned());
+                // 参照形 `render asTreeDiagram;`（特殊化・本体が続いてもよい）は、参照した表し方の名前。
+                // 合成形 `render rendering r …` は、下で種類 `rendering` の宣言にする
+                VIEW_RENDERING_USAGE if !has_keyword(n, "rendering") => {
+                    if let Some(q) = child(n, QUALIFIED_NAME) {
+                        self.out.entries[pe].render = Some(last_segment(&path_of(&q)).to_owned());
                         return None;
                     }
                 }
@@ -724,6 +723,10 @@ impl Ctx {
         // 前置メタデータは、続く宣言のメタデータとして読む（ADR-0013）
         let (prefix_meta, h) = strip_prefix_metadata(h);
         let h = strip_then_return(h);
+        let h = match n.kind() {
+            VIEW_RENDERING_USAGE => h.strip_prefix("render ").unwrap_or(h),
+            _ => h,
+        };
         if n.kind() == ALIAS {
             if let Some(a) = alias(n, pe) {
                 self.out.aliases.push(a);
@@ -861,7 +864,17 @@ impl Ctx {
                     end,
                 });
             }
-            let is_flow_node = ACTION_FLOW_KINDS.contains(&e.kind.as_str());
+            // イベントも、続く `then event occurrence e2;` の継起の元になる（OccurrenceUsageMember の SourceSuccessionMember、8.2.2.9.3）。
+            // 状態の本体では、`then s;` を直前の状態からの遷移として読むので、イベントを元にしない
+            // 合成形の `render rendering r :> asTreeDiagram { … }` は、view の表し方にもする（ViewRenderingMember、8.2.2.26）
+            if n.kind() == VIEW_RENDERING_USAGE
+                && let Some(pe) = pe
+                && matches!(self.out.entries[pe].kind.as_str(), "view" | "view def")
+            {
+                self.out.entries[pe].render = Some(rendering_reference(&e));
+            }
+            let is_flow_node = ACTION_FLOW_KINDS.contains(&e.kind.as_str())
+                || (e.kind == "event occurrence" && !self.in_state(pe));
             let name = e.name.clone();
             self.push_entry(e, pe);
             if is_flow_node {
@@ -1227,8 +1240,8 @@ impl Ctx {
         })
     }
 
-    /// アクションの流れの要素（`action b;`・`fork f;` など）を読んだ後の処理。`then` で始まる要素（`then action b;`、
-    /// SourceSuccessionMember、8.2.2.17）なら、直前の要素からこの要素への継起を関係にし（範囲は `then` と後ろの空白だけ）、
+    /// アクションの流れの要素（`action b;`・`fork f;` など）とイベント（`event occurrence e;`）を読んだ後の処理。
+    /// `then` で始まる要素（`then action b;`・`then event occurrence e;`、SourceSuccessionMember、8.2.2.9.3・8.2.2.17）なら、直前の要素からこの要素への継起を関係にし（範囲は `then` と後ろの空白だけ）、
     /// この要素を、続く継起の元にする。
     ///
     /// # 引数
@@ -2387,6 +2400,32 @@ fn ref_after(n: &SyntaxNode, kw: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// 合成形の表し方（`render rendering r :> asTreeDiagram { … }`、ViewRenderingUsage、8.2.2.26）が指す表し方の名前。
+/// 特殊化・再定義・参照の最初の相手、無ければ自分の名前、それも無ければ型の名前（どれも最後の段）。
+///
+/// # 引数
+///
+/// - `e`：合成形の表し方の宣言（種類 `rendering`）
+///
+/// # 戻り値
+///
+/// 表し方の名前。名前も相手も型も無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// rendering_reference("rendering r :> Views::asTreeDiagram") → "asTreeDiagram"
+/// rendering_reference("rendering r : Foo")                   → "r"
+/// rendering_reference("rendering : Foo")                     → "Foo"
+/// rendering_reference("rendering")                           → ""
+/// ```
+fn rendering_reference(e: &Entry) -> String {
+    let target = e.specs.first().map(|s| last_segment(&s.path).to_owned());
+    target
+        .or_else(|| (!e.name.is_empty()).then(|| e.name.clone()))
+        .unwrap_or_else(|| last_segment(&e.ty).to_owned())
 }
 
 /// 最初の参照（名前として読んだ NAME も含む）。

@@ -187,6 +187,15 @@ export interface RawModel {
     nodes: { key: string; name: string; kind: string; entry?: number; container?: string; parallel?: boolean }[];
     edges: RawEdge[];
   }[];
+  sequences?: {
+    key: string;
+    entry: number;
+    lifelines: { key: string; name: string; entry: number }[];
+    events: { key: string; lifeline: string; label: string; entry?: number; row: number }[];
+    messages: { id: string; from: string; to: string; fromEvent?: string; toEvent?: string; row: number; rel: number }[];
+    successions: RawEdge[];
+    rows: number;
+  }[];
 }
 
 /**
@@ -261,9 +270,22 @@ function toModel(raw: RawModel, P: ParseResult): Model {
     nodes: f.nodes.map((n) => ({ ...n, entry: n.entry == null ? null : entry(n.entry) })),
     edges: f.edges.map(({ rel: _rel, ...e }) => e),
   }));
+  const rel = (i: number): Rel => {
+    const r = P.rels[i];
+    if (!r) throw new Error(`モデルが指す関係（${i}）がありません`);
+    return r;
+  };
+  const sequences = (raw.sequences ?? []).map((s) => ({
+    ...s,
+    entry: entry(s.entry),
+    lifelines: s.lifelines.map((l) => ({ ...l, entry: entry(l.entry) })),
+    events: s.events.map((e) => ({ ...e, entry: e.entry == null ? null : entry(e.entry) })),
+    messages: s.messages.map((m) => ({ ...m, rel: rel(m.rel) })),
+    successions: s.successions.map(({ rel: _rel, ...e }) => e),
+  }));
   return {
     nodes, views, edges, problems: raw.problems, nodeOf, byName, rels: P.rels, phases: raw.phases, phaseEnum: raw.phaseEnum, phaseOf, notes, actionFlows,
-    stateMachines,
+    stateMachines, sequences,
   };
 }
 

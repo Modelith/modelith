@@ -412,6 +412,25 @@ fn connect_flow_to_a_nested_part_writes_its_path() {
 }
 
 #[test]
+fn ibd_ids_follow_chains_of_three_levels_into_nested_parts() {
+    // Arrange（特徴の連鎖 a.x.v.p（8.2.2.6）の端は、型の中をたどった部品 u:a.x.v）
+    let text = "package P { part def V { port p; } part def X { part v : V; } part def A { part x : X; } \
+                part def C { part a : A; part b : V; connect a.x.v.p to b.p; } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"flow|u:a.x.v|u:b|#1","ctx":"C"}"#,
+    );
+    let (renamed, _) = run(
+        text,
+        r#"{"op":"rename","key":"u:a.x.v","name":"valve","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(!after.contains("connect a.x.v.p to b.p;"), "{after}");
+    assert!(renamed.contains("part valve : V;"), "{renamed}");
+}
+
+#[test]
 fn delete_edge_with_unknown_id_is_refused() {
     assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
 }
@@ -683,6 +702,23 @@ fn move_message_swaps_statements_but_keeps_then_in_place() {
             r#"{"op":"moveMessage","ctx":"S","id":"msg|1|m2","dir":1}"#
         )
         .contains("動かせません")
+    );
+}
+
+#[test]
+fn delete_edge_removes_a_succession_between_events_of_the_sequence() {
+    // Arrange（シーケンス図のイベントの間の順序の線、8.2.3.9 の sq-succession）
+    let text = "package P { occurrence def S {\n    part a { event occurrence e; }\n    part b { event occurrence r; }\n    first a.e then b.r;\n} }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"succession|e:a.e|e:b.r|#1","ctx":"S"}"#,
+    );
+    // Assert
+    assert!(!after.contains("first a.e then b.r;"), "{after}");
+    assert!(
+        after.contains("part b { event occurrence r; }\n} }"),
+        "{after}"
     );
 }
 

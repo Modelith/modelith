@@ -640,6 +640,50 @@ fn viewpoint_and_rendering_are_entries_distinct_from_view() {
 }
 
 #[test]
+fn composite_render_is_a_rendering_of_the_view_and_names_what_it_specializes() {
+    // Arrange（ViewRenderingUsage の合成形、8.2.2.26：特殊化の相手・再定義の相手（修飾名）・型だけ・名前も型も無いもの。
+    // 以前は、相手のある形を黙って捨て、再定義の形と型の形を「まだ扱えない」と知らせていた）
+    let text = "view a { render rendering r :> asInterconnectionDiagram; } \
+                view b { render rendering r2 redefines Views::asTreeDiagram { doc /* 木 */ } } \
+                view c { render rendering r3 : Foo; } view d { render rendering : Foo; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let renders: Vec<Option<&str>> = ["a", "b", "c", "d"]
+        .iter()
+        .map(|v| entry(&r, v).render.as_deref())
+        .collect();
+    assert_eq!(
+        renders,
+        [
+            Some("asInterconnectionDiagram"),
+            Some("asTreeDiagram"),
+            Some("r3"),
+            Some("Foo")
+        ]
+    );
+    let r2 = entry(&r, "r2");
+    assert_eq!(
+        (r2.kind.as_str(), r2.pe),
+        ("rendering", Some(entry(&r, "b").idx))
+    );
+    assert_eq!(r2.doc.as_deref(), Some("木"));
+    assert!(r.unsupported.is_empty(), "{:?}", r.unsupported);
+}
+
+#[test]
+fn reference_render_with_a_specialization_or_body_keeps_the_reference() {
+    // Arrange（境界値：参照形に特殊化・本体が続いても、参照した表し方の名前だけを記録し、宣言にしない）
+    let text = "view v { render Views::asTreeDiagram :> base { doc /* x */ } }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "v").render.as_deref(), Some("asTreeDiagram"));
+    assert_eq!(r.entries.len(), 1);
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
 fn metadata_about_writes_fields_to_each_annotated_element() {
     // Arrange（MetadataUsage の about、8.2.2.27。修飾名と特徴の連鎖の相手）
     let text = "package P { package Q { part def A; } part def B { part c; } \
@@ -1366,6 +1410,48 @@ fn succession_from_then_covers_only_the_keyword() {
         .map(|x| (x.start, x.end + 1));
     assert_eq!(rel.map(|(s, e)| &text[s..e]), Some("then "));
     assert_eq!(entry(&r, "b").head, "action b");
+}
+
+#[test]
+fn then_event_occurrence_is_an_event_after_the_preceding_event() {
+    // Arrange（OccurrenceUsageMember の前の SourceSuccessionMember、8.2.2.9.3。以前は黙って捨てていた）
+    let text = "occurrence def S { part a { event occurrence e1; then event occurrence e2; then event e3; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let (e1, e2) = (
+        r.entries.iter().position(|e| e.name == "e1"),
+        r.entries.iter().position(|e| e.name == "e2"),
+    );
+    assert_eq!(entry(&r, "e2").kind, "event occurrence");
+    assert_eq!(entry(&r, "e2").head, "event occurrence e2");
+    let s = |x: &str, y: &str, ae: Option<usize>, be: Option<usize>| {
+        (x.to_owned(), y.to_owned(), ae, be, String::new())
+    };
+    let e3 = r.entries.iter().position(|e| e.name == "e3");
+    assert_eq!(
+        successions(&r),
+        [s("e1", "e2", e1, e2), s("e2", "e3", e2, e3)]
+    );
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
+fn event_in_a_state_body_is_not_the_source_of_then() {
+    // Arrange（境界値：状態の本体の then s; は、直前の状態からの遷移。イベントからにしない）
+    let text = "state def S { state a; event occurrence e; then b; state b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let from: Vec<&str> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Transition { from, .. } => Some(from.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(from, ["a"]);
 }
 
 #[test]

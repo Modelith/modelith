@@ -4,7 +4,8 @@
 // alpha.7 から、Rust は暫定コアの取り違え（修飾名を最後の名前だけで探す・別名を読まない・図に無い持ち主の verify と frame を
 // 「見つからない」とする）を直している（F-EDIT-8、ADR-0015）。暫定コアは alpha.6 の範囲で止めるので、その違いは比べない。
 // 標準ライブラリの型の判定も、Rust は名前の一覧と import で決める（`…Value` で終わる名前は、ISQ などを import したときだけ標準）。
-// alpha.9 から、Rust は遷移の相手が見つからないことを問題にする（暫定コアはしない）。
+// alpha.9 から、Rust は遷移の相手が見つからないこと、特徴の連鎖（a.b.c）の 2 段目から先が見つからないこと、
+// シナリオの順序の相手が見つからないことと順序の循環を問題にする（暫定コアはしない）。
 import { describe, expect, it } from "vitest";
 import { build as tsBuild } from "./model";
 import { build as rustBuild, parse } from "./rust";
@@ -94,6 +95,35 @@ function isTransitionMessage(msg: string): boolean {
   return /^「遷移」の相手「[^「」]*」が見つかりません/.test(msg);
 }
 
+/**
+ * 「線の接続先「a.b.x」の「x」が見つかりません」のような、特徴の連鎖の途中の段が見つからない問題か。alpha.9 から、Rust は
+ * 連鎖を型の中までたどって確かめる（暫定コアは最初の段とポートだけ）ので、行の組み合わせでは暫定コアと違ってよい。
+ *
+ * @param msg 問題の文
+ * @returns 連鎖の途中の段が見つからないという問題なら true
+ * @example
+ * isChainMessage("線の接続先「e.cyl.x」の「x」が見つかりません（connect）") // → true
+ * isChainMessage("線の接続先「nope.p」が見つかりません（connect）")         // → false（最初の段）
+ */
+function isChainMessage(msg: string): boolean {
+  return /「[^「」]*\.[^「」]*」の「[^「」]*」が見つかりません/.test(msg);
+}
+
+/**
+ * シナリオの順序の問題（「「順序」の相手「…」が見つかりません」・「シナリオ「…」の順序が循環しています」）か。alpha.9 から、Rust は
+ * シーケンス図を作るときに順序の相手と循環を確かめる（暫定コアは確かめない）ので、行の組み合わせでは暫定コアと違ってよい。
+ *
+ * @param msg 問題の文
+ * @returns シナリオの順序の問題なら true
+ * @example
+ * isSequenceMessage("「順序」の相手「m9」が見つかりません（succession）") // → true
+ * isSequenceMessage("シナリオ「S」の順序が循環しています（succession）")   // → true
+ * isSequenceMessage("型「Step」が見つかりません（s）")                      // → false
+ */
+function isSequenceMessage(msg: string): boolean {
+  return /^「順序」の相手「[^「」]*」が見つかりません|^シナリオ「[^「」]*」の順序が循環しています/.test(msg);
+}
+
 /** 決まった種から作る乱数（テストを毎回同じにする）。 */
 function random(seed: number): () => number {
   let s = seed >>> 0;
@@ -113,7 +143,9 @@ function snapshot(P: ParseResult, M: Model): unknown {
     nodes: M.nodes.map((n) => ({ ...n, entry: ref(n.entry), ports: n.ports.map((p) => ({ ...p, entry: ref(p.entry) })) })),
     edges: M.edges.map((e) => ({ ...e, rel: e.rel ? P.rels.indexOf(e.rel) : null })),
     views: M.views.map((v) => ({ ...v, entry: ref(v.entry), targets: v.targets.map(ref), frames: v.frames.map((f) => ({ ...f, entry: ref(f.entry) })) })),
-    problems: M.problems.filter((p) => !isValueTypeMessage(p.msg) && !isTransitionMessage(p.msg)).map((p) => ({ ...p, msg: unqualifiedTypeMessage(p.msg) })),
+    problems: M.problems
+      .filter((p) => !isValueTypeMessage(p.msg) && !isTransitionMessage(p.msg) && !isChainMessage(p.msg) && !isSequenceMessage(p.msg))
+      .map((p) => ({ ...p, msg: unqualifiedTypeMessage(p.msg) })),
     phases: M.phases,
     phaseEnum: M.phaseEnum,
     nodeOf: [...M.nodeOf].map(([e, n]) => [ref(e), n.key]),

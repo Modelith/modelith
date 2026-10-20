@@ -1,12 +1,12 @@
 // 書き出し（draw.io の XML・SVG）と、ファイルの読み込み・保存。
 
 import { $, esc } from "./dom";
-import type { ModelNode } from "../core";
+import type { ModelNode, ModelSequenceEvent } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
 import { isPseudoState } from "./state-machine";
 import { S } from "./state";
-import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, svgMarkup, type ColorFn } from "./svg";
+import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn } from "./svg";
 import { curLayout, curView, viewContent } from "./views";
 
 /** 書き出し用の明るい配色（CSS 変数を使えない環境向け）。 */
@@ -49,6 +49,24 @@ export function drawioEdgeStyle(kind: string): string {
   if (kind === "flow") return "endArrow=block;endFill=1;strokeWidth=2;";
   if (["specialize", "subset", "redefine", "reference"].includes(kind)) return "endArrow=block;endFill=0;";
   return "dashed=1;endArrow=open;";
+}
+
+/**
+ * シーケンス図のライフラインの上のイベント（8.2.3.9 の sq-proxy）を、draw.io の図形にする。白抜きの小さな丸（10×10）で、札は右下に書く。
+ *
+ * @param ev イベント
+ * @param lane イベントを描くライフラインの位置（左から 0, 1, …）
+ * @returns draw.io の style と、丸の左上の座標
+ * @example
+ * drawioEventCell({ key: "e:a.e", lifeline: "l:a", label: ".e", entry, row: 0 }, 0) // → { style: "ellipse;html=1;fillColor=#FFFFFF;…", x: 80, y: 81 }
+ * drawioEventCell({ …, row: 2 }, 1)                                                // → { style: …, x: 280, y: 189 }
+ */
+export function drawioEventCell(ev: ModelSequenceEvent, lane: number): { style: string; x: number; y: number } {
+  return {
+    style: `ellipse;html=1;fillColor=${LC("panel")};strokeColor=${LC("ink")};labelPosition=right;verticalLabelPosition=bottom;align=left;verticalAlign=top;fontSize=10;`,
+    x: lane * SEQ.dx + SEQ.w / 2 - 5,
+    y: seqRowY(ev.row) - 5,
+  };
 }
 
 /**
@@ -97,7 +115,8 @@ export function drawioStateCell(n: ModelNode): { style: string; value: string } 
 
 /**
  * 現在のビューを draw.io の XML にする（F-EXP-2）。要素は配置の座標の箱（アクションの流れの図・状態遷移の図の要素は記号の図形）に、
- * ポートは小さな箱に、線は経路の出口・入口を指定した直角の線にする。並行の状態の領域は、破線で区切る。シーケンス図はライフラインとメッセージにする。
+ * ポートは小さな箱に、線は経路の出口・入口を指定した直角の線にする。並行の状態の領域は、破線で区切る。シーケンス図はライフラインとメッセージ、
+ * ライフラインの上のイベント（白抜きの丸と札）と、イベントの間の順序（破線と開いた矢印）にする。
  *
  * @returns draw.io（app.diagrams.net）で読み込める mxfile の XML
  * @example
@@ -124,11 +143,26 @@ export function drawioXml(): string {
       cells += `<mxCell id="n${id++}" value="${q(l.name + (l.entry.type ? " : " + l.entry.type : ""))}" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;size=${SEQ.h};fillColor=#E6EFF8;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${i * SEQ.dx}" y="0" width="${SEQ.w}" height="${Hh}" as="geometry"/></mxCell>`;
     });
     cc.edges.forEach((e, k) => {
-      const y = (SEQ.h + SEQ.first + k * SEQ.gap) / Hh;
+      if (e.kind !== "message") return;
+      const y = seqRowY(e.row ?? k) / Hh;
       const src = map.get(e.from), dst = map.get(e.to);
       if (!src || !dst) return;
-      cells += `<mxCell id="e${id++}" value="${q(`${k + 1}. ${e.label}${e.type ? " : " + e.type : ""}`)}" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;exitX=0.5;exitY=${y.toFixed(4)};entryX=0.5;entryY=${y.toFixed(4)};exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="e${id++}" value="${q(`${(e.idx ?? k) + 1}. ${e.label}${e.type ? " : " + e.type : ""}`)}" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;exitX=0.5;exitY=${y.toFixed(4)};entryX=0.5;entryY=${y.toFixed(4)};exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
     });
+    // ライフラインの上のイベント（8.2.3.9 の sq-proxy）は白抜きの丸と札、イベントの間の順序（sq-succession）は破線と開いた矢印
+    const lane = new Map(cc.nodes.map((l, i) => [l.key, i]));
+    for (const ev of cc.events ?? []) {
+      const i = lane.get(ev.lifeline);
+      if (i == null) continue;
+      map.set(ev.key, "n" + id);
+      const c = drawioEventCell(ev, i);
+      cells += `<mxCell id="n${id++}" value="${q(ev.label)}" style="${c.style}" vertex="1" parent="1"><mxGeometry x="${c.x}" y="${c.y}" width="10" height="10" as="geometry"/></mxCell>`;
+    }
+    for (const e of cc.edges) {
+      const src = map.get(e.from), dst = map.get(e.to);
+      if (e.kind !== "succession" || !src || !dst) continue;
+      cells += `<mxCell id="e${id++}" value="${q(e.label)}" style="html=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+    }
     return wrapXml("sd " + (cc.ctx ? cc.ctx.name : ""));
   }
   const rects = boxesOf(nodes, L.pos);

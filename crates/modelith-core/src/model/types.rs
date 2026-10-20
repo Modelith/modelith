@@ -169,6 +169,75 @@ pub struct StateMachine {
     pub edges: Vec<Edge>,
 }
 
+/// シーケンス図のライフライン（8.2.3.9 の lifeline）。シナリオ（`occurrence def`）の直下の、名前のある部品と出来事。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lifeline {
+    /// 図の要素のキー（`l:名前`）。
+    pub key: String,
+    /// 名前。
+    pub name: String,
+    /// 部品か出来事の宣言（`ParseResult.entries` の番号）。
+    pub entry: usize,
+}
+
+/// シーケンス図の、ライフラインの上のイベント（8.2.3.9 の sq-proxy。札は `.ev`・`.sub.ev` の特徴の連鎖）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SequenceEvent {
+    /// キー（`e:ライフライン.連鎖`。`e:a.sub.ev` など）。
+    pub key: String,
+    /// イベントを描くライフラインのキー。
+    pub lifeline: String,
+    /// 札（ライフラインから先の連鎖に `.` を付けたもの。`.ev`・`.sub.ev`）。
+    pub label: String,
+    /// イベントの宣言（`ParseResult.entries` の番号）。ライフラインの本体に宣言が無いもの（型の中のもの・確かめられないもの）は `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry: Option<usize>,
+    /// 上から何段目か（0 から。メッセージの端のイベントは、そのメッセージの段）。
+    pub row: usize,
+}
+
+/// シーケンス図のメッセージ（8.2.3.9 の message）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SequenceMessage {
+    /// 線の ID（`msg|書いた順の番号|名前`。図の操作が同じ ID で探し直す）。
+    pub id: String,
+    /// 送り手・受け手のライフラインのキー。
+    pub from: String,
+    pub to: String,
+    /// 送り手・受け手のイベントのキー（端が `a.ev` のとき）。端がライフラインそのものなら `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_event: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_event: Option<String>,
+    /// 上から何段目か（0 から）。
+    pub row: usize,
+    /// メッセージの関係（`ParseResult.rels` の番号）。
+    pub rel: usize,
+}
+
+/// シナリオ 1 つの、シーケンス図（SequenceView、9.2.20.2.7・8.2.3.9）。時間は上から下へ進む。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sequence {
+    /// シナリオの、図の要素のキー。
+    pub key: String,
+    /// シナリオの宣言（`ParseResult.entries` の番号）。
+    pub entry: usize,
+    /// ライフライン（書いた順。左から並べる）。
+    pub lifelines: Vec<Lifeline>,
+    /// ライフラインの上のイベント（段の順）。
+    pub events: Vec<SequenceEvent>,
+    /// メッセージ（段の順）。
+    pub messages: Vec<SequenceMessage>,
+    /// 別のライフラインのイベントの間の順序（種類 `succession`、8.2.3.9 の sq-succession）。端はイベントのキー。
+    pub successions: Vec<Edge>,
+    /// 段の数（メッセージと、メッセージの端でないイベントが 1 段ずつ使う）。
+    pub rows: usize,
+}
+
 /// モデル。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -185,4 +254,6 @@ pub struct Model {
     pub action_flows: Vec<ActionFlow>,
     /// 状態定義ごとの、状態遷移の図（図の要素の順）。
     pub state_machines: Vec<StateMachine>,
+    /// シナリオ（`occurrence def`）ごとの、シーケンス図（図の要素の順）。
+    pub sequences: Vec<Sequence>,
 }

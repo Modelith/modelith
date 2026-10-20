@@ -491,6 +491,17 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
           ["event occurrence", "e", ""], ["timeslice", "t", "timeslice"], ["snapshot", "s", "snapshot"], ["part", "p", "timeslice"],
         ]);
       });
+
+      it("then event occurrence e2 は、直前のイベントからの継起の後のイベントになる（SourceSuccessionMember、8.2.2.9.3。以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part a { event occurrence e1; then event occurrence e2; then event b.e3; } } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.entries.filter((e) => e.kind === "event occurrence").map((e) => e.name)).toEqual(["e1", "e2", "e3"]);
+        expect(P.rels.flatMap((r) => (r.rel === "succession" ? [[r.a, r.b]] : []))).toEqual([["e1", "e2"], ["e2", "e3"]]);
+        expect(problems(text)).toEqual([]);
+      });
     });
 
     describe("typed by・constant・variant（TypedBy・UsagePrefix・VariantUsageMember、8.2.2.6）", () => {
@@ -1008,6 +1019,117 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         // Assert
         expect(S?.parallel).toBe(true);
         expect(entry(text, "a")?.parallel).toBeUndefined();
+      });
+    });
+
+    describe("ビューの絞り込みの式（ElementFilterMember・FilterPackageMember 8.2.2.26、KerML 8.2.5.8 の分類の検査と論理演算）", () => {
+      const MODEL = "package P { metadata def Safety; part def A; #Safety part def B; requirement def R; attribute def T; ";
+      const keys = (body: string): string[] | undefined => build(parse(MODEL + body + " }")).views.find((v) => v.name === "v")?.nodeKeys;
+
+      it("filter は and・or・not と括弧で、@メタクラスと @メタデータを組み合わせられる（以前は知らせて使わなかった）", () => {
+        // Arrange
+        const body = "view v { expose P::*; filter (@PartDefinition or @RequirementDefinition) and not @Safety; }";
+        // Act
+        const got = keys(body);
+        // Assert
+        expect(got).toEqual(["A", "R"]);
+        expect(problems(MODEL + body + " }")).toEqual([]);
+      });
+
+      it("istype・hastype・xor と、expose の [ ] の中の式も読む", () => {
+        // Arrange
+        const body = "view v { expose P::*[istype Safety xor hastype RequirementDefinition]; }";
+        // Act
+        const got = keys(body);
+        // Assert
+        expect(got).toEqual(["B", "R"]);
+      });
+
+      it("値の比較を含む式は、知らせたうえで使わない（異常系）", () => {
+        // Arrange
+        const body = "view v { expose P::*; filter @Safety and level > 1; }";
+        // Act
+        const ps = problems(MODEL + body + " }");
+        // Assert
+        expect(keys(body)).toEqual(["A", "B", "R", "T"]);
+        expect(ps).toEqual(["図「v」の絞り込み「@Safety and level > 1」はまだ扱えないため、絞り込まずに描きます（filter）"]);
+      });
+    });
+
+    describe("render の合成形と rendering の参照（ViewRenderingMember・ViewRenderingUsage・RenderingUsage、8.2.2.26・9.2.19）", () => {
+      it("render rendering r :> asInterconnectionDiagram { … } は、型より優先する（以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { part def A { part b; } view v : GeneralView { expose P::A; render rendering r :> asInterconnectionDiagram { doc /* 内部 */ } } }";
+        // Act
+        const v = build(parse(text)).views.find((x) => x.name === "v");
+        // Assert
+        expect(v?.kind).toBe("interconnection");
+        expect(entry(text, "r")?.kind).toBe("rendering");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("標準の表し方を特殊化した rendering を参照する render も、標準の表し方で描く", () => {
+        // Arrange
+        const text = "package P { part def A { part b; } rendering myIbd :> Views::asInterconnectionDiagram; view v { expose P::A; render myIbd; } }";
+        // Act
+        const v = build(parse(text)).views.find((x) => x.name === "v");
+        // Assert
+        expect(v?.kind).toBe("interconnection");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("標準の表し方に行き着かない合成形は、知らせたうえで図として描く（異常系）", () => {
+        // Arrange
+        const text = "package P { rendering def R; view v { render rendering r : R; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["図「v」の表し方（r）はまだ扱えないため、図として描きます（render）"]);
+      });
+    });
+
+    describe("シナリオの順序（SuccessionAsUsage 8.2.2.14、SequenceView 9.2.20.2.7）", () => {
+      it("メッセージとイベントの間の順序は、相手を確かめ、見つからなければ知らせる（以前は確かめなかった）", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part a { event occurrence e; } part b; message m from a.e to b; first m then a.e; first m then nope; first a.gone then m; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["「順序」の相手「nope」が見つかりません（succession）", "「順序」の相手「a.gone」が見つかりません（succession）"]);
+      });
+
+      it("循環する順序は知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part a; message m1 from a to a; message m2 from a to a; first m1 then m2; first m2 then m1; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["シナリオ「S」の順序が循環しています（succession）"]);
+      });
+    });
+
+    describe("特徴の連鎖（FeatureChain、8.2.2.6・KerML 8.2.5。3 段目から先も型の中をたどる）", () => {
+      const CHAINS = "package P { port def Pt { in item x : Real; } part def Cyl { port p : Pt; } part def Eng { part cyl : Cyl; } part def V { part e : Eng; part w : Eng; ";
+
+      it("connect e.cyl.p・flow from e.cyl.p.x は、部品の型の中をたどって見つける", () => {
+        // Arrange
+        const text = CHAINS + "connect e.cyl.p to w.cyl.p; flow from e.cyl.p.x to w.cyl.p.x; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([]);
+      });
+
+      it("3 段目から先が見つからなければ、見つからない段を知らせる（以前は 3 段目から先を捨てていた）", () => {
+        // Arrange
+        const text = CHAINS + "connect e.cyl.nope to w.cyl.p; bind e.cyl = w.gone; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual([
+          "線の接続先「e.cyl.nope」の「nope」が見つかりません（connect）",
+          "「結び付け」の相手「w.gone」の「gone」が見つかりません（bind）",
+        ]);
       });
     });
   });

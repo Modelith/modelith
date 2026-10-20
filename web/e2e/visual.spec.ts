@@ -105,6 +105,23 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("state-transition-narrow.png");
     });
 
+    test("F-VIEW-10・Q-2: 幅 390px の画面のシーケンス図", async ({ page }) => {
+      // Arrange（狭い画面では、テキストと図はタブで切り替え、テキストは「編集」を押してから書き換える）
+      await openApp(page);
+      await page.locator("#tabText").click();
+      await page.locator("#btnEditText").click();
+      await page.locator("#ed").fill(BOIL_SEQUENCE);
+      await page.waitForTimeout(400);
+      await page.locator("#tabDiagram").click();
+      // Act
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="boilSequence"]').click();
+      await expect(page.locator('#canvas .event[data-key="e:heater.off"]')).toBeAttached();
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("sequence-narrow.png");
+    });
+
     test("F-PLUG-8・Q-2: 幅 390px の画面のプラグインの一覧", async ({ page }) => {
       // Arrange（狭い画面ではエクスプローラーとメニューが畳まれるので、広い画面で開いてから狭める）
       await page.setViewportSize({ width: 1280, height: 800 });
@@ -242,6 +259,18 @@ const LAMP_STATES =
   "        transition switchOff first on accept PowerOff do beep then off;\n        transition first off accept Unplug then done;\n    }\n" +
   "    view lampStates : StateTransitionView { expose Lamp::LampStates; }\n}\n";
 
+/** シーケンス図の場面のモデル（ライフラインの上のイベント・入れ子の部品のイベント・イベントの間の順序・then のイベント）。 */
+const BOIL_SEQUENCE =
+  "package Kettle {\n    part def User;\n    part def Panel;\n    part def Controller;\n    part def Heater;\n    item def Mode;\n    item def PowerCmd;\n" +
+  "    occurrence def BoilWater {\n        part user : User { event occurrence press; }\n" +
+  "        part panel : Panel {\n            event occurrence pressed;\n            then event occurrence lampOn;\n        }\n" +
+  "        part controller : Controller {\n            event occurrence started;\n            part timer { event occurrence expired; }\n        }\n" +
+  "        part heater : Heater {\n            event occurrence on;\n            event occurrence off;\n        }\n" +
+  "        message pressStart of Mode from user.press to panel.pressed;\n        message selectMode of Mode from panel to controller.started;\n" +
+  "        message heatOn of PowerCmd from controller to heater.on;\n        message heatOff of PowerCmd from controller.timer.expired to heater.off;\n" +
+  "        succession lampFirst first panel.lampOn then heater.on;\n    }\n" +
+  "    view boilSequence : SequenceView { expose Kettle::BoilWater; }\n}\n";
+
 const scenes: Scene[] = [
   {
     title: "F-EDIT-9: テキストの語にマウスを乗せたときのツールチップ",
@@ -283,6 +312,18 @@ const scenes: Scene[] = [
       // 開いたときは文字が読める大きさで左上から見せるので、「全体」で図全体を撮る
       await page.locator("#zFit").click();
       await expect(page.locator('#canvas [data-key="s:#done"]')).toBeVisible();
+      return [page.locator("#wrap")];
+    },
+  },
+  {
+    title: "F-VIEW-10: シーケンス図（SequenceView、8.2.3.9 のイベントと順序）",
+    shot: "sequence",
+    act: async (page) => {
+      await page.locator("#ed").fill(BOIL_SEQUENCE);
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="boilSequence"]').click();
+      await expect(page.locator('#canvas .event[data-key="e:controller.timer.expired"]')).toBeAttached();
       return [page.locator("#wrap")];
     },
   },

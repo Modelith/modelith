@@ -2,6 +2,7 @@
 
 import { lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
 import { flowDetail, flowName } from "./action-flow";
+import { eventName } from "./sequence";
 import { isPseudoState, stateActionLines, stateName } from "./state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
@@ -348,15 +349,18 @@ const EDGE_NAME: Record<string, string> = {
  * edgeHtml(m) // → '<div class="what"><small>メッセージ 1／2：a → b</small><b>（名前なし）</b></div>…（「上へ」は押せない）'
  * // 開始から off への遷移
  * edgeHtml(t) // → '<div class="what"><small>遷移（transition）</small><b>開始 → off</b></div>…'
+ * // シーケンス図のイベント a.e から b.r への順序
+ * edgeHtml(s) // → '<div class="what"><small>順序（succession）</small><b>a.e → b.r</b></div>…'
  */
 function edgeHtml(ed: ModelEdge): string {
+  const c = CC();
   const endName = (k: string): string => {
     const n = nodeByKey(k);
-    return !n ? "?" : n.state ? stateName(n) : n.flow ? flowName(n) : n.name;
+    return !n ? (eventName(c.events ?? [], c.nodes, k) ?? "?") : n.state ? stateName(n) : n.flow ? flowName(n) : n.name;
   };
   if (ed.kind === "message") {
-    const c = CC();
     const i = ed.idx ?? 0;
+    const count = c.edges.filter((x) => x.kind === "message").length;
     if (S.msgEdit) {
       const items = S.M.nodes.filter((x) => x.kind === "item def").map((x) => x.name);
       return (
@@ -366,8 +370,8 @@ function edgeHtml(ed: ModelEdge): string {
       );
     }
     return (
-      `<div class="what"><small>メッセージ ${i + 1}／${c.edges.length}：${esc(nodeByKey(ed.from)?.name ?? "?")} → ${esc(nodeByKey(ed.to)?.name ?? "?")}</small><b>${esc(ed.label || "（名前なし）")}${ed.type ? " : " + esc(ed.type) : ""}</b></div><div class="acts">` +
-      `<button data-act="msgUp" ${i === 0 ? "disabled" : ""}>上へ</button><button data-act="msgDown" ${i === c.edges.length - 1 ? "disabled" : ""}>下へ</button>` +
+      `<div class="what"><small>メッセージ ${i + 1}／${count}：${esc(nodeByKey(ed.from)?.name ?? "?")} → ${esc(nodeByKey(ed.to)?.name ?? "?")}</small><b>${esc(ed.label || "（名前なし）")}${ed.type ? " : " + esc(ed.type) : ""}</b></div><div class="acts">` +
+      `<button data-act="msgUp" ${i === 0 ? "disabled" : ""}>上へ</button><button data-act="msgDown" ${i === count - 1 ? "disabled" : ""}>下へ</button>` +
       `<button data-act="msgEdit">名前・型を編集</button><button data-act="goto">テキストで見る</button>` +
       delBtn("delEdge", "削除") +
       `</div>`
