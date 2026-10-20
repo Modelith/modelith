@@ -127,8 +127,13 @@ package ModelithRequirements {
         }
         requirement def <'F-VIEW-7'> StandardViewReq {
             doc /* テキストに書かれた SysML v2 標準の view を図として表示し、expose された要素だけを描く。図の種類は標準のビュー定義（GeneralView・InterconnectionView・ActionFlowView・StateTransitionView・SequenceView）から決める（ADR-0005）。
-                   expose は要素（A）・中身（A::*）・入れ子すべて（A::**、A::*::**）と、[...] の絞り込みを扱い、filter は @メタクラス と @メタデータ で絞り込む。
-                   render の asTreeDiagram・asInterconnectionDiagram は図の種類より優先する。扱えない図の種類・描き方・絞り込みは、黙って捨てずに問題一覧で知らせる */
+                   expose は要素（A）・中身（A::*）・入れ子すべて（A::**、A::*::**）と、[...] の絞り込みを扱い、filter は @メタクラス と @メタデータ（istype・hastype も）で絞り込み、
+                   それを and・or・xor・not と括弧で組み合わせられる。render の asTreeDiagram・asInterconnectionDiagram と、それを特殊化した rendering（合成形の
+                   render rendering r :> asTreeDiagram { … } と、別に書いた rendering の参照）は図の種類より優先する。扱えない図の種類・描き方・絞り込みは、黙って捨てずに問題一覧で知らせる */
+        }
+        requirement def <'F-VIEW-10'> SequenceReq {
+            doc /* シーケンス図は、シナリオ（occurrence def）の部品をライフラインにし、メッセージ・ライフラインの上のイベント（部品の中の部品のイベントを含む）・イベントの間の順序（継起）を、
+                   順序に合わせて上から描く（9.2.20.2.7 SequenceView・8.2.3.9）。メッセージ・順序の相手のイベントが見つからないときと、順序が循環しているときは、問題一覧で知らせる */
         }
         requirement def <'F-VIEW-8'> CreateViewReq {
             doc /* 画面で図を保存し（名前を付ける）、保存した図に要素を入れたり、図から外したりできる。テキストには標準の view と expose として書き、利用者には view・expose という言葉を見せない（ADR-0005・ADR-0014）。
@@ -308,6 +313,7 @@ package ModelithRequirements {
         #derivation dependency from StandardViewReq to ViewsNeed;
         #derivation dependency from CreateViewReq to ViewsNeed;
         #derivation dependency from PackageFrameReq to ViewsNeed;
+        #derivation dependency from SequenceReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
         #derivation dependency from TreeReq to ViewsNeed;
         #derivation dependency from PhaseReq to TraceNeed;
@@ -439,6 +445,7 @@ package ModelithRequirements {
         satisfy StandardViewReq by DiagramUI;
         satisfy CreateViewReq by DiagramUI;
         satisfy PackageFrameReq by DiagramUI;
+        satisfy SequenceReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
         satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
