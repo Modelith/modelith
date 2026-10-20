@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）96 項目のうち ○ 75・△ 14・× 7。⚠ は 0 件。
+件数：テキスト記法（2 章）96 項目のうち ○ 79・△ 12・× 5。⚠ は 0 件。
+
+alpha.9 の 2 回目の更新で、遷移の名前・トリガの `via`・ガード・効果、状態の中の省略形の遷移（`accept E then b`・`if g then b`・`then b`）、最初の遷移（`entry; then s;`）、`entry`・`do`・`exit`・`parallel` を読み、状態定義の状態と遷移を状態遷移の図（StateTransitionView）に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 75・△ 14・× 7 だった。
 
 alpha.9 の 1 回目の更新で、継起（`first … then`・`then`・ガード付き・`else`）・`succession flow`・制御の節（`fork`・`join`・`merge`・`decide`）・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` を読み、アクション定義の流れをアクションの流れ図（ActionFlowView）に描くようにした（Rust のコアだけ。ADR-0015）。それまでは ○ 69・△ 15・× 12 だった。
 
@@ -158,11 +160,11 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `fork` / `join` / `merge` / `decide` | ○ | | 書いた語を種類にした使用（ControlNode、8.2.2.17）。fork・join は太い棒、merge・decide はひし形で描き、名前を横に書く（8.2.3.17）。`if g then b;`・`else b;`・`first d if g then b;`（GuardedSuccession）のガードは、線のラベル `[g]`・`[else]` |
 | `if` / `while` / `for` | ○ | | 書いた語（`loop` も）を種類にした使用（IfNode・WhileLoopNode・ForLoopNode、8.2.2.17）。条件（`for` は `x in xs`）と本体を記録し、`else` の本体と `else if` も本体に入れる。アクションの流れ図では «if» などの角の丸い四角に、条件と本体のアクションの名前（then と else を分ける）を書く。本体の中の継起は描かず、`until` の条件は記録しない |
 | `send` / `accept` / `assign` / `terminate` | ○ | | 書いた語を種類にした使用（SendNode・AcceptNode・AssignmentNode・TerminateNode、8.2.2.17）。`action s send x;` のように名前も付けられる。`assign` は親の「式」に入れない。アクションの流れ図では、send は右が尖った五角形、accept は左がへこんだ五角形、ほかは «assign»・«terminate» の角の丸い四角に、送るもの・受けるもの・代入を書く（8.2.3.17）。受けるものの型は確かめない |
-| `state def` / `state` / `exhibit state` | ○ | | |
-| `parallel` | △ | alpha.9 | 中の状態は読むが、並行であることを記録しない |
-| `entry` / `do` / `exit` | × | alpha.9 | 黙って捨てる |
-| `transition … first a accept E then b` | △ | alpha.9 | 区画の文字列「a → b [E]」になる。線は描かず、ガードと効果は捨てる |
-| 省略形 `accept E then b` | × | alpha.9 | 黙って捨てる |
+| `state def` / `state` / `exhibit state` | ○ | | 状態遷移の図（StateTransitionView）では、状態を角の丸い四角に描き、入れ子の状態（`state on { state low; }`）は外の状態の中に描く（8.2.3.18）。「振る舞い」の図では、これまでどおり状態定義の区画に状態と遷移を並べる |
+| `parallel` | ○ | | 並行であることを記録し（StateDefBody の isParallel、8.2.2.18）、状態遷移の図では、中の状態（領域）を上から積み、間を破線で区切る（8.2.3.18） |
+| `entry` / `do` / `exit` | ○ | | 状態の振る舞い（StateSubactionMembership）として、書いた順に状態に記録し、状態遷移の図の状態の区画に `entry / init` の形で書く（`action a` は `a`）。インスペクタにも出す。振る舞いを書かない `entry;` は記録せず、直後の `then s;`・`if g then s;` を、本体の最初の遷移（開始の記号から s への線）にする（EntryTransitionMember） |
+| `transition … first a accept E then b` | ○ | | 名前・元・先・トリガ（受けるものと `via`。`at`・`after`・`when` は式のまま）・ガード・効果（`do` の後の振る舞い。本体も読む）を記録し（TransitionUsage、8.2.2.18）、状態遷移の図に、実線と開いた矢印、ラベル `トリガ [ガード] / 効果` で描く（8.2.3.18）。`done` へ向かう遷移は終了の記号（丸の中の塗った丸）へ引く。端は書いた本体から外へ探し、`on.low` のような名前の道のりも読む。見つからない相手は問題として知らせる。図から線を消すとその文が消え、2 つの状態の間に線を引くと `transition first a then b;` を書く。「振る舞い」の図の区画の文字列は、これまでどおり「a → b [E]」（ガードと効果は書かない）。受けるものの型は確かめない |
+| 省略形 `accept E then b` | ○ | | 状態の本体の `accept E via p if g do e then b;`・`if g do e then b;`・`then b;`・`first` の無い `transition … then b;` を、直前の状態からの遷移として記録する（TargetTransitionUsage、8.2.2.18）。状態遷移の図と「振る舞い」の図の区画に出る |
 
 ### 2.8 計算・制約・要求・ケース（8.2.2.19〜25）
 
@@ -230,7 +232,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | GeneralView | `gv` | ノードと線の図（expose した要素と、その間の関係） | △ 特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
 | InterconnectionView | `iv` | 内部ブロック図（expose した part def、または part の型が対象） | △ 入れ子は 2 段まで（部品の本体に書いた部品と、線の端 `a.b.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く）。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。3 段目より深い入れ子、対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
 | ActionFlowView | `afv` | アクションの流れ図（expose した action def が対象。自動の図「アクションの流れ」とツリーの「アクションの流れで開く」でも開ける） | △ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータとその間のフロー、入れ子の本体の流れ、区画（swim lane）は無い | 0.3.0 以降 |
-| StateTransitionView | `stv` | 振る舞いの図（expose した要素） | △ 状態は描くが、遷移を線にしない | alpha.9 |
+| StateTransitionView | `stv` | 状態遷移の図（expose した state def が対象。ツリーの「状態の遷移で開く」でも開ける。組み込みのビューの一覧には出さない） | △ 状態・入れ子の状態・並行の領域（破線で区切る）・entry／do／exit の区画・開始と終了の記号と、遷移を `トリガ [ガード] / 効果` のラベルの線で、8.2.3.18 の記法で描く。本体ごとに、遷移の向きに左から並べる。図から遷移を消す・引く（`transition first a then b;`）。expose した state def が複数あっても最初の 1 つだけを描き、状態の使用（`exhibit state s { … }`）の中の遷移、効果の本体の中身、線の交差を避ける配置は無い | 0.3.0 以降 |
 | SequenceView | `sv` | シーケンス図（expose した occurrence def が対象） | △ メッセージだけ。イベント・継起・入れ子は無い | alpha.9 |
 | GeometryView | `gev` | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |
 | GridView | `grv` | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |

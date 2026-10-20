@@ -864,6 +864,23 @@ fn save_action_flow_writes_an_action_flow_view() {
 }
 
 #[test]
+fn save_state_machine_writes_a_state_transition_view() {
+    // Arrange（状態遷移の図は、対象の状態定義を expose する StateTransitionView）
+    let text = "package P {\n    state def S {\n        state a;\n    }\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"saveView","name":"遷移","kind":"stateTransition","targets":["S"]}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("    view '遷移' : StateTransitionView {\n        expose P::S;\n    }\n}"),
+        "{after}"
+    );
+    assert_eq!(Doc::new(&after).m.views[0].kind, "stateTransition");
+}
+
+#[test]
 fn save_view_is_refused_without_name_targets_or_with_used_name() {
     let text = "package P { part def A; view v; }";
     assert!(
@@ -1000,4 +1017,121 @@ fn connect_succession_refuses_start_targets_and_unnamed_elements() {
     assert!(refused(FLOW, into_start).contains("開始の記号"));
     assert!(refused(FLOW, from_done).contains("終了の記号"));
     assert!(refused(text, unnamed).contains("名前の無い要素"));
+}
+
+// ---- 状態遷移の図（StateTransitionView、8.2.3.18） ----
+
+const STATES: &str = "package P {\n    state def S {\n        entry; then off;\n        state off;\n        accept Go then on;\n        state on {\n            entry; then low;\n            state low;\n            state high;\n        }\n        transition t first on accept Stop if ready do beep then off;\n    }\n}\n";
+
+#[test]
+fn delete_transition_line_removes_its_statement() {
+    // Arrange（同値分割：transition の文・状態の中の省略形の遷移・最初の遷移）
+    let full =
+        r#"{"op":"deleteEdge","id":"transition|s:on|s:off|Stop [ready] / beep#1","ctx":"S"}"#;
+    let shorthand = r#"{"op":"deleteEdge","id":"transition|s:off|s:on|Go#1","ctx":"S"}"#;
+    let initial = r#"{"op":"deleteEdge","id":"transition|s:on#start|s:on.low|#1","ctx":"S"}"#;
+    // Act
+    let (after_full, _) = run(STATES, full);
+    let (after_shorthand, _) = run(STATES, shorthand);
+    let (after_initial, _) = run(STATES, initial);
+    // Assert
+    assert!(!after_full.contains("transition t"), "{after_full}");
+    assert!(
+        after_shorthand.contains("        state off;\n        state on {"),
+        "{after_shorthand}"
+    );
+    assert!(
+        after_initial.contains("            entry; \n            state low;"),
+        "{after_initial}"
+    );
+}
+
+#[test]
+fn delete_and_rename_nested_state() {
+    // Arrange（s: のキーの要素は、状態定義の中の状態。入れ子は s:外.中）
+    let del = r#"{"op":"delete","keys":["s:on.high"],"ctx":"S"}"#;
+    let ren = r#"{"op":"rename","key":"s:off","name":"idle","ctx":"S"}"#;
+    // Act
+    let (deleted, _) = run(STATES, del);
+    let (renamed, _) = run(STATES, ren);
+    // Assert
+    assert!(!deleted.contains("state high;"));
+    assert!(renamed.contains("state idle;"), "{renamed}");
+}
+
+#[test]
+fn start_symbol_of_a_state_machine_cannot_be_deleted() {
+    // Arrange（異常系：開始の記号は宣言を持たない）
+    let del = r#"{"op":"delete","keys":["s:#start"],"ctx":"S"}"#;
+    // Act
+    let why = refused(STATES, del);
+    // Assert
+    assert!(why.contains("開始と終了の記号"), "{why}");
+}
+
+#[test]
+fn unknown_transition_or_state_is_refused() {
+    // Arrange（異常系：無い ID・無い状態）
+    let line = r#"{"op":"deleteEdge","id":"transition|s:x|s:y|#1","ctx":"S"}"#;
+    let node = r#"{"op":"delete","keys":["s:x"],"ctx":"S"}"#;
+    // Act / Assert
+    assert!(refused(STATES, line).contains("関係"));
+    assert!(refused(STATES, node).contains("s:x"));
+}
+
+#[test]
+fn connect_transition_writes_it_in_the_body_of_both_states() {
+    // Arrange（同値分割：状態定義の直下どうし・同じ状態の中どうし・終了へ、8.2.2.18）
+    let top = r#"{"op":"connect","rel":"transition","from":"s:off","to":"s:on","ctx":"S"}"#;
+    let inner =
+        r#"{"op":"connect","rel":"transition","from":"s:on.low","to":"s:on.high","ctx":"S"}"#;
+    // Act
+    let (after_top, out) = run(STATES, top);
+    let (after_inner, _) = run(STATES, inner);
+    // Assert
+    assert!(
+        after_top.ends_with("then off;\n        transition first off then on;\n    }\n}\n"),
+        "{after_top}"
+    );
+    assert_eq!(
+        flashed(&after_top, &out).trim(),
+        "transition first off then on;"
+    );
+    assert!(
+        after_inner.contains(
+            "            state high;\n            transition first low then high;\n        }"
+        ),
+        "{after_inner}"
+    );
+}
+
+#[test]
+fn connect_transition_between_bodies_uses_the_path_from_the_definition() {
+    // Arrange（境界値：入れ子の状態から外の状態へ。名前の道のりで書く）
+    let id = r#"{"op":"connect","rel":"transition","from":"s:on.high","to":"s:off","ctx":"S"}"#;
+    // Act
+    let (after, _) = run(STATES, id);
+    // Assert
+    assert!(
+        after.contains("        transition first on.high then off;\n    }\n}\n"),
+        "{after}"
+    );
+}
+
+#[test]
+fn connect_transition_refuses_start_and_done_misuse_and_unnamed_states() {
+    // Arrange（異常系：開始へ・開始から・別の本体の終了へ・名前の無い状態）
+    let text = "package P {\n    state def S {\n        state a;\n        state;\n        state b { state x; transition first x then done; }\n    }\n}\n";
+    let into_start =
+        r#"{"op":"connect","rel":"transition","from":"s:off","to":"s:#start","ctx":"S"}"#;
+    let from_start =
+        r#"{"op":"connect","rel":"transition","from":"s:#start","to":"s:on","ctx":"S"}"#;
+    let other_done =
+        r#"{"op":"connect","rel":"transition","from":"s:a","to":"s:b#done","ctx":"S"}"#;
+    let unnamed = r#"{"op":"connect","rel":"transition","from":"s:a","to":"s:#1","ctx":"S"}"#;
+    // Act / Assert
+    assert!(refused(STATES, into_start).contains("開始の記号へ"));
+    assert!(refused(STATES, from_start).contains("開始の記号から"));
+    assert!(refused(text, other_done).contains("終了の記号へは"));
+    assert!(refused(text, unnamed).contains("名前の無い状態"));
 }

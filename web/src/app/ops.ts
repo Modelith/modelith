@@ -4,6 +4,7 @@ import type { Entry, ModelEdge, ModelNode } from "../core";
 import { ask } from "./dialog";
 import { perform } from "./intent";
 import { flowName } from "./action-flow";
+import { renamedStateKeys, stateName } from "./state-machine";
 import { kindLabel } from "./labels";
 import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
@@ -156,7 +157,8 @@ export const OPS = {
 
   /**
    * 名前を変え、参照と配置情報もまとめて書き換える（意図 `rename`、F-EDIT-3）。
-   * すべてのビューの座標・接続点・線の端のキーを新しい名前に付け替え（`u:`・`l:` は付けたまま）、選び直して配置を確定し、トーストで知らせる。
+   * すべてのビューの座標・接続点・線の端のキーを新しい名前に付け替え（`u:`・`l:` は付けたまま。状態遷移の図の状態は、中の要素のキーも）、
+   * 選び直して配置を確定し、トーストで知らせる。
    *
    * @param n 名前を変える要素
    * @param nn 新しい名前（SysML v2 の基本名）
@@ -171,28 +173,31 @@ export const OPS = {
     if (nn === n.name) return true;
     const r = await perform({ op: "rename", key: n.key, name: nn, ctx: ctxKey() });
     if (!r) return false;
-    // 図の要素のキーも名前に合わせて変える（内部ブロック図の部品・ライフラインは u:・l: を付けたまま）
+    // 図の要素のキーも名前に合わせて変える（内部ブロック図の部品・ライフラインは u:・l: を付けたまま。状態は中の要素のキーも変える）
     const nk = (/^[ul]:/.exec(n.key)?.[0] ?? "") + nn;
-    for (const v of Object.values(S.layout)) {
-      const pos = v.pos[n.key];
-      if (pos) {
-        v.pos[nk] = pos;
-        delete v.pos[n.key];
-      }
-      const pv = v.pins[n.key];
-      if (pv) {
-        v.pins[nk] = pv;
-        delete v.pins[n.key];
-      }
-      for (const [k, val] of Object.entries(v.ends)) {
-        const parts = k.split("|");
-        if (parts[1] === n.key || parts[2] === n.key) {
-          v.ends[parts.map((s, i) => ((i === 1 || i === 2) && s === n.key ? nk : s)).join("|")] = val;
-          delete v.ends[k];
+    const moves = n.state ? renamedStateKeys(n.key, nn, CC().nodes.map((x) => x.key)) : [[n.key, nk] as [string, string]];
+    for (const [ok, newKey] of moves) {
+      for (const v of Object.values(S.layout)) {
+        const pos = v.pos[ok];
+        if (pos) {
+          v.pos[newKey] = pos;
+          delete v.pos[ok];
+        }
+        const pv = v.pins[ok];
+        if (pv) {
+          v.pins[newKey] = pv;
+          delete v.pins[ok];
+        }
+        for (const [k, val] of Object.entries(v.ends)) {
+          const parts = k.split("|");
+          if (parts[1] === ok || parts[2] === ok) {
+            v.ends[parts.map((s, i) => ((i === 1 || i === 2) && s === ok ? newKey : s)).join("|")] = val;
+            delete v.ends[k];
+          }
         }
       }
     }
-    S.sel = nk;
+    S.sel = moves[0]?.[1] ?? nk;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
     toast(`「${n.name}」を「${nn}」に変更しました。使っている箇所もまとめて変えました`);
@@ -212,7 +217,7 @@ export const OPS = {
     S.sel = null;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(n.note ? "メモを削除しました" : `「${n.flow ? flowName(n) : n.name}」を削除しました`);
+    toast(n.note ? "メモを削除しました" : `「${n.flow ? flowName(n) : n.state ? stateName(n) : n.name}」を削除しました`);
   },
 
   /**
@@ -239,7 +244,7 @@ export const OPS = {
    *
    * @param a 関係の元の要素
    * @param b 関係の先の要素
-   * @param rel 関係の種類（`comp`・`satisfy`・`verify`・`frame`・`derive`・`flow`・`succession`。relOptions が返したもの）
+   * @param rel 関係の種類（`comp`・`satisfy`・`verify`・`frame`・`derive`・`flow`・`succession`・`transition`。relOptions が返したもの）
    */
   async connect(a: ModelNode, b: ModelNode, rel: RelKind): Promise<void> {
     const wire = S.wire;
@@ -253,6 +258,7 @@ export const OPS = {
       derive: `「${a.name} を ${b.name} から導出する」`,
       flow: `「${a.name} から ${b.name} への流れ」`,
       succession: `「${flowName(a)} の後に ${flowName(b)}」の順序`,
+      transition: `「${stateName(a)} から ${stateName(b)} へ」の遷移`,
     }[rel];
     if (!r) return;
     const before = new Set([...S.M.edges, ...CC().edges].map((e) => e.id));

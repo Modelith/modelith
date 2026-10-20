@@ -148,6 +148,22 @@ pub struct Entry {
     /// 空白をまとめて書いたとおりに持つ。ほかの宣言と、条件の無い `loop` では `None`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guard: Option<String>,
+    /// 状態の `entry`・`do`・`exit` の振る舞い（StateSubactionMembership、8.2.2.18）。書いた順。
+    /// 振る舞いを書かない `entry;` は入れない（最初の遷移の元としてだけ読む）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub state_actions: Vec<StateAction>,
+    /// 並行の状態（`state def S parallel { … }`、StateDefBody の isParallel、8.2.2.18）か。中の状態は同時に進む。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub parallel: bool,
+}
+
+/// 状態の振る舞い 1 つ（`entry a;`・`do action a { … }`・`exit send S() to b;`、StateSubactionMembership、8.2.2.18）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StateAction {
+    /// いつ行うか（`entry`・`do`・`exit`）。
+    pub kind: &'static str,
+    /// キーワードの後ろ（`a`・`action a`・`send S() to b` など。空白をまとめて書いたとおり）。
+    pub text: String,
 }
 
 /// 別の言語での表し方 1 つ（TextualRepresentation、8.2.2.4）。
@@ -282,10 +298,39 @@ pub enum RelKind {
         #[serde(skip_serializing_if = "is_binary")]
         ends: Vec<String>,
     },
+    /// 遷移（TransitionUsage・TargetTransitionUsage、8.2.2.18）。`from` の状態から、トリガ・ガードが成り立つと効果を行い `to` へ移る。
+    /// `transition … first a … then b;` は書いた相手、状態の本体の `then b;`・`accept E then b;`・`if g then b;` は直前の状態から。
     Transition {
+        /// 元（書いた参照。直前の状態から引く遷移では、その状態の名前。名前の無い状態なら空）。
         from: String,
+        /// トリガの受けるもの（`accept` の後。`e : E`・`after 5 [s]` など、空白をまとめて書いたとおり）。無ければ空。
         ev: String,
+        /// 先（書いた参照。`done` は終わり）。
         to: String,
+        /// 名前（`transition t …` の `t`）。無ければ空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        name: String,
+        /// トリガの `via` の後（受ける場所）。無ければ空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        via: String,
+        /// ガード（`if` の条件の式）。無ければ空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        guard: String,
+        /// 効果（`do` の後の振る舞い。参照・`send …` など、空白をまとめて書いたとおり）。無ければ空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        effect: String,
+        /// 元の宣言の番号（直前の状態から引く遷移のとき）。書いた参照から探すときは `None`。TS には渡さない。
+        #[serde(skip)]
+        from_entry: Option<usize>,
+    },
+    /// 状態の本体の最初の遷移（`entry; then s;`・`entry; if g then s;`、EntryTransitionMember、8.2.2.18）。
+    #[serde(rename = "entryTransition")]
+    EntryTransition {
+        /// 先（書いた参照）。
+        to: String,
+        /// ガード（`if` の条件の式）。無ければ空。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        guard: String,
     },
     /// `allocate x to y;`・`allocation a : AD allocate x to y;`（AllocationUsage、8.2.2.15）。`a` を `b` に割り当てる。
     Allocate {

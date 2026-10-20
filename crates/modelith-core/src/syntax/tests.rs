@@ -1211,6 +1211,136 @@ fn accept_shorthand_transition_reads_its_target() {
 }
 
 #[test]
+fn transition_reads_source_trigger_guard_effect_and_target() {
+    check(
+        "transition t first a accept E via p if x > 0 do beep then b;",
+        expect![[r#"
+            SOURCE_FILE@0..60
+              TRANSITION_USAGE@0..60
+                KEYWORD@0..10 "transition"
+                WHITESPACE@10..11 " "
+                NAME@11..12
+                  IDENT@11..12 "t"
+                WHITESPACE@12..13 " "
+                KEYWORD@13..18 "first"
+                WHITESPACE@18..19 " "
+                CONNECTOR_END@19..20
+                  QUALIFIED_NAME@19..20
+                    IDENT@19..20 "a"
+                WHITESPACE@20..21 " "
+                TRIGGER_ACTION@21..35
+                  KEYWORD@21..27 "accept"
+                  WHITESPACE@27..28 " "
+                  NODE_PARAMETER@28..29
+                    QUALIFIED_NAME@28..29
+                      IDENT@28..29 "E"
+                  WHITESPACE@29..30 " "
+                  KEYWORD@30..33 "via"
+                  WHITESPACE@33..34 " "
+                  NODE_PARAMETER@34..35
+                    EXPRESSION@34..35
+                      IDENT@34..35 "p"
+                WHITESPACE@35..36 " "
+                GUARD_EXPRESSION@36..44
+                  KEYWORD@36..38 "if"
+                  WHITESPACE@38..39 " "
+                  EXPRESSION@39..44
+                    IDENT@39..40 "x"
+                    WHITESPACE@40..41 " "
+                    GT@41..42 ">"
+                    WHITESPACE@42..43 " "
+                    NUMBER@43..44 "0"
+                WHITESPACE@44..45 " "
+                EFFECT_BEHAVIOR@45..52
+                  KEYWORD@45..47 "do"
+                  WHITESPACE@47..48 " "
+                  EXPRESSION@48..52
+                    IDENT@48..52 "beep"
+                WHITESPACE@52..53 " "
+                KEYWORD@53..57 "then"
+                WHITESPACE@57..58 " "
+                CONNECTOR_END@58..59
+                  QUALIFIED_NAME@58..59
+                    IDENT@58..59 "b"
+                SEMI@59..60 ";"
+        "#]],
+    );
+}
+
+#[test]
+fn transition_without_first_is_a_target_transition() {
+    // Arrange（TargetTransitionUsage、8.2.2.18：元は直前の状態）
+    let text = "state def S { state a; transition accept E then b; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&TRIGGER_ACTION));
+    assert_eq!(kinds.iter().filter(|k| **k == CONNECTOR_END).count(), 1);
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn transition_trigger_expression_stops_before_then() {
+    // Arrange（境界値：after の時間の式は、then の手前で止まる）
+    let text = "transition first a accept after 5 [s] then b;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds.iter().filter(|k| **k == CONNECTOR_END).count(), 2);
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn transition_effect_may_have_a_body() {
+    // Arrange（EffectBehaviorUsage の TransitionPerformActionUsage、8.2.2.18）
+    let text = "transition first a do action e { action x; } then b;";
+    // Act
+    let tree = parse(text);
+    // Assert
+    let effect = tree
+        .syntax()
+        .descendants()
+        .find(|n| n.kind() == EFFECT_BEHAVIOR);
+    assert!(effect.is_some_and(|e| e.children().any(|c| c.kind() == BODY)));
+    assert!(tree.errors().is_empty());
+}
+
+#[test]
+fn transition_without_then_is_an_error() {
+    // Arrange（異常系：行き先が無い）
+    let text = "transition t first a;";
+    // Act
+    let errs = errors(text);
+    // Assert
+    assert_eq!(errs, [(20, "「then」がありません".to_owned())]);
+}
+
+#[test]
+fn shorthand_transitions_read_their_guard_and_effect() {
+    // Arrange（状態の中の省略形の遷移、8.2.2.18：accept … if … do … then・if … do … then）
+    let text = "state def S { state a; accept E via p if g do beep then b; if x do send S() to y then c; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert!(kinds.contains(&ACCEPT_NODE));
+    assert_eq!(kinds.iter().filter(|k| **k == GUARD_EXPRESSION).count(), 2);
+    assert_eq!(kinds.iter().filter(|k| **k == EFFECT_BEHAVIOR).count(), 2);
+    assert_eq!(kinds.iter().filter(|k| **k == CONNECTOR_END).count(), 2);
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn parallel_state_reads_its_substates() {
+    // Arrange（StateDefBody の isParallel、8.2.2.18）
+    let text = "state def S parallel { state a; state b; }";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(kinds.iter().filter(|k| **k == STATE_USAGE).count(), 2);
+    assert!(errors(text).is_empty());
+}
+
+#[test]
 fn action_node_without_its_parameter_is_an_error() {
     // Arrange（異常系：受けるもの・送る先・:= が無い）
     let no_payload = errors("accept;");

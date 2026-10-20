@@ -1203,3 +1203,147 @@ fn successions_outside_action_definitions_are_not_drawn() {
     assert!(m.action_flows.is_empty());
     assert!(m.problems.is_empty());
 }
+
+fn machine<'a>(m: &'a Model, key: &str) -> &'a StateMachine {
+    m.state_machines
+        .iter()
+        .find(|f| f.key == key)
+        .unwrap_or_else(|| panic!("{key} の状態遷移の図がありません"))
+}
+
+fn machine_keys(m: &Model, key: &str) -> Vec<String> {
+    machine(m, key)
+        .nodes
+        .iter()
+        .map(|n| n.key.clone())
+        .collect()
+}
+
+fn machine_edges(m: &Model, key: &str) -> Vec<String> {
+    machine(m, key).edges.iter().map(|e| e.id.clone()).collect()
+}
+
+#[test]
+fn state_machine_draws_states_with_the_entry_transition_and_the_done() {
+    // Arrange（8.2.3.18：開始は entry; then s; から、終了は done へ向かう遷移から）
+    let text = "package P { state def S { entry; then off; state off; state on; \
+                transition first off accept Go then on; transition first on then done; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        machine_keys(&m, "S"),
+        ["s:#start", "s:off", "s:on", "s:#done"]
+    );
+    assert_eq!(
+        machine_edges(&m, "S"),
+        [
+            "transition|s:#start|s:off|#1",
+            "transition|s:off|s:on|Go#1",
+            "transition|s:on|s:#done|#1"
+        ]
+    );
+    assert!(m.problems.is_empty());
+}
+
+#[test]
+fn transition_label_is_trigger_guard_and_effect() {
+    // Arrange（8.2.3.18 の transition-label：トリガ [ガード] / 効果。無い部分は書かない）
+    let text = "package P { state def S { state a; state b; \
+                transition first a accept Go via p if x > 0 do beep then b; \
+                transition first b if y then a; transition first b do send S() to q then a; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let labels: Vec<&str> = machine(&m, "S")
+        .edges
+        .iter()
+        .map(|e| e.label.as_str())
+        .collect();
+    assert_eq!(
+        labels,
+        ["Go via p [x > 0] / beep", "[y]", "/ send S() to q"]
+    );
+}
+
+#[test]
+fn nested_states_are_drawn_inside_their_composite_state() {
+    // Arrange（入れ子の状態と、その本体の開始。外の状態への遷移は外側の本体から探す）
+    let text = "package P { state def S { state on { entry; then low; state low; \
+                accept Up then high; state high; transition first high then off; } state off; transition first off then on.low; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let nodes: Vec<(String, Option<String>)> = machine(&m, "S")
+        .nodes
+        .iter()
+        .map(|n| (n.key.clone(), n.container.clone()))
+        .collect();
+    let inside = |k: &str| (k.to_owned(), Some("s:on".to_owned()));
+    assert_eq!(
+        nodes,
+        [
+            ("s:on".to_owned(), None),
+            inside("s:on#start"),
+            inside("s:on.low"),
+            inside("s:on.high"),
+            ("s:off".to_owned(), None),
+        ]
+    );
+    assert_eq!(
+        machine_edges(&m, "S"),
+        [
+            "transition|s:on#start|s:on.low|#1",
+            "transition|s:on.low|s:on.high|Up#1",
+            "transition|s:on.high|s:off|#1",
+            "transition|s:off|s:on.low|#1"
+        ]
+    );
+    assert!(m.problems.is_empty());
+}
+
+#[test]
+fn parallel_states_are_marked_in_the_state_machine() {
+    // Arrange（StateDefBody の isParallel、8.2.3.18：並行の状態の中の状態は、破線で区切った領域）
+    let text = "package P { state def S parallel { state a; state b parallel { state x; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let sm = machine(&m, "S");
+    assert!(sm.parallel);
+    let parallel: Vec<(&str, bool)> = sm
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.parallel))
+        .collect();
+    assert_eq!(parallel, [("s:a", false), ("s:b", true), ("s:b.x", false)]);
+}
+
+#[test]
+fn transition_to_a_missing_state_is_a_problem() {
+    // Arrange（異常系：遷移の相手が無い。直前の状態から引く遷移の、名前の無い元は問題にしない）
+    let text = "package P { state def S { state a; transition first a then nope; transition first gone then a; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "「遷移」の相手「nope」が見つかりません（transition）",
+            "「遷移」の相手「gone」が見つかりません（transition）"
+        ]
+    );
+    assert!(machine(&m, "S").edges.is_empty());
+}
+
+#[test]
+fn transitions_outside_state_definitions_are_not_drawn() {
+    // Arrange（境界値：状態定義の外の遷移は、状態遷移の図にしない。問題にもしない）
+    let text = "package P { part def H { state s1; state s2; transition first s1 then s2; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(m.state_machines.is_empty());
+    assert!(m.problems.is_empty());
+}

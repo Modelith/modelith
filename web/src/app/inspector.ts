@@ -2,6 +2,7 @@
 
 import { lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
 import { flowDetail, flowName } from "./action-flow";
+import { isPseudoState, stateActionLines, stateName } from "./state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
 import { kindLabel } from "./labels";
@@ -121,12 +122,18 @@ function connectHtml(): string | null {
   }
   const opts = relOptions(a, b);
   const toTxt = portName(S.wire?.to?.pin);
-  const nm = (n: ModelNode): string => (n.flow ? flowName(n) : n.name);
+  const nm = (n: ModelNode): string => (n.flow ? flowName(n) : n.state ? stateName(n) : n.name);
+  const why =
+    a.flow && b.flow && (!a.name || !b.name)
+      ? "名前の無い要素は、順序の線でつなげません。テキストで名前を付けてください"
+      : a.state && b.state && ((!isPseudoState(a) && !a.name) || (!isPseudoState(b) && !b.name))
+        ? "名前の無い状態は、遷移でつなげません。テキストで名前を付けてください"
+        : "この組み合わせで追加できる関係はありません";
   return (
     `<div class="what"><small>追加する関係を選択</small><b>${esc(nm(a) + fromTxt)} → ${esc(nm(b) + toTxt)}</b></div><div class="acts">` +
     (opts.length
       ? opts.map((o) => `<button class="primary" data-rel="${o.rel}">${esc(o.label)}</button>`).join("")
-      : `<span style="font-size:12px;color:var(--ink2)">${a.flow && b.flow && (!a.name || !b.name) ? "名前の無い要素は、順序の線でつなげません。テキストで名前を付けてください" : "この組み合わせで追加できる関係はありません"}</span>`) +
+      : `<span style="font-size:12px;color:var(--ink2)">${why}</span>`) +
     `<button data-act="cancel">やめる</button></div>`
   );
 }
@@ -240,6 +247,7 @@ function nodeHtml(n: ModelNode): string {
     );
   }
   if (n.flow) return flowNodeHtml(n, line);
+  if (n.state) return stateNodeHtml(n, line);
   if (n.usage || n.lifeline) {
     return (
       `<div class="what"><small>«${esc(n.kind)}» テキスト ${line} 行目${n.usage ? "・縁の＋から線を引けます" : "・ライフラインから横にドラッグでメッセージを追加"}</small><b>${esc(n.name)}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
@@ -291,17 +299,45 @@ function flowNodeHtml(n: ModelNode, line: number): string {
   );
 }
 
+/**
+ * 状態遷移の図の要素（8.2.3.18）の HTML を作る。種類の画面の言葉と名前、entry・do・exit の振る舞い、
+ * テキストで見る・名前の変更・遷移の追加・削除のボタンを出す。開始・終了の記号はテキストに宣言が無いので、ボタンを出さない。
+ *
+ * @param n 状態遷移の図の要素
+ * @param line 宣言の行（1 から）
+ * @returns 要素の HTML
+ * @example
+ * // state on { entry action init; } を選んでいるとき
+ * stateNodeHtml(on, 5) // → '<div class="what"><small>状態（state） テキスト 5 行目・縁の＋から遷移を引けます</small><b>on</b></div><div class="acts">…</div><div class="notes"><div class="note"><small>振る舞い</small><p>entry / init</p></div></div>'
+ * // 開始の記号を選んでいるとき
+ * stateNodeHtml(start, 1) // → '<div class="what"><small>開始（start）・最初の遷移から決まる記号です</small><b>開始</b></div><div class="acts"></div>'
+ */
+function stateNodeHtml(n: ModelNode, line: number): string {
+  const pseudo = isPseudoState(n);
+  const where = pseudo ? (n.kind === "start" ? "・最初の遷移から決まる記号です" : "・遷移から決まる記号です") : ` テキスト ${line} 行目・縁の＋から遷移を引けます`;
+  const actions = pseudo ? [] : stateActionLines(n.entry);
+  return (
+    `<div class="what"><small>${esc(kindLabel(n.kind))}（${esc(n.kind)}）${n.parallel ? "・並行" : ""}${where}</small><b>${esc(stateName(n))}</b></div><div class="acts">` +
+    (pseudo ? "" : `<button data-act="goto">テキストで見る</button>`) +
+    (n.name && !pseudo ? `<button data-act="rename">名前を変更</button><button data-act="connect">遷移を追加</button>` : "") +
+    (pseudo ? "" : delBtn("del", "削除")) +
+    `</div>` +
+    (actions.length ? `<div class="notes"><div class="note"><small>振る舞い（entry・do・exit）</small><p>${actions.map(esc).join("<br>")}</p></div></div>` : "")
+  );
+}
+
 const EDGE_NAME: Record<string, string> = {
   comp: "部品・特性として持つ", satisfy: "要求を満たす «satisfy»", verify: "要求を検証する «verify»", frame: "関心事を扱う «frame»", flow: "流れ・接続", defined: "型（定義）", derive: "要求の導出 «derive»",
   specialize: "定義を引き継ぐ（特殊化 :>）", subset: "一部になる（部分集合 subsets）", redefine: "置き換える（再定義 redefines）", reference: "参照する（references）",
   dependency: "依存する（dependency）", allocate: "割り当てる «allocate»", bind: "値を等しくする（結び付け bind）",
   connect: "3 つ以上をつなぐ接続（connect）", annotate: "メモを付ける（comment about）",
-  succession: "順序（succession）", successionFlow: "順序付きの流れ（succession flow）",
+  succession: "順序（succession）", successionFlow: "順序付きの流れ（succession flow）", transition: "遷移（transition）",
 };
 
 /**
  * 選んだ関係（線）の HTML を作る。シーケンス図のメッセージなら番号・送り手と受け手・順番の入れ替え・編集を、
- * ほかの関係なら種類の画面の言葉と両端の名前、削除のボタンを出す（メモの線には削除のボタンを出さない）。
+ * ほかの関係なら種類の画面の言葉と両端の名前（開始・終了の記号は画面の言葉）、削除のボタンを出す（メモの線には削除のボタンを出さない）。
+ * 遷移は、ラベル（きっかけ [条件] / 行うこと）も種類の後ろに書く。
  *
  * @param ed 選んだ関係
  * @returns 関係の HTML
@@ -310,8 +346,14 @@ const EDGE_NAME: Record<string, string> = {
  * edgeHtml(e) // → '<div class="what"><small>要求を満たす «satisfy»</small><b>A → R</b></div>…'
  * // 名前の無いメッセージ（2 個中の 1 番目）のとき
  * edgeHtml(m) // → '<div class="what"><small>メッセージ 1／2：a → b</small><b>（名前なし）</b></div>…（「上へ」は押せない）'
+ * // 開始から off への遷移
+ * edgeHtml(t) // → '<div class="what"><small>遷移（transition）</small><b>開始 → off</b></div>…'
  */
 function edgeHtml(ed: ModelEdge): string {
+  const endName = (k: string): string => {
+    const n = nodeByKey(k);
+    return !n ? "?" : n.state ? stateName(n) : n.flow ? flowName(n) : n.name;
+  };
   if (ed.kind === "message") {
     const c = CC();
     const i = ed.idx ?? 0;
@@ -332,7 +374,7 @@ function edgeHtml(ed: ModelEdge): string {
     );
   }
   return (
-    `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && ed.kind === "comp" ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : (nodeByKey(ed.from)?.name ?? "?"))} → ${esc(nodeByKey(ed.to)?.name ?? "?")}</b></div><div class="acts">` +
+    `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && (ed.kind === "comp" || ed.kind === "transition") ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : endName(ed.from))} → ${esc(endName(ed.to))}</b></div><div class="acts">` +
     `<button data-act="goto">テキストで見る</button>` +
     // メモの線だけを削除する操作は無い（メモごと削除する）
     (ed.kind === "annotate" ? "" : delBtn("delEdge", "関係を削除")) +

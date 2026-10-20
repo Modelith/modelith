@@ -79,3 +79,20 @@ describe("build（Rust のモデル構築）", () => {
     expect(flow?.edges.map((e) => e.id)).toEqual(["succession|a:start|a:a|#1"]);
   });
 });
+
+describe("build（Rust のモデル構築）の状態遷移の図", () => {
+  it("状態遷移の図を、宣言の参照に戻す（開始・終了は宣言を持たない、入れ子の状態は外の状態を指す、8.2.3.18）", () => {
+    // Arrange
+    const text = "package P { state def S { entry; then on; state on { state low; } } }";
+    // Act
+    const sm = build(parse(text)).stateMachines?.[0];
+    // Assert
+    expect(sm?.entry.name).toBe("S");
+    expect(sm?.nodes.map((n) => [n.key, n.entry?.name ?? null, n.container ?? null])).toEqual([
+      ["s:#start", null, null],
+      ["s:on", "on", null],
+      ["s:on.low", "low", "s:on"],
+    ]);
+    expect(sm?.edges.map((e) => e.id)).toEqual(["transition|s:#start|s:on|#1"]);
+  });
+});

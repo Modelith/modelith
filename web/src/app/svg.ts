@@ -3,7 +3,11 @@
 import { family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./dom";
-import { boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, textWidth, type Box, type NodeBox } from "./geometry";
+import {
+  boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, STATE_HEAD, stateSize, stateTitle,
+  textWidth, type Box, type NodeBox,
+} from "./geometry";
+import { isPseudoState } from "./state-machine";
 import type { ViewLayout } from "./layout";
 import { phaseLabel, type ViewContent } from "./views";
 
@@ -177,15 +181,25 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
   );
   let es = "";
   for (const p of packageBoxes(content, (k) => box.get(k))) es += packageMarkup(C, p.name, p.r, F);
+  let frameRect: Box | null = null;
   if (content.frame && box.size) {
     const bs = [...box.values()];
     const x0 = Math.min(...bs.map((b) => b.x)) - 60, y0 = Math.min(...bs.map((b) => b.y)) - 80;
     const x1 = Math.max(...bs.map((b) => b.x + b.w)) + 60, y1 = Math.max(...bs.map((b) => b.y + b.h)) + 50;
+    frameRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     es += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${C("k-part-bg")}" fill-opacity=".35" stroke="${C("k-part")}" stroke-width="1.6"/>`;
     es += `<text x="${x0 + 12}" y="${y0 + 18}" font-size="10" fill="${C("ink2")}" font-family="${F}">«${esc(content.frame.kind)}»</text><text x="${x0 + 12}" y="${y0 + 36}" font-size="14" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(content.frame.title)}</text>`;
   }
-  // 中に部品を描く部品は線の下に描く（中の部品へ入る線が隠れないように）
+  // 中に部品・状態を描く要素は線の下に描く（中の要素へ入る線が隠れないように）
   for (const [, b] of box) if (b.holds) es += nodeMarkup(C, b, opts, F, MONO);
+  // 並行の状態の領域を、破線で区切る（8.2.3.18）
+  for (const k of content.regions ?? []) {
+    const outer = k ? box.get(k) : frameRect;
+    if (!outer) continue;
+    const areas = [...box.values()].filter((b) => (b.n.container ?? "") === k);
+    for (const sep of regionSeparators(outer, areas))
+      es += `<line class="region" x1="${sep.x1}" x2="${sep.x2}" y1="${sep.y}" y2="${sep.y}" stroke="${C("k-beh")}" stroke-width="1.2" stroke-dasharray="6 4"/>`;
+  }
   const routes = computeRoutes(box, edges, L, opts.edgeStyle || "ortho");
   for (const e of edges) {
     const rt = routes.get(e.id);
@@ -243,6 +257,7 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   if (b.n.junction) return junctionMarkup(C, b, opts, F);
   if (b.n.note) return noteMarkup(C, b, opts, F);
   if (b.n.flow) return flowNodeMarkup(C, b, opts, F, MONO);
+  if (b.n.state) return stateNodeMarkup(C, b, opts, F, MONO);
   // 中に部品を描く部品は、区画の行を描かない（中の部品を描く場所にする）
   const n = b.n, fam = n.fam, L2 = b.holds ? [] : linesOf(n);
   const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
@@ -342,6 +357,48 @@ function flowNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MON
       s += `<text x="10" y="${top + 16 + k * LH}" font-size="10.5" fill="${C("ink")}" font-family="${MONO}">${esc(ln.t)}</text>`;
     });
   }
+  return s + "</g>";
+}
+
+/**
+ * 状態遷移の図の要素（8.2.3.18）を SVG の文字列にする。開始は塗った丸、終了は丸の中の塗った丸、状態は角の丸い四角に名前を太字で書き、
+ * entry・do・exit の振る舞いを区画に書く。中に状態を描く状態は、名前と区画を上に書き、その下に中の状態を描く場所を区切る。
+ *
+ * @param C 色の関数
+ * @param b 要素の矩形と、その要素（`holds` なら中に状態を描く）
+ * @param opts 描き方（選択・光らせる要素・接続の候補・薄くする要素）
+ * @param F 文字のフォント
+ * @param MONO 区画のフォント
+ * @returns `<g class="node state" data-key="キー" transform="translate(x,y)">…</g>` の文字列
+ * @example
+ * // (0, 0) にある開始
+ * stateNodeMarkup(CV, b, { view: "stm" }, "inherit", "var(--mono)") // → '<g class="node state" data-key="s:#start" …><circle class="body" cx="11" cy="11" r="11" …/></g>'
+ * // (100, 0) にある state on { entry action init; }
+ * stateNodeMarkup(CV, b, { view: "stm" }, "inherit", "var(--mono)") // → '…<rect class="body" width="150" height="61" rx="14" …/>…on…entry / init…'
+ */
+function stateNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
+  const n = b.n, w = b.w, h = b.h;
+  const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
+  const sw = isSel ? 2.6 : 1.3;
+  let s = `<g class="node state${opts.pulse?.has(n.key) ? " pulse" : ""}" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})"${opts.dim?.has(n.key) ? ' opacity=".42"' : ""}>`;
+  if (opts.cands?.has(n.key)) s += `<rect x="-5" y="-5" width="${w + 10}" height="${h + 10}" rx="16" fill="none" stroke="${C("sel")}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  if (isPseudoState(n) && n.kind === "start")
+    return s + `<circle class="body" cx="${w / 2}" cy="${h / 2}" r="${w / 2}" fill="${C("ink")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${sw}"/></g>`;
+  if (isPseudoState(n))
+    return s + `<circle class="body" cx="${w / 2}" cy="${h / 2}" r="${w / 2}" fill="${C("panel")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${isSel ? 2.6 : 1.6}"/><circle cx="${w / 2}" cy="${h / 2}" r="${w / 2 - 5}" fill="${C("ink")}"/></g>`;
+  s += `<rect class="body" width="${w}" height="${h}" rx="14" fill="${C("k-beh-bg")}"${b.holds ? ' fill-opacity=".55"' : ""} stroke="${isSel ? C("sel") : C("k-beh")}" stroke-width="${sw}"/>`;
+  const title = stateTitle(n);
+  const room = Math.floor((w - 20) / 7.5);
+  s += `<text x="${w / 2}" y="23" text-anchor="middle" font-size="12.5" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(title.length > room ? title.slice(0, room - 1) + "…" : title)}</text>`;
+  const L = linesOf(n);
+  if (L.length) {
+    s += `<line x1="0" x2="${w}" y1="${STATE_HEAD}" y2="${STATE_HEAD}" stroke="${C("k-beh")}" stroke-opacity=".45"/>`;
+    L.forEach((ln, k) => {
+      s += `<text x="12" y="${STATE_HEAD + 15 + k * LH}" font-size="10.5" fill="${C("ink")}" font-family="${MONO}">${esc(ln.t)}</text>`;
+    });
+  }
+  // 中に状態を描く状態は、見出しと区画の下を、中の状態を描く場所として区切る
+  if (b.holds) s += `<line x1="0" x2="${w}" y1="${stateSize(n).h}" y2="${stateSize(n).h}" stroke="${C("k-beh")}" stroke-opacity=".45"/>`;
   return s + "</g>";
 }
 
@@ -564,12 +621,12 @@ export const HAND_ICON = `<svg class="ki" width="16" height="16" viewBox="0 0 16
 export const SELECT_ICON = `<svg class="ki" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2l9 6-4 1 2.5 4.5-1.6.9L6.4 9.8 3 12.5Z" fill="var(--ink)"/></svg>`;
 
 const VIEW_ICON_KIND: Record<string, string> = {
-  trace: "requirement def", structure: "part def", control: "constraint def", ibd: "part", behavior: "state def", seq: "occurrence def", afv: "action def", all: "package",
+  trace: "requirement def", structure: "part def", control: "constraint def", ibd: "part", behavior: "state def", seq: "occurrence def", afv: "action def", stm: "state def", all: "package",
 };
 /**
  * 自動の図（ビュー）を表すアイコンを、そのビューの代表の種類のアイコン（kindIcon）で返す。
  *
- * @param view 自動の図の id（`trace`・`structure`・`control`・`ibd`・`behavior`・`seq`・`afv`・`all`）
+ * @param view 自動の図の id（`trace`・`structure`・`control`・`ibd`・`behavior`・`seq`・`afv`・`stm`・`all`）
  * @returns `<svg class="ki" …>…</svg>` の文字列。知らない id なら空文字列
  * @example
  * viewIcon("trace")   // → kindIcon("requirement def") と同じ文字列

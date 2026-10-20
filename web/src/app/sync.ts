@@ -2,7 +2,7 @@
 
 import { lineOf, type CoreClient, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
-import { autoPlace, nodeW, placeJunctions, placeNested, placeNotes, stackedHeight } from "./geometry";
+import { autoPlace, nodeW, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
@@ -179,11 +179,16 @@ function refresh(fromText: boolean): void {
  * 表示中のビューで座標の無い要素を自動で並べる（S.layout を書き換える。F-VIEW-3）。
  * 既に置かれた要素があれば、その一番下から 80 下に並べる。中の部品（内部ブロック図の入れ子）は外の部品の中に縦に積み、
  * n 項の接続の点は、つながる要素の重心に、メモは注釈する要素の近くに置く。幅の狭い要素（アクションの流れの図の記号）は列の中央に置く。
- * シーケンス図では何もしない。
+ * 状態遷移の図は、状態の入れ子と遷移の向きで並べる（placeStates）。シーケンス図では何もしない。
  */
 export function ensureLayout(): void {
   if (S.view === "seq") return;
   const v = curView();
+  if (S.view === "stm") {
+    const c = viewContent(S.M, v);
+    placeStates(c.nodes, c.edges, c.regions ?? [], curLayout().pos);
+    return;
+  }
   const { nodes, edges } = viewContent(S.M, v);
   const L = curLayout().pos;
   const heightOf = (n: (typeof nodes)[number]): number => stackedHeight(n, nodes);

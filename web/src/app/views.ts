@@ -3,6 +3,7 @@
 import type { EdgeKind, Entry, MessageRel, Model, ModelEdge, ModelNode, ModelView, ViewKind } from "../core";
 import { defaultFlowContext, flowContentOf, flowContexts, flowLayers } from "./action-flow";
 import { ibdContentOf } from "./ibd";
+import { defaultStateContext, stateContentOf, stateContexts } from "./state-machine";
 import { emptyView, type ViewLayout } from "./layout";
 import { withNotes } from "./notes";
 import { S } from "./state";
@@ -21,6 +22,11 @@ export interface ViewDef {
   depth?: boolean;
   /** 自動の配置で段を決める方法（あれば depth・種類の順位より優先する）。アクションの流れの図は継起の向きの最も長い道のりで決める。 */
   layer?: (list: readonly ModelNode[], edges: readonly ModelEdge[]) => Map<string, number>;
+  /**
+   * 「図を開く」の一覧に出さない（ツリーの「開く」と保存された図からだけ開く）。組み込みのビューの数は要求 F-VIEW-1 で決まるので、
+   * それを変えずに足した図に付ける。
+   */
+  hidden?: boolean;
 }
 
 export interface PackageFrame {
@@ -39,6 +45,8 @@ export interface ViewContent {
   packages?: PackageFrame[];
   ctx?: ModelNode;
   seq?: boolean;
+  /** 状態遷移の図で、中の要素を破線で区切った領域に描く並行の状態のキー（状態定義そのものが並行なら ""、8.2.3.18）。 */
+  regions?: string[];
 }
 
 export const VIEWS: ViewDef[] = [
@@ -49,6 +57,8 @@ export const VIEWS: ViewDef[] = [
   { id: "behavior", label: "振る舞い", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },
   { id: "seq", label: "シーケンス" },
   { id: "afv", label: "アクションの流れ", layer: flowLayers },
+  // 状態遷移の図（StateTransitionView、8.2.3.18）。組み込みのビューの一覧（F-VIEW-1）には出さない
+  { id: "stm", label: "状態の遷移", hidden: true },
   { id: "all", label: "すべて", kinds: null, edges: null },
 ];
 
@@ -86,7 +96,7 @@ export const viewDef = (id: string): ViewDef => VIEWS.find((x) => x.id === id) ?
  */
 export const curView = (): ViewDef => viewDef(S.view);
 /** テキストの view の描き方を、それに当たる自動の図で描く（ADR-0005：標準の図の描き方は Modelith の既定で補う）。 */
-const BASE_VIEW: Record<ViewKind, string> = { general: "all", interconnection: "ibd", stateTransition: "behavior", sequence: "seq", actionFlow: "afv" };
+const BASE_VIEW: Record<ViewKind, string> = { general: "all", interconnection: "ibd", stateTransition: "stm", sequence: "seq", actionFlow: "afv" };
 /**
  * テキストの view の描き方（図の種類）を、それに当たる自動の図の ID にする。
  *
@@ -96,6 +106,7 @@ const BASE_VIEW: Record<ViewKind, string> = { general: "all", interconnection: "
  * baseViewOf({ kind: "interconnection", … })  // → "ibd"
  * baseViewOf({ kind: "general", … })          // → "all"
  * baseViewOf({ kind: "actionFlow", … })       // → "afv"
+ * baseViewOf({ kind: "stateTransition", … })  // → "stm"
  */
 export const baseViewOf = (mv: ModelView): string => BASE_VIEW[mv.kind];
 
@@ -112,8 +123,8 @@ export const baseViewOf = (mv: ModelView): string => BASE_VIEW[mv.kind];
 export const modelView = (): ModelView | null => (S.modelView ? (S.M.views.find((v) => v.name === S.modelView) ?? null) : null);
 
 /**
- * 配置情報のキー。内部ブロック図・アクションの流れの図は対象ごとに分ける。
- * テキストの view は view ごとに分ける（内部ブロック図・シーケンス図・アクションの流れの図は、対象ごとの配置を自動の図と共有する）。
+ * 配置情報のキー。内部ブロック図・アクションの流れの図・状態遷移の図は対象ごとに分ける。
+ * テキストの view は view ごとに分ける（内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は、対象ごとの配置を自動の図と共有する）。
  *
  * @returns 表示中のタブの配置のキー
  * @example
@@ -125,9 +136,19 @@ export const modelView = (): ModelView | null => (S.modelView ? (S.M.views.find(
  * VK() // → "structure"
  * // S.view が "afv"、S.flowCtx が "Control"
  * VK() // → "afv:Control"
+ * // S.view が "stm"、S.stateCtx が "KettleStates"
+ * VK() // → "stm:KettleStates"
  */
 export const VK = (): string =>
-  S.view === "ibd" ? "ibd:" + S.ibdCtx : S.view === "afv" ? "afv:" + S.flowCtx : S.modelView && S.view !== "seq" ? "view:" + S.modelView : S.view;
+  S.view === "ibd"
+    ? "ibd:" + S.ibdCtx
+    : S.view === "afv"
+      ? "afv:" + S.flowCtx
+      : S.view === "stm"
+        ? "stm:" + S.stateCtx
+        : S.modelView && S.view !== "seq"
+          ? "view:" + S.modelView
+          : S.view;
 /**
  * 現在のビューの配置を返す。無ければ空の配置を作って S.layout に加える。
  *
@@ -293,6 +314,25 @@ function flowContent(M: Model): ViewContent {
 }
 
 /**
+ * 状態遷移の図の内容を作る。対象（S.stateCtx）の状態遷移の図（`stateContentOf`）に、対象の枠を付ける（8.2.3.18）。
+ *
+ * @param M モデル
+ * @returns 要素・線・並行の領域・対象の枠。対象が無ければ空で、作り方の案内（empty）を付ける
+ * @example
+ * // S.stateCtx が "KettleStates"。KettleStates に entry; then idle; state idle; がある
+ * stateContent(M) // → { nodes: [s:#start, s:idle], edges: [{ id: "transition|s:#start|s:idle|#1", … }], regions: [], frame: { kind: "state def", title: "KettleStates" }, ctx }
+ * // S.stateCtx が null
+ * stateContent(M) // → { nodes: [], edges: [], empty: "状態定義がまだありません。…" }
+ */
+function stateContent(M: Model): ViewContent {
+  const ctx = stateContexts(M).find((n) => n.key === S.stateCtx);
+  if (!ctx) return { nodes: [], edges: [], empty: "状態定義がまだありません。「振る舞い」の図のパレットの「状態定義」から作れます。" };
+  const c = stateContentOf(M, ctx);
+  if (!c.nodes.length) return { ...c, empty: `「${ctx.name}」には、まだ状態がありません。テキストに state や遷移（transition）を書くと、ここに図が出ます。`, ctx };
+  return { ...c, frame: { kind: "state def", title: ctx.name }, ctx };
+}
+
+/**
  * view の expose の対象（またはその型）が ctxs のどれかなら、それを返す。
  *
  * @param mv テキストに書かれた view
@@ -345,7 +385,7 @@ function packageFrames(mv: ModelView, shown: Set<string>): PackageFrame[] {
 
 /**
  * テキストに書かれた view の中身（expose・filter で決まる要素と、その間の関係、F-VIEW-7）を作る。一般の図（general）には、要素を注釈するメモも足す。
- * 内部ブロック図・シーケンス図・アクションの流れの図の view では、expose の対象を S.ibdCtx・S.seqCtx・S.flowCtx に書き込んでから作る。
+ * 内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図の view では、expose の対象を S.ibdCtx・S.seqCtx・S.flowCtx・S.stateCtx に書き込んでから作る。
  *
  * @param M モデル
  * @param mv 表示する view。テキストから消えていれば null
@@ -364,6 +404,10 @@ function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
   if (mv.kind === "actionFlow") {
     S.flowCtx = exposedContext(mv, flowContexts(M))?.key ?? null;
     return S.flowCtx ? flowContent(M) : { nodes: [], edges: [], empty: `図「${mv.name}」に、アクション定義が含まれていません。` };
+  }
+  if (mv.kind === "stateTransition") {
+    S.stateCtx = exposedContext(mv, stateContexts(M))?.key ?? null;
+    return S.stateCtx ? stateContent(M) : { nodes: [], edges: [], empty: `図「${mv.name}」に、状態定義が含まれていません。` };
   }
   if (mv.kind === "sequence") {
     S.seqCtx = exposedContext(mv, seqContexts(M))?.key ?? null;
@@ -398,7 +442,7 @@ let cache: { M: Model | null; k: string | null; v: ViewContent | null } = { M: n
 
 /**
  * ビューに表示する要素と関係を返す（モデルと表示条件が同じ間はキャッシュする）。
- * 自動の内部ブロック図・シーケンス図・アクションの流れの図で対象が無効なら、既定の対象を S.ibdCtx・S.seqCtx・S.flowCtx に選び直す。
+ * 自動の内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図で対象が無効なら、既定の対象を S.ibdCtx・S.seqCtx・S.flowCtx・S.stateCtx に選び直す。
  *
  * @param M モデル
  * @param v ビューの定義
@@ -421,11 +465,14 @@ export function viewContent(M: Model, v: ViewDef): ViewContent {
   if (v.id === "afv" && !S.modelView) {
     if (!flowContexts(M).some((n) => n.key === S.flowCtx)) S.flowCtx = defaultFlowContext(M)?.key ?? null;
   }
-  const k = [v.id, S.ibdCtx, S.seqCtx, S.flowCtx, S.phase, S.modelView].join("|");
+  if (v.id === "stm" && !S.modelView) {
+    if (!stateContexts(M).some((n) => n.key === S.stateCtx)) S.stateCtx = defaultStateContext(M)?.key ?? null;
+  }
+  const k = [v.id, S.ibdCtx, S.seqCtx, S.flowCtx, S.stateCtx, S.phase, S.modelView].join("|");
   if (cache.M === M && cache.k === k && cache.v) return cache.v;
   const r = S.modelView
     ? modelViewContent(M, modelView())
-    : v.id === "ibd" ? ibdContent(M) : v.id === "seq" ? seqContent(M) : v.id === "afv" ? flowContent(M) : generalNotes(M, v, phaseFilter(M, baseContent(M, v)));
+    : v.id === "ibd" ? ibdContent(M) : v.id === "seq" ? seqContent(M) : v.id === "afv" ? flowContent(M) : v.id === "stm" ? stateContent(M) : generalNotes(M, v, phaseFilter(M, baseContent(M, v)));
   cache = { M, k, v: r };
   return r;
 }
@@ -441,7 +488,7 @@ export function viewContent(M: Model, v: ViewDef): ViewContent {
 export const CC = (): ViewContent => viewContent(S.M, curView());
 
 /**
- * キーから要素を探す（`u:`・`l:`・`j:`・`a:`・`note:` は現在のビューの部品・ライフライン・n 項の接続の点・アクションの流れの要素・メモ）。
+ * キーから要素を探す（`u:`・`l:`・`j:`・`a:`・`s:`・`note:` は現在のビューの部品・ライフライン・n 項の接続の点・アクションの流れの要素・状態・メモ）。
  *
  * @param k 要素のキー
  * @returns 見つかった要素。k が空か、見つからなければ null
@@ -454,7 +501,7 @@ export const CC = (): ViewContent => viewContent(S.M, curView());
  */
 export function nodeByKey(k: string | null | undefined): ModelNode | null {
   if (!k) return null;
-  if (/^(?:[ulja]|note):/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
+  if (/^(?:[uljas]|note):/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
   return S.M.nodes.find((n) => n.key === k) ?? null;
 }
 
