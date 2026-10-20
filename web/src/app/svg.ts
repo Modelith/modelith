@@ -70,11 +70,14 @@ function portGlyph(cx: number, cy: number, nx: number, ny: number, dir: string, 
 
 /** 破線で描く線の種類。 */
 const DASHED_EDGES = ["satisfy", "verify", "frame", "defined", "derive", "dependency", "allocate"];
+/** 矢印を付けない線の種類（結び付けは向きの無い実線、8.2.3.13 の binding-connection）。 */
+const UNDIRECTED_EDGES = ["bind"];
 /** 終わりの端の矢印（マーカーの ID）。無い種類は開いた矢印（mOpen）。特殊化・部分集合は白抜きの三角、再定義は三角と縦棒、参照は三角と 2 つの点（8.2.3）。 */
 const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri", subset: "mTri", redefine: "mRedef", reference: "mRef" };
 
 /**
- * 線の種類から、線の破線と矢印の属性を決める（8.2.3 の記法）。部品として持つ線は始まりの端にひし形、ほかは終わりの端に矢印を付ける。
+ * 線の種類から、線の破線と矢印の属性を決める（8.2.3 の記法）。部品として持つ線は始まりの端にひし形、結び付けは矢印なし、
+ * ほかは終わりの端に矢印を付ける。
  *
  * @param kind 線の種類（`comp`・`satisfy`・`specialize` など）
  * @returns path 要素に足す属性の文字列（先頭に空白を含む）
@@ -82,14 +85,16 @@ const END_MARKER: Record<string, string> = { flow: "mBlock", specialize: "mTri",
  * edgeStroke("specialize") // → ' marker-end="url(#mTri)"'（実線・白抜きの三角）
  * edgeStroke("satisfy")    // → ' stroke-dasharray="6 4" marker-end="url(#mOpen)"'
  * edgeStroke("comp")       // → ' marker-start="url(#mDiamond)"'
+ * edgeStroke("bind")       // → ""（実線・矢印なし）
  */
 export function edgeStroke(kind: string): string {
   const dash = DASHED_EDGES.includes(kind) ? ' stroke-dasharray="6 4"' : "";
   if (kind === "comp") return `${dash} marker-start="url(#mDiamond)"`;
+  if (UNDIRECTED_EDGES.includes(kind)) return dash;
   return `${dash} marker-end="url(#${END_MARKER[kind] ?? "mOpen"})"`;
 }
 
-const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req" };
+const EDGE_COLOR: Record<string, string> = { satisfy: "k-part", verify: "k-ver", frame: "k-concern", flow: "k-con", derive: "k-req", bind: "k-con" };
 
 /**
  * 図に出した package の枠の位置を求める（F-VIEW-9）。外側の枠から順に並べ、内側の枠が上に重なるようにする。

@@ -8,7 +8,7 @@ const KIND_LABEL: Record<string, string> = {
   "calc def": "計算定義", calc: "計算", "state def": "状態定義", state: "状態", "action def": "アクション定義", action: "アクション",
   "exhibit state": "状態", "perform action": "アクション",
   "occurrence def": "シナリオ", occurrence: "出来事", "interface def": "インタフェース定義", "connection def": "接続定義",
-  "allocation def": "割り当て定義", allocation: "割り当て",
+  "allocation def": "割り当て定義", allocation: "割り当て", connection: "接続", binding: "結び付け",
   "use case def": "ユースケース定義", "enum def": "列挙定義", "metadata def": "メタデータ定義", "view def": "図の定義", view: "保存された図",
   package: "パッケージ",
   // alpha.7 で読むようにした種類（ツリーとツールチップに出る）

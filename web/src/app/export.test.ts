@@ -18,6 +18,13 @@ describe("drawioEdgeStyle（F-EXP-2）", () => {
     expect(flow).toBe("endArrow=block;endFill=1;strokeWidth=2;");
   });
 
+  it("結び付けは矢印の無い実線にする", () => {
+    // Act
+    const style = drawioEdgeStyle("bind");
+    // Assert
+    expect(style).toBe("endArrow=none;");
+  });
+
   it.each([["derive"], ["allocate"]])("ほかの関係（%s）は破線と開いた矢印にする", (kind) => {
     // Act
     const style = drawioEdgeStyle(kind);

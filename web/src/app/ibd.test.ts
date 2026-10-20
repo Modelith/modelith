@@ -42,6 +42,18 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
     expect(text.slice(edges[0]?.src.start, edges[0]?.src.end)).toBe("flow f : FD from a.o to b.i { }");
   });
 
+  it("結び付けは、ラベル = の bind の線にする（8.2.3.13 の binding-connection）", () => {
+    // Arrange
+    const { M, c } = setup("package P { part def E { port o; } part def C { part a : E; part b : E; bind a.o = b.o; binding bb bind a = b; } }", "C");
+    // Act
+    const { edges } = ibdContentOf(M, c);
+    // Assert
+    expect(edges.map((e) => [e.id, e.kind, e.label, e.fromPort])).toEqual([
+      ["bind|u:a|u:b|=#1", "bind", "=", "port:o"],
+      ["bind|u:a|u:b|=#2", "bind", "=", undefined],
+    ]);
+  });
+
   it("端が図の部品に当たらない線は描かない（異常系）", () => {
     // Arrange
     const { M, c } = setup("package P { part def E; part def C { part a : E; flow from a to nope; } }", "C");
@@ -53,7 +65,7 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
 
   it("線の ID で、Rust のコアが同じ線を消せる（結合）", () => {
     // Arrange
-    const text = "package P { part def E { port o; port i; } flow def FD; part def C { part a : E; part b : E; flow from a.o to b.i; connect a.o to b.i; flow f : FD from a.o to b.i; } }";
+    const text = "package P { part def E { port o; port i; } flow def FD; part def C { part a : E; part b : E; flow from a.o to b.i; connect a.o to b.i; flow f : FD from a.o to b.i; bind a.o = b.i; } }";
     const { M, c } = setup(text, "C");
     // Act
     const results = ibdContentOf(M, c).edges.map((e) => edit(text, { op: "deleteEdge", id: e.id, ctx: "C" }));

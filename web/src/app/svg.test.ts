@@ -43,6 +43,13 @@ describe("edgeStroke（8.2.3 の線の記法）", () => {
     expect(attrs).toBe(' marker-start="url(#mDiamond)"');
   });
 
+  it("結び付けは、矢印の無い実線にする（8.2.3.13 の binding-connection）", () => {
+    // Act
+    const attrs = edgeStroke("bind");
+    // Assert
+    expect(attrs).toBe("");
+  });
+
   it("知らない種類は、開いた矢印にする（境界）", () => {
     // Act
     const attrs = edgeStroke("bogus");

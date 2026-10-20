@@ -113,7 +113,11 @@ export type Rel =
   /** 名前付きのフロー（`flow f : FD from a to b;`、8.2.2.16）は、名前・型・使用を持つ。Rust のコアだけが作る。 */
   | (RelBase & { rel: "flow"; item: string; a: string; b: string; name?: string; type?: string; usage?: Entry })
   | (RelBase & { rel: "connect"; a: string; b: string; item: string; usage: Entry })
-  | (RelBase & { rel: "transition"; from: string; ev: string; to: string });
+  | (RelBase & { rel: "transition"; from: string; ev: string; to: string })
+  /** `bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "bind"; a: string; b: string; usage: Entry })
+  /** `allocate x to y;`（AllocationUsage、8.2.2.15）。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "allocate"; a: string; b: string; usage: Entry });
 
 export type FlowRel = Extract<Rel, { rel: "flow" | "connect" }>;
 export type MessageRel = Extract<Rel, { rel: "message" }>;
@@ -176,11 +180,11 @@ export interface ModelNode {
 
 /**
  * 線の種類。`specialize`・`subset`・`redefine`・`reference`・`dependency`・`allocate` は特殊化・部分集合・再定義・参照・依存・
- * 割り当て（8.2.3）で、Rust のコアだけが作る。
+ * 割り当て（8.2.3）で、Rust のコアだけが作る。`bind` は内部ブロック図の結び付け（8.2.3.13 の binding-connection）。
  */
 export type EdgeKind =
   | "defined" | "comp" | "satisfy" | "verify" | "frame" | "flow" | "derive" | "message"
-  | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate";
+  | "specialize" | "subset" | "redefine" | "reference" | "dependency" | "allocate" | "bind";
 
 /** 図に投影する関係。 */
 export interface ModelEdge {

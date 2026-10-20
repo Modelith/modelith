@@ -33,9 +33,11 @@ const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
  * drawioEdgeStyle("comp")       // → "startArrow=diamondThin;startFill=1;endArrow=none;"
  * drawioEdgeStyle("specialize") // → "endArrow=block;endFill=0;"
  * drawioEdgeStyle("satisfy")    // → "dashed=1;endArrow=open;"
+ * drawioEdgeStyle("bind")       // → "endArrow=none;"（結び付けは矢印の無い実線）
  */
 export function drawioEdgeStyle(kind: string): string {
   if (kind === "comp") return "startArrow=diamondThin;startFill=1;endArrow=none;";
+  if (kind === "bind") return "endArrow=none;";
   if (kind === "flow") return "endArrow=block;endFill=1;strokeWidth=2;";
   if (["specialize", "subset", "redefine", "reference"].includes(kind)) return "endArrow=block;endFill=0;";
   return "dashed=1;endArrow=open;";

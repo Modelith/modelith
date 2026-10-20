@@ -27,9 +27,10 @@ export function flowLabel(name: string, type: string, item: string): string {
 }
 
 /**
- * 内部ブロック図の内容を作る。対象の部品を `u:部品名` のノードにし、対象の中の flow・connect を、
- * 部品の間の線（ポートが分かれば接続点つき）にする。名前付きのフローのラベルは名前と型（`flowLabel`）。
- * 線は、接続と名前付きのフローなら使用（本体を含む）、名前の無いフローなら文の範囲を指す。
+ * 内部ブロック図の内容を作る。対象の部品を `u:部品名` のノードにし、対象の中の flow・connect・bind を、
+ * 部品の間の線（ポートが分かれば接続点つき）にする。名前付きのフローのラベルは名前と型（`flowLabel`）、
+ * 結び付けは種類 `bind` でラベル `=`（8.2.3.13 の binding-connection）。
+ * 線は、接続・結び付け・名前付きのフローなら使用（本体を含む）、名前の無いフローなら文の範囲を指す。
  *
  * @param M モデル
  * @param ctx 図の対象（部品を持つ part def のノード）
@@ -37,6 +38,8 @@ export function flowLabel(name: string, type: string, item: string): string {
  * @example
  * // Vehicle が部品 engine・wheel を持ち、engine.out から wheel.in へ flow がある
  * ibdContentOf(M, Vehicle) // → { nodes: [u:engine, u:wheel], edges: [{ id: "flow|u:engine|u:wheel|#1", kind: "flow", … }] }
+ * // さらに bind engine.rpm = wheel.rpm; がある
+ * ibdContentOf(M, Vehicle).edges[1].id // → "bind|u:engine|u:wheel|=#1"
  * // 部品を持たない part def
  * ibdContentOf(M, Engine)  // → { nodes: [], edges: [] }
  */
@@ -55,18 +58,19 @@ export function ibdContentOf(M: Model, ctx: ModelNode): IbdContent {
   const edges: ModelEdge[] = [];
   const seen = new Map<string, number>();
   for (const r of M.rels) {
-    if ((r.rel !== "flow" && r.rel !== "connect") || r.pe !== ctx.entry) continue;
+    if ((r.rel !== "flow" && r.rel !== "connect" && r.rel !== "bind") || r.pe !== ctx.entry) continue;
     const pa = r.a.split(".");
     const pb = r.b.split(".");
     const A = byN.get(pa[0] ?? "");
     const B = byN.get(pb[0] ?? "");
     if (!A || !B) continue;
-    const label = r.rel === "flow" ? flowLabel(r.name ?? "", r.type ?? "", r.item) : r.item;
-    const base = `flow|${A.key}|${B.key}|${label}`;
+    const kind = r.rel === "bind" ? "bind" : "flow";
+    const label = r.rel === "flow" ? flowLabel(r.name ?? "", r.type ?? "", r.item) : r.rel === "bind" ? "=" : r.item;
+    const base = `${kind}|${A.key}|${B.key}|${label}`;
     const k = (seen.get(base) ?? 0) + 1;
     seen.set(base, k);
     const e: ModelEdge = {
-      id: base + "#" + k, kind: "flow", from: A.key, to: B.key, label, rel: r,
+      id: base + "#" + k, kind, from: A.key, to: B.key, label, rel: r,
       src: r.usage ? { start: r.usage.start, end: r.usage.end } : { start: r.start, end: r.end + 1 },
     };
     if (pa[1] && A.ports.some((p) => p.name === pa[1])) e.fromPort = "port:" + pa[1];
