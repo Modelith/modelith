@@ -696,6 +696,7 @@ impl<'a> Builder<'a> {
             rel: None,
             from_port: None,
             to_port: None,
+            end_label: None,
         });
         self.model.edges.len() - 1
     }
@@ -788,7 +789,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// 型付けの線（defined）と、部品として持つ線（comp）。見つからない型は問題にする。
+    /// 型付けの線（defined）と、部品として持つ線（comp。部品の側の端に多重度と飾りを書く）。見つからない型は問題にする。
     /// 標準ライブラリの型・`subject`・標準ビュー定義を型にした view は、型が見つからなくても問題にしない（モデルの `edges`・`problems` を書き換える）。
     fn usages(&mut self) {
         let entries = self.entries;
@@ -825,7 +826,8 @@ impl<'a> Builder<'a> {
                 (COMP_KINDS.contains(&u.kind.as_str()), pn, tn)
                 && u.pe != Some(t)
             {
-                self.add_edge("comp", pn, tn, u.name.clone(), src);
+                let ed = self.add_edge("comp", pn, tn, u.name.clone(), src);
+                self.model.edges[ed].end_label = end_label(u);
             }
         }
     }
@@ -1198,6 +1200,43 @@ impl<'a> Builder<'a> {
             self.problem(pos, msg, Some("gap"));
         }
     }
+}
+
+/// 部品として持つ線の、部品の側の端に書く文字（8.2.3 の multiplicity と c-adornment）。
+/// 多重度の範囲（`[4]`）、`ordered`・`nonunique`、部分集合・再定義・参照の相手（`subsets a` など）を、この順に空白でつなぐ。
+///
+/// # 引数
+///
+/// - `e`：部品として持つ使用の宣言
+///
+/// # 戻り値
+///
+/// 端に書く文字。書くことが無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// end_label("part w : W[4];")                 → Some("[4]")
+/// end_label("part w : W[0..*] ordered :>> v;") → Some("[0..*] ordered redefines v")
+/// end_label("part w : W;")                    → None
+/// ```
+fn end_label(e: &Entry) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(m) = &e.multiplicity {
+        if !m.range.is_empty() {
+            parts.push(format!("[{}]", m.range));
+        }
+        if m.ordered {
+            parts.push("ordered".to_owned());
+        }
+        if m.nonunique {
+            parts.push("nonunique".to_owned());
+        }
+    }
+    for s in &e.specs {
+        parts.push(format!("{} {}", s.op, s.target));
+    }
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
 /// 特殊化の種類（`Spec.op`）から、線の種類を決める。

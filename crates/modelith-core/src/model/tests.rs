@@ -832,3 +832,26 @@ fn feature_relations_inside_a_definition_are_not_lines_nor_problems() {
     assert_eq!(edge_list(&m), ["specialize|B|A"]);
     assert!(m.problems.is_empty(), "{:?}", m.problems);
 }
+
+#[test]
+fn composite_line_shows_multiplicity_and_adornments_at_the_part_end() {
+    // Arrange（8.2.3 の composite-feature-membership の multiplicity・c-adornment）
+    let text = "package P { part def W; part def V { part w : W[4]; part s : W[0..*] ordered nonunique :>> w; part t : W; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（ラベルは名前のまま。線の ID も変わらない）
+    let ends: Vec<(&str, Option<&str>)> = m
+        .edges
+        .iter()
+        .map(|e| (e.label.as_str(), e.end_label.as_deref()))
+        .collect();
+    assert_eq!(
+        ends,
+        [
+            ("w", Some("[4]")),
+            ("s", Some("[0..*] ordered nonunique redefines w")),
+            ("t", None)
+        ]
+    );
+    assert_eq!(m.edges[0].id, "comp|V|W|w#1");
+}
