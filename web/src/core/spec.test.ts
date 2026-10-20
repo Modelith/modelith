@@ -913,6 +913,18 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
 
+      it("succession flow は順序付きの流れとして記録し、名前付きのものは宣言にする（SuccessionFlowUsage、8.2.2.16）", () => {
+        // Arrange
+        const text = "package P { item def W; action def A { action a; action b; succession flow f of W from a to b; } }";
+        // Act
+        const P = parse(text);
+        const flows = P.rels.flatMap((r) => (r.rel === "successionFlow" ? [[r.item, r.a, r.b, r.usage?.name]] : []));
+        // Assert
+        expect(flows).toEqual([["W", "a", "b", "f"]]);
+        expect(entry(text, "f")?.kind).toBe("succession flow");
+        expect(problems(text)).toEqual([]);
+      });
+
       it("assign の := は、持ち主の式にしない（以前は持ち主の「式」に入っていた）", () => {
         // Arrange
         const text = "package P { action def A { assign x := 1; } }";

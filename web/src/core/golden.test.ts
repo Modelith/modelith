@@ -52,6 +52,7 @@ const RUST_EXTRA_ERRORS: Record<string, { reason: string; pos: (text: string) =>
  */
 const RUST_EXTRA_RELS: Record<string, string> = {
   succession: "継起（first … then・then b;・then action b;、8.2.2.14・8.2.2.17）を関係として記録する（モックは読み飛ばす）",
+  successionFlow: "順序付きの流れ（succession flow、8.2.2.16）を関係として記録する（モックは読み飛ばす）",
 };
 
 /**

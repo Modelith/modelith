@@ -1029,8 +1029,8 @@ impl<'a> Builder<'a> {
                         self.add_edge("allocate", a, b, dependency_label(&u.name, "allocate"), s);
                     }
                 }
-                // 継起は一般の図の線にしない（アクションの流れの図に描く）
-                RelKind::Succession { .. } => {}
+                // 継起と順序付きの流れは一般の図の線にしない（アクションの流れの図に描く）
+                RelKind::Succession { .. } | RelKind::SuccessionFlow { .. } => {}
                 RelKind::Transition { from, ev, to } => {
                     if let Some(a) = self.node_ancestor(pe) {
                         let ev = if ev.is_empty() {

@@ -745,7 +745,11 @@ impl Ctx {
             return None;
         }
         // アクションの節（`fork f;`・`then send x to y;`・`accept e : E;` など）は、書いた語を種類にした使用（8.2.2.17）
-        let node = action_node_kind(n);
+        let node = action_node_kind(n).or_else(|| {
+            // 名前付きの `succession flow f …;` は、名前付きのフローと同じく宣言にする（8.2.2.16）
+            (n.kind() == SUCCESSION_FLOW_USAGE && child(n, NAME).is_some())
+                .then_some("succession flow")
+        });
         let h = match node {
             Some(_) => h.strip_prefix("then ").unwrap_or(h),
             None if is_skipped(h) => return None,
@@ -825,9 +829,13 @@ impl Ctx {
                     meta.entry(md, OrderedMap::default);
                 }
             }
-            let flow = (n.kind() == FLOW_USAGE)
-                .then(|| flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx)))
-                .flatten();
+            let flow = match n.kind() {
+                FLOW_USAGE => flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx)),
+                SUCCESSION_FLOW_USAGE => {
+                    succession_flow_ends(n, e.name.clone(), e.ty.clone(), Some(idx))
+                }
+                _ => None,
+            };
             if let Some(kind) =
                 flow.or_else(|| connector_relation(n.kind(), connector_ends(n), &e.ty, idx))
             {
@@ -2257,9 +2265,9 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
         .collect()
 }
 
-/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・遷移）。依存は `dependencies` で読む。
+/// 関係を表す文（メッセージ・満たす・検証する・扱う・流れ・順序付きの流れ・遷移）。依存は `dependencies` で読む。
 ///
-/// 流れは名前の無いものだけを関係にする。
+/// 流れと順序付きの流れは、名前の無いものだけを関係にする（名前付きのものは宣言を作るときに関係にする）。
 ///
 /// # 引数
 ///
@@ -2279,6 +2287,7 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
 /// relation("verify R;", "verify R")              → Some(Verify { req: "R" })
 /// relation("transition t first idle accept Go then idle;", …)
 ///   → Some(Transition { from: "idle", ev: "Go", to: "idle" })
+/// relation("succession flow of W from a.o to b.i;", …) → Some(SuccessionFlow { item: "W", a: "a.o", b: "b.i", … })
 /// relation("part a;", "part a")                  → None
 /// ```
 fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
@@ -2322,6 +2331,9 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
             })
         }
         FLOW_USAGE if child(n, NAME).is_none() => flow_ends(n, String::new(), String::new(), None),
+        SUCCESSION_FLOW_USAGE if child(n, NAME).is_none() => {
+            succession_flow_ends(n, String::new(), String::new(), None)
+        }
         TRANSITION_USAGE => Some(RelKind::Transition {
             from: ref_after(n, "first")?,
             ev: ref_after(n, "accept").unwrap_or_default(),
@@ -2358,6 +2370,44 @@ fn flow_ends(n: &SyntaxNode, name: String, ty: String, usage: Option<usize>) -> 
             .unwrap_or_default(),
         a: ref_after(n, "from")?,
         b: ref_after(n, "to")?,
+        name,
+        ty,
+        usage,
+    })
+}
+
+/// 順序付きの流れ（`succession flow of I from a to b`、SuccessionFlowUsage、8.2.2.16）の関係。
+///
+/// # 引数
+///
+/// - `n`：`SUCCESSION_FLOW_USAGE` の節
+/// - `name`：名前（名前の無いものは空）
+/// - `ty`：型の名前（無ければ空）
+/// - `usage`：名前付きのものの宣言の番号（名前の無いものは `None`）
+///
+/// # 戻り値
+///
+/// 順序付きの流れの関係（アイテムは `of` の後の型の最後の名前）。`from`・`to` の後の参照が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// succession_flow_ends("succession flow of W from a.o to b.i;", "", "", None) → Some(SuccessionFlow { item: "W", a: "a.o", b: "b.i", … })
+/// succession_flow_ends("succession flow f;", "f", "", Some(3))               → None
+/// ```
+fn succession_flow_ends(
+    n: &SyntaxNode,
+    name: String,
+    ty: String,
+    usage: Option<usize>,
+) -> Option<RelKind> {
+    let RelKind::Flow { item, a, b, .. } = flow_ends(n, String::new(), String::new(), None)? else {
+        return None;
+    };
+    Some(RelKind::SuccessionFlow {
+        item,
+        a,
+        b,
         name,
         ty,
         usage,

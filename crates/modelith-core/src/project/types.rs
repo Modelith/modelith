@@ -315,6 +315,22 @@ pub enum RelKind {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         name: String,
     },
+    /// 順序付きの流れ `succession flow f of I from a.x to b.y;`（SuccessionFlowUsage、8.2.2.16）。a が終わってから、b に I が流れる。
+    #[serde(rename = "successionFlow")]
+    SuccessionFlow {
+        item: String,
+        a: String,
+        b: String,
+        /// 名前（無ければ空）。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        name: String,
+        /// 型（`: FD` の `FD`。無ければ空）。
+        #[serde(default, rename = "type", skip_serializing_if = "String::is_empty")]
+        ty: String,
+        /// 名前付きのものの使用（`ParseResult.entries` の番号）。名前の無いものは宣言にしないので `None`。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<usize>,
+    },
     /// `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）。両端は等しい値を持つ。
     Bind {
         a: String,

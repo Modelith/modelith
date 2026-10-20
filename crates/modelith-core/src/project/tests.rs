@@ -1401,3 +1401,35 @@ fn named_succession_keeps_its_name() {
     assert_eq!(names, ["s"]);
     assert!(r.entries.iter().all(|e| e.name != "s"));
 }
+
+#[test]
+fn succession_flows_are_relations_and_named_ones_are_entries() {
+    // Arrange（同値分割：名前の無い・名前付きの succession flow、8.2.2.16）
+    let text = "action def A { action a; action b; succession flow of W from a.o to b.i; succession flow f : FD from a to b; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let f = r.entries.iter().position(|e| e.name == "f");
+    let flows: Vec<(&str, &str, &str, &str, Option<usize>)> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::SuccessionFlow {
+                item,
+                a,
+                b,
+                name,
+                usage,
+                ..
+            } => Some((item.as_str(), a.as_str(), b.as_str(), name.as_str(), *usage)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        flows,
+        [("W", "a.o", "b.i", "", None), ("", "a", "b", "f", f)]
+    );
+    assert_eq!(entry(&r, "f").kind, "succession flow");
+    assert_eq!(entry(&r, "f").ty, "FD");
+    assert!(r.unsupported.is_empty());
+}

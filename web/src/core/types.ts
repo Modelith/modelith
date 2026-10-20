@@ -146,7 +146,9 @@ export type Rel =
    * 継起（`first a then b;`・`then b;`・`if g then b;`・`else b;`、8.2.2.14・8.2.2.17）。`a` が終わってから `b` を始める。
    * 直前の要素から引く継起では、`a` はその要素の名前（名前の無い要素なら空）。`guard` は `if` の条件（`else` は "else"）。Rust のコアだけが作る。
    */
-  | (RelBase & { rel: "succession"; a: string; b: string; guard?: string; name?: string });
+  | (RelBase & { rel: "succession"; a: string; b: string; guard?: string; name?: string })
+  /** 順序付きの流れ（`succession flow of I from a.x to b.y;`、8.2.2.16）。Rust のコアだけが作る。 */
+  | (RelBase & { rel: "successionFlow"; item: string; a: string; b: string; name?: string; type?: string; usage?: Entry });
 
 export type FlowRel = Extract<Rel, { rel: "flow" | "connect" }>;
 export type MessageRel = Extract<Rel, { rel: "message" }>;
