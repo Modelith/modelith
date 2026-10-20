@@ -202,6 +202,53 @@ fn view_filter_with_a_value_comparison_is_reported_and_not_used() {
 }
 
 #[test]
+fn view_render_follows_renderings_to_a_standard_one() {
+    // Arrange（合成形・別に書いた rendering の参照・rendering から rendering への特殊化。8.2.2.26・9.2.19）
+    let text = "package P { part def A { part b; } rendering myTree :> asTreeDiagram; rendering deep :> myIbd; \
+                rendering myIbd redefines Views::asInterconnectionDiagram; \
+                view c : GeneralView { expose P::A; render rendering r :> asInterconnectionDiagram { } } \
+                view u : InterconnectionView { expose P::A; render myTree; } \
+                view d { expose P::A; render deep; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let kinds: Vec<(&str, &str)> = m.views.iter().map(|v| (v.name.as_str(), v.kind)).collect();
+    assert_eq!(
+        kinds,
+        [
+            ("c", "interconnection"),
+            ("u", "general"),
+            ("d", "interconnection")
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn view_render_that_reaches_no_standard_rendering_is_reported() {
+    // Arrange（異常系：型だけの合成形・循環する rendering）
+    let text = "package P { rendering def R; rendering x :> y; rendering y :> x; \
+                view a { render rendering r : R; } view b { render x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m
+        .problems
+        .iter()
+        .filter(|p| p.kind == Some("unsupported"))
+        .map(|p| p.msg.as_str())
+        .collect();
+    assert_eq!(
+        msgs,
+        [
+            "図「a」の表し方（r）はまだ扱えないため、図として描きます（render）",
+            "図「b」の表し方（x）はまだ扱えないため、図として描きます（render）",
+        ]
+    );
+    assert!(m.views.iter().all(|v| v.kind == "general"));
+}
+
+#[test]
 fn view_exposes_members_and_filters_by_metaclass() {
     // Arrange
     let text = "package P { part def A; part a : A; attribute def B; \

@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 use super::filters::filter_of;
 use super::{Builder, Frame, View};
+use crate::project::text::last_segment;
 use crate::project::{Entry, Expose};
 
 /// 標準ビュー定義（名前・短い名前）と、Modelith の描き方。None は専用の描き方が無い（ノードと線の図で代わりに描く）。
@@ -202,6 +203,47 @@ impl Builder<'_> {
             .or_else(|| self.alias_anywhere(qn, 0))
     }
 
+    /// 表し方の名前を、標準の表し方（`RENDERINGS`）までたどる。標準でなければ、その名前の `rendering`（合成形の
+    /// `render rendering r :> asTreeDiagram` や、別に書いた `rendering myTree :> asTreeDiagram;`）の特殊化・再定義・参照の相手をたどる
+    /// （ViewRenderingMember・RenderingUsage、8.2.2.26）。同じ名前を 2 度たどったら止める。
+    ///
+    /// # 引数
+    ///
+    /// - `name`：表し方の名前（修飾の無い名前）
+    ///
+    /// # 戻り値
+    ///
+    /// 行き着いた標準の表し方の描き方（図にできない表し方なら `Some(None)`）。標準の表し方に行き着かなければ None。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// standard_rendering("asTreeDiagram")     → Some(Some("general"))
+    /// standard_rendering("asElementTable")    → Some(None)
+    /// // "rendering myTree :> asInterconnectionDiagram;" のとき
+    /// standard_rendering("myTree")            → Some(Some("interconnection"))
+    /// // "rendering r : Foo;" のとき
+    /// standard_rendering("r")                 → None
+    /// ```
+    fn standard_rendering(&self, name: &str) -> Option<Option<&'static str>> {
+        let mut seen = HashSet::new();
+        let mut todo = vec![name.to_owned()];
+        while let Some(n) = todo.pop() {
+            if let Some((_, k)) = RENDERINGS.iter().find(|(r, _)| *r == n) {
+                return Some(*k);
+            }
+            if !seen.insert(n.clone()) {
+                continue;
+            }
+            let renderings = self.by_name.get(n.as_str()).into_iter().flatten();
+            for &i in renderings.filter(|&&i| self.entries[i].kind == "rendering") {
+                let specs = self.entries[i].specs.iter().rev();
+                todo.extend(specs.map(|s| last_segment(&s.path).to_owned()));
+            }
+        }
+        None
+    }
+
     /// 入れ子の中身すべて（書いた順）を `out` の後ろに足す。各中身のすぐ後にその中身が続く（深さ優先）。暫定コアの `descendants` と同じ。
     /// 宣言そのものは足さない。
     ///
@@ -341,11 +383,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
             b.problem(v.start, msg, Some("unsupported"));
         }
         if let Some(r) = &render {
-            match RENDERINGS
-                .iter()
-                .find(|(n, _)| n == r)
-                .and_then(|(_, k)| *k)
-            {
+            match b.standard_rendering(r).flatten() {
                 Some(k) => kind = Some(k),
                 None => {
                     let msg = format!(

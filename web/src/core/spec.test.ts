@@ -1056,6 +1056,38 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
       });
     });
 
+    describe("render の合成形と rendering の参照（ViewRenderingMember・ViewRenderingUsage・RenderingUsage、8.2.2.26・9.2.19）", () => {
+      it("render rendering r :> asInterconnectionDiagram { … } は、型より優先する（以前は黙って捨てていた）", () => {
+        // Arrange
+        const text = "package P { part def A { part b; } view v : GeneralView { expose P::A; render rendering r :> asInterconnectionDiagram { doc /* 内部 */ } } }";
+        // Act
+        const v = build(parse(text)).views.find((x) => x.name === "v");
+        // Assert
+        expect(v?.kind).toBe("interconnection");
+        expect(entry(text, "r")?.kind).toBe("rendering");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("標準の表し方を特殊化した rendering を参照する render も、標準の表し方で描く", () => {
+        // Arrange
+        const text = "package P { part def A { part b; } rendering myIbd :> Views::asInterconnectionDiagram; view v { expose P::A; render myIbd; } }";
+        // Act
+        const v = build(parse(text)).views.find((x) => x.name === "v");
+        // Assert
+        expect(v?.kind).toBe("interconnection");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("標準の表し方に行き着かない合成形は、知らせたうえで図として描く（異常系）", () => {
+        // Arrange
+        const text = "package P { rendering def R; view v { render rendering r : R; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["図「v」の表し方（r）はまだ扱えないため、図として描きます（render）"]);
+      });
+    });
+
     describe("シナリオの順序（SuccessionAsUsage 8.2.2.14、SequenceView 9.2.20.2.7）", () => {
       it("メッセージとイベントの間の順序は、相手を確かめ、見つからなければ知らせる（以前は確かめなかった）", () => {
         // Arrange
