@@ -1594,6 +1594,51 @@ fn succession_line_points_to_its_statement_or_then() {
 }
 
 #[test]
+fn flows_and_messages_without_from_are_lines_like_the_long_forms() {
+    // Arrange（FlowDeclaration・MessageDeclaration の 2 つ目の形 `a to b`、8.2.2.16）
+    let text = "package P { item def W; part def T { port o; } part def U { port i; } \
+        part def H { part t : T; part u : U; flow t.o to u.i; } \
+        action def A { action a; action b; succession flow a.d to b.d; } \
+        occurrence def S { part x; part y; message x to y; message of W y to x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        m.edges
+            .iter()
+            .filter(|e| e.kind == "flow")
+            .map(|e| format!("{}|{}|{}", e.from, e.to, &text[e.src.start..e.src.end]))
+            .collect::<Vec<_>>(),
+        ["T|U|flow t.o to u.i;"]
+    );
+    let af: Vec<(&str, &str)> = flow(&m, "A")
+        .edges
+        .iter()
+        .map(|e| (e.kind, &text[e.src.start..e.src.end]))
+        .collect();
+    assert_eq!(af, [("successionFlow", "succession flow a.d to b.d;")]);
+    let s = sequence_of(&m);
+    let msgs: Vec<String> = s
+        .messages
+        .iter()
+        .map(|x| format!("{}→{}", x.from, x.to))
+        .collect();
+    assert_eq!(msgs, ["l:x→l:y", "l:y→l:x"]);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn flow_without_from_to_a_missing_end_is_reported() {
+    // Arrange（異常系：from を省いた形の端が見つからない）
+    let text = "package P { part def S { part t; flow t to gone; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["線の接続先「gone」が見つかりません（flow）"]);
+}
+
+#[test]
 fn succession_flow_is_a_labelled_line() {
     // Arrange（SuccessionFlowUsage、8.2.3.17：名前の無いものはアイテム、名前付きは名前と型）
     let text = "package P { item def W; action def A { action a; action b; succession flow of W from a.o to b.i; \

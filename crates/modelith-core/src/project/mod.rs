@@ -2621,12 +2621,15 @@ fn connector_ends(n: &SyntaxNode) -> Vec<String> {
 fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
     let name = || child(n, NAME).map(|c| unquote(&compact(&c)).to_owned());
     match n.kind() {
-        MESSAGE_USAGE => Some(RelKind::Message {
-            name: name().unwrap_or_default(),
-            item: payload_type(n),
-            a: ref_after(n, "from")?,
-            b: ref_after(n, "to")?,
-        }),
+        MESSAGE_USAGE => {
+            let (a, b) = flow_end_refs(n)?;
+            Some(RelKind::Message {
+                name: name().unwrap_or_default(),
+                item: payload_type(n),
+                a,
+                b,
+            })
+        }
         // `satisfy R by X`・`satisfy R;`（持ち主が満たす）・`assert satisfy`・`not satisfy`・
         // `satisfy requirement r : R by X;`（宣言する形。満たすのは型の R）（8.2.2.21）
         SATISFY_REQUIREMENT_USAGE
@@ -2731,17 +2734,57 @@ fn declared_requirement(n: &SyntaxNode) -> String {
 /// ```text
 /// flow_ends("flow of Heat from h.o to w.i;", "", "", None) → Some(Flow { item: "Heat", a: "h.o", b: "w.i", … })
 /// flow_ends("flow f : FD from a to b;", "f", "FD", Some(3)) → Some(Flow { item: "", a: "a", b: "b", name: "f", ty: "FD", usage: Some(3) })
+/// flow_ends("flow h.o to w.i;", "", "", None)               → Some(Flow { item: "", a: "h.o", b: "w.i", … })   // from を省いた形
 /// flow_ends("flow f : FD;", "f", "FD", Some(3))             → None
 /// ```
 fn flow_ends(n: &SyntaxNode, name: String, ty: String, usage: Option<usize>) -> Option<RelKind> {
+    let (a, b) = flow_end_refs(n)?;
     Some(RelKind::Flow {
         item: payload_type(n),
-        a: ref_after(n, "from")?,
-        b: ref_after(n, "to")?,
+        a,
+        b,
         name,
         ty,
         usage,
     })
+}
+
+/// フロー・順序付きの流れ・メッセージの 2 つの端（FlowDeclaration・MessageDeclaration、8.2.2.16）。
+/// `from a to b` の形と、`from` を省いた `a to b` の形（FlowEndMember 'to' FlowEndMember・MessageEventMember 'to' MessageEventMember）を読む。
+///
+/// # 引数
+///
+/// - `n`：`FLOW_USAGE`・`SUCCESSION_FLOW_USAGE`・`MESSAGE_USAGE` の節
+///
+/// # 戻り値
+///
+/// （元の参照, 先の参照）。空白を除いて書いたとおり。`to` の前後の参照が無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// flow_end_refs("flow of W from h.o to w.i;") → Some(("h.o", "w.i"))
+/// flow_end_refs("flow h.o to w.i;")           → Some(("h.o", "w.i"))
+/// flow_end_refs("message a to b;")            → Some(("a", "b"))
+/// flow_end_refs("flow f : FD;")               → None
+/// ```
+fn flow_end_refs(n: &SyntaxNode) -> Option<(String, String)> {
+    let b = ref_after(n, "to")?;
+    if let Some(a) = ref_after(n, "from") {
+        return Some((a, b));
+    }
+    // `from` を省いた形：`to` の直前の参照が元
+    let mut before = None;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "to" => break,
+            rowan::NodeOrToken::Node(c) if matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) => {
+                before = Some(compact(&c));
+            }
+            _ => {}
+        }
+    }
+    Some((before?, b))
 }
 
 /// 順序付きの流れ（`succession flow of I from a to b`、SuccessionFlowUsage、8.2.2.16）の関係。

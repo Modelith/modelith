@@ -1348,5 +1348,36 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(M.nodes.find((n) => n.key === "H")?.ports.map((p) => [p.name, p.type, p.conj, p.dir])).toEqual([["y", "Pt", true, "out"]]);
       });
     });
+
+    describe("from を省いたフロー・順序付きの流れ・メッセージ（FlowDeclaration・MessageDeclaration の a to b の形、8.2.2.16）", () => {
+      it("flow t.o to u.i; は、flow from t.o to u.i; と同じ流れの線にする（以前は黙って捨てた）", () => {
+        // Arrange
+        const text = "package P { part def T { port o; } part def U { port i; } part def H { part t : T; part u : U; flow t.o to u.i; } }";
+        // Act
+        const es = edges(text).filter((e) => e.startsWith("flow|"));
+        // Assert
+        expect(es).toEqual(["flow|T|U"]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("succession flow a.d to b.d; は、アクティビティ図の順序付きの流れにする", () => {
+        // Arrange
+        const text = "package P { action def A { action a; action b; succession flow a.d to b.d; } }";
+        // Act
+        const af = build(parse(text)).actionFlows?.find((f) => f.key === "A");
+        // Assert
+        expect(af?.edges.map((e) => e.kind)).toEqual(["successionFlow"]);
+      });
+
+      it("message x to y; は、シーケンス図のメッセージにする", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part x; part y; message x to y; } }";
+        // Act
+        const sq = build(parse(text)).sequences?.find((s) => s.key === "S");
+        // Assert
+        expect(sq?.messages.map((m) => `${m.from}→${m.to}`)).toEqual(["l:x→l:y"]);
+        expect(problems(text)).toEqual([]);
+      });
+    });
   });
 }
