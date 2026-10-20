@@ -194,6 +194,9 @@ package ModelithRequirements {
         requirement def <'F-FILE-12'> CloudReq {
             doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
         }
+        requirement def <'F-FILE-13'> ResumeSessionReq {
+            doc /* 起動すると、前回の続き（開いていたフォルダとファイル、表示していたファイル、図のタブ）から始める。フォルダを読み直すのにブラウザの許可が要るときは、サンプルの代わりに「前回の続きを開く」を示し、1 回の操作で戻れる。設定で、起動時にサンプルを開くようにもできる */
+        }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
         }
@@ -330,6 +333,7 @@ package ModelithRequirements {
         #derivation dependency from FallbackReq to AnywhereNeed;
         #derivation dependency from UntitledDraftReq to SafetyNeed;
         #derivation dependency from CloudReq to FilesNeed;
+        #derivation dependency from ResumeSessionReq to FilesNeed;
         #derivation dependency from NoOpenFileReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
@@ -461,9 +465,11 @@ package ModelithRequirements {
         satisfy ConflictReq by Workspace;
         satisfy ExternalChangeReq by Workspace;
         satisfy RecentFolderReq by LocalFolderProvider;
+        satisfy ResumeSessionReq by LocalFolderProvider;
         satisfy FallbackReq by BrowserFileProvider;
         satisfy UntitledDraftReq by Workspace;
         satisfy CloudReq by CloudProvider;
+        satisfy ResumeSessionReq by Workspace;
         satisfy NoOpenFileReq by Workspace;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
