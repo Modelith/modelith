@@ -18,9 +18,9 @@ describe("drawioEdgeStyle（F-EXP-2）", () => {
     expect(flow).toBe("endArrow=block;endFill=1;strokeWidth=2;");
   });
 
-  it("ほかの関係は破線と開いた矢印にする", () => {
+  it.each([["derive"], ["allocate"]])("ほかの関係（%s）は破線と開いた矢印にする", (kind) => {
     // Act
-    const style = drawioEdgeStyle("derive");
+    const style = drawioEdgeStyle(kind);
     // Assert
     expect(style).toBe("dashed=1;endArrow=open;");
   });
