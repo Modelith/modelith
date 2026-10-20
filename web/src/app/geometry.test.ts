@@ -1,7 +1,7 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
-import type { Entry } from "../core";
-import { endLabelPos, featureText, packageRects, PKG_PAD, PKG_TAB, type Box, type RouteEnd } from "./geometry";
+import type { Entry, ModelEdge, ModelNode } from "../core";
+import { autoPlace, downward, endLabelPos, featureText, packageRects, PKG_PAD, PKG_TAB, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -107,5 +107,30 @@ describe("featureText（8.2.3 の usage-cp：区画の属性の行）", () => {
     const t = featureText(attr({ name: "n", type: "N", multiplicity: { range: "", ordered: false, nonunique: true } }));
     // Assert
     expect(t).toBe("n : N nonunique");
+  });
+});
+
+describe("downward・autoPlace（構造の図で、一般な側を上に置く）", () => {
+  const edge = (kind: ModelEdge["kind"], from: string, to: string): ModelEdge => ({ id: `${kind}|${from}|${to}`, kind, from, to, label: "", src: { start: 0, end: 0 } });
+
+  it("特殊化の線は一般な側（終わり）を上に、部品として持つ線は持ち主（始まり）を上にする", () => {
+    // Act
+    const [spec, comp] = [downward(edge("specialize", "B", "A")), downward(edge("comp", "V", "W"))];
+    // Assert
+    expect(spec).toEqual(["A", "B"]);
+    expect(comp).toEqual(["V", "W"]);
+  });
+
+  it("深さで並べる図では、特殊化した定義を元の定義の下の段に置く", () => {
+    // Arrange
+    const node = (key: string): ModelNode => ({
+      key, name: key, short: "", kind: "part def", isDef: true, fam: "part", trans: [], ports: [], phase: null, phaseOwn: false,
+      entry: { kind: "part def", isDef: true, short: "", name: key, type: "", owner: null, pe: null, start: 0, headEnd: 0, end: 0, head: "", exprs: [], children: [], idx: 0 },
+    });
+    const pos: Record<string, [number, number]> = {};
+    // Act
+    autoPlace([node("B"), node("A")], [edge("specialize", "B", "A")], pos, { id: "structure", label: "構造", depth: true }, null);
+    // Assert
+    expect((pos["A"]?.[1] ?? NaN) < (pos["B"]?.[1] ?? NaN)).toBe(true);
   });
 });

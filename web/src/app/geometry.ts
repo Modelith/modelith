@@ -625,6 +625,22 @@ export function endLabelPos(end: RouteEnd): { x: number; y: number; a: "start" |
   return { x: x + 4, y: ny < 0 ? y - 6 : y + 14, a: "start" };
 }
 
+/** 一般な側を上に置く線の種類（特殊化・部分集合・再定義・参照。線は特殊な側から一般な側へ向く）。 */
+const UPWARD_EDGES = ["specialize", "subset", "redefine", "reference"];
+
+/**
+ * 深さで並べるときの、線の上下の向き（上の要素、下の要素）。特殊化などは一般な側（線の終わり）を上にし、ほかは線の始まりを上にする。
+ *
+ * @param e 図の線
+ * @returns [上に置く要素のキー, 下に置く要素のキー]
+ * @example
+ * downward({ kind: "comp", from: "V", to: "W", … })       // → ["V", "W"]（持ち主が上）
+ * downward({ kind: "specialize", from: "B", to: "A", … }) // → ["A", "B"]（一般な A が上）
+ */
+export function downward(e: ModelEdge): [string, string] {
+  return UPWARD_EDGES.includes(e.kind) ? [e.to, e.from] : [e.from, e.to];
+}
+
 /** 自動配置で上から並べる順位。 */
 const RANK: Record<string, number> = {
   "concern def": 0, requirement: 1, "requirement def": 2, part: 3, "part def": 3, "verification def": 3, "attribute def": 5,
@@ -634,7 +650,7 @@ const RANK: Record<string, number> = {
 
 /**
  * 配置済みの要素の下に、未配置の要素を段ごとに並べ、座標を pos に書き込む（pos を変更する）。
- * 段は、ビューが深さで並べるなら線の向きの深さ、そうでなければ種類の順位（RANK）で決める。
+ * 段は、ビューが深さで並べるなら線の向きの深さ（特殊化などは一般な側を上に。`downward`）、そうでなければ種類の順位（RANK）で決める。
  * 段の中は前の段とのつながりの重心で並べ替えて線の交差を減らし、1 段は 7 個までで折り返す。
  *
  * @param list 並べる（未配置の）ノード
@@ -648,16 +664,17 @@ export function autoPlace(list: ModelNode[], edges: ModelEdge[], pos: Record<str
   const keys = new Set(list.map((n) => n.key));
   const layer = new Map<string, number>();
   if (v.depth) {
+    const down = edges.map(downward);
     const inc = new Map(list.map((n) => [n.key, 0]));
-    for (const e of edges) if (keys.has(e.to) && keys.has(e.from)) inc.set(e.to, (inc.get(e.to) ?? 0) + 1);
+    for (const [from, to] of down) if (keys.has(to) && keys.has(from)) inc.set(to, (inc.get(to) ?? 0) + 1);
     const q = list.filter((n) => !inc.get(n.key)).map((n) => n.key);
     for (const k of q) layer.set(k, 0);
     while (q.length) {
       const k = q.shift() as string;
-      for (const e of edges) {
-        if (e.from === k && keys.has(e.to) && !layer.has(e.to)) {
-          layer.set(e.to, (layer.get(k) ?? 0) + 1);
-          q.push(e.to);
+      for (const [from, to] of down) {
+        if (from === k && keys.has(to) && !layer.has(to)) {
+          layer.set(to, (layer.get(k) ?? 0) + 1);
+          q.push(to);
         }
       }
     }
