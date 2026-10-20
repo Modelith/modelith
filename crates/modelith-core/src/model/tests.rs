@@ -1092,6 +1092,170 @@ fn message_end_event_of_a_nested_part_is_checked() {
     );
 }
 
+// ---- シーケンス図（SequenceView、9.2.20.2.7・8.2.3.9） ----
+
+/// シナリオ S のシーケンス図。
+fn sequence_of(m: &Model) -> &Sequence {
+    m.sequences
+        .iter()
+        .find(|s| s.key == "S")
+        .unwrap_or_else(|| panic!("S のシーケンス図がありません"))
+}
+
+/// イベントのキーと段。
+fn event_rows(s: &Sequence) -> Vec<(&str, usize)> {
+    s.events.iter().map(|e| (e.key.as_str(), e.row)).collect()
+}
+
+#[test]
+fn sequence_has_lifelines_events_and_messages_in_rows() {
+    // Arrange（正常系：部品と出来事のライフライン、本体のイベント・入れ子の部品のイベント、メッセージの端のイベント）
+    let text = "package P { occurrence def S { part a { event occurrence e; part sub { event occurrence d; } } \
+                occurrence b { event occurrence r; } attribute x; message m1 of Go from a.e to b.r; message m2 from b to a.sub.d; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let lifelines: Vec<&str> = s.lifelines.iter().map(|l| l.key.as_str()).collect();
+    assert_eq!(lifelines, ["l:a", "l:b"]);
+    assert_eq!(
+        event_rows(s),
+        [("e:a.e", 0), ("e:b.r", 0), ("e:a.sub.d", 1)]
+    );
+    assert_eq!(s.events[2].label, ".sub.d");
+    assert_eq!(p.entries[s.events[2].entry.unwrap_or(0)].name, "d");
+    let msgs: Vec<String> = s
+        .messages
+        .iter()
+        .map(|x| {
+            let ev = |e: &Option<String>| e.clone().unwrap_or_default();
+            format!(
+                "{} {}({})→{}({}) 段 {}",
+                x.id,
+                x.from,
+                ev(&x.from_event),
+                x.to,
+                ev(&x.to_event),
+                x.row
+            )
+        })
+        .collect();
+    assert_eq!(
+        msgs,
+        [
+            "msg|0|m1 l:a(e:a.e)→l:b(e:b.r) 段 0",
+            "msg|1|m2 l:b()→l:a(e:a.sub.d) 段 1",
+        ]
+    );
+    assert_eq!(s.rows, 2);
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn succession_between_messages_and_events_sets_the_rows() {
+    // Arrange（first m2 then m1 でメッセージを入れ替え、then event occurrence e2 で e2 を m1 の後ろに置く）
+    let text = "package P { occurrence def S { part a { event occurrence e1; then event occurrence e2; } part b; \
+                message m1 from a.e1 to b; message m2 from b to a; first m2 then m1; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let rows: Vec<(&str, usize)> = s.messages.iter().map(|x| (x.id.as_str(), x.row)).collect();
+    assert_eq!(rows, [("msg|1|m2", 0), ("msg|0|m1", 1)]);
+    assert_eq!(event_rows(s), [("e:a.e1", 1), ("e:a.e2", 2)]);
+    assert_eq!(s.rows, 3);
+}
+
+#[test]
+fn events_without_order_are_placed_by_written_position() {
+    // Arrange（境界値：順序の無いイベントとメッセージは、書いた位置の順）
+    let text = "package P { occurrence def S { part a { event occurrence e; } part b; message m from a to b; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    assert_eq!(event_rows(s), [("e:a.e", 0)]);
+    assert_eq!(s.messages[0].row, 1);
+}
+
+#[test]
+fn succession_between_events_of_two_lifelines_is_a_line() {
+    // Arrange（別のライフラインのイベントの間は線（sq-succession）、同じライフラインの上は線にしない）
+    let text = "package P { occurrence def S { part a { event occurrence e; then event occurrence f; } \
+                part b { event occurrence r; } succession s first a.e then b.r; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let lines: Vec<(&str, &str, &str, &str)> = s
+        .successions
+        .iter()
+        .map(|e| {
+            (
+                e.id.as_str(),
+                e.from.as_str(),
+                e.to.as_str(),
+                e.label.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        lines,
+        [("succession|e:a.e|e:b.r|s#1", "e:a.e", "e:b.r", "s")]
+    );
+    // メッセージの端でないイベントは、1 つずつ段を使う
+    assert_eq!(event_rows(s), [("e:a.e", 0), ("e:a.f", 1), ("e:b.r", 2)]);
+}
+
+#[test]
+fn event_from_the_type_of_a_lifeline_is_drawn_with_its_chain() {
+    // Arrange（ライフラインの型の中のイベントも、メッセージの端なら描く）
+    let text = "package P { part def A { event occurrence go; } occurrence def S { part a : A; part b; message m from a.go to b; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    assert_eq!(event_rows(s), [("e:a.go", 0)]);
+    assert_eq!(p.entries[s.events[0].entry.unwrap_or(0)].name, "go");
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn missing_succession_end_and_cyclic_order_are_reported() {
+    // Arrange（異常系：見つからない相手（名前・ライフラインの中の連鎖）と、循環する順序）
+    let text = "package P { occurrence def S { part a { event occurrence e; } part b; \
+                message m1 from a to b; message m2 from b to a; first m1 then m2; first m2 then m1; \
+                first nope then m1; first a.gone then m2; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(
+        msgs,
+        [
+            "「順序」の相手「nope」が見つかりません（succession）",
+            "「順序」の相手「a.gone」が見つかりません（succession）",
+            "シナリオ「S」の順序が循環しています（succession）",
+        ]
+    );
+    // 循環していても、すべてを書いた位置の順に置く（イベント e、m1、m2）
+    let s = sequence_of(&m);
+    let rows: Vec<usize> = s.messages.iter().map(|x| x.row).collect();
+    assert_eq!((event_rows(s), rows), (vec![("e:a.e", 0)], vec![1, 2]));
+}
+
+#[test]
+fn message_to_something_that_is_not_a_lifeline_is_not_drawn() {
+    // Arrange（境界値：端がライフラインでないメッセージは描かない。番号は書いた順のまま）
+    let text = "package P { occurrence def S { part a; attribute x; message m1 from a to x; message m2 from a to a; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let s = sequence_of(&m);
+    let ids: Vec<&str> = s.messages.iter().map(|x| x.id.as_str()).collect();
+    assert_eq!(ids, ["msg|1|m2"]);
+}
+
 // ---- メモ（Comment、8.2.2.4・8.2.3.4） ----
 
 #[test]

@@ -1022,6 +1022,26 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
       });
     });
 
+    describe("シナリオの順序（SuccessionAsUsage 8.2.2.14、SequenceView 9.2.20.2.7）", () => {
+      it("メッセージとイベントの間の順序は、相手を確かめ、見つからなければ知らせる（以前は確かめなかった）", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part a { event occurrence e; } part b; message m from a.e to b; first m then a.e; first m then nope; first a.gone then m; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["「順序」の相手「nope」が見つかりません（succession）", "「順序」の相手「a.gone」が見つかりません（succession）"]);
+      });
+
+      it("循環する順序は知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { occurrence def S { part a; message m1 from a to a; message m2 from a to a; first m1 then m2; first m2 then m1; } }";
+        // Act
+        const ps = problems(text);
+        // Assert
+        expect(ps).toEqual(["シナリオ「S」の順序が循環しています（succession）"]);
+      });
+    });
+
     describe("特徴の連鎖（FeatureChain、8.2.2.6・KerML 8.2.5。3 段目から先も型の中をたどる）", () => {
       const CHAINS = "package P { port def Pt { in item x : Real; } part def Cyl { port p : Pt; } part def Eng { part cyl : Cyl; } part def V { part e : Eng; part w : Eng; ";
 
