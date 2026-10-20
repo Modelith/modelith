@@ -569,6 +569,13 @@ package ModelithRequirements {
                 verify StandardViewReq;
             }
         }
+        verification def GlossaryTest {
+            doc /* web/src/app/glossary.test.ts：テキストの位置にある語の説明（語の始まりと終わりの位置・空白・範囲外・表に無い語・コメントと文字列と引用名の中の語・2 語と 3 語のキーワード・主なキーワードの画面の言葉・8 つの標準ビューの名前と短い名前・標準ライブラリの型と単位） */
+            objective {
+                verify WordHelpReq;
+                verify PlainWordsReq;
+            }
+        }
         verification def LocalFolderProviderTest {
             doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す（偽のファイルシステムで） */
             objective {
