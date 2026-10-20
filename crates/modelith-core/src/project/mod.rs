@@ -1319,7 +1319,9 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// `timeslice`・`snapshot` の修飾だけの使用（PortionUsage）はその語を、`#X def H`（ExtendedDefinition）は `"def"`、
 /// 種類のキーワードの無い `#X h`（ExtendedUsage）は `"usage"`、`variant a`（VariantReference）は `"variant"`、
 /// `include U`・`event e`（参照の形）は `"include use case"`・`"event occurrence"`、`connect a to b`（`connection` の無い接続）は
-/// `"connection"`、`allocate x to y` は `"allocation"`、`bind a = b`・`binding bb bind a = b` は `"binding"` にする。
+/// `"connection"`、`allocate x to y` は `"allocation"`、`bind a = b`・`binding bb bind a = b` は `"binding"`、
+/// 種類のキーワードの無い `individual def H`・`individual h`（IndividualDefinition・IndividualUsage）は
+/// `"occurrence def"`・`"occurrence"` にする。
 ///
 /// # 引数
 ///
@@ -1341,6 +1343,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// entry_kind("#X def H;", "def H", "", true)                → Some(("def", true))
 /// entry_kind("#X h : T;", "h : T", "", true)                → Some(("usage", false))
 /// entry_kind("connect a to b;", "connect a to b", "", false) → Some(("connection", false))
+/// entry_kind("individual def E;", "def E", "individual", false) → Some(("occurrence def", true))
 /// entry_kind("in #X x : T;", "x : T", "in", true)           → None   // パラメータとして読む
 /// entry_kind("a = 1;", "a = 1", "", false)                  → None
 /// ```
@@ -1376,6 +1379,9 @@ fn entry_kind(
         // `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）
         BINDING_CONNECTOR_AS_USAGE => Some(("binding", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
+        // `individual def H;`・`individual h : H;`（IndividualDefinition・IndividualUsage、8.2.2.9）
+        OCCURRENCE_DEFINITION if starts_with_word(h, "def") => Some(("occurrence def", true)),
+        OCCURRENCE_USAGE if is_mod("individual") => Some(("occurrence", false)),
         REFERENCE_USAGE if is_mod("variant") => Some(("variant", false)),
         REFERENCE_USAGE
             if has_prefix_meta

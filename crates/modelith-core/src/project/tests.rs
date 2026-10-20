@@ -1137,3 +1137,35 @@ fn textual_representation_without_owner_or_body_is_dropped() {
     assert!(r.entries.iter().all(|e| e.reps.is_empty()));
     assert_eq!(entry(&r, "A").children.len(), 0);
 }
+
+#[test]
+fn individual_is_kept_as_a_modifier_of_occurrences() {
+    // Arrange（8.2.2.9。同値クラス: 種類のキーワードあり・なし、定義・使用）
+    let text = "package P { individual part def Car; individual part c : Car; individual def Earth; individual earth : Earth; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(&str, &str, bool, &str, Option<&str>)> = ["Car", "c", "Earth", "earth"]
+        .map(|n| entry(&r, n))
+        .iter()
+        .map(|e| {
+            (
+                e.name.as_str(),
+                e.kind.as_str(),
+                e.is_def,
+                e.ty.as_str(),
+                e.mods.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("Car", "part def", true, "", Some("individual")),
+            ("c", "part", false, "Car", Some("individual")),
+            ("Earth", "occurrence def", true, "", Some("individual")),
+            ("earth", "occurrence", false, "Earth", Some("individual")),
+        ]
+    );
+    assert!(r.unsupported.is_empty());
+}
