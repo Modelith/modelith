@@ -2,6 +2,7 @@
 
 import { lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
 import { flowDetail, flowName } from "./action-flow";
+import { stateName } from "./state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
 import { kindLabel } from "./labels";
@@ -296,12 +297,13 @@ const EDGE_NAME: Record<string, string> = {
   specialize: "定義を引き継ぐ（特殊化 :>）", subset: "一部になる（部分集合 subsets）", redefine: "置き換える（再定義 redefines）", reference: "参照する（references）",
   dependency: "依存する（dependency）", allocate: "割り当てる «allocate»", bind: "値を等しくする（結び付け bind）",
   connect: "3 つ以上をつなぐ接続（connect）", annotate: "メモを付ける（comment about）",
-  succession: "順序（succession）", successionFlow: "順序付きの流れ（succession flow）",
+  succession: "順序（succession）", successionFlow: "順序付きの流れ（succession flow）", transition: "遷移（transition）",
 };
 
 /**
  * 選んだ関係（線）の HTML を作る。シーケンス図のメッセージなら番号・送り手と受け手・順番の入れ替え・編集を、
- * ほかの関係なら種類の画面の言葉と両端の名前、削除のボタンを出す（メモの線には削除のボタンを出さない）。
+ * ほかの関係なら種類の画面の言葉と両端の名前（開始・終了の記号は画面の言葉）、削除のボタンを出す（メモの線には削除のボタンを出さない）。
+ * 遷移は、ラベル（きっかけ [条件] / 行うこと）も種類の後ろに書く。
  *
  * @param ed 選んだ関係
  * @returns 関係の HTML
@@ -310,8 +312,14 @@ const EDGE_NAME: Record<string, string> = {
  * edgeHtml(e) // → '<div class="what"><small>要求を満たす «satisfy»</small><b>A → R</b></div>…'
  * // 名前の無いメッセージ（2 個中の 1 番目）のとき
  * edgeHtml(m) // → '<div class="what"><small>メッセージ 1／2：a → b</small><b>（名前なし）</b></div>…（「上へ」は押せない）'
+ * // 開始から off への遷移
+ * edgeHtml(t) // → '<div class="what"><small>遷移（transition）</small><b>開始 → off</b></div>…'
  */
 function edgeHtml(ed: ModelEdge): string {
+  const endName = (k: string): string => {
+    const n = nodeByKey(k);
+    return !n ? "?" : n.state ? stateName(n) : n.flow ? flowName(n) : n.name;
+  };
   if (ed.kind === "message") {
     const c = CC();
     const i = ed.idx ?? 0;
@@ -332,7 +340,7 @@ function edgeHtml(ed: ModelEdge): string {
     );
   }
   return (
-    `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && ed.kind === "comp" ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : (nodeByKey(ed.from)?.name ?? "?"))} → ${esc(nodeByKey(ed.to)?.name ?? "?")}</b></div><div class="acts">` +
+    `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && (ed.kind === "comp" || ed.kind === "transition") ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : endName(ed.from))} → ${esc(endName(ed.to))}</b></div><div class="acts">` +
     `<button data-act="goto">テキストで見る</button>` +
     // メモの線だけを削除する操作は無い（メモごと削除する）
     (ed.kind === "annotate" ? "" : delBtn("delEdge", "関係を削除")) +

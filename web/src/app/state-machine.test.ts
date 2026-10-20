@@ -4,7 +4,7 @@ import { build, parse, type Model, type ModelNode } from "../core";
 import { boxesOf, compartment, layoutStates, nodeH, nodeW, placeStates, regionSeparators, stateColumns, stateSize, type NodeBox } from "./geometry";
 import type { Pos } from "./layout";
 import { emptyView } from "./layout";
-import { defaultStateContext, isPseudoState, stateActionLines, stateContentOf, stateContexts } from "./state-machine";
+import { defaultStateContext, isPseudoState, stateActionLines, stateContentOf, stateContexts, stateName } from "./state-machine";
 import { CV, edgeStroke, svgMarkup } from "./svg";
 
 const TEXT =
@@ -300,5 +300,17 @@ describe("状態遷移の図の描き方（svg）", () => {
     expect(box.get("s:on")?.holds).toBe(true);
     expect(es).toMatch(/data-key="s:on"[^>]*><rect class="body"[^>]*fill-opacity="\.55"/);
     expect(es).toMatch(/<line class="region"[^>]*stroke-dasharray="6 4"\/>/);
+  });
+});
+
+describe("状態遷移の図の画面の言葉（ADR-0014）", () => {
+  it("開始・終了の記号と名前の無い状態は種類の言葉に、ほかは名前にする", () => {
+    // Arrange
+    const { M, c } = setup("package P { state def S { entry; then a; state a; state; transition first a then done; } }", "S");
+    const { nodes } = stateContentOf(M, c);
+    // Act
+    const names = nodes.map(stateName);
+    // Assert
+    expect(names).toEqual(["開始", "a", "状態", "終了"]);
   });
 });

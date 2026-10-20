@@ -2,6 +2,7 @@
 // 要素のキーと線の ID は Rust のコア（crates/modelith-core/src/model/states.rs）が決めたもの。図の操作（edit/states.rs）も同じものを探す（ADR-0016）。
 
 import type { Entry, Model, ModelEdge, ModelNode } from "../core";
+import { kindLabel } from "./labels";
 
 /** 状態遷移の図に描く要素と線。`regions` は、中の要素を破線で区切った領域に描く並行の状態のキー（状態定義そのものが並行なら ""）。 */
 export interface StateContent {
@@ -85,3 +86,15 @@ export const stateActionLines = (e: Entry): string[] =>
  * isPseudoState(s:off)    // → false
  */
 export const isPseudoState = (n: ModelNode): boolean => !!n.state && (n.kind === "start" || n.kind === "done");
+
+/**
+ * 状態遷移の図の要素を、画面に出す名前にする。開始・終了の記号と名前の無い状態は、種類の画面の言葉にする（ADR-0014）。
+ *
+ * @param n 状態遷移の図の要素
+ * @returns 画面に出す名前
+ * @example
+ * stateName(state off)  // → "off"
+ * stateName(start)      // → "開始"
+ * stateName(state;)     // → "状態"（名前が無い）
+ */
+export const stateName = (n: ModelNode): string => (isPseudoState(n) || !n.name ? kindLabel(n.kind) : n.name);
