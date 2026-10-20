@@ -176,10 +176,13 @@ package ModelithRequirements {
             doc /* フォルダを開けないブラウザ（Safari・Firefox）でも、ファイルの読み込みと、ダウンロードでの保存ができる */
         }
         requirement def <'F-FILE-11'> UntitledDraftReq {
-            doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す */
+            doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す。中身の無いファイルは下書きに残さない */
         }
         requirement def <'F-FILE-12'> CloudReq {
             doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
+        }
+        requirement def <'F-FILE-14'> NoOpenFileReq {
+            doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
         }
 
         // ---- 書き出し ----------------------------------------------
@@ -311,6 +314,7 @@ package ModelithRequirements {
         #derivation dependency from FallbackReq to AnywhereNeed;
         #derivation dependency from UntitledDraftReq to SafetyNeed;
         #derivation dependency from CloudReq to FilesNeed;
+        #derivation dependency from NoOpenFileReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -441,6 +445,7 @@ package ModelithRequirements {
         satisfy FallbackReq by BrowserFileProvider;
         satisfy UntitledDraftReq by Workspace;
         satisfy CloudReq by CloudProvider;
+        satisfy NoOpenFileReq by Workspace;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
@@ -562,7 +567,7 @@ package ModelithRequirements {
             }
         }
         verification def WorkspaceTest {
-            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行 */
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い */
             objective {
                 verify OpenSaveReq;
                 verify NewSaveAsReq;
@@ -571,6 +576,7 @@ package ModelithRequirements {
                 verify ConflictReq;
                 verify ExternalChangeReq;
                 verify UntitledDraftReq;
+                verify NoOpenFileReq;
                 verify LayoutReq;
                 verify UnsavedLayoutReq;
                 verify NoSilentWriteReq;
@@ -612,7 +618,7 @@ package ModelithRequirements {
             }
         }
         verification def FilesE2E {
-            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
+            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き・最後のファイルを閉じた後の画面、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
             objective {
                 verify UnsavedLayoutReq;
                 verify OpenFolderReq;
@@ -626,6 +632,7 @@ package ModelithRequirements {
                 verify RecentFolderReq;
                 verify FallbackReq;
                 verify UntitledDraftReq;
+                verify NoOpenFileReq;
             }
         }
         verification def ShellE2E {
@@ -642,7 +649,7 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：7 つのビュー・幅 390px・メニュー（＋メニューのテキストの view を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
@@ -652,6 +659,7 @@ package ModelithRequirements {
                 verify CanvasReq;
                 verify OpenFolderReq;
                 verify OpenSaveReq;
+                verify NoOpenFileReq;
                 verify ConflictReq;
                 verify ProblemsReq;
                 verify PhaseReq;

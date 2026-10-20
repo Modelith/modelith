@@ -70,3 +70,14 @@ test("Q-5: テキストを読み取る部品（wasm）を読み込めないと�
   await expect(box).toContainText("ページを再読み込みしてください");
   await expect(page.locator("#gNodes .node")).toHaveCount(0);
 });
+
+test("F-FILE-14・F-FILE-10: 何も開いていないときの案内に、開けない「フォルダを開く」は出さない", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  await page.locator("#explorer [data-close]").click();
+  await page.locator('#dialogButtons [data-id="discard"]').click();
+  // Assert
+  await expect(page.locator('#noDoc [data-nodoc="open"]')).toBeVisible();
+  await expect(page.locator('#noDoc [data-nodoc="openFolder"]')).toBeHidden();
+});

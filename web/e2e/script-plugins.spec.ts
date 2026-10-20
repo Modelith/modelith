@@ -143,6 +143,19 @@ test.describe("コマンドと変更", () => {
     await expect.poll(() => editorText(page)).toBe(MODEL);
   });
 
+  test("F-PLUG-5・F-FILE-14: 開いているファイルが無いときは、コマンドを実行せずに知らせる", async ({ page }) => {
+    // Arrange（表示中の a.sysml を閉じ、次に表示されるサンプルも保存せずに閉じる）
+    await startWith(page, installed(["edits:propose"]));
+    await page.locator('#explorer [data-doc]:has-text("a.sysml") [data-close]').click();
+    await page.locator('#explorer [data-doc]:has-text("electric-kettle.sysml") [data-close]').click();
+    await page.locator('#dialogButtons [data-id="discard"]').click();
+    await expect(page.locator("#noDoc")).toBeVisible();
+    // Act
+    await runCommand(page, "レビュー済みの印を付ける");
+    // Assert
+    await expect(page.locator("#toast")).toHaveText("開いているファイルがありません。ファイルを開いてから実行してください");
+  });
+
   test("F-PLUG-5: 古いテキストに対する変更は、適用せずに知らせる", async ({ page }) => {
     // Arrange
     await startWith(page, installed(["edits:propose"]));

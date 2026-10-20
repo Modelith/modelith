@@ -43,6 +43,8 @@ export interface PluginEnv {
   pickPluginFolder(): Promise<PickedPluginFolder | null>;
   /** 読み込んだテキストを新しい無題の文書として開いて表示し、付けた名前を返す。 */
   openImported(fileName: string, text: string): string;
+  /** 開いている文書があるか（F-FILE-14）。 */
+  hasOpenDoc(): boolean;
   /** このブラウザに追加したプラグインの置き場所。 */
   browser: BrowserPluginStore;
   /** プラグイン用の保存場所。 */
@@ -599,7 +601,7 @@ function placeOf(el: HTMLElement): PluginPlace {
  */
 export function initPlugins(e: PluginEnv): void {
   env = e;
-  initScriptHost({ onChange: renderPanel, openImported: (fileName, text) => e.openImported(fileName, text), data: e.data });
+  initScriptHost({ onChange: renderPanel, openImported: (fileName, text) => e.openImported(fileName, text), hasOpenDoc: () => e.hasOpenDoc(), data: e.data });
   $("#btnPlugins").onclick = () => {
     document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => (d.open = false));
     openPlugins();

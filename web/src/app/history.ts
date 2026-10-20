@@ -52,15 +52,15 @@ let H: History = { list: [], i: -1, timer: undefined };
  * 文書 key の履歴に切り替える（無ければ作る）。履歴はファイルごとに持つ（F-EDIT-4）。
  * 前の文書のまとめ待ちの記録は取りやめ、元に戻す・やり直すのボタンの状態を描き直す。
  *
- * @param key 文書のキー
+ * @param key 文書のキー。null なら、開いている文書が無い（どの文書にも属さない空の履歴にし、戻せない。F-FILE-14）
  */
-export function useHistory(key: string): void {
+export function useHistory(key: string | null): void {
   clearTimeout(H.timer);
   H.timer = undefined;
-  let h = histories.get(key);
+  let h = key === null ? undefined : histories.get(key);
   if (!h) {
     h = { list: [], i: -1, timer: undefined };
-    histories.set(key, h);
+    if (key !== null) histories.set(key, h);
   }
   H = h;
   updateUndoUI();
