@@ -2606,9 +2606,7 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
     match n.kind() {
         MESSAGE_USAGE => Some(RelKind::Message {
             name: name().unwrap_or_default(),
-            item: ref_after(n, "of")
-                .map(|s| last_segment(&s).to_owned())
-                .unwrap_or_default(),
+            item: payload_type(n),
             a: ref_after(n, "from")?,
             b: ref_after(n, "to")?,
         }),
@@ -2671,9 +2669,7 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
 /// ```
 fn flow_ends(n: &SyntaxNode, name: String, ty: String, usage: Option<usize>) -> Option<RelKind> {
     Some(RelKind::Flow {
-        item: ref_after(n, "of")
-            .map(|s| last_segment(&s).to_owned())
-            .unwrap_or_default(),
+        item: payload_type(n),
         a: ref_after(n, "from")?,
         b: ref_after(n, "to")?,
         name,
@@ -2718,6 +2714,38 @@ fn succession_flow_ends(
         ty,
         usage,
     })
+}
+
+/// `flow`・`message` の流れるもの（`of` の後、FlowPayloadFeature、8.2.2.16）の型の最後の名前。
+/// `of ff : Fuel` は型 `Fuel`（`ff` は流れるものの名前）、`of Fuel` は `Fuel` にする。
+///
+/// # 引数
+///
+/// - `n`：`FLOW_USAGE`・`SUCCESSION_FLOW_USAGE`・`MESSAGE_USAGE` の節
+///
+/// # 戻り値
+///
+/// 型の最後の名前（型付けの相手は引用符を外し、型だけの `of 'A'` はこれまでどおり書いたまま）。`of` が無いか、型が無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// payload_type("flow of ff : Q::Fuel from a to b;") → "Fuel"
+/// payload_type("flow of Fuel from a to b;")         → "Fuel"
+/// payload_type("flow from a to b;")                 → ""
+/// ```
+fn payload_type(n: &SyntaxNode) -> String {
+    let Some(payload) = child(n, FLOW_PAYLOAD_FEATURE) else {
+        return String::new();
+    };
+    if let Some(t) = child(&payload, FEATURE_TYPING).and_then(|t| type_of(&t)) {
+        return t.name;
+    }
+    payload
+        .children()
+        .find(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
+        .map(|c| last_segment(&compact(&c)).to_owned())
+        .unwrap_or_default()
 }
 
 /// 依存（Dependency、8.2.2.3）を、依存する側とされる側の組ごとの関係にする。

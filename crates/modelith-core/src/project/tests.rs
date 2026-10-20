@@ -662,6 +662,28 @@ fn value_in_an_enumeration_body_is_not_a_reference_usage() {
 }
 
 #[test]
+fn flow_payload_name_is_not_its_type() {
+    // Arrange（同値分割：名前付きの流れるもの・型だけ・名前付きのフロー。FlowPayloadFeature、8.2.2.16）
+    let text = "part def S { part t; part e; flow of ff : Fuel from t to e; flow of Water from t to e; \
+        flow f of g : Heat from t to e; message m of x : Sig from t to e; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let items: Vec<&str> = r
+        .rels
+        .iter()
+        .map(|x| match &x.kind {
+            RelKind::Flow { item, .. } | RelKind::Message { item, .. } => item.as_str(),
+            _ => "?",
+        })
+        .collect();
+    assert_eq!(items, ["Fuel", "Water", "Heat", "Sig"]);
+    // 名前付きのフローの型は、流れるものの型ではない
+    assert_eq!(entry(&r, "f").ty, "");
+    assert!(r.errors.is_empty());
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";

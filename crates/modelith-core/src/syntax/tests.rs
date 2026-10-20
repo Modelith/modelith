@@ -584,6 +584,39 @@ fn crosses_without_its_target_is_an_error() {
 }
 
 #[test]
+fn flow_payload_is_its_own_node() {
+    // Arrange（FlowPayloadFeatureMember、8.2.2.16）
+    let text = "flow of ff : Fuel from a to b;";
+    // Act
+    let kinds = node_kinds(text);
+    // Assert
+    assert_eq!(
+        kinds,
+        [
+            SOURCE_FILE,
+            FLOW_USAGE,
+            FLOW_PAYLOAD_FEATURE,
+            NAME,
+            FEATURE_TYPING,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME,
+            QUALIFIED_NAME
+        ]
+    );
+    assert!(errors(text).is_empty());
+}
+
+#[test]
+fn flow_payload_without_anything_is_an_error() {
+    // Arrange（異常系：of の後に流れるものが無い）
+    let text = "flow of from a to b;";
+    // Act
+    let actual = errors(text);
+    // Assert
+    assert_eq!(actual, vec![(8, "流れるものがありません".to_owned())]);
+}
+
+#[test]
 fn name_followed_by_short_name_is_still_a_declaration() {
     // Arrange（境界値：`x <s> …` は宣言のまま）
     let text = "part def A { x <s> : T; }";

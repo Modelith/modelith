@@ -1054,12 +1054,67 @@ fn required_parameter(p: &mut Parser<'_>, stops: &[&str]) {
 /// payload_parameter(";", TRANSITION_STOPS)                  → 「受けるものがありません」
 /// ```
 fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
-    const TRIGGERS: &[&str] = &["when", "at", "after"];
+    if !payload_feature(p, stops, &["when", "at", "after"], NODE_PARAMETER) {
+        p.error("受けるものがありません");
+    }
+}
+
+/// `flow`・`message` の `of` の後の、流れるもの（FlowPayloadFeature、8.2.2.16）。`FLOW_PAYLOAD_FEATURE` の節にする。
+///
+/// `of ff : Fuel`（名前と型）・`of Fuel`（型だけ）・`of Fuel[1]` を読む。流れるものが無ければ「流れるものがありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`of` にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// flow_payload("of ff : Fuel from a to b;") → FLOW_PAYLOAD_FEATURE { NAME(ff), FEATURE_TYPING(Fuel) }（from の手前で止まる）
+/// flow_payload("of Fuel from a to b;")      → FLOW_PAYLOAD_FEATURE { QUALIFIED_NAME(Fuel) }
+/// flow_payload("of from a to b;")           → 「流れるものがありません」
+/// ```
+fn flow_payload(p: &mut Parser<'_>) {
+    p.bump();
+    if !payload_feature(p, &[], &[], FLOW_PAYLOAD_FEATURE) {
+        p.error("流れるものがありません");
+    }
+}
+
+/// 受けるもの・流れるもの（PayloadFeature、8.2.2.16〜17）を、節の種類 `kind` で読む。
+///
+/// `e : E`（名前と型）、`E`（型だけ）、`triggers` のキーワードの後の式（`accept` の `when 式`・`at 式`・`after 式`）を読む。
+/// 式は `stops` のキーワードの手前で止める。
+///
+/// # 引数
+///
+/// - `p`：受けるもの・流れるものの頭にいるパーサ
+/// - `stops`：`triggers` の後の式を止めるキーワード
+/// - `triggers`：変化・時刻・時間の経過で受けるときのキーワード（流れるものでは空）
+/// - `kind`：節の種類（`NODE_PARAMETER`・`FLOW_PAYLOAD_FEATURE`）
+///
+/// # 戻り値
+///
+/// 何か読んで節を作ったら `true`。何も読まなかったら `false`（節も作らない）。
+///
+/// # 例
+///
+/// ```text
+/// payload_feature("e : E via p;", …, NODE_PARAMETER)        → true（NODE_PARAMETER { NAME(e), FEATURE_TYPING(E) }）
+/// payload_feature("Fuel from a", &[], &[], FLOW_PAYLOAD_FEATURE) → true（FLOW_PAYLOAD_FEATURE { QUALIFIED_NAME(Fuel) }）
+/// payload_feature(";", …)                                    → false
+/// ```
+fn payload_feature(
+    p: &mut Parser<'_>,
+    stops: &[&str],
+    triggers: &[&str],
+    kind: SyntaxKind,
+) -> bool {
     let m = p.start();
     let mut any = false;
     if p.at_name()
         && (matches!(p.nth(1), COLON | COLON_GT | COLON_GT2 | COLON2_GT)
-            || TRIGGERS.iter().any(|k| p.nth_at_kw(1, k)))
+            || triggers.iter().any(|k| p.nth_at_kw(1, k)))
     {
         let n = p.start();
         p.bump();
@@ -1074,7 +1129,7 @@ fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
             COLON2_GT => relationship(p, 1, REFERENCE_SUBSETTING),
             L_BRACK => bracketed(p, MULTIPLICITY),
             IDENT | QUOTED_NAME if !any => reference(p),
-            KEYWORD if TRIGGERS.iter().any(|k| p.at_kw(k)) => {
+            KEYWORD if triggers.iter().any(|k| p.at_kw(k)) => {
                 p.bump();
                 if !expression_until(p, stops) {
                     p.error("値の式がありません");
@@ -1085,11 +1140,11 @@ fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
         any = true;
     }
     if any {
-        m.complete(p, NODE_PARAMETER);
+        m.complete(p, kind);
     } else {
         m.abandon();
-        p.error("受けるものがありません");
     }
+    any
 }
 
 /// `dependency` の後ろ（DependencyDeclaration、8.2.2.3）。`( Identification 'from' )? 参照 ( ',' 参照 )* 'to' 参照 ( ',' 参照 )*` と終わり。
@@ -1391,6 +1446,8 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<
                 "redefines" => relationship(p, 1, REDEFINITION),
                 "references" => relationship(p, 1, REFERENCE_SUBSETTING),
                 "crosses" => relationship(p, 1, CROSS_SUBSETTING),
+                // `flow of ff : Fuel from …`・`message of M …`（FlowPayloadFeatureMember、8.2.2.16）
+                "of" => flow_payload(p),
                 "default" => feature_value(p),
                 "connect" | "allocate" => connector_part(p),
                 "bind" => binding_part(p),

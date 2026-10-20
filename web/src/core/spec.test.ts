@@ -1264,5 +1264,17 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(ps).toEqual(["型「Nope」が見つかりません（x）"]);
       });
     });
+
+    describe("名前付きの流れるもの（FlowPayloadFeature、8.2.2.16）", () => {
+      it("flow of ff : Fuel from … は、流れるものの型 Fuel をラベルにする（名前 ff を型と取り違えない）", () => {
+        // Arrange
+        const text = "package P { item def Fuel; part def T { port p; } part def U { port q; } part def S { part t : T; part u : U; flow of ff : Fuel from t.p to u.q; } }";
+        // Act
+        const M = build(parse(text));
+        // Assert
+        expect(M.edges.filter((e) => e.kind === "flow").map((e) => `${e.from}|${e.to}|${e.label}`)).toEqual(["T|U|Fuel"]);
+        expect(M.problems).toEqual([]);
+      });
+    });
   });
 }
