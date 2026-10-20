@@ -889,3 +889,67 @@ fn add_to_and_remove_from_view() {
     assert!(refused(text, r#"{"op":"removeFromView","view":"v","key":"B"}"#).contains("まとめて"));
     assert!(refused(text, r#"{"op":"addToView","view":"gone","key":"B"}"#).contains("gone"));
 }
+
+// ---- アクションの流れの図（ActionFlowView、8.2.3.17） ----
+
+const FLOW: &str = "package P {\n    action def A {\n        first start;\n        then action a;\n        then decide d;\n        if x > 0 then b;\n        else c;\n        action b;\n        action c;\n        first b then done;\n    }\n}\n";
+
+#[test]
+fn delete_succession_line_removes_its_statement() {
+    // Arrange（同値分割：ガード付きの継起の文・first … then の文）
+    let guarded = r#"{"op":"deleteEdge","id":"succession|a:d|a:b|[x > 0]#1","ctx":"A"}"#;
+    let to_done = r#"{"op":"deleteEdge","id":"succession|a:b|a:done|#1","ctx":"A"}"#;
+    // Act
+    let (after_guarded, _) = run(FLOW, guarded);
+    let (after_done, _) = run(FLOW, to_done);
+    // Assert
+    assert!(!after_guarded.contains("if x > 0 then b;"));
+    assert!(after_guarded.contains("        else c;\n        action b;"));
+    assert!(!after_done.contains("first b then done;"));
+}
+
+#[test]
+fn delete_succession_written_with_then_keeps_the_action() {
+    // Arrange（then action a; の継起は then だけを消す）
+    let id = r#"{"op":"deleteEdge","id":"succession|a:start|a:a|#1","ctx":"A"}"#;
+    // Act
+    let (after, _) = run(FLOW, id);
+    // Assert
+    assert!(
+        after.contains("        first start;\n        action a;\n"),
+        "{after}"
+    );
+}
+
+#[test]
+fn delete_and_rename_action_in_the_flow() {
+    // Arrange（a: のキーの要素は、アクション定義の中の宣言）
+    let del = r#"{"op":"delete","keys":["a:c"],"ctx":"A"}"#;
+    let ren = r#"{"op":"rename","key":"a:d","name":"check","ctx":"A"}"#;
+    // Act
+    let (deleted, _) = run(FLOW, del);
+    let (renamed, _) = run(FLOW, ren);
+    // Assert
+    assert!(!deleted.contains("action c;"));
+    assert!(renamed.contains("then decide check;"), "{renamed}");
+}
+
+#[test]
+fn start_and_done_cannot_be_deleted_on_their_own() {
+    // Arrange（異常系：暗黙の開始は宣言を持たない）
+    let del = r#"{"op":"delete","keys":["a:start"],"ctx":"A"}"#;
+    // Act
+    let why = refused(FLOW, del);
+    // Assert
+    assert!(why.contains("開始と終了の記号"), "{why}");
+}
+
+#[test]
+fn unknown_flow_line_or_element_is_refused() {
+    // Arrange（異常系：無い ID・無い要素）
+    let line = r#"{"op":"deleteEdge","id":"succession|a:x|a:y|#1","ctx":"A"}"#;
+    let node = r#"{"op":"delete","keys":["a:x"],"ctx":"A"}"#;
+    // Act / Assert
+    assert!(refused(FLOW, line).contains("関係"));
+    assert!(refused(FLOW, node).contains("a:x"));
+}

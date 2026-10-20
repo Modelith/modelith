@@ -194,7 +194,7 @@ fn missing(key: &str) -> Refusal {
 impl Doc<'_> {
     /// キーの要素。`u:名前`・`l:名前` は、ctx（部品定義・シナリオ）の中の部品・ライフライン。
     /// `u:部品.部品`（入れ子の部品）と `j:…`（n 項の接続の点。接続の使用を指す）は、内部ブロック図の要素として探す。
-    /// `note:…` はメモ（コメントの宣言）として探す。
+    /// `note:…` はメモ（コメントの宣言）として探す。`a:…` は、ctx（アクション定義）のアクションの流れの図の要素として探す。
     /// それ以外のキーは、図の要素のキー（同じ名前が 2 つ目なら `名前@持ち主`）として探す。
     ///
     /// # 引数
@@ -214,6 +214,8 @@ impl Doc<'_> {
     /// find("u:e", Some("C"))  → Ok(Found { entry: C の中の e の番号 })
     /// find("u:e.x", Some("C")) → Ok(Found { entry: E の中の x の番号 })   // E に part x があるとき
     /// find("note:#1", None)   → Ok(Found { entry: 名前の無い 1 つ目のメモの番号 })   // メモが E を注釈するとき
+    /// find("a:x", Some("A"))  → Ok(Found { entry: A の中のアクション x の番号 })   // action def A { action x; } のとき
+    /// find("a:start", Some("A")) → Err("開始と終了の記号は、順序の線から決まります。…")
     /// find("u:e", None)       → Err("操作する要素「」が見つかりません。…")   // 対象が無い
     /// find("Gone", None)      → Err("操作する要素「Gone」が見つかりません。…")
     /// ```
@@ -234,6 +236,13 @@ impl Doc<'_> {
                 .copied()
                 .find(|&i| self.e(i).name == name);
             return child
+                .map(|entry| Found { entry })
+                .ok_or_else(|| missing(key));
+        }
+        // アクションの流れの図の要素（`a:…`）は、モデルのアクションの流れから探す（8.2.3.17）
+        if key.starts_with("a:") {
+            let c = self.context(ctx.unwrap_or_default())?;
+            return super::flow::entry_of(self, c, key)?
                 .map(|entry| Found { entry })
                 .ok_or_else(|| missing(key));
         }
@@ -786,7 +795,8 @@ pub(super) struct EdgeAt {
     pub rel: Option<usize>,
 }
 
-/// 内部ブロック図・シーケンス図の関係の ID（UI の `web/src/app/views.ts` と同じ ID）。
+/// 内部ブロック図・シーケンス図・アクションの流れの図の関係の ID（UI の `web/src/app/views.ts` と同じ ID）。
+/// アクション定義（`action def`）なら、アクションの流れの線（`flow::edges`。`succession|a:a|a:b|#1` など）。
 /// シナリオ（`occurrence def`）なら、メッセージを書いた順に `msg|順番|名前`。
 /// それ以外なら、内部ブロック図の線（`ibd::edges`。`flow|u:部品|u:部品|ラベル#番号`・`bind|…`・`connect|j:…|…`）。
 ///
@@ -813,6 +823,9 @@ pub(super) fn context_edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
         start: r.start,
         end: r.end + 1,
     };
+    if ctx.kind == "action def" {
+        return super::flow::edges(d, c);
+    }
     if ctx.kind == "occurrence def" {
         return messages(d, c)
             .into_iter()

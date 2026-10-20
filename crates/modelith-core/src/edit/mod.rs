@@ -2,6 +2,7 @@
 //! コアは今のテキストを解析し直して要素を探し、テキストの編集（UTF-16 の位置）を返す。
 //! ダイアログ・確認・トースト・配置は UI（TS）に残す。暫定コアの `web/src/app/ops.ts` と同じ書き方をする。
 
+mod flow;
 mod ibd;
 mod more;
 mod ops;
@@ -17,7 +18,8 @@ pub use more::{FlowEnd, sysml_name};
 use text::{Utf16, diff, utf16_of};
 
 /// 図の操作の意図。要素は図の要素のキー、関係は ID で指す。
-/// `ctx` は内部ブロック図・シーケンス図の対象（部品定義・シナリオのキー）。`u:名前`・`l:名前` のキーは、その中の部品・ライフライン。
+/// `ctx` は内部ブロック図・シーケンス図・アクションの流れの図の対象（部品定義・シナリオ・アクション定義のキー）。
+/// `u:名前`・`l:名前`・`a:名前` のキーは、その中の部品・ライフライン・アクション。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Intent {
