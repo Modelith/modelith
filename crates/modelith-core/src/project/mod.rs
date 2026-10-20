@@ -807,9 +807,14 @@ impl Ctx {
             let idx = self.out.entries.len();
             let parts = decl_parts(n, is_def);
             let name = if parts.name.is_empty()
-                && matches!(n.kind(), INCLUDE_USE_CASE_USAGE | OCCURRENCE_USAGE)
-            {
-                // `include U;`・`event e;` は、参照した特徴の名前を名前にする（OwnedReferenceSubsetting）
+                && matches!(
+                    n.kind(),
+                    INCLUDE_USE_CASE_USAGE
+                        | OCCURRENCE_USAGE
+                        | PERFORM_ACTION_USAGE
+                        | EXHIBIT_STATE_USAGE
+                ) {
+                // `include U;`・`event e;`・`perform x.y;`・`exhibit s;` は、参照した特徴の名前を名前にする（OwnedReferenceSubsetting）
                 first_ref(n)
                     .map(|r| last_segment(r.rsplit('.').next().unwrap_or(&r)).to_owned())
                     .unwrap_or_default()
@@ -873,6 +878,9 @@ impl Ctx {
                 // 参照の使用は、`ref` のパラメータと同じく向き `ref` で表す（修飾は持たない）
                 e.mods = None;
                 e.dir = Some("ref".to_owned());
+            }
+            if let Some(spec) = self.performed_reference(n) {
+                e.specs.insert(0, spec);
             }
             e.guard = self.guard(n);
             e.parallel = matches!(
@@ -1374,6 +1382,43 @@ impl Ctx {
             }
         }
         out
+    }
+
+    /// 参照の形の `perform x.y;`・`exhibit s;`（PerformActionUsage・ExhibitStateUsage の OwnedReferenceSubsetting、8.2.2.17〜18）が
+    /// 指す、既にあるアクション・状態。`::>` と同じ参照（`references`）の相手にする。
+    ///
+    /// # 引数
+    ///
+    /// - `n`：文の節
+    ///
+    /// # 戻り値
+    ///
+    /// 参照の相手（範囲は参照そのもの。UTF-16）。`perform action a : A;` のような宣言する形や、ほかの文なら `None`。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// performed_reference("perform x.y;")        → Some(Spec { op: "references", target: "x.y", … })
+    /// performed_reference("exhibit s;")          → Some(Spec { op: "references", target: "s", … })
+    /// performed_reference("perform action a;")   → None
+    /// ```
+    fn performed_reference(&self, n: &SyntaxNode) -> Option<Spec> {
+        if !matches!(n.kind(), PERFORM_ACTION_USAGE | EXHIBIT_STATE_USAGE) {
+            return None;
+        }
+        let r = reference_form(n)?;
+        let range = r.text_range();
+        Some(Spec {
+            op: "references",
+            target: compact(&r),
+            path: if r.kind() == QUALIFIED_NAME {
+                path_of(&r)
+            } else {
+                compact(&r)
+            },
+            start: self.utf16(range.start().into()),
+            end: self.utf16(range.end().into()),
+        })
     }
 
     /// 宣言を `entries` の末尾に足し、`pe` の宣言の `children` にその番号を足す。
@@ -1892,6 +1937,7 @@ fn decl_kind(n: &SyntaxNode, h: &str) -> Option<&'static str> {
 /// entry_kind("#X h : T;", "h : T", "", true)                → Some(("usage", false))
 /// entry_kind("connect a to b;", "connect a to b", "", false) → Some(("connection", false))
 /// entry_kind("individual def E;", "def E", "individual", false) → Some(("occurrence def", true))
+/// entry_kind("perform x.y;", "perform x.y", "", false)     → Some(("perform action", false))
 /// entry_kind("in #X x : T;", "x : T", "in", true)           → None   // パラメータとして読む
 /// entry_kind("a = 1;", "a = 1", "", false)                  → None
 /// ```
@@ -1927,6 +1973,9 @@ fn entry_kind(
         // `bind a = b;`・`binding bb bind a = b;`（BindingConnectorAsUsage、8.2.2.13.2）
         BINDING_CONNECTOR_AS_USAGE => Some(("binding", false)),
         OCCURRENCE_USAGE if starts_with_word(h, "event") => Some(("event occurrence", false)),
+        // `perform x.y;`・`exhibit s;`（既にあるアクション・状態を指す形、8.2.2.17〜18）
+        PERFORM_ACTION_USAGE if reference_form(n).is_some() => Some(("perform action", false)),
+        EXHIBIT_STATE_USAGE if reference_form(n).is_some() => Some(("exhibit state", false)),
         // `individual def H;`・`individual h : H;`（IndividualDefinition・IndividualUsage、8.2.2.9）
         OCCURRENCE_DEFINITION if starts_with_word(h, "def") => Some(("occurrence def", true)),
         OCCURRENCE_USAGE if is_mod("individual") => Some(("occurrence", false)),
@@ -2487,6 +2536,49 @@ fn rendering_reference(e: &Entry) -> String {
         .unwrap_or_else(|| last_segment(&e.ty).to_owned())
 }
 
+/// 既にある要素を指す形（OwnedReferenceSubsetting。`perform x.y;`・`exhibit s;`・`frame c;`、8.2.2.17・8.2.2.18・8.2.2.21）の参照。
+/// 頭のキーワード（`perform`・`exhibit`・`frame`）の直後に参照が続くときだけ、その参照を返す。
+///
+/// # 引数
+///
+/// - `n`：文の節
+///
+/// # 戻り値
+///
+/// 頭のキーワードの直後の `QUALIFIED_NAME`・`FEATURE_CHAIN` の節。直後が種類のキーワード（`perform action a`）や
+/// ほかの語（`perform use case u`）なら `None`。
+///
+/// # 例
+///
+/// ```text
+/// reference_form("perform x.y;")            → Some(FEATURE_CHAIN(x.y))
+/// reference_form("private exhibit s;")      → Some(QUALIFIED_NAME(s))
+/// reference_form("perform action a : A;")   → None
+/// reference_form("perform use case u : U;") → None
+/// ```
+fn reference_form(n: &SyntaxNode) -> Option<SyntaxNode> {
+    let mut after_head = false;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind().is_trivia() || t.kind() == REGULAR_COMMENT => {
+            }
+            rowan::NodeOrToken::Token(t)
+                if t.kind() == KEYWORD && matches!(t.text(), "perform" | "exhibit" | "frame") =>
+            {
+                after_head = true;
+            }
+            rowan::NodeOrToken::Node(c)
+                if after_head && matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) =>
+            {
+                return Some(c);
+            }
+            _ if after_head => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 /// 最初の参照（名前として読んだ NAME も含む）。
 ///
 /// # 引数
@@ -2661,6 +2753,23 @@ fn relation(n: &SyntaxNode, h: &str) -> Option<RelKind> {
                 first_ref(n)?
             },
         }),
+        // `frame cu;`（既にある関心事を指す形、FramedConcernMember の OwnedReferenceSubsetting、8.2.2.21）
+        FRAMED_CONCERN_USAGE if reference_form(n).is_some() => {
+            let r = reference_form(n)?;
+            let reference = compact(&r);
+            Some(RelKind::Frame {
+                name: unquote(last_segment(
+                    reference.rsplit('.').next().unwrap_or(&reference),
+                ))
+                .to_owned(),
+                ty: reference.clone(),
+                path: if r.kind() == QUALIFIED_NAME {
+                    path_of(&r)
+                } else {
+                    reference
+                },
+            })
+        }
         FRAMED_CONCERN_USAGE => {
             let t = child(n, FEATURE_TYPING).and_then(|c| type_of(&c))?;
             Some(RelKind::Frame {

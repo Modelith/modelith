@@ -906,14 +906,18 @@ impl<'a> Builder<'a> {
                 }
                 RelKind::Frame { ty, path, .. } => {
                     let a = self.owner_node(pe);
-                    let tn = self
+                    // `frame concern c : C;` は型の定義、`frame cu;`（参照の形）は既にある関心事の使用（線はその型の定義へ）
+                    let found = self
                         .def_of(path, pe)
-                        .and_then(|t| self.node_of.get(&t).copied());
+                        .or_else(|| self.resolve(path, pe).filter(|&u| !self.e(u).is_def));
+                    let tn = found.and_then(|t| self.node_for(Some(t)));
                     match (a, tn) {
                         (Some(a), Some(tn)) => {
                             self.add_edge("frame", a, tn, "«frame»".into(), src);
                         }
                         (None, Some(_)) => {}
+                        // 関心事はあるが、型の無い使用などで図に無い
+                        (_, None) if found.is_some() => {}
                         _ => {
                             let shown = if path.is_empty() { ty } else { path };
                             self.problem(

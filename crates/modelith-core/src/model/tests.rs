@@ -1666,6 +1666,44 @@ fn interface_without_connect_is_a_connection_like_the_long_form() {
 }
 
 #[test]
+fn perform_reference_is_an_action_in_the_flow() {
+    // Arrange（`perform x.y;`、PerformActionUsage の参照の形、8.2.2.17）
+    let text = "package P { action def G { action y; } action def F { action x : G; perform x.y; then done; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let names: Vec<String> = flow(&m, "F")
+        .nodes
+        .iter()
+        .map(|n| format!("{}:{}", n.kind, n.name))
+        .collect();
+    assert!(names.contains(&"perform action:y".to_owned()), "{names:?}");
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn frame_reference_draws_to_the_type_of_the_concern() {
+    // Arrange（`frame cu;`：既にある関心事の使用の型へ «frame» を引く、8.2.2.21）
+    let text = "package P { concern def C; requirement def R { concern cu : C; concern un; frame cu; frame un; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(edge_list(&m).contains(&"frame|R|C".to_owned()));
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn frame_reference_to_a_missing_concern_is_reported() {
+    // Arrange（異常系：参照の形の相手が無い）
+    let text = "package P { requirement def R { frame nope; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["扱う関心事「nope」が見つかりません（frame）"]);
+}
+
+#[test]
 fn succession_flow_is_a_labelled_line() {
     // Arrange（SuccessionFlowUsage、8.2.3.17：名前の無いものはアイテム、名前付きは名前と型）
     let text = "package P { item def W; action def A { action a; action b; succession flow of W from a.o to b.i; \

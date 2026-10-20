@@ -726,6 +726,59 @@ fn conjugated_port_definition_name_is_the_conjugate_of_its_owner() {
 }
 
 #[test]
+fn perform_and_exhibit_references_are_usages_that_reference_the_target() {
+    // Arrange（OwnedReferenceSubsetting の形、PerformActionUsage 8.2.2.17・ExhibitStateUsage 8.2.2.18）
+    let text = "part def H { action x : F; state st; perform x.y; exhibit st; perform action a : F; \
+        perform use case u : U; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let rows: Vec<String> = r
+        .entries
+        .iter()
+        .filter(|e| matches!(e.kind.as_str(), "perform action" | "exhibit state"))
+        .map(|e| {
+            let specs: Vec<String> = e
+                .specs
+                .iter()
+                .map(|s| format!("{} {}", s.op, s.target))
+                .collect();
+            format!("{} {} [{}]", e.kind, e.name, specs.join(", "))
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "perform action y [references x.y]",
+            "exhibit state st [references st]",
+            "perform action a []",
+        ]
+    );
+    // 境界値：`perform` の後が参照でない形（`perform use case`）は、これまでどおりまだ扱えない
+    let heads: Vec<&str> = r.unsupported.iter().map(|u| u.head.as_str()).collect();
+    assert_eq!(heads, ["perform use case u : U"]);
+}
+
+#[test]
+fn frame_reference_is_a_frame_relation() {
+    // Arrange（FramedConcernMember の OwnedReferenceSubsetting の形、8.2.2.21）
+    let text = "requirement def R { concern cu : C; frame cu; frame concern fc : C; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let frames: Vec<(&str, &str)> = r
+        .rels
+        .iter()
+        .filter_map(|x| match &x.kind {
+            RelKind::Frame { name, ty, .. } => Some((name.as_str(), ty.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(frames, [("cu", "cu"), ("fc", "C")]);
+    assert!(r.unsupported.is_empty());
+}
+
+#[test]
 fn body_of_a_supported_anonymous_block_is_still_read() {
     // Arrange（正常系：objective と @メタデータの本体は、これまでどおり読む）
     let text = "requirement def R; verification def V { objective { verify R; } @Phase { stage = K::a; } }";

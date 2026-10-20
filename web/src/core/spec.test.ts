@@ -1392,5 +1392,40 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect(problems(text)).toEqual([]);
       });
     });
+
+    describe("既にある要素を指す perform・exhibit・frame（OwnedReferenceSubsetting の形。PerformActionUsage 8.2.2.17・ExhibitStateUsage 8.2.2.18・FramedConcernMember 8.2.2.21）", () => {
+      it("perform x.y; と exhibit st; は、指したアクション・状態を参照する使用にする（以前は「まだ扱えない」）", () => {
+        // Arrange
+        const text = "package P { action def F { action y; } state def SD; part def H { action x : F; state st : SD; perform x.y; exhibit st; } }";
+        // Act
+        const P = parse(text);
+        // Assert
+        expect(P.unsupported).toEqual([]);
+        expect(P.entries.filter((e) => e.kind === "perform action" || e.kind === "exhibit state").map((e) => [e.kind, e.name, e.specs?.[0]?.target])).toEqual([
+          ["perform action", "y", "x.y"],
+          ["exhibit state", "st", "st"],
+        ]);
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("frame cu; は、関心事の使用 cu の型への «frame» の線にする（以前は「まだ扱えない」）", () => {
+        // Arrange
+        const text = "package P { concern def C; requirement def R { concern cu : C; frame cu; } }";
+        // Act
+        const es = edges(text);
+        // Assert
+        expect(es).toContain("frame|R|C");
+        expect(problems(text)).toEqual([]);
+      });
+
+      it("frame の相手が無ければ知らせる（異常系）", () => {
+        // Arrange
+        const text = "package P { requirement def R { frame nope; } }";
+        // Act
+        const ps = errors(text);
+        // Assert
+        expect(ps).toEqual(["扱う関心事「nope」が見つかりません（frame）"]);
+      });
+    });
   });
 }
