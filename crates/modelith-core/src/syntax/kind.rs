@@ -194,6 +194,24 @@ syntax_kinds! {
     SUCCESSION_FLOW_USAGE,
     /// 継起のガード `if g`（GuardExpressionMember）。`first a if g then b;`・`if g then b;` の中に置く。
     GUARD_EXPRESSION,
+    /// `fork f;`（ForkNode）。
+    FORK_NODE,
+    /// `join j;`（JoinNode）。
+    JOIN_NODE,
+    /// `merge m;`（MergeNode）。
+    MERGE_NODE,
+    /// `decide d;`（DecisionNode）。
+    DECISION_NODE,
+    /// `send x via p to y;`・`action s send x;`（SendNode）。
+    SEND_NODE,
+    /// `accept e : E via p;`・`action a accept E;`（AcceptNode）。
+    ACCEPT_NODE,
+    /// `assign a.x := 1;`（AssignmentNode）。
+    ASSIGNMENT_NODE,
+    /// `terminate;`・`terminate p;`（TerminateNode）。
+    TERMINATE_NODE,
+    /// アクションの節の引数（NodeParameterMember・PayloadParameterMember。送るもの・受けるもの・送る先・代入の相手と値）。
+    NODE_PARAMETER,
     /// `bind a = b;`（BindingConnectorAsUsage）。
     BINDING_CONNECTOR_AS_USAGE,
     /// `entry;`・`entry action a;`・`exit`・`do`（StateSubactionMembership）。

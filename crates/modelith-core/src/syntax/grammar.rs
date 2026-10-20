@@ -208,6 +208,7 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "allocation",
     "analysis",
     "assert",
+    "assign",
     "assume",
     "attribute",
     "bind",
@@ -219,6 +220,7 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "connection",
     "constant",
     "constraint",
+    "decide",
     "dependency",
     "derived",
     "doc",
@@ -228,6 +230,7 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "exit",
     "expose",
     "filter",
+    "fork",
     "frame",
     "import",
     "include",
@@ -235,8 +238,10 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "inout",
     "interface",
     "item",
+    "join",
     "language",
     "library",
+    "merge",
     "message",
     "metadata",
     "objective",
@@ -257,11 +262,13 @@ const MEMBER_START_KEYWORDS: &[&str] = &[
     "requirement",
     "return",
     "satisfy",
+    "send",
     "stakeholder",
     "standard",
     "state",
     "subject",
     "succession",
+    "terminate",
     "transition",
     "use",
     "variant",
@@ -331,6 +338,15 @@ fn member(p: &mut Parser<'_>) {
     }
     let owner = m.token;
 
+    if p.at_kw("action") && action_node_follows(p, 1) {
+        // `action s send x;`・`action a accept E;`（ActionNodeUsageDeclaration、8.2.2.17）
+        p.bump();
+        identification(p);
+        if let Some(kind) = action_node(p, owner) {
+            m.complete(p, kind);
+            return;
+        }
+    }
     if let Some((n, def, usage)) = kind_keyword(p, 0) {
         for _ in 0..n {
             p.bump();
@@ -438,7 +454,9 @@ fn member(p: &mut Parser<'_>) {
 /// keyword_member("perform a;")         → PERFORM_ACTION_USAGE
 /// keyword_member("first a then b;")    → SUCCESSION_AS_USAGE
 /// keyword_member("if x > 0 then b;")   → SUCCESSION_AS_USAGE（GUARD_EXPRESSION を持つ）
-/// keyword_member("send x via p;")      → UNSUPPORTED_MEMBER   // 文法を持たない文
+/// keyword_member("send x via p;")      → SEND_NODE
+/// keyword_member("then fork f;")       → FORK_NODE
+/// keyword_member("until x;")           → UNSUPPORTED_MEMBER   // 文法を持たない文
 /// ```
 fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
     let kw = p.nth_text(0);
@@ -551,7 +569,15 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
         }
         "then" => {
             p.bump();
-            if let Some((n, _, usage)) = kind_keyword(p, 0) {
+            if p.at_kw("action") && action_node_follows(p, 1) {
+                // `then action s send x;`（SourceSuccessionMember の後のアクションの節）
+                p.bump();
+                identification(p);
+            }
+            if let Some(kind) = action_node(p, owner) {
+                // `then fork f;`・`then send x to y;` は、その節として読む
+                kind
+            } else if let Some((n, _, usage)) = kind_keyword(p, 0) {
                 // `then action a;`・`then message …;` は、その種類の使用として読む
                 for _ in 0..n {
                     p.bump();
@@ -596,12 +622,257 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
             declaration(p, owner, false, false);
             ALLOCATION_USAGE
         }
+        _ if action_node_keyword(p, 0) => action_node(p, owner).unwrap_or(UNSUPPORTED_MEMBER),
         _ => {
             // 段階 A では文法を持たない文。黙って捨てず、節として残す（F-EDIT-8）
             p.bump();
             declaration(p, owner, false, false);
             UNSUPPORTED_MEMBER
         }
+    }
+}
+
+/// アクションの節（ActionNode、8.2.2.17）の頭のキーワードと、その節の種類。制御の節（ControlNode）は `action n` の後に書けない。
+const ACTION_NODES: &[(&str, SyntaxKind, bool)] = &[
+    ("fork", FORK_NODE, false),
+    ("join", JOIN_NODE, false),
+    ("merge", MERGE_NODE, false),
+    ("decide", DECISION_NODE, false),
+    ("send", SEND_NODE, true),
+    ("accept", ACCEPT_NODE, true),
+    ("assign", ASSIGNMENT_NODE, true),
+    ("terminate", TERMINATE_NODE, true),
+];
+
+/// `n` 番目のトークンが、アクションの節（ActionNode、8.2.2.17）の頭のキーワードか。読み進めない。
+///
+/// # 引数
+///
+/// - `p`：パーサ
+/// - `n`：調べるトークンの、今の位置からの距離（0 が今のトークン）
+///
+/// # 戻り値
+///
+/// `fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate` のどれかなら `true`。
+///
+/// # 例
+///
+/// ```text
+/// action_node_keyword("fork f;", 0) → true
+/// action_node_keyword("part p;", 0) → false
+/// ```
+fn action_node_keyword(p: &Parser<'_>, n: usize) -> bool {
+    ACTION_NODES.iter().any(|(kw, _, _)| p.nth_at_kw(n, kw))
+}
+
+/// `action` の後に、名前を付けたアクションの節（ActionNodeUsageDeclaration、8.2.2.17）が続くか。読み進めない。
+///
+/// `action` の直後か、名前 1 つの後に、`action n` の後に書ける節のキーワード（`send`・`accept`・`assign`・`terminate`）があれば真。
+///
+/// # 引数
+///
+/// - `p`：パーサ
+/// - `n`：`action` の次のトークンの、今の位置からの距離
+///
+/// # 戻り値
+///
+/// アクションの節が続くなら `true`。
+///
+/// # 例
+///
+/// ```text
+/// action_node_follows("action s send x;", 1)  → true
+/// action_node_follows("action accept E;", 1)  → true
+/// action_node_follows("action a : A;", 1)     → false
+/// action_node_follows("action f fork;", 1)    → false   // 制御の節は action の後に書けない
+/// ```
+fn action_node_follows(p: &Parser<'_>, n: usize) -> bool {
+    let named = |i: usize| {
+        ACTION_NODES
+            .iter()
+            .any(|(kw, _, after_action)| *after_action && p.nth_at_kw(i, kw))
+    };
+    named(n) || (p.nth_at_name(n) && named(n + 1))
+}
+
+/// アクションの節 1 つ（ActionNode、8.2.2.17）。頭のキーワードから終わり（`;` か本体）までを読む。
+///
+/// 制御の節（`fork`・`join`・`merge`・`decide`）は名前と型などを、`send` は送るもの・`via`・`to` を、`accept` は受けるものと `via` を、
+/// `assign` は代入の相手と `:=` の値を、`terminate` は終わらせる相手を読む。引数は `NODE_PARAMETER` の節にする。
+/// 状態の中の省略形の遷移 `accept E then b;` は、`then` と行き先（`CONNECTOR_END`）も読む。
+///
+/// # 引数
+///
+/// - `p`：節の頭のキーワードにいるパーサ
+/// - `owner`：この要素の頭のトークンの番号（閉じていないブロックのエラーの位置）
+///
+/// # 戻り値
+///
+/// 節の種類。頭がアクションの節のキーワードでなければ `None`（何も読まない）。
+///
+/// # 例
+///
+/// ```text
+/// action_node("decide d;", …)            → Some(DECISION_NODE)（d は NAME）
+/// action_node("send x via p to y;", …)   → Some(SEND_NODE)（NODE_PARAMETER が 3 つ）
+/// action_node("assign a.x := 1;", …)     → Some(ASSIGNMENT_NODE)
+/// action_node("part p;", …)              → None
+/// ```
+fn action_node(p: &mut Parser<'_>, owner: usize) -> Option<SyntaxKind> {
+    let (kw, kind, _) = ACTION_NODES.iter().find(|(kw, _, _)| p.at_kw(kw))?;
+    let (kw, kind) = (*kw, *kind);
+    p.bump();
+    match kw {
+        "send" => {
+            if !p.at_kw("via") && !p.at_kw("to") {
+                node_parameter(p, &["via", "to"]);
+            }
+            if p.eat_kw("via") {
+                required_parameter(p, &["to"]);
+            }
+            if p.eat_kw("to") {
+                required_parameter(p, &[]);
+            }
+        }
+        "accept" => {
+            payload_parameter(p);
+            if p.eat_kw("via") {
+                required_parameter(p, &[]);
+            }
+            // 状態の中の省略形の遷移 `accept E then b;`（TargetTransitionUsage、8.2.2.18）は、行き先まで読む
+            if p.eat_kw("then") {
+                connector_end(p);
+            }
+        }
+        "assign" => {
+            let m = p.start();
+            if p.at_name() {
+                reference(p);
+            } else {
+                p.error("関係の相手の名前がありません");
+            }
+            m.complete(p, NODE_PARAMETER);
+            if p.eat(COLON_EQ) {
+                required_parameter(p, &[]);
+            } else {
+                // `:=` を書き忘れても、続く値は読む（「;」が無いとは言わない）
+                p.error_after_previous("「:=」がありません");
+                node_parameter(p, &[]);
+            }
+        }
+        "terminate" => {
+            node_parameter(p, &[]);
+        }
+        _ => {
+            // 制御の節（ControlNode）は、使用の宣言と本体
+            declaration(p, owner, true, false);
+            return Some(kind);
+        }
+    }
+    end(p, owner, "", true);
+    Some(kind)
+}
+
+/// アクションの節の引数 1 つ（NodeParameterMember、8.2.2.17）。`stops` のキーワードの手前までの式を `NODE_PARAMETER` の節にする。
+///
+/// # 引数
+///
+/// - `p`：引数の頭にいるパーサ
+/// - `stops`：括弧の外で着いたら止まるキーワード
+///
+/// # 戻り値
+///
+/// 式を読んだら `true`。何も読まなかったら `false`（節も作らない）。
+///
+/// # 例
+///
+/// ```text
+/// node_parameter("S(1) via p;", &["via", "to"]) → true（NODE_PARAMETER { EXPRESSION("S(1)") }）
+/// node_parameter(";", &[])                      → false
+/// ```
+fn node_parameter(p: &mut Parser<'_>, stops: &[&str]) -> bool {
+    let m = p.start();
+    if expression_until(p, stops) {
+        m.complete(p, NODE_PARAMETER);
+        true
+    } else {
+        m.abandon();
+        false
+    }
+}
+
+/// キーワード（`via`・`to`・`:=`）の後の、省けない引数。式が無ければ「値の式がありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：引数の頭にいるパーサ
+/// - `stops`：括弧の外で着いたら止まるキーワード
+///
+/// # 例
+///
+/// ```text
+/// required_parameter("p to y;", &["to"]) → NODE_PARAMETER { EXPRESSION("p") }
+/// required_parameter(";", &[])           → 「値の式がありません」
+/// ```
+fn required_parameter(p: &mut Parser<'_>, stops: &[&str]) {
+    if !node_parameter(p, stops) {
+        p.error("値の式がありません");
+    }
+}
+
+/// `accept` の後の、受けるもの（PayloadParameterMember、8.2.2.17）。`NODE_PARAMETER` の節にする。
+///
+/// `e : E`（名前と型）、`E`（型だけ）、`when 式`・`at 式`・`after 式`（変化・時刻・時間の経過で受ける）を読む。
+/// 受けるものが無ければ「受けるものがありません」を置く。
+///
+/// # 引数
+///
+/// - `p`：`accept` の直後にいるパーサ
+///
+/// # 例
+///
+/// ```text
+/// payload_parameter("e : E via p;")  → NODE_PARAMETER { NAME(e), FEATURE_TYPING(E) }
+/// payload_parameter("Go;")           → NODE_PARAMETER { QUALIFIED_NAME(Go) }
+/// payload_parameter("after 5 [s];")  → NODE_PARAMETER { EXPRESSION("5 [s]") }
+/// payload_parameter(";")             → 「受けるものがありません」
+/// ```
+fn payload_parameter(p: &mut Parser<'_>) {
+    const TRIGGERS: &[&str] = &["when", "at", "after"];
+    let m = p.start();
+    let mut any = false;
+    if p.at_name()
+        && (matches!(p.nth(1), COLON | COLON_GT | COLON_GT2 | COLON2_GT)
+            || TRIGGERS.iter().any(|k| p.nth_at_kw(1, k)))
+    {
+        let n = p.start();
+        p.bump();
+        n.complete(p, NAME);
+        any = true;
+    }
+    loop {
+        match p.current() {
+            COLON => relationship(p, 1, FEATURE_TYPING),
+            COLON_GT => relationship(p, 1, SUBSETTING),
+            COLON_GT2 => relationship(p, 1, REDEFINITION),
+            COLON2_GT => relationship(p, 1, REFERENCE_SUBSETTING),
+            L_BRACK => bracketed(p, MULTIPLICITY),
+            IDENT | QUOTED_NAME if !any => reference(p),
+            KEYWORD if TRIGGERS.iter().any(|k| p.at_kw(k)) => {
+                p.bump();
+                if !expression_until(p, &["via"]) {
+                    p.error("値の式がありません");
+                }
+            }
+            _ => break,
+        }
+        any = true;
+    }
+    if any {
+        m.complete(p, NODE_PARAMETER);
+    } else {
+        m.abandon();
+        p.error("受けるものがありません");
     }
 }
 
