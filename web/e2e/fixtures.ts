@@ -150,6 +150,8 @@ export async function openReadOnlyText(page: Page, text: string): Promise<void> 
   await page.locator("#btnEditText").click();
   await replaceText(page, text);
   await page.locator("#btnEditText").click();
+  // 最後に押した「編集」ボタンにマウスが残ると、ホバーの見た目が画面に写る。ボタンの外（テキストの下の空き）へ動かしておく
+  await page.mouse.move(1, (page.viewportSize()?.height ?? 800) - 1);
 }
 
 /** 図に描かれている要素のキー（中に部品を描く部品は、線の下の層 #gEdges にある）。 */
