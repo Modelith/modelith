@@ -230,7 +230,8 @@ export function renderTabs(): void {
 /**
  * タブに切り替える（F-VIEW-2）。今のタブの対象と表示位置を保存してから、切り替え先のビュー・対象・工程を
  * S に反映し、選択と道具を解き、タブ・パレット・サブバー・図・インスペクタを描き直す。
- * 切り替え先に表示位置があれば戻し、無いか fit を指定したら全体を表示する。タブを保存する。id のタブが無ければ何もしない。
+ * 切り替え先に表示位置があれば戻し、無いか fit を指定したら全体を表示する（アクションの流れの図・状態遷移の図は、文字が読める大きさを保つ）。
+ * タブを保存する。id のタブが無ければ何もしない。
  *
  * @param id 切り替え先のタブの id
  * @param opts keepSel：選択を解かない・fit：全体を表示する
@@ -266,7 +267,7 @@ export function activateTab(id: number, opts: { keepSel?: boolean; fit?: boolean
   if (t.tf && !opts.fit) {
     S.tf = { ...t.tf };
     applyTf();
-  } else fit();
+  } else fit({ readable: true });
   saveTabs();
 }
 

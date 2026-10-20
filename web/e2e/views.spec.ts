@@ -445,8 +445,9 @@ test.describe("アクションの流れ図（ActionFlowView、F-VIEW-7、8.2.3.1
   });
 
   test("F-VIEW-7: 2 つのアクションの間に線を引くと、順序（first … then）をテキストに書く", async ({ page }) => {
-    // Arrange
+    // Arrange（開いたときは文字が読める大きさで上から見せるので、「全体」で図全体を表示してから線を引く）
     await openFlow(page);
+    await page.locator("#zFit").click();
     await page.locator('#gNodes [data-key="a:warmCup"]').click();
     await page.locator('#insp [data-act="connect"]').click();
     // Act

@@ -453,11 +453,19 @@ export function zoomBy(f: number): void {
   applyTf();
 }
 
+/** 開いたときに文字が読める大きさで描く図（アクションの流れの図・状態遷移の図）と、そのときの拡大率の下限。 */
+const READABLE_VIEWS = ["afv", "stm"];
+const READABLE_MIN = 0.8;
+
 /**
  * ビュー全体（要素と package の枠）が収まるように、表示の移動と拡大率を決める（F-VIEW-4）。拡大率は 1.1 まで。
  * 要素が無いか配置が無ければ、拡大率 1 で左上から少し離して表示する。
+ * `readable` のとき（タブを開いたとき）、アクションの流れの図・状態遷移の図は、拡大率を 0.8 より小さくしない。
+ * 収まらない図は、左上から表示する（全体は「全体」のボタンで見られる）。
+ *
+ * @param opts readable：文字が読める大きさを保つ（タブを開いたとき）
  */
-export function fit(): void {
+export function fit(opts: { readable?: boolean } = {}): void {
   const cc = viewContent(S.M, curView());
   const L = curLayout().pos;
   const placed = cc.nodes.flatMap((n) => {
@@ -490,7 +498,9 @@ export function fit(): void {
   const r = wrapEl().getBoundingClientRect();
   const bottomPad = $("#insp").hidden ? 0 : 70;
   const narrow = r.width < 600;
-  const s = Math.max(narrow ? 0.45 : 0.25, Math.min(1.1, r.width / (x1 - x0), (r.height - bottomPad) / (y1 - y0)));
+  const floor = narrow ? 0.45 : 0.25;
+  const least = opts.readable && READABLE_VIEWS.includes(S.view) ? Math.max(floor, READABLE_MIN) : floor;
+  const s = Math.max(least, Math.min(1.1, r.width / (x1 - x0), (r.height - bottomPad) / (y1 - y0)));
   const cx = (x1 - x0) * s <= r.width ? (r.width - (x1 - x0) * s) / 2 : 8;
   const cy = (y1 - y0) * s <= r.height - bottomPad ? (r.height - bottomPad - (y1 - y0) * s) / 2 : 8;
   S.tf = { s, x: cx - x0 * s, y: cy - y0 * s };
@@ -577,7 +587,7 @@ export function initCanvas(): void {
   });
   $("#zIn").onclick = () => zoomBy(1.2);
   $("#zOut").onclick = () => zoomBy(1 / 1.2);
-  $("#zFit").onclick = fit;
+  $("#zFit").onclick = () => fit();
   // ミニマップ
   const mini = $("#mini");
   let miniDrag = false;
