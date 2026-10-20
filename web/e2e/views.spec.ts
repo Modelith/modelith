@@ -178,6 +178,28 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     await expect(page.locator("#subbar")).toContainText("（Car）");
   });
 
+  test("F-VIEW-7: GeneralView に、特殊化・依存の線と部品の多重度を SysML の記法で描く", async ({ page }) => {
+    // Arrange
+    const text = `package G {
+    part def Vehicle;
+    part def Wheel;
+    part def Car :> Vehicle { part wheels : Wheel[4]; }
+    dependency Wheel to Vehicle;
+    view gv : GeneralView { expose G::*; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="gv"]').click();
+    // Assert（特殊化は白抜きの三角、依存は破線と開いた矢印、多重度は部品の側の端）
+    await expect(page.locator('[data-edge="specialize|Car|Vehicle|#1"] path.line')).toHaveAttribute("marker-end", "url(#mTri)");
+    await expect(page.locator('[data-edge="dependency|Wheel|Vehicle|#1"] path.line')).toHaveAttribute("stroke-dasharray", "6 4");
+    await expect(page.locator('[data-edge="comp|Car|Wheel|wheels#1"] text.end')).toHaveText("[4]");
+  });
+
   test("F-VIEW-7: テキストで expose を書き換えると、開いている図も変わる", async ({ page }) => {
     // Arrange
     await openView(page, "reqs");
