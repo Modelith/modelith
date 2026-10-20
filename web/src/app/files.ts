@@ -154,10 +154,25 @@ async function offerLegacyMove(key: string): Promise<void> {
   toast("保存すると、図の配置が別のファイルに移ります");
 }
 
-/** 表示中の文書が無くなったら、空の無題の文書を作る（テキストは常に 1 つ表示する）。 */
-function ensureDoc(): void {
+/**
+ * 開いている文書が無い状態にする（F-FILE-14）。新しい文書は作らず、テキストと図を空にし、
+ * どの文書にも属さない空の履歴に切り替え、選択を解いて、開いているファイルが無いことの案内を出す。
+ */
+function showNoDoc(): void {
+  shownKey = null;
+  useHistory(null);
+  clearSel();
+  S.prevSig = new Map();
+  loadLayout({});
+  setText("", { noHistory: true });
+  renderFiles();
+}
+
+/** 表示中の文書（無ければ最初の文書）を表示する。開いている文書が無ければ、その案内を出す（F-FILE-14）。 */
+function showCurrent(): void {
   const doc = ws.active() ?? ws.list()[0];
-  showDoc(doc ? doc.key : ws.newUntitled(untitledName(), "").key);
+  if (doc) showDoc(doc.key);
+  else showNoDoc();
 }
 
 /* ---- コマンド ---- */
@@ -196,6 +211,15 @@ async function openFolder(reopen = false): Promise<void> {
  */
 function newUntitled(): void {
   showDoc(ws.newUntitled(untitledName(), "").key);
+}
+
+/**
+ * サンプルを、新しい無題の文書として開いて表示する（「サンプルを開く」）。
+ *
+ * @param sample サンプルの文書（名前・テキスト・配置ファイルの文字列）
+ */
+function openSample(sample: Sample): void {
+  showDoc(ws.newUntitled(sample.name, sample.text, sample.layout).key);
 }
 
 /**
@@ -327,12 +351,13 @@ async function resolveConflict(key: string): Promise<void> {
 }
 
 /**
- * 文書を閉じる。失われる変更（未保存の変更、保存先の無い文書の中身）があれば、保存するかを確かめる（F-FILE-5）。
- * 表示中の文書を閉じたら、残りの文書（無ければ新しい無題の文書）を表示する。履歴も捨てる。
+ * 文書を閉じる。反映待ちの入力を先に表示中の文書に書き込み、失われる変更（未保存の変更、保存先の無い文書の中身）があれば、保存するかを確かめる（F-FILE-5）。
+ * 表示中の文書を閉じたら、残りの文書を表示する。残りが無ければ新しい文書は作らず、開いているファイルが無いことの案内を出す（F-FILE-14）。履歴も捨てる。
  *
  * @param key 文書のキー
  */
 async function closeDoc(key: string): Promise<void> {
+  flushEdit();
   const doc = ws.get(key);
   if (!doc) return;
   if (ws.isDirty(doc) || (!doc.ref && doc.text.trim())) {
@@ -350,7 +375,7 @@ async function closeDoc(key: string): Promise<void> {
   const wasActive = shownKey === key;
   ws.close(key);
   dropHistory(key);
-  if (wasActive) ensureDoc();
+  if (wasActive) showCurrent();
 }
 
 /**
@@ -468,7 +493,7 @@ function renderFiles(): void {
       return `<div class="fi${d.key === active?.key ? " sel" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0"><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
     })
     .join("");
-  let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs}`;
+  let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs || `<div class="msg">開いているファイルはありません。</div>`}`;
   const f = ws.folder();
   if (f) {
     h += folderHeader();
@@ -485,7 +510,23 @@ function renderFiles(): void {
   if (active) {
     $("#docName").innerHTML = esc(active.name) + staleMark(active) + (ws.isDirty(active) ? " ●" : "") + layoutMark(active);
     document.title = `${ws.isDirty(active) ? "● " : ""}${active.name} — Modelith`;
+  } else {
+    $("#docName").textContent = "";
+    document.title = "Modelith";
   }
+  renderNoDoc();
+}
+
+/**
+ * 開いている文書が無いときの案内（図とテキストの場所を覆う）を出し入れする（F-FILE-14）。
+ * 案内を出している間は、図とテキストを操作できなくし、文書が要るメニュー（保存・名前を付けて保存・書き出し）を押せなくする。
+ */
+function renderNoDoc(): void {
+  const none = shownKey === null;
+  $("#noDoc").hidden = !none;
+  $("#main").toggleAttribute("data-nodoc", none);
+  for (const pane of document.querySelectorAll<HTMLElement>(".diagrampane, .textpane")) pane.inert = none;
+  for (const id of ["#btnSave", "#btnSaveAs", "#btnSaveSvg", "#btnDrawio"]) $<HTMLButtonElement>(id).disabled = none;
 }
 
 /**
@@ -666,6 +707,7 @@ function closeMenus(): void {
 
 /**
  * ファイルメニュー・自動保存の切り替え（F-FILE-6）・ショートカット（Ctrl+S で保存、Ctrl+Shift+S で名前を付けて保存、Ctrl+O で開く）に操作をつなぐ。
+ * 開いている文書が無いときの Ctrl+S は、そのことをトーストで知らせる（F-FILE-14）。
  */
 function initMenu(): void {
   const cmd = (id: string, fn: () => void): void => {
@@ -691,10 +733,10 @@ function initMenu(): void {
   document.addEventListener("keydown", (ev) => {
     if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
     const k = ev.key.toLowerCase();
-    const key = shownKey ?? "";
     if (k === "s") {
       ev.preventDefault();
-      void save(key, ev.shiftKey);
+      if (shownKey) void save(shownKey, ev.shiftKey);
+      else toast("開いているファイルがありません");
     } else if (k === "o") {
       ev.preventDefault();
       void openFile();
@@ -767,14 +809,39 @@ async function checkExternal(): Promise<void> {
   } else if (active.stale) toast(`「${active.name}」が他のアプリで変更されています。保存するときに選べます`);
 }
 
+/** サンプルの文書（名前・テキスト・配置ファイルの文字列）。 */
+interface Sample {
+  name: string;
+  text: string;
+  layout: string;
+}
+
 /**
- * ファイル操作を初期化し、前回の下書き（無ければサンプル）を表示する（F-FILE-11）。起動時に 1 回呼ぶ。
+ * 開いているファイルが無いときの案内のボタン（新しいファイル・ファイルを開く・フォルダを開く・サンプルを開く）に操作をつなぐ（F-FILE-14）。
+ * フォルダを開けないブラウザでは、フォルダを開くボタンを出さない。
+ *
+ * @param sample サンプルの文書
+ */
+function initNoDoc(sample: Sample): void {
+  $('#noDoc [data-nodoc="openFolder"]').hidden = !local;
+  $("#noDoc").addEventListener("click", (ev) => {
+    const c = closest(ev, "[data-nodoc]")?.dataset["nodoc"];
+    if (c === "new") newUntitled();
+    else if (c === "open") void openFile();
+    else if (c === "openFolder") void openFolder();
+    else if (c === "sample") openSample(sample);
+  });
+}
+
+/**
+ * ファイル操作を初期化し、前回の下書きを表示する（F-FILE-11）。下書きが無ければサンプルを表示し、
+ * 前回すべてのファイルを閉じて終えたなら、開いているファイルが無いことの案内を出す（F-FILE-14）。起動時に 1 回呼ぶ。
  * テキストと配置の変更をワークスペースに反映し、未保存のままページを離れるときに警告し（F-FILE-5）、
  * 画面に戻ったときに他のアプリでの変更を確かめる（F-FILE-8）。
  *
  * @param sample サンプルの文書（名前・テキスト・配置ファイルの文字列）
  */
-export function initFiles(sample: { name: string; text: string; layout: string }): void {
+export function initFiles(sample: Sample): void {
   const w = window as unknown as FsApi;
   local = hasFsAccess(window) ? new LocalFolderProvider(w, idbHandleStore) : null;
   browser = new BrowserFileProvider({ choose: chooseFiles, download: (name, text) => download(name, text, "text/plain;charset=utf-8") });
@@ -810,17 +877,18 @@ export function initFiles(sample: { name: string; text: string; layout: string }
     browser: idbBrowserPlugins,
     data: idbPluginData,
   });
+  initNoDoc(sample);
   $("#btnSample").onclick = () => {
     closeMenus();
-    showDoc(ws.newUntitled(sample.name, sample.text, sample.layout).key);
+    openSample(sample);
   };
   window.addEventListener("beforeunload", (ev) => {
     flushEdit();
     if (ws.hasUnsavedFiles()) ev.preventDefault();
   });
   window.addEventListener("focus", () => void checkExternal());
-  if (ws.restoreDrafts() !== "drafts") ws.newUntitled(sample.name, sample.text, sample.layout);
-  ensureDoc();
+  if (ws.restoreDrafts() === "sample") ws.newUntitled(sample.name, sample.text, sample.layout);
+  showCurrent();
   renderFiles();
   void local?.recentFolder().then((name) => {
     recentName = name;
