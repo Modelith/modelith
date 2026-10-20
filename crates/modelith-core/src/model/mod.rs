@@ -912,6 +912,10 @@ impl<'a> Builder<'a> {
                 | RelKind::Connect {
                     item, a: ra, b: rb, ..
                 } => {
+                    let label = match &r.kind {
+                        RelKind::Flow { name, ty, .. } => flow_label(name, ty, item),
+                        _ => item.clone(),
+                    };
                     let rel = if matches!(r.kind, RelKind::Connect { .. }) {
                         "connect"
                     } else {
@@ -921,16 +925,19 @@ impl<'a> Builder<'a> {
                     let pb: Vec<&str> = rb.split('.').collect();
                     let a = self.node_for(self.resolve(pa[0], pe));
                     let b = self.node_for(self.resolve(pb[0], pe));
-                    let s = match &r.kind {
-                        RelKind::Connect { usage, .. } => Span {
-                            start: p.entries[*usage].start,
-                            end: p.entries[*usage].end,
-                        },
-                        _ => src,
+                    // 接続と名前付きのフローは、使用の範囲（本体を含む）を指す
+                    let usage = match &r.kind {
+                        RelKind::Connect { usage, .. } => Some(*usage),
+                        RelKind::Flow { usage, .. } => *usage,
+                        _ => None,
                     };
+                    let s = usage.map_or(src, |u| Span {
+                        start: p.entries[u].start,
+                        end: p.entries[u].end,
+                    });
                     match (a, b) {
                         (Some(a), Some(b)) => {
-                            let ed = self.add_edge("flow", a, b, item.clone(), s);
+                            let ed = self.add_edge("flow", a, b, label, s);
                             self.model.edges[ed].rel = Some(ri);
                             self.port_end(ed, a, pa.get(1).copied(), true, r.start);
                             self.port_end(ed, b, pb.get(1).copied(), false, r.start);
@@ -1283,6 +1290,41 @@ fn dependency_label(name: &str, meta: &str) -> String {
         .chain((!name.is_empty()).then(|| name.to_owned()))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// 流れの線のラベル（8.2.3.16 の flow-label：`UsageDeclaration? ('of' FlowPayloadFeatureMember)?`）。
+/// 名前の無いフローは、これまでどおりアイテムの型だけを書く。
+///
+/// # 引数
+///
+/// - `name`：フローの名前（名前の無いフローは空）
+/// - `ty`：フローの型の名前（無ければ空）
+/// - `item`：流れるアイテムの型の名前（`of` の後。無ければ空）
+///
+/// # 戻り値
+///
+/// ラベル。書くことが無ければ空文字列。
+///
+/// # 例
+///
+/// ```text
+/// flow_label("f", "FD", "")      → "f : FD"
+/// flow_label("g", "", "Water")   → "g of Water"
+/// flow_label("", "", "Heat")     → "Heat"   // 名前の無いフロー
+/// flow_label("", "", "")         → ""
+/// ```
+pub(crate) fn flow_label(name: &str, ty: &str, item: &str) -> String {
+    if name.is_empty() {
+        return item.to_owned();
+    }
+    let mut label = name.to_owned();
+    if !ty.is_empty() {
+        label.push_str(&format!(" : {ty}"));
+    }
+    if !item.is_empty() {
+        label.push_str(&format!(" of {item}"));
+    }
+    label
 }
 
 /// 部品として持つ線の、部品の側の端に書く文字（8.2.3 の multiplicity と c-adornment）。

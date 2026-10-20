@@ -936,3 +936,21 @@ fn allocation_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
     );
     assert!(m.edges.iter().all(|e| e.kind != "allocate"));
 }
+
+#[test]
+fn named_flow_is_labelled_with_its_declaration_and_points_to_its_usage() {
+    // Arrange（FlowUsage 8.2.2.16・8.2.3.16 の flow-label。同値分割：型付き・of 付き・名前の無いフロー）
+    let text = "package P { part def S { port o; } part def T { port i; } item def Water; flow def FD; \
+                part def H { part s : S; part t : T; flow f : FD from s.o to t.i { } \
+                flow g of Water from s.o to t.i; flow of Water from s.o to t.i; } }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    let flows: Vec<&Edge> = m.edges.iter().filter(|e| e.kind == "flow").collect();
+    let labels: Vec<&str> = flows.iter().map(|e| e.label.as_str()).collect();
+    assert_eq!(labels, ["f : FD", "g of Water", "Water"]);
+    let f = p.entries.iter().find(|e| e.name == "f").expect("f");
+    assert_eq!((flows[0].src.start, flows[0].src.end), (f.start, f.end));
+    assert_eq!(flows[0].from_port.as_deref(), Some("port:o"));
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}

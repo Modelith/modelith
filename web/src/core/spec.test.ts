@@ -786,6 +786,15 @@ for (const [impl, parse, build] of PARSERS.filter(([name]) => name === "Rust")) 
         expect([fd?.kind, f?.kind, f?.type, x?.pe?.name]).toEqual(["flow def", "flow", "FD", "FD"]);
         expect(build(parse(text)).problems.filter((p) => p.kind === "unsupported")).toEqual([]);
       });
+
+      it("名前付きのフローの線には、名前と型（of のアイテム）を書く（8.2.3.16 の flow-label）", () => {
+        // Arrange
+        const text = "package P { part def S { port o; } part def T { port i; } item def Water; flow def FD; part def H { part s : S; part t : T; flow f : FD from s.o to t.i; flow g of Water from s.o to t.i; } }";
+        // Act
+        const labels = build(parse(text)).edges.filter((e) => e.kind === "flow").map((e) => e.label);
+        // Assert
+        expect(labels).toEqual(["f : FD", "g of Water"]);
+      });
     });
 
     describe("多重度（MultiplicityPart、8.2.2.6）", () => {
