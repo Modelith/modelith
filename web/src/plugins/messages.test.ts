@@ -91,8 +91,20 @@ describe("decideMessage（コマンド・診断・知らせ）", () => {
     const current = decideMessage(at({ message, diagnostics: items }), new Map());
     const old = decideMessage(at({ message: { ...message, version: 2 }, diagnostics: items }), new Map());
     // Assert
-    expect(current).toEqual({ kind: "diagnostics", version: 3, items });
+    expect(current).toEqual({ kind: "diagnostics", version: 3, items, dropped: 0 });
     expect(old).toEqual({ kind: "ignore" });
+  });
+
+  it.each([
+    ["上限ちょうど", 3, 3, 0],
+    ["上限 + 1 件", 4, 3, 1],
+  ])("診断が%sなら、上限までを使い、捨てた件数を添える（境界値、F-PLUG-7）", (_, count, max, dropped) => {
+    // Arrange
+    const items = Array.from({ length: count }, (_, i) => ({ pos: i, end: i + 1, severity: "warning" as const, message: `m${i}` }));
+    // Act
+    const got = decideMessage(at({ message: { type: "diagnostics", version: 3, items: [] }, diagnostics: items }), new Map(), max);
+    // Assert
+    expect(got).toEqual({ kind: "diagnostics", version: 3, items: items.slice(0, max), dropped });
   });
 
   it("準備ができた知らせと、利用者への知らせを扱う", () => {

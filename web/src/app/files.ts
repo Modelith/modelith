@@ -460,6 +460,19 @@ async function makeProject(): Promise<void> {
 
 /* ---- 描画 ---- */
 
+/** 下書きを置けないことを、もう知らせたか（置けるようになったら戻し、次に置けなくなったときにまた知らせる）。 */
+let lostDraftsWarned = false;
+
+/**
+ * 下書きを置けなくなったとき（ブラウザの保存領域がいっぱい）に、1 回だけ知らせる（F-FILE-11）。
+ * 置けている間は何もしない。ワークスペースの変更の通知で呼ぶ。
+ */
+function warnLostDrafts(): void {
+  const lost = ws.hasLostDrafts();
+  if (lost && !lostDraftsWarned) toast("下書きを保存できません（ブラウザの保存領域がいっぱいです）。「名前を付けて保存」で保存してください");
+  lostDraftsWarned = lost;
+}
+
 /**
  * 未保存の変更がある文書の印（●）の HTML を作る（F-FILE-5）。
  *
@@ -983,6 +996,8 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   autoSave = store.get(AUTOSAVE_KEY) === "1";
   auto = new AutoSaver(ws, browserTimer, () => autoSave, (key, outcome) => {
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
+    // 失敗しても文書は未保存のまま（●）なので、知らせるだけにして、保存（Ctrl+S）で試し直してもらう（F-FILE-6）
+    else if (typeof outcome === "object") toast(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした：${outcome.failed}`);
   });
   onTextChange((text) => {
     if (!shownKey) return;
@@ -997,6 +1012,7 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   // 設定ファイルの読み取りの状態を先に変えてから描く
   ws.subscribe(syncProject);
   ws.subscribe(renderFiles);
+  ws.subscribe(warnLostDrafts);
   initMenu();
   initExplorer();
   initPlugins({

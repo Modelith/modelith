@@ -59,10 +59,10 @@ export interface DraftState {
   closedAll: boolean;
 }
 
-/** 下書きの保存先（ブラウザでは localStorage）。 */
+/** 下書きの保存先（ブラウザでは localStorage）。save は置けたかを返す（保存領域がいっぱいなら false。F-FILE-11）。 */
 export interface DraftStore {
   load(): DraftState;
-  save(state: DraftState): void;
+  save(state: DraftState): boolean;
 }
 
 /** 起動したときに表示するもの。drafts は戻した下書き、nothing は何も開かない（F-FILE-14）、sample はサンプル。 */
@@ -118,6 +118,8 @@ export class Workspace {
   private seq = 0;
   /** 前回の続きを書き換えずにおくか。起動して前回の続きを戻し終えるまでは書き換えない（F-FILE-13）。 */
   private sessionHeld = true;
+  /** 最後に下書きを置こうとして置けなかったか（ブラウザの保存領域がいっぱい。F-FILE-11）。 */
+  private draftsLost = false;
 
   /**
    * 空のワークスペースを作る（下書きは restoreDrafts で、前回の続きは resumeSession で戻す）。
@@ -333,15 +335,28 @@ export class Workspace {
   }
 
   /**
-   * ページを離れると失われる変更があるか（無題の文書は下書きに残るので数えない。保存先の無い配置は数える）。
+   * ページを離れると失われる変更があるか（無題の文書は下書きに残るので数えないが、下書きを置けていなければ数える。保存先の無い配置は数える）。
    *
-   * @returns 保存先のある文書のどれかに、未保存のテキストか配置があれば true
+   * @returns 保存先のある文書のどれかに未保存のテキストか配置があるか、下書きを置けずに中身のある無題の文書があれば true
    * @example
    * ws.hasUnsavedFiles() // → true（フォルダから開いた文書を編集したとき）
    * ws.hasUnsavedFiles() // → false（無題の文書だけを編集したとき）
+   * ws.hasUnsavedFiles() // → true（無題の文書を編集したが、下書きを置けなかったとき）
    */
   hasUnsavedFiles(): boolean {
-    return this.docs.some((d) => d.ref && (this.isDirty(d) || this.layoutUnsaved(d)));
+    return this.docs.some((d) => d.ref && (this.isDirty(d) || this.layoutUnsaved(d))) || (this.draftsLost && this.docs.some((d) => !d.ref && hasContent(d)));
+  }
+
+  /**
+   * 下書きを置けていないか（最後に置こうとしたときに保存先に書けなかった。F-FILE-11）。置けるようになれば false に戻る。
+   *
+   * @returns 下書きを置けていなければ true
+   * @example
+   * ws.hasLostDrafts() // → false（まだ置いていない・置けた）
+   * ws.hasLostDrafts() // → true（保存領域がいっぱいで置けなかった）
+   */
+  hasLostDrafts(): boolean {
+    return this.draftsLost;
   }
 
   /**
@@ -886,11 +901,16 @@ export class Workspace {
   /**
    * 中身のある無題の文書すべてを、下書きの保存先に書く（配置があれば一緒に。F-FILE-11）。
    * 開いている文書が 1 つも無ければ、すべて閉じたことも書く（F-FILE-14）。
+   * 置けたかどうかが前回と変わったら（置けなくなった・置けるようになった）、変更を知らせる。
    */
   private persistDrafts(): void {
     const drafts = this.docs.filter((d) => !d.ref && hasContent(d)).map((d) => ({ name: d.name, text: d.text, ...(d.layout ? { layout: d.layout } : {}) }));
-    this.drafts.save({ drafts, closedAll: !this.docs.length });
-    this.saveSession(); // 下書きの順番が変わったら、前回の続きの下書きの番号も合わせる
+    const lost = !this.drafts.save({ drafts, closedAll: !this.docs.length });
+    const flipped = lost !== this.draftsLost;
+    this.draftsLost = lost;
+    // 下書きの順番が変わったら、前回の続きの下書きの番号も合わせる（changed も書く）
+    if (flipped) this.changed();
+    else this.saveSession();
   }
 }
 
