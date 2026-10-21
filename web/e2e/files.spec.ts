@@ -138,6 +138,10 @@ test("F-FILE-7: 図の配置のファイルが他のアプリで変わってい�
   await putFiles(page, { "a.sysml": A, "a.layout.json": "{}\n" });
   await page.locator('[data-cmd="openFolder"]').click();
   await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  // 最初のタブ（トレーサビリティ）には部品定義が出ないので、「すべて」の図を開いてから動かす
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes [data-key="Alpha"]').waitFor();
   const b = (await page.locator('#gNodes [data-key="Alpha"]').boundingBox())!;
   await page.mouse.move(b.x + 20, b.y + 10);
   await page.mouse.down();
