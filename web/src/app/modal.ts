@@ -40,6 +40,7 @@ function restoreFocus(opener: HTMLElement | null): void {
 /**
  * モーダルのダイアログを開く。背景（body のほかの子要素）を inert にして押せなくし、Tab と Shift+Tab をダイアログの中で回す。
  * 背景の inert は、開く前の値を覚えて、閉じるときに戻す（開いているファイルが無いときの inert などを壊さない）。
+ * ダイアログの上に重ねて開くときは、開くダイアログ自身が下のダイアログの背景として inert になっているので、開いている間だけ外す。
  * 入力の置き場所は呼び出し側が決める（開いた後に、ダイアログの中の要素へ移す）。
  *
  * @param box ダイアログ（body の直下の .modal）
@@ -54,7 +55,9 @@ export function openModal(box: HTMLElement): () => void {
   const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
   const background = [...document.body.children].filter((el): el is HTMLElement => el instanceof HTMLElement && el !== box);
   const wasInert = background.map((el) => el.inert);
+  const boxWasInert = box.inert;
   for (const el of background) el.inert = true;
+  box.inert = false;
   // 入力がダイアログの外（body など）にあっても拾えるよう、文書で受ける。重ねて開いたときは一番上のダイアログだけが回す
   const onKey = (ev: KeyboardEvent): void => {
     if (ev.key !== "Tab" || [...opened.keys()].at(-1) !== box) return;
@@ -73,6 +76,7 @@ export function openModal(box: HTMLElement): () => void {
     box.hidden = true;
     document.removeEventListener("keydown", onKey);
     background.forEach((el, i) => (el.inert = wasInert[i] ?? false));
+    box.inert = boxWasInert;
     restoreFocus(opener);
   };
   opened.set(box, close);
