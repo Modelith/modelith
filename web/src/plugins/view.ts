@@ -34,10 +34,10 @@ export const RUN_STATE_LABEL: Record<RunState, string> = {
   denied: "許可されていません",
 };
 
-/** メニューに出す項目 1 つ（コマンド・読み込み・書き出し）。 */
+/** メニューに出す項目 1 つ（コマンド・インポート・エクスポート）。 */
 export interface CommandItem {
   plugin: string;
-  /** コマンド・取り込み・書き出しの ID。 */
+  /** コマンド・インポート・エクスポートの ID。 */
   command: string;
   /** メニューに出す名前（コマンドの表示名）。 */
   label: string;
@@ -77,13 +77,13 @@ export function stopNotice(name: string): string {
 type MenuPlugin = Pick<ScriptPlugin, "id" | "name" | "importers" | "exporters"> & { state: RunState };
 
 /**
- * 動いているプラグインの取り込みを、メニューの「プラグインで読み込む」の項目にする（F-PLUG-4）。
+ * 動いているプラグインのインポートを、メニューの「プラグインでインポート」の項目にする（F-PLUG-4）。
  *
- * @param plugins プラグインの ID・名前・状態・取り込み
+ * @param plugins プラグインの ID・名前・状態・インポート
  * @returns メニューの項目と、ファイルを選ぶときの絞り込み（accept）。実行中のプラグインのものだけ
  * @example
- * importItems([{ id: "jp.x", name: "ReqIF の取り込み", state: "running", importers: [{ id: "reqif", label: "ReqIF ファイル", extensions: [".reqif"] }], exporters: [] }])
- * // → [{ plugin: "jp.x", command: "reqif", label: "ReqIF ファイル…", tooltip: "プラグイン「ReqIF の取り込み」で、ファイル（.reqif）を読み込んで新しいファイルとして開きます", accept: ".reqif" }]
+ * importItems([{ id: "jp.x", name: "ReqIF のインポート", state: "running", importers: [{ id: "reqif", label: "ReqIF ファイル", extensions: [".reqif"] }], exporters: [] }])
+ * // → [{ plugin: "jp.x", command: "reqif", label: "ReqIF ファイル…", tooltip: "プラグイン「ReqIF のインポート」で、ファイル（.reqif）をインポートして新しいファイルとして開きます", accept: ".reqif" }]
  * importItems([{ …, state: "stopped", … }]) // → []
  */
 export function importItems(plugins: readonly MenuPlugin[]): (CommandItem & { accept: string })[] {
@@ -92,25 +92,25 @@ export function importItems(plugins: readonly MenuPlugin[]): (CommandItem & { ac
     .flatMap((p) =>
       p.importers.map((i) => {
         const accept = acceptOf(i.extensions);
-        return { plugin: p.id, command: i.id, label: `${i.label}…`, tooltip: `プラグイン「${p.name}」で、ファイル（${accept || "すべて"}）を読み込んで新しいファイルとして開きます`, accept };
+        return { plugin: p.id, command: i.id, label: `${i.label}…`, tooltip: `プラグイン「${p.name}」で、ファイル（${accept || "すべて"}）をインポートして新しいファイルとして開きます`, accept };
       }),
     );
 }
 
 /**
- * 動いているプラグインの書き出しを、メニューの「プラグインで書き出す」の項目にする（F-PLUG-4）。
+ * 動いているプラグインのエクスポートを、メニューの「プラグインでエクスポート」の項目にする（F-PLUG-4）。
  *
- * @param plugins プラグインの ID・名前・状態・書き出し
+ * @param plugins プラグインの ID・名前・状態・エクスポート
  * @returns メニューの項目。実行中のプラグインのものだけ
  * @example
- * exportItems([{ id: "jp.x", name: "表の書き出し", state: "running", importers: [], exporters: [{ id: "csv", label: "要求の表（CSV）", extension: ".csv" }] }])
- * // → [{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「表の書き出し」で、モデル（表示中の保存された図）を .csv のファイルに書き出してダウンロードします" }]
+ * exportItems([{ id: "jp.x", name: "表のエクスポート", state: "running", importers: [], exporters: [{ id: "csv", label: "要求の表（CSV）", extension: ".csv" }] }])
+ * // → [{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「表のエクスポート」で、モデル（表示中の保存された図）を .csv のファイルにエクスポートしてダウンロードします" }]
  * exportItems([]) // → []
  */
 export function exportItems(plugins: readonly MenuPlugin[]): CommandItem[] {
   return plugins
     .filter((p) => p.state === "running")
     .flatMap((p) =>
-      p.exporters.map((x) => ({ plugin: p.id, command: x.id, label: x.label, tooltip: `プラグイン「${p.name}」で、モデル（表示中の保存された図）を ${x.extension} のファイルに書き出してダウンロードします` })),
+      p.exporters.map((x) => ({ plugin: p.id, command: x.id, label: x.label, tooltip: `プラグイン「${p.name}」で、モデル（表示中の保存された図）を ${x.extension} のファイルにエクスポートしてダウンロードします` })),
     );
 }

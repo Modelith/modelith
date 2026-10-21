@@ -139,7 +139,7 @@ test("F-EXP-1: 表示中のビューを SVG ファイルとして保存できる
   expect(svg).not.toContain("var(--"); // 単独で表示できるよう CSS 変数を使わない
 });
 
-test("F-EXP-2: 表示中のビューを draw.io の形式で書き出せる", async ({ page }) => {
+test("F-EXP-2: 表示中のビューを draw.io の形式でエクスポートできる", async ({ page }) => {
   // Arrange
   await openApp(page);
   // Act

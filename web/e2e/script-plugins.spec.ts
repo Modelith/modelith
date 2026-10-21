@@ -19,9 +19,9 @@ const MODEL = "package P {\n    requirement def R;\n}\n";
 const MARK = "// レビュー済み\n";
 /** 通信を受けるサーバのポートの始まり（並んで動くワーカーごとに 1 つずつずらす）。プラグインのコードにも書いてある。 */
 const PROBE_PORT = 4198;
-/** 取り込みの表示名。 */
+/** インポートの表示名。 */
 const IMPORTER = "要求の一覧（テキスト）";
-/** 書き出しの表示名。 */
+/** エクスポートの表示名。 */
 const EXPORTER = "テキストのまま";
 
 /** マニフェストに書く作者（許可を尋ねる画面に出る）。 */
@@ -95,7 +95,7 @@ async function openPluginList(page: Page): Promise<void> {
   await expect(page.locator("#plugins")).toBeVisible();
 }
 
-/** プラグインのメニューの「プラグインのコマンド」（kind が import・export なら「プラグインで読み込む」「プラグインで書き出す」）から実行する。 */
+/** プラグインのメニューの「プラグインのコマンド」（kind が import・export なら「プラグインでインポート」「プラグインでエクスポート」）から実行する。 */
 async function runCommand(page: Page, title: string, kind = "command"): Promise<void> {
   await page.locator("#pluginMenu summary").click();
   await page.locator(`#pluginCommands button[data-kind="${kind}"]`, { hasText: title }).click();
@@ -347,8 +347,8 @@ test.describe("保存場所", () => {
   });
 });
 
-test.describe("読み込みと書き出し", () => {
-  test("F-PLUG-4: プラグインで読み込んだ結果を、新しいファイルとして開き、開いていたファイルは書き換えない", async ({ page }) => {
+test.describe("インポートとエクスポート", () => {
+  test("F-PLUG-4: プラグインでインポートした結果を、新しいファイルとして開き、開いていたファイルは書き換えない", async ({ page }) => {
     // Arrange
     await startWith(page, installed([]));
     const chooser = page.waitForEvent("filechooser");
@@ -358,13 +358,13 @@ test.describe("読み込みと書き出し", () => {
     // Assert
     const imported = "package 要求一覧 {\n    requirement def 給水;\n    requirement def 排水;\n}\n";
     await expect.poll(() => editorText(page)).toBe(imported);
-    await expect(page.locator("#toast")).toHaveText(`「${IMPORTER}」で読み込んだ結果を、新しいファイル「要求一覧.sysml」として開きました（プラグイン「${NAME}」）。保存するまでファイルには書き込みません`);
+    await expect(page.locator("#toast")).toHaveText(`「${IMPORTER}」でインポートした結果を、新しいファイル「要求一覧.sysml」として開きました（プラグイン「${NAME}」）。保存するまでファイルには書き込みません`);
     await expect(page.locator("#explorer [data-doc]", { hasText: "要求一覧.sysml" })).toHaveCount(1);
     expect(await readFile(page, "a.sysml")).toBe(MODEL);
     expect(await readFile(page, "要求一覧.sysml")).toBeNull();
   });
 
-  test("F-PLUG-4: 選んだファイルを読み込めなかったときは、プラグインの理由を示す", async ({ page }) => {
+  test("F-PLUG-4: 選んだファイルをインポートできなかったときは、プラグインの理由を示す", async ({ page }) => {
     // Arrange
     await startWith(page, installed([]));
     const chooser = page.waitForEvent("filechooser");
@@ -373,11 +373,11 @@ test.describe("読み込みと書き出し", () => {
     const files = await chooser;
     await files.setFiles({ name: "メモ.txt", mimeType: "text/plain", buffer: Buffer.from("失敗\n") });
     // Assert
-    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」の読み込み「${IMPORTER}」を実行できませんでした：要求の一覧ではありません`);
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」のインポート「${IMPORTER}」を実行できませんでした：要求の一覧ではありません`);
     expect(await editorText(page)).toBe(MODEL);
   });
 
-  test("F-PLUG-4: プラグインで書き出したファイルを、ダウンロードさせる", async ({ page }) => {
+  test("F-PLUG-4: プラグインでエクスポートしたファイルを、ダウンロードさせる", async ({ page }) => {
     // Arrange
     await startWith(page, installed([]));
     const download = page.waitForEvent("download");
@@ -389,11 +389,11 @@ test.describe("読み込みと書き出し", () => {
     const chunks: Buffer[] = [];
     for await (const c of await file.createReadStream()) chunks.push(c as Buffer);
     expect(Buffer.concat(chunks).toString("utf8")).toBe(`図：（なし）\n${MODEL}`);
-    await expect(page.locator("#toast")).toHaveText(`「${EXPORTER}」で書き出した「モデル.txt」をダウンロードしました（プラグイン「${NAME}」）`);
+    await expect(page.locator("#toast")).toHaveText(`「${EXPORTER}」でエクスポートした「モデル.txt」をダウンロードしました（プラグイン「${NAME}」）`);
     expect(await readFile(page, "モデル.txt")).toBeNull();
   });
 
-  test("F-PLUG-4: 保存された図を表示しているときは、その図の名前を書き出しに渡す", async ({ page }) => {
+  test("F-PLUG-4: 保存された図を表示しているときは、その図の名前をエクスポートに渡す", async ({ page }) => {
     // Arrange
     await startWith(page, installed([]));
     const text = "package P {\n    requirement def R;\n    view reqs { expose P::R; }\n}\n";

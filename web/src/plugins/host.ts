@@ -1,7 +1,7 @@
 // v1 のプラグイン（TypeScript、ADR-0018 §3〜§5）のホスト。プロジェクトかこのブラウザに入れたプラグインを、許可を確かめてから隔離した場所で動かし、
-// テキストの変更を知らせ、届いたメッセージをコアに確かめてもらってから使う。コマンド・読み込み・書き出しをメニューから頼み、
+// テキストの変更を知らせ、届いたメッセージをコアに確かめてもらってから使う。コマンド・インポート・エクスポートをメニューから頼み、
 // プラグイン用の保存場所（storage）をプラグインごとに分けて貸す。
-// 届いたメッセージは、入口で大きさと待ちの件数を制限し（limits.ts、F-PLUG-7）、コマンド・読み込み・書き出し・起動には期限を付けて、終わらなければ知らせる（F-PLUG-8）。
+// 届いたメッセージは、入口で大きさと待ちの件数を制限し（limits.ts、F-PLUG-7）、コマンド・インポート・エクスポート・起動には期限を付けて、終わらなければ知らせる（F-PLUG-8）。
 // 判断は純粋関数（trust.ts・messages.ts・limits.ts・view.ts・permissions.ts・storage.ts・transfer.ts）とコア（Rust）に任せ、ここは状態の出し入れと画面の操作だけを行う。
 
 import { applyTextEdits, type VersionedSnapshot } from "../core";
@@ -32,7 +32,7 @@ export interface HostEnv {
   onChange(): void;
   /** 読み込んだテキストを新しい無題の文書として開いて表示し、付けた名前を返す（既存のファイルは書き換えない。C-6）。 */
   openImported(fileName: string, text: string): string;
-  /** 開いている文書があるか（無ければ、コマンドと書き出しは対象が無いので行わない。F-FILE-14）。 */
+  /** 開いている文書があるか（無ければ、コマンドとエクスポートは対象が無いので行わない。F-FILE-14）。 */
   hasOpenDoc(): boolean;
   /** プラグイン用の保存場所。 */
   data: PluginDataStore;
@@ -55,7 +55,7 @@ interface Entry {
   state: RunState;
   notices: string[];
   sandbox: Sandbox | null;
-  /** 頼んで、まだ答えの無いこと（依頼の番号 → コマンド・読み込み・書き出しと、その表示名・頼んだ時刻）。 */
+  /** 頼んで、まだ答えの無いこと（依頼の番号 → コマンド・インポート・エクスポートと、その表示名・頼んだ時刻）。 */
   pending: Map<number, TrackedRequest>;
   nextRequest: number;
   /** 届いたメッセージを、届いた順に 1 つずつ扱うためのつなぎ。 */
@@ -77,7 +77,7 @@ interface Entry {
 /** 動かし始めたときの、入口の数え上げ。 */
 const FRESH_INTAKE: IntakeState = { queued: 0, dropped: 0 };
 
-/** 開いているファイルが無いときに、コマンドや書き出しを頼まれたときの知らせ（F-FILE-14）。 */
+/** 開いているファイルが無いときに、コマンドやエクスポートを頼まれたときの知らせ（F-FILE-14）。 */
 const NO_OPEN_FILE = "開いているファイルがありません。ファイルを開いてから実行してください";
 
 /** 許可を覚える localStorage のキー（形は trust.ts の TrustStore）。 */
@@ -94,7 +94,7 @@ let syncing: Promise<void> = Promise.resolve();
 let snapshotCache: { version: number; snapshot: Promise<VersionedSnapshot | null> } | null = null;
 
 /**
- * ホストを初期化する。解析結果の反映のたびにプラグインへ didChange を送り、プラグインのメニューのコマンド・読み込み・書き出しをつなぐ。起動時に 1 回呼ぶ。
+ * ホストを初期化する。解析結果の反映のたびにプラグインへ didChange を送り、プラグインのメニューのコマンド・インポート・エクスポートをつなぐ。起動時に 1 回呼ぶ。
  *
  * @param e 画面の他の部分の操作と保存場所
  */
@@ -429,13 +429,13 @@ async function act(e: Entry, a: HostAction): Promise<void> {
     case "imported": {
       settle(e, a.requestId);
       const doc = hostEnv().openImported(a.fileName, a.text);
-      toast(`「${a.title}」で読み込んだ結果を、新しいファイル「${doc}」として開きました（プラグイン「${name}」）。保存するまでファイルには書き込みません`);
+      toast(`「${a.title}」でインポートした結果を、新しいファイル「${doc}」として開きました（プラグイン「${name}」）。保存するまでファイルには書き込みません`);
       return;
     }
     case "exported":
       settle(e, a.requestId);
       download(a.fileName, base64ToBytes(a.base64), a.mediaType);
-      toast(`「${a.title}」で書き出した「${a.fileName}」をダウンロードしました（プラグイン「${name}」）`);
+      toast(`「${a.title}」でエクスポートした「${a.fileName}」をダウンロードしました（プラグイン「${name}」）`);
       return;
     case "requestFailed":
       settle(e, a.requestId);
@@ -548,40 +548,40 @@ function runCommand(id: string, command: string): void {
 }
 
 /**
- * プラグインの読み込み（取り込み）を実行する。対応する拡張子で絞ってファイルを選ばせ、中身を base64 で送る（F-PLUG-4）。
+ * プラグインのインポートを実行する。対応する拡張子で絞ってファイルを選ばせ、中身を base64 で送る（F-PLUG-4）。
  * 結果（imported）は、新しい無題のファイルとして開く。上限より大きいファイルは送らずに知らせる。
  *
  * @param id プラグインの ID
- * @param importer 取り込みの ID
+ * @param importer インポートの ID
  * @returns 送り終えた（選ばなかった・送れなかった）ら解決する Promise
  */
 async function runImport(id: string, importer: string): Promise<void> {
   const e = entries.get(id);
   const imp = e?.plugin.importers.find((x) => x.id === importer);
-  if (!e || !imp || e.state !== "running") return toast("プラグインがまだ準備できていないため、読み込めません");
+  if (!e || !imp || e.state !== "running") return toast("プラグインがまだ準備できていないため、インポートできません");
   const item = importItems([{ ...e.plugin, state: e.state }]).find((x) => x.command === importer);
   const file = await pickFile(item?.accept ?? "");
   if (!file) return;
-  if (file.size > MAX_TRANSFER_BYTES) return toast(`「${file.name}」は大きすぎるため読み込めません（${sizeText(file.size)}。上限 ${sizeText(MAX_TRANSFER_BYTES)}）`);
+  if (file.size > MAX_TRANSFER_BYTES) return toast(`「${file.name}」は大きすぎるためインポートできません（${sizeText(file.size)}。上限 ${sizeText(MAX_TRANSFER_BYTES)}）`);
   const run = e.run;
   const base64 = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
-  if (e.run !== run || e.state !== "running") return toast("プラグインが停止したため、読み込めませんでした");
+  if (e.run !== run || e.state !== "running") return toast("プラグインが停止したため、インポートできませんでした");
   const requestId = track(e, { kind: "import", title: imp.label });
   e.sandbox?.post({ type: "import", requestId, importer, fileName: file.name, base64 });
 }
 
 /**
- * プラグインの書き出しを実行する。表示中の保存された図があれば、その名前を添える（F-PLUG-4）。
+ * プラグインのエクスポートを実行する。表示中の保存された図があれば、その名前を添える（F-PLUG-4）。
  * 結果（exported）は、ダウンロードさせる（プロジェクトのフォルダには書かない）。開いているファイルが無ければ、送らずに知らせる（F-FILE-14）。
  *
  * @param id プラグインの ID
- * @param exporter 書き出しの ID
+ * @param exporter エクスポートの ID
  */
 function runExport(id: string, exporter: string): void {
   if (!hostEnv().hasOpenDoc()) return toast(NO_OPEN_FILE);
   const e = entries.get(id);
   const x = e?.plugin.exporters.find((y) => y.id === exporter);
-  if (!e || !x || e.state !== "running") return toast("プラグインがまだ準備できていないため、書き出せません");
+  if (!e || !x || e.state !== "running") return toast("プラグインがまだ準備できていないため、エクスポートできません");
   const requestId = track(e, { kind: "export", title: x.label, extension: x.extension });
   const view = modelView()?.name;
   e.sandbox?.post(view === undefined ? { type: "export", requestId, exporter } : { type: "export", requestId, exporter, view });
@@ -675,13 +675,13 @@ function clearDiagnostics(id: string): void {
   updateSync();
 }
 
-/** プラグインのメニューの「プラグインのコマンド」「プラグインで読み込む」「プラグインで書き出す」を、実行中のプラグインのもので描き直す（無ければ隠す）。 */
+/** プラグインのメニューの「プラグインのコマンド」「プラグインでインポート」「プラグインでエクスポート」を、実行中のプラグインのもので描き直す（無ければ隠す）。 */
 function renderCommands(): void {
   const plugins = [...entries.values()].map((e) => ({ ...e.plugin, state: e.state }));
   const sections: [string, string, CommandItem[]][] = [
     ["プラグインのコマンド", "command", commandItems(plugins)],
-    ["プラグインで読み込む", "import", importItems(plugins)],
-    ["プラグインで書き出す", "export", exportItems(plugins)],
+    ["プラグインでインポート", "import", importItems(plugins)],
+    ["プラグインでエクスポート", "export", exportItems(plugins)],
   ];
   const html = sections
     .filter(([, , items]) => items.length)

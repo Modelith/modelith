@@ -1,7 +1,7 @@
-// v1 のプラグインの取り込み（import）と書き出し（export）の判断（ADR-0018 §3・§4）。入出力を持たない。
+// v1 のプラグインのインポート（import）とエクスポート（export）の判断（ADR-0018 §3・§4）。入出力を持たない。
 // ファイルの中身は base64 でやり取りする。大きさの上限、新しい文書の名前、ダウンロードするファイルの名前と種類をここで決める。
 
-/** 取り込むファイルと、書き出されたファイルの大きさの上限（バイト）。ブラウザのメモリとメッセージの受け渡しに無理のない大きさにする。 */
+/** インポートするファイルと、エクスポートされたファイルの大きさの上限（バイト）。ブラウザのメモリとメッセージの受け渡しに無理のない大きさにする。 */
 export const MAX_TRANSFER_BYTES = 20 * 1024 * 1024;
 
 /** ファイル名に使えない文字（Windows と macOS の両方で困るもの）。 */
@@ -90,7 +90,7 @@ function baseName(fileName: string): string {
 }
 
 /**
- * 取り込んだテキストを開く、新しい無題の文書の名前を決める（拡張子を .sysml にし、開いている文書と重ならない番号を付ける。C-6）。
+ * インポートしたテキストを開く、新しい無題の文書の名前を決める（拡張子を .sysml にし、開いている文書と重ならない番号を付ける。C-6）。
  *
  * @param fileName プラグインが示したファイル名（`imported` の fileName）
  * @param used 開いている文書の名前
@@ -111,11 +111,11 @@ export function importedDocName(fileName: string, used: ReadonlySet<string>): st
 }
 
 /**
- * 書き出されたファイルを保存する名前を決める。拡張子は、マニフェストで宣言したものにそろえる（F-PLUG-4）。
+ * エクスポートされたファイルを保存する名前を決める。拡張子は、マニフェストで宣言したものにそろえる（F-PLUG-4）。
  * プラグインが示した名前の拡張子が違えば置き換え、無ければ補う。同じなら（大文字と小文字の違いは問わず）そのまま使う。
  *
  * @param fileName プラグインが示したファイル名（`exported` の fileName）
- * @param extension 書き出しの拡張子（マニフェストの `extension`。例：".csv"。"" なら拡張子をそろえない）
+ * @param extension エクスポートの拡張子（マニフェストの `extension`。例：".csv"。"" なら拡張子をそろえない）
  * @returns ファイル名
  * @example
  * exportFileName("要求一覧.csv", ".csv")  // → "要求一覧.csv"
@@ -151,7 +151,7 @@ export function mediaTypeOf(mediaType: string): string {
 /**
  * ファイルを選ぶ画面に渡す、選べるファイルの絞り込み（input の accept）を作る。
  *
- * @param extensions 取り込みが対応する拡張子（例：[".reqif", "xml"]）
+ * @param extensions インポートが対応する拡張子（例：[".reqif", "xml"]）
  * @returns accept の値（点の付いた拡張子をカンマでつなぐ）
  * @example
  * acceptOf([".reqif", "xml"]) // → ".reqif,.xml"

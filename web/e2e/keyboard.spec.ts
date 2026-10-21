@@ -69,13 +69,13 @@ test.describe("ダイアログ", () => {
   });
 });
 
-test.describe("draw.io の書き出し", () => {
-  test("Q-8・F-EXP-2: draw.io の書き出しはダイアログとして読み上げられ、Esc で閉じると図のメニューへ入力が戻る", async ({ page }) => {
+test.describe("draw.io のエクスポート", () => {
+  test("Q-8・F-EXP-2: draw.io のエクスポートはダイアログとして読み上げられ、Esc で閉じると図のメニューへ入力が戻る", async ({ page }) => {
     // Arrange
     await openApp(page);
     await page.locator("#diagramMenu summary").click();
     await page.locator("#btnDrawio").click();
-    const dialog = page.getByRole("dialog", { name: "draw.io 形式で書き出す" });
+    const dialog = page.getByRole("dialog", { name: "draw.io 形式でエクスポート" });
     await expect(dialog).toBeVisible();
     await expect(page.locator("#modalCopy")).toBeFocused();
     // Act

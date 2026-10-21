@@ -15,7 +15,7 @@ export interface MessageLimits {
 }
 
 /**
- * 1 つのメッセージの大きさの上限（messageUnits の単位）。20 MB のファイルの書き出し（base64 で約 28M 文字。transfer.ts の MAX_TRANSFER_BYTES）は通し、
+ * 1 つのメッセージの大きさの上限（messageUnits の単位）。20 MB のファイルのエクスポート（base64 で約 28M 文字。transfer.ts の MAX_TRANSFER_BYTES）は通し、
  * それより大きいものは入口で捨てる。
  */
 export const MAX_MESSAGE_UNITS = 32 * 1024 * 1024;
@@ -33,7 +33,7 @@ export const MAX_NOTIFIES_PER_SECOND = 5;
 /** 知らせの頻度を数える窓（ミリ秒）。 */
 const NOTIFY_WINDOW_MS = 1000;
 
-/** コマンド・取り込み・書き出しの答えを待つ期限（ミリ秒）。 */
+/** コマンド・インポート・エクスポートの答えを待つ期限（ミリ秒）。 */
 export const REQUEST_TIMEOUT_MS = 30_000;
 /** 起動（activate への ready）を待つ期限（ミリ秒）。 */
 export const READY_TIMEOUT_MS = 10_000;
@@ -187,6 +187,6 @@ export function overdueRequests(pending: ReadonlyMap<number, { since: number; re
  * stuckNotice(null, 10_000)                                     // → "起動が 10 秒たっても終わりません。「停止」で止められます"
  */
 export function stuckNotice(request: PendingRequest | null, timeoutMs: number): string {
-  const what = request === null ? "起動" : `${{ command: "コマンド", import: "読み込み", export: "書き出し" }[request.kind]}「${request.title}」`;
+  const what = request === null ? "起動" : `${{ command: "コマンド", import: "インポート", export: "エクスポート" }[request.kind]}「${request.title}」`;
   return `${what}が ${Math.round(timeoutMs / 1000)} 秒たっても終わりません。「停止」で止められます`;
 }
