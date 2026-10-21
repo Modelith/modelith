@@ -64,8 +64,8 @@ jobs:
           cache-dependency-path: |
             web/package-lock.json
             tests/harness/package-lock.json
-      - run: npm ci --prefix web --no-audit --no-fund
-      - run: npm ci --prefix tests/harness --no-audit --no-fund
+      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
       - name: Harness check（静的検査 → 単体 → 結合 → 統合）
         run: scripts/check.sh
       # 人が読むテストレポート（要求別の表・Playwright の HTML・UI の差分）。失敗したときほど要るので必ず残す

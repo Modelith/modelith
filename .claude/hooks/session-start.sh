@@ -14,7 +14,7 @@ prepare_node_packages() {
   local dir
   for dir in web tests/harness; do
     [[ -f $dir/package-lock.json && ! -d $dir/node_modules ]] || continue
-    npm ci --prefix "$dir" --no-audit --no-fund >/dev/null 2>&1 || echo "警告: $dir の npm ci に失敗しました"
+    npm ci --prefix "$dir" --ignore-scripts --no-audit --no-fund >/dev/null 2>&1 || echo "警告: $dir の npm ci に失敗しました"
   done
 }
 
