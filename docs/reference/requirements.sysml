@@ -289,6 +289,11 @@ package ModelithRequirements {
                    部品は作り直して、今のテキストとプラグインを送り直し、解析と図の操作を再開する。1 分の間に 3 回作り直しても止まるときはあきらめ、
                    同期の表示で図を更新できないことと、ページの再読み込みを案内する（ADR-0016） */
         }
+        requirement def <'Q-8'> KeyboardReq {
+            doc /* マウスを使わず、キーボードだけで画面を操作できる。ダイアログを開いている間は、Tab で入力がダイアログの外へ出ず、背景のボタンを押せない。
+                   ダイアログを閉じたら、開く前の要素（メニューから開いたときはそのメニュー）に入力を戻す。ダイアログとファイル・ヘルプのメニューは Esc で閉じる。
+                   図のタブとモデルツリーには Tab で入れる（入る先は選んでいるタブ・行。行を選んでいなければ先頭の行）。図のタブは左右の矢印キーと Home・End で切り替え、ツリーは上下の矢印キーで行を移る */
+        }
 
         // ---- 制約 --------------------------------------------------
         requirement def <'C-1'> TextIsSourceReq {
@@ -382,6 +387,7 @@ package ModelithRequirements {
         #derivation dependency from RobustReq to SafetyNeed;
         #derivation dependency from NoSilentFailureReq to SafetyNeed;
         #derivation dependency from CoreRecoveryReq to SafetyNeed;
+        #derivation dependency from KeyboardReq to EditBothWaysNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
@@ -524,6 +530,8 @@ package ModelithRequirements {
         satisfy NoSilentFailureReq by AppShell;
         satisfy CoreRecoveryReq by Core;
         satisfy CoreRecoveryReq by AppShell;
+        satisfy KeyboardReq by AppShell;
+        satisfy KeyboardReq by DiagramUI;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
