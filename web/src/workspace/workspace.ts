@@ -17,6 +17,7 @@ import {
   type RecentFolders,
   type SaveAsTarget,
 } from "../files/types";
+import { findFile, hasContent, restoreOrder, sessionFrom, type Session, type SessionStore } from "./session";
 
 /** 開いている文書。ref が null なら保存先の無い「無題」の文書。 */
 export interface Doc {
@@ -62,18 +63,6 @@ export interface DraftStore {
 
 /** 起動したときに表示するもの。drafts は戻した下書き、nothing は何も開かない（F-FILE-14）、sample はサンプル。 */
 export type StartWith = "drafts" | "nothing" | "sample";
-
-/**
- * 下書きに残す中身があるか（空白だけのテキストは中身が無いとみなす。F-FILE-11）。
- *
- * @param d 文書か下書き
- * @returns テキストに空白以外の文字があれば true
- * @example
- * hasContent({ text: "package P;" }) // → true
- * hasContent({ text: " \n" })        // → false（空白だけ）
- * hasContent({ text: "" })           // → false
- */
-const hasContent = (d: { text: string }): boolean => d.text.trim() !== "";
 
 export type SaveOutcome = "saved" | "conflict" | "cancelled";
 
@@ -123,16 +112,21 @@ export class Workspace {
   private folderState: OpenFolder | null = null;
   private readonly listeners = new Set<() => void>();
   private seq = 0;
+  /** 前回の続きを書き換えずにおくか。起動して前回の続きを戻し終えるまでは書き換えない（F-FILE-13）。 */
+  private sessionHeld = true;
 
   /**
-   * 空のワークスペースを作る（下書きは restoreDrafts で戻す）。
+   * 空のワークスペースを作る（下書きは restoreDrafts で、前回の続きは resumeSession で戻す）。
+   * 前回の続きは、holdSession(false) で書き始める。
    *
    * @param providers 使うファイルのプロバイダ
    * @param drafts 無題の文書の下書きの保存先
+   * @param sessions 前回の続きの保存先（無ければ覚えない）
    */
   constructor(
     private readonly providers: ProviderRegistry,
     private readonly drafts: DraftStore,
+    private readonly sessions: SessionStore | null = null,
   ) {}
 
   /* ---- 変更の通知（UI はこれを購読して描き直す） ---- */
@@ -151,9 +145,94 @@ export class Workspace {
     return () => this.listeners.delete(fn);
   }
 
-  /** 購読しているすべての関数を呼び、変更を知らせる。 */
+  /** 前回の続きを書き、購読しているすべての関数を呼び、変更を知らせる。 */
   private changed(): void {
+    this.saveSession();
     for (const fn of this.listeners) fn();
+  }
+
+  /* ---- 前回の続き（F-FILE-13） ---- */
+
+  /**
+   * 今の状態を、前回の続きとして覚える形にする。
+   *
+   * @returns 開いているフォルダ・文書・表示中の文書
+   * @example
+   * ws.session() // → { folder: true, docs: [{ draft: 0 }, { path: "a.sysml" }], active: 1 }
+   * new Workspace(providers, drafts).session() // → { folder: false, docs: [], active: null }
+   */
+  session(): Session {
+    return sessionFrom(this.docs, this.activeKey, this.folderState?.entries ?? null);
+  }
+
+  /**
+   * 前回の続きを書き換えずにおくか決める。起動して戻し終えるまでと、「前回の続きを開く」を待つ間は書き換えない。
+   * 書き換えるようにしたら、すぐに今の状態を書く。
+   *
+   * @param hold 書き換えずにおくなら true
+   */
+  holdSession(hold: boolean): void {
+    this.sessionHeld = hold;
+    this.saveSession();
+  }
+
+  /** 書き換えずにおく間でなければ、今の状態を前回の続きとして書く。 */
+  private saveSession(): void {
+    if (!this.sessionHeld) this.sessions?.save(this.session());
+  }
+
+  /**
+   * 前回の続きの文書を戻す（restoreDrafts の後、フォルダを開き直せたなら開き直した後に呼ぶ）。
+   * 開いている無題の文書を下書きの順番として、前回の順番に並べ直し、フォルダの中のファイルを開き、表示していた文書を表示中にする。
+   * 表示していた文書を戻せなければ、最初の文書を表示中にする。戻したら変更を知らせる。
+   *
+   * @param saved 前回の続き
+   * @returns 開けなかったファイルのパス（消された・読めない）。無ければ空
+   * @example
+   * await ws.resumeSession({ folder: true, docs: [{ path: "a.sysml" }, { draft: 0 }], active: 0 }) // → []（a.sysml を表示中にする）
+   * await ws.resumeSession({ folder: true, docs: [{ path: "gone.sysml" }], active: 0 })            // → ["gone.sysml"]
+   */
+  async resumeSession(saved: Session): Promise<string[]> {
+    const untitled = this.docs.filter((d) => !d.ref);
+    const f = this.folderState;
+    const plan = restoreOrder(saved, untitled.length, !!f);
+    const order: Doc[] = [];
+    const missing: string[] = [];
+    let active: string | null = null;
+    for (const [i, item] of plan.items.entries()) {
+      const doc = "draft" in item ? untitled[item.draft] : await this.loadInFolder(item.path);
+      if (!doc) {
+        if ("path" in item) missing.push(item.path);
+        continue;
+      }
+      order.push(doc);
+      if (i === plan.active) active = doc.key;
+    }
+    // 前回の続きの外で開いた文書は、後ろに残す
+    for (const d of this.docs) if (!order.includes(d)) order.push(d);
+    this.docs.splice(0, this.docs.length, ...order);
+    this.activeKey = active ?? order[0]?.key ?? null;
+    this.changed();
+    return missing;
+  }
+
+  /**
+   * 開いているフォルダの中のファイルを、パスで探して文書として加える（表示中にはしない・変更は知らせない）。
+   *
+   * @param path フォルダからの相対パス
+   * @returns 加えた文書。フォルダを開いていない・ファイルが無い・読めないときは null
+   * @example
+   * await this.loadInFolder("a.sysml")    // → { ref: { path: "a.sysml", … }, text: "package A;", … }
+   * await this.loadInFolder("gone.sysml") // → null
+   */
+  private async loadInFolder(path: string): Promise<Doc | null> {
+    const ref = this.folderState && findFile(this.folderState.entries, path);
+    if (!ref) return null;
+    try {
+      return await this.load(ref);
+    } catch {
+      return null; // 一覧の後に消された・読めない
+    }
   }
 
   /* ---- 文書 ---- */
@@ -313,8 +392,7 @@ export class Workspace {
       this.activate(open.key);
       return open;
     }
-    const { text, version } = await this.readable(ref).read(ref);
-    const doc = this.add({ ref, name: ref.name, text, savedText: text, version, ...(await this.readLayout(ref)) });
+    const doc = await this.load(ref);
     this.activeKey = doc.key;
     // すべて閉じた後に開いたら、「すべて閉じて終えた」の記録を消す
     if (this.docs.length === 1) this.persistDrafts();
@@ -573,16 +651,18 @@ export class Workspace {
   }
 
   /**
-   * 前回のフォルダを開き直し、中身を一覧する（利用者の操作から呼ぶ）。
+   * 前回のフォルダを開き直し、中身を一覧する（許可を求めるときは、利用者の操作から呼ぶ）。
    *
    * @param source 前回のフォルダを覚えているプロバイダ
-   * @returns 開いたら true。覚えていない・許可されなければ false
+   * @param opts `ask: false` なら許可を求めず、既に許可されているときだけ開く（起動したとき。F-FILE-13）
+   * @returns 開いたら true。覚えていない・許可されなければ false。フォルダが消された・読めないときは例外を投げる
    * @example
-   * await ws.reopenFolder(local) // → true
-   * await ws.reopenFolder(local) // → false（許可されなかった）
+   * await ws.reopenFolder(local)                 // → true
+   * await ws.reopenFolder(local)                 // → false（許可されなかった）
+   * await ws.reopenFolder(local, { ask: false }) // → false（許可を求めないと開けない）
    */
-  async reopenFolder(source: FolderSource & RecentFolders): Promise<boolean> {
-    return this.setFolder(source, await source.reopenRecent());
+  async reopenFolder(source: FolderSource & RecentFolders, opts: { ask?: boolean } = {}): Promise<boolean> {
+    return this.setFolder(source, await source.reopenRecent(opts));
   }
 
   /** 開いているフォルダの中身とプロジェクトの設定ファイルを読み直し、変更を知らせる。フォルダが開かれていなければ何もしない。 */
@@ -744,6 +824,19 @@ export class Workspace {
   }
 
   /**
+   * ファイルとその隣の配置ファイルを読み、文書として一覧の最後に加える（表示中にはしない・変更は知らせない）。
+   *
+   * @param ref 開くファイルの参照
+   * @returns 加えた文書。読めるプロバイダが無い・読めないときは例外を投げる
+   * @example
+   * await this.load(ref) // → { key: "doc:2", ref, name: "a.sysml", text: "package A;", … }
+   */
+  private async load(ref: FileRef): Promise<Doc> {
+    const { text, version } = await this.readable(ref).read(ref);
+    return this.add({ ref, name: ref.name, text, savedText: text, version, ...(await this.readLayout(ref)) });
+  }
+
+  /**
    * 文書に新しいキーを付けて一覧の最後に加える（変更は知らせない）。
    *
    * @param init key と stale を除いた文書の中身
@@ -780,6 +873,7 @@ export class Workspace {
   private persistDrafts(): void {
     const drafts = this.docs.filter((d) => !d.ref && hasContent(d)).map((d) => ({ name: d.name, text: d.text, ...(d.layout ? { layout: d.layout } : {}) }));
     this.drafts.save({ drafts, closedAll: !this.docs.length });
+    this.saveSession(); // 下書きの順番が変わったら、前回の続きの下書きの番号も合わせる
   }
 }
 

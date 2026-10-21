@@ -69,6 +69,8 @@ export class FakeDir implements DirHandleLike {
   permission: PermissionState = "granted";
   /** requestPermission で返す状態。 */
   grantOnRequest: PermissionState = "granted";
+  /** 他のアプリで消されたことにする（true なら中身を読むと NotFoundError）。 */
+  removed = false;
 
   /**
    * メモリ上の空のフォルダを作る（許可は "granted"）。
@@ -108,11 +110,12 @@ export class FakeDir implements DirHandleLike {
   /**
    * 直下のファイルとフォルダを、作った順に返す。
    *
-   * @returns 直下の項目を順に返す非同期の反復。空のフォルダなら何も返さない
+   * @returns 直下の項目を順に返す非同期の反復。空のフォルダなら何も返さない。消されたフォルダ（removed）なら NotFoundError を投げる
    * @example
    * for await (const e of root.values()) names.push(e.name) // names → ["m.sysml", "a"]（m.sysml、a/b.sysml の順に put したとき）
    */
   async *values(): AsyncIterable<FakeFile | FakeDir> {
+    if (this.removed) throw new DOMException(`${this.name} is gone`, "NotFoundError");
     yield* this.entries.values();
   }
 

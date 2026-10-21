@@ -400,13 +400,16 @@ function readSavedTabs(): { tabs?: Tab[]; active?: number } | null {
   }
 }
 
+/** 起動したときに読んだ、保存したタブ（「前回の続きを開く」の後に戻すため。F-FILE-13）。 */
+let startTabs: { tabs?: Tab[]; active?: number } | null = null;
+
 /**
- * 図のタブを用意する（F-VIEW-2）。起動時に 1 回呼ぶ。保存したタブを戻し（知らないビューのタブは捨てる）、
- * 無ければ既定の 4 つ（トレーサビリティ・制御ループ・内部ブロック図・シーケンス図）を開く。
- * 保存した表示中のタブ（無ければ先頭）に切り替え、タブバーのクリック・中クリック・「＋」メニューに操作をつなぐ。
+ * 保存したタブを戻し（知らないビューのタブは捨てる）、無ければ既定の 4 つ（トレーサビリティ・制御ループ・内部ブロック図・シーケンス図）を開く。
+ * 保存した表示中のタブ（無ければ先頭）に切り替える。
+ *
+ * @param saved 保存したタブと表示中のタブの id（無ければ null）
  */
-export function initTabs(): void {
-  const saved = readSavedTabs();
+function applySavedTabs(saved: { tabs?: Tab[]; active?: number } | null): void {
   if (saved?.tabs?.length) S.tabs = saved.tabs.filter((t) => VIEWS.some((v) => v.id === t.view));
   for (const tb of S.tabs) if (typeof tb.mv !== "string") delete tb.mv;
   if (!S.tabs.length) {
@@ -422,6 +425,25 @@ export function initTabs(): void {
   const first = S.tabs[0];
   const active = saved?.active != null && S.tabs.some((t) => t.id === saved.active) ? saved.active : first?.id;
   if (active != null) activateTab(active, { fit: true });
+}
+
+/**
+ * 起動したときに読んだタブを、もう一度戻す（F-FILE-13）。「前回の続きを開く」で文書を戻し、その解析結果が届いた後に呼ぶ。
+ * 文書を開いていない間に、表示中のタブの対象（内部ブロック図のブロックなど）が選び直されていても、前回のものに戻る。
+ */
+export function resumeTabs(): void {
+  applySavedTabs(startTabs);
+}
+
+/**
+ * 図のタブを用意する（F-VIEW-2）。起動時に 1 回呼ぶ。保存したタブを戻し（知らないビューのタブは捨てる）、
+ * 無ければ既定の 4 つ（トレーサビリティ・制御ループ・内部ブロック図・シーケンス図）を開く。
+ * 保存した表示中のタブ（無ければ先頭）に切り替え、タブバーのクリック・中クリック・「＋」メニューに操作をつなぐ。
+ */
+export function initTabs(): void {
+  // 戻すタブと、後で戻し直すためのタブは、別々に読む（戻した方は表示の途中で書き換わる）
+  startTabs = readSavedTabs();
+  applySavedTabs(readSavedTabs());
 
   const bar = $("#tabbar");
   // タブバーは横にスクロールするので、その中のメニューは枠で切れてしまう。開いたときに画面に対する位置で出す

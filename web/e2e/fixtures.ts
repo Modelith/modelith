@@ -6,10 +6,23 @@ import { test as base, expect, type Page } from "@playwright/test";
 /**
  * ピッカーの置き換え（ブラウザ側で動く）。フォルダのピッカーは、ふだんは project フォルダを返す。
  * `__e2e.pickDir` にフォルダ名を入れておくと、次の 1 回だけ、OPFS の一番上のそのフォルダを返す（プラグインのフォルダを選ぶときなど）。
+ * OPFS のハンドルはいつも許可済みなので、localStorage の e2e-permission（needPermission で置く）があれば、
+ * 許可が残っていないブラウザのふりをする（prompt なら求めると許可され、refuse なら拒まれる）。
  */
 function installPickers(): void {
   const w = window as unknown as Record<string, unknown> & { __e2e: { openFile?: string; pickDir?: string } };
   w.__e2e = {};
+  let permission: string | null = null;
+  try {
+    permission = localStorage.getItem("e2e-permission");
+  } catch {
+    // プラグインのサンドボックス（allow-same-origin の無い iframe）では localStorage を読めない。そこでは置き換えない
+  }
+  if (permission) {
+    const proto = FileSystemHandle.prototype as unknown as Record<string, unknown>;
+    proto["queryPermission"] = async () => "prompt";
+    proto["requestPermission"] = async () => (permission === "refuse" ? "denied" : "granted");
+  }
   const project = async (): Promise<FileSystemDirectoryHandle> =>
     (await navigator.storage.getDirectory()).getDirectoryHandle("project", { create: true });
   w["showDirectoryPicker"] = async () => {
@@ -65,6 +78,15 @@ export async function putFiles(page: Page, files: Record<string, string>, folder
       await w.close();
     }
   }, [files, folder] as const);
+}
+
+/**
+ * 次に開いたとき（再読み込みの後）から、前回のフォルダを開き直すのにブラウザの許可が要るようにする（Chrome で許可が残っていないとき）。
+ *
+ * @param grant 許可を求められたら許可するか（false なら拒む）
+ */
+export async function needPermission(page: Page, grant = true): Promise<void> {
+  await page.evaluate((v) => localStorage.setItem("e2e-permission", v), grant ? "prompt" : "refuse");
 }
 
 /** 次にフォルダのピッカーを開いたとき、1 回だけ OPFS の一番上のフォルダ name を返すようにする（プラグインのフォルダを選ぶ）。 */

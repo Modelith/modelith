@@ -42,6 +42,7 @@
         <button id="btnSaveSvg">図を SVG で保存</button>
         <button id="btnDrawio">draw.io 形式で書き出す</button>
         <button id="btnSample">サンプルを開く</button>
+        <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
         <div class="note" id="fileNote"></div>
       </div>
     </details>
@@ -117,8 +118,10 @@
     </section>
     <section class="nodoc" id="noDoc" hidden aria-labelledby="noDocTitle">
       <b id="noDocTitle">開いているファイルはありません</b>
-      <p>新しいファイルを作成するか、ファイルを開いてください。<br>サンプルで操作を試すこともできます。</p>
+      <p id="noDocText">新しいファイルを作成するか、ファイルを開いてください。<br>サンプルで操作を試すこともできます。</p>
+      <p id="noDocResume" hidden></p>
       <div class="acts">
+        <button data-nodoc="resume" class="primary" hidden>前回の続きを開く</button>
         <button data-nodoc="new" class="primary">新しいファイル</button>
         <button data-nodoc="open">ファイルを開く</button>
         <button data-nodoc="openFolder" hidden>フォルダを開く</button>

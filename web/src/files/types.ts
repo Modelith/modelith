@@ -97,9 +97,17 @@ export interface FileLocator extends ProviderInfo {
 export interface RecentFolders extends ProviderInfo {
   /** 覚えているフォルダの名前（無ければ null）。 */
   recentFolder(): Promise<string | null>;
-  /** 覚えているフォルダを開き直す。許可の確認が要るので、利用者の操作から呼ぶ。 */
-  reopenRecent(): Promise<FolderRef | null>;
+  /** 覚えているフォルダを、今の許可のまま開けるか（許可は求めない。F-FILE-13）。覚えていなければ "none"。 */
+  recentAccess(): Promise<RecentAccess>;
+  /**
+   * 覚えているフォルダを開き直す。許可の確認が要るので、利用者の操作から呼ぶ。
+   * `ask: false` なら許可を求めず、既に許可されているときだけ開く（起動したとき。F-FILE-13）。
+   */
+  reopenRecent(opts?: { ask?: boolean }): Promise<FolderRef | null>;
 }
+
+/** 前回のフォルダを開く許可の状態。granted は許可済み、prompt は利用者の操作で求められる、denied は拒否、none は覚えていない。 */
+export type RecentAccess = "granted" | "prompt" | "denied" | "none";
 
 /** モデルのファイルの隣のファイル（配置ファイル）を読み書きできる（ADR-0005）。 */
 export interface SiblingFiles extends ProviderInfo {

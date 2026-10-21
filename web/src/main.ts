@@ -1,4 +1,4 @@
-// Modelith の起動。各モジュールのイベントを登録し、下書き（無ければ公開サンプル）を読み込む。
+// Modelith の起動。各モジュールのイベントを登録し、前回の続き（無ければ公開サンプル）を読み込む。
 import "@fontsource/ibm-plex-sans-jp/400.css";
 import "@fontsource/ibm-plex-sans-jp/500.css";
 import "@fontsource/ibm-plex-sans-jp/700.css";
@@ -19,7 +19,7 @@ import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
 import { saveAsView } from "./app/view-ops";
-import { applyPanes, initPanels, initTabs, loadUi, saveUi } from "./app/panels";
+import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi } from "./app/panels";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
@@ -164,7 +164,7 @@ initHistory();
 initExport();
 initMenus();
 initToolbar();
-initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT });
+await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });
 // タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
 await settled();
 applyPanes();

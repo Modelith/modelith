@@ -1,6 +1,6 @@
 // UI テスト（見た目の回帰）。画面を撮って基準画像（visual.spec.ts-snapshots/）と比べる。
 // 差があれば HTML レポートに「基準・今回・差分」の 3 枚が並ぶ。意図した変更なら基準を更新する（docs/development/testing.md）。
-import { editorText, expect, nodeKeys, openApp, openReadOnlyText, pickDirNext, putBrowserPlugin, putFiles, replaceText, test, typeAtEnd, wordCenter } from "./fixtures";
+import { editorText, expect, needPermission, nodeKeys, openApp, openReadOnlyText, pickDirNext, putBrowserPlugin, putFiles, replaceText, test, typeAtEnd, wordCenter } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 
 // 画素はフォントや描画の設定で変わるので、基準のブラウザ（scripts/e2e.sh が Docker で起動する）でだけ比べる
@@ -86,6 +86,23 @@ test.describe("UI: 画面全体", () => {
       await settle(page);
       // Assert
       await expect(page).toHaveScreenshot("no-open-files-narrow.png");
+    });
+
+    test("F-FILE-13・Q-2: 幅 390px の画面で、フォルダの許可が要るときの「前回の続きを開く」", async ({ page }) => {
+      // Arrange（狭い画面では、エクスプローラーはツリーのタブにある）
+      await openApp(page);
+      await putFiles(page, { "a.sysml": "package A;\n" });
+      await page.locator("#tabTree").click();
+      await page.locator('[data-cmd="openFolder"]').click();
+      await page.locator('#explorer [data-file][title="a.sysml"]').click();
+      await needPermission(page);
+      // Act
+      await page.reload();
+      await expect(page.locator("#noDoc")).toBeVisible();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("resume-narrow.png");
     });
 
     test("F-VIEW-7・Q-2: 幅 390px の画面の状態遷移図", async ({ page }) => {
@@ -372,6 +389,18 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.locator("#explorer [data-close]").click();
       await page.locator('#dialogButtons [data-id="discard"]').click();
+      await expect(page.locator("#noDoc")).toBeVisible();
+      await page.mouse.move(0, 0); // 案内のボタンにマウスが乗っていない状態で撮る
+      return [page.locator("#main")];
+    },
+  },
+  {
+    title: "F-FILE-13: フォルダの許可が要るときの「前回の続きを開く」",
+    shot: "resume",
+    act: async (page) => {
+      await openSampleFolder(page, "package A;\n");
+      await needPermission(page);
+      await page.reload();
       await expect(page.locator("#noDoc")).toBeVisible();
       await page.mouse.move(0, 0); // 案内のボタンにマウスが乗っていない状態で撮る
       return [page.locator("#main")];

@@ -5,6 +5,7 @@ import { LocalFolderProvider } from "../files/local-folder";
 import { ProviderRegistry, type DirEntry, type FileRef } from "../files/types";
 import { AutoSaver, type Timer } from "./autosave";
 import { kvDraftStore } from "./drafts";
+import { kvSessionStore } from "./session";
 import { PROJECT_FILE, Workspace, suggestName, type SaveOutcome } from "./workspace";
 
 function setup() {
@@ -15,14 +16,15 @@ function setup() {
   const browser = new BrowserFileProvider({ choose: async () => picked, download: (name) => downloads.push(name) });
   const kv = new Map<string, string>();
   const drafts = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
-  const ws = new Workspace(new ProviderRegistry([local, browser]), drafts);
+  const sessions = kvSessionStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
+  const ws = new Workspace(new ProviderRegistry([local, browser]), drafts, sessions);
   const root = new FakeDir("project");
   api.folder = root;
   /** 次に「ファイルを開く」で選ぶファイル（フォルダを開けないブラウザ）。 */
   const pick = (files: PickedFile[]): void => {
     picked = files;
   };
-  return { api, local, browser, downloads, kv, drafts, ws, root, pick };
+  return { api, local, browser, downloads, kv, drafts, sessions, ws, root, pick };
 }
 
 function fileIn(entries: DirEntry[], path: string): FileRef {
@@ -838,5 +840,142 @@ describe("Workspace: プロジェクトの設定ファイル（ADR-0019、F-PROJ
     const s = setup();
     // Act & Assert
     await expect(s.ws.makeProject("{}")).rejects.toThrow("フォルダが開かれていません");
+  });
+});
+
+describe("Workspace: 前回の続き（F-FILE-13）", () => {
+  /**
+   * 同じ保存先で、次に開いたときのワークスペースを作る。
+   *
+   * @param s setup() の結果
+   * @returns 新しいワークスペース
+   */
+  const nextStart = (s: ReturnType<typeof setup>): Workspace => new Workspace(new ProviderRegistry([s.local, s.browser]), s.drafts, s.sessions);
+
+  /** 無題の u.sysml・フォルダの a.sysml・models/b.sysml をこの順に開き、a.sysml を表示中にして終える。 */
+  async function work(s: ReturnType<typeof setup>): Promise<void> {
+    s.root.put("a.sysml", "package A;");
+    s.root.put("models/b.sysml", "package B;");
+    s.ws.holdSession(false);
+    await s.ws.openFolder(s.local);
+    s.ws.newUntitled("u.sysml", "package U;");
+    const a = await s.ws.openRef(fileIn(s.ws.folder()!.entries, "a.sysml"));
+    await s.ws.openRef(fileIn(s.ws.folder()!.entries, "models/b.sysml"));
+    s.ws.activate(a.key);
+  }
+
+  /**
+   * 次に開いたときの起動（下書きを戻し、許可を求めずにフォルダを開き直し、前回の続きを戻す）。
+   *
+   * @param s setup() の結果
+   * @returns 新しいワークスペースと、開けなかったファイルのパス
+   */
+  async function restart(s: ReturnType<typeof setup>): Promise<{ next: Workspace; missing: string[] }> {
+    const next = nextStart(s);
+    next.restoreDrafts();
+    await next.reopenFolder(s.local, { ask: false });
+    const missing = await next.resumeSession(s.sessions.load()!);
+    return { next, missing };
+  }
+
+  it("起動して戻し終えるまでは前回の続きを書き換えず、holdSession(false) で書く", async () => {
+    // Arrange
+    const s = setup();
+    await work(s);
+    const before = s.sessions.load();
+    const next = nextStart(s);
+    // Act
+    next.newUntitled("x.sysml", "package X;");
+    const held = s.sessions.load();
+    next.holdSession(false);
+    // Assert
+    expect(held).toEqual(before);
+    expect(s.sessions.load()).toEqual({ folder: false, docs: [{ draft: 0 }], active: 0 });
+  });
+
+  it("フォルダを開き直し、フォルダのファイルと下書きを前回の順番で戻し、表示していた文書を表示中にする", async () => {
+    // Arrange
+    const s = setup();
+    await work(s);
+    // Act
+    const { next, missing } = await restart(s);
+    // Assert
+    expect(missing).toEqual([]);
+    expect(next.list().map((d) => d.name)).toEqual(["u.sysml", "a.sysml", "b.sysml"]);
+    expect(next.active()?.name).toBe("a.sysml");
+    expect(next.list()[1]?.text).toBe("package A;");
+    expect(next.folder()?.ref.name).toBe("project");
+  });
+
+  it("消されたファイルは戻さずにパスを返し、表示していたファイルが消えていたら最初の文書を表示中にする", async () => {
+    // Arrange
+    const s = setup();
+    await work(s);
+    s.root.entries.delete("a.sysml");
+    // Act
+    const { next, missing } = await restart(s);
+    // Assert
+    expect(missing).toEqual(["a.sysml"]);
+    expect(next.list().map((d) => d.name)).toEqual(["u.sysml", "b.sysml"]);
+    expect(next.active()?.name).toBe("u.sysml");
+  });
+
+  it("フォルダが消されていたら、開き直すときに例外を投げ、下書きだけを戻せる（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    await work(s);
+    s.root.removed = true;
+    const next = nextStart(s);
+    next.restoreDrafts();
+    // Act
+    const reopen = next.reopenFolder(s.local, { ask: false });
+    // Assert
+    await expect(reopen).rejects.toThrow();
+    const missing = await next.resumeSession(s.sessions.load()!);
+    expect(missing).toEqual([]);
+    expect(next.list().map((d) => d.name)).toEqual(["u.sysml"]);
+    expect(next.folder()).toBeNull();
+  });
+
+  it("許可が要るときは、許可を求めずにフォルダを開かない", async () => {
+    // Arrange
+    const s = setup();
+    await work(s);
+    s.root.permission = "prompt";
+    const next = nextStart(s);
+    // Act
+    const opened = await next.reopenFolder(s.local, { ask: false });
+    // Assert
+    expect(opened).toBe(false);
+    expect(s.root.permission).toBe("prompt");
+  });
+
+  it("フォルダを開かないブラウザでも、下書きと表示していた文書を戻す", async () => {
+    // Arrange
+    const s = setup();
+    s.ws.holdSession(false);
+    const first = s.ws.newUntitled("u1.sysml", "package U1;");
+    s.ws.newUntitled("u2.sysml", "package U2;");
+    s.ws.activate(first.key);
+    const next = new Workspace(new ProviderRegistry([s.browser]), s.drafts, s.sessions);
+    next.restoreDrafts();
+    // Act
+    await next.resumeSession(s.sessions.load()!);
+    // Assert
+    expect(next.list().map((d) => d.name)).toEqual(["u1.sysml", "u2.sysml"]);
+    expect(next.active()?.name).toBe("u1.sysml");
+  });
+
+  it("無題の中身が無くなったら、前回の続きの下書きの番号を合わせて書き直す（境界値: 空になった）", () => {
+    // Arrange
+    const s = setup();
+    s.ws.holdSession(false);
+    const first = s.ws.newUntitled("u1.sysml", "package U1;");
+    s.ws.newUntitled("u2.sysml", "package U2;");
+    // Act
+    s.ws.setText(first.key, "");
+    // Assert
+    expect(s.sessions.load()).toEqual({ folder: false, docs: [{ draft: 0 }], active: 0 });
+    expect(s.drafts.load().drafts.map((d) => d.name)).toEqual(["u2.sysml"]);
   });
 });
