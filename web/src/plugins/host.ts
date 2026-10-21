@@ -1,7 +1,7 @@
 // v1 のプラグイン（TypeScript、ADR-0018 §3〜§5）のホスト。プロジェクトかこのブラウザに入れたプラグインを、許可を確かめてから隔離した場所で動かし、
 // テキストの変更を知らせ、届いたメッセージをコアに確かめてもらってから使う。コマンド・読み込み・書き出しをメニューから頼み、
 // プラグイン用の保存場所（storage）をプラグインごとに分けて貸す。
-// 届いたメッセージは、入口で大きさと待ちの件数を制限する（limits.ts、F-PLUG-7）。
+// 届いたメッセージは、入口で大きさと待ちの件数を制限し（limits.ts、F-PLUG-7）、コマンド・読み込み・書き出し・起動には期限を付けて、終わらなければ知らせる（F-PLUG-8）。
 // 判断は純粋関数（trust.ts・messages.ts・limits.ts・view.ts・permissions.ts・storage.ts・transfer.ts）とコア（Rust）に任せ、ここは状態の出し入れと画面の操作だけを行う。
 
 import { applyTextEdits, type VersionedSnapshot } from "../core";
@@ -13,7 +13,10 @@ import { coreClient, onAnalyzedVersion, renderProblems, setText, toast, updateSy
 import { modelView } from "../app/views";
 import type { PluginDataStore } from "./browser-store";
 import { API_VERSION, type HostMessage, type Permission } from "./generated/protocol";
-import { DROPPED_NOTIFY_PREFIX, droppedNotifyNotice, intake, MAX_NOTIFIES_PER_SECOND, MESSAGE_LIMITS, notifyAllowance, type IntakeState } from "./limits";
+import {
+  DROPPED_NOTIFY_PREFIX, droppedNotifyNotice, intake, MAX_NOTIFIES_PER_SECOND, MESSAGE_LIMITS, notifyAllowance, overdueRequests, READY_TIMEOUT_MS, REQUEST_TIMEOUT_MS, stuckNotice,
+  type IntakeState,
+} from "./limits";
 import { addNotice, decideMessage, flashRange, messageJson, STALE_PLUGIN_EDIT, type HostAction, type PendingRequest } from "./messages";
 import { sandboxPage } from "./permissions";
 import { startSandbox, type Sandbox } from "./sandbox";
@@ -41,6 +44,9 @@ export interface RunInfo {
   notices: string[];
 }
 
+/** 頼んで、まだ答えの無いこと（頼んだ時刻と、期限を過ぎたことを知らせたか）。 */
+type TrackedRequest = PendingRequest & { since: number; reported?: boolean };
+
 /** 動かしているプラグイン 1 つの状態。 */
 interface Entry {
   plugin: ScriptPlugin;
@@ -48,8 +54,8 @@ interface Entry {
   state: RunState;
   notices: string[];
   sandbox: Sandbox | null;
-  /** 頼んで、まだ答えの無いこと（依頼の番号 → コマンド・読み込み・書き出しと、その表示名）。 */
-  pending: Map<number, PendingRequest>;
+  /** 頼んで、まだ答えの無いこと（依頼の番号 → コマンド・読み込み・書き出しと、その表示名・頼んだ時刻）。 */
+  pending: Map<number, TrackedRequest>;
   nextRequest: number;
   /** 届いたメッセージを、届いた順に 1 つずつ扱うためのつなぎ。 */
   queue: Promise<void>;
@@ -61,6 +67,10 @@ interface Entry {
   notifies: number[];
   /** 頻度の上限を超えて捨てた知らせの数。 */
   droppedNotifies: number;
+  /** 頼んだことの期限を見張るタイマー。 */
+  watchdog: ReturnType<typeof setTimeout> | undefined;
+  /** 起動（ready）の期限のタイマー。 */
+  readyTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
 /** 動かし始めたときの、入口の数え上げ。 */
@@ -178,7 +188,7 @@ async function applyPlugins(plugins: readonly ScriptPlugin[]): Promise<void> {
 function replace(plugin: ScriptPlugin, sha256: string, state: RunState, notices: string[]): Entry {
   const e: Entry = {
     plugin, sha256, state, notices, sandbox: null, pending: new Map(), nextRequest: 1, queue: Promise.resolve(), run: 0,
-    intake: FRESH_INTAKE, notifies: [], droppedNotifies: 0,
+    intake: FRESH_INTAKE, notifies: [], droppedNotifies: 0, watchdog: undefined, readyTimer: undefined,
   };
   entries.set(plugin.id, e);
   return e;
@@ -255,6 +265,7 @@ function remember(id: string, record: TrustRecord): void {
 
 /**
  * プラグインを隔離した場所で動かし始め、activate を送る（答えの ready を待って、テキストを送る）。
+ * ready が期限（READY_TIMEOUT_MS）までに届かなければ、トーストと一覧で知らせる（勝手には止めない。F-PLUG-8）。
  *
  * @param e プラグインの状態（starting にする）
  */
@@ -273,12 +284,16 @@ function start(e: Entry): void {
     },
   });
   setState(e, "starting");
+  e.readyTimer = setTimeout(() => {
+    if (e.run !== run || e.state !== "starting") return;
+    reportStuck(e, stuckNotice(null, READY_TIMEOUT_MS));
+  }, READY_TIMEOUT_MS);
   const activate: HostMessage = { type: "activate", apiVersion: API_VERSION, pluginId: e.plugin.id };
   e.sandbox.post(e.plugin.settings === undefined ? activate : { ...activate, settings: e.plugin.settings });
 }
 
 /**
- * プラグインを止める（iframe を取り除く）。答えを待っているコマンドと、出していた診断は捨てる。
+ * プラグインを止める（iframe を取り除く）。答えを待っているコマンドと、出していた診断は捨て、期限のタイマーも止める。
  *
  * @param e プラグインの状態
  */
@@ -287,6 +302,8 @@ function halt(e: Entry): void {
   e.sandbox?.stop();
   e.sandbox = null;
   e.pending.clear();
+  clearTimeout(e.watchdog);
+  clearTimeout(e.readyTimer);
   clearDiagnostics(e.plugin.id);
 }
 
@@ -354,6 +371,17 @@ function noticeDroppedNotifies(e: Entry): void {
 }
 
 /**
+ * 頼んだこと・起動が期限までに終わらないことを、トーストと一覧で知らせる（勝手には止めない。一覧の「停止」で止められる。F-PLUG-8）。
+ *
+ * @param e プラグインの状態
+ * @param text 一覧の文（stuckNotice）。トーストでは頭にプラグインの名前を付け、「停止」がどこにあるかを添える
+ */
+function reportStuck(e: Entry, text: string): void {
+  toast(`プラグイン「${e.plugin.name}」の${text.replace("「停止」", "プラグインの一覧の「停止」")}`);
+  notice(e, text);
+}
+
+/**
  * プラグインから届いたデータを、コアに確かめてもらってから扱う（ADR-0018 §3：形と権限、§4：変更案）。
  *
  * @param e プラグインの状態
@@ -380,6 +408,7 @@ async function act(e: Entry, a: HostAction): Promise<void> {
   const name = e.plugin.name;
   switch (a.kind) {
     case "ready":
+      clearTimeout(e.readyTimer);
       setState(e, "running");
       void sendDidChange(e);
       return;
@@ -394,21 +423,21 @@ async function act(e: Entry, a: HostAction): Promise<void> {
       toast(a.notice);
       return notice(e, a.notice);
     case "commandDone":
-      e.pending.delete(a.requestId);
+      settle(e, a.requestId);
       return;
     case "imported": {
-      e.pending.delete(a.requestId);
+      settle(e, a.requestId);
       const doc = hostEnv().openImported(a.fileName, a.text);
       toast(`「${a.title}」で読み込んだ結果を、新しいファイル「${doc}」として開きました（プラグイン「${name}」）。保存するまでファイルには書き込みません`);
       return;
     }
     case "exported":
-      e.pending.delete(a.requestId);
+      settle(e, a.requestId);
       download(a.fileName, base64ToBytes(a.base64), a.mediaType);
       toast(`「${a.title}」で書き出した「${a.fileName}」をダウンロードしました（プラグイン「${name}」）`);
       return;
     case "requestFailed":
-      e.pending.delete(a.requestId);
+      settle(e, a.requestId);
       toast(`プラグイン「${name}」の${a.notice}`);
       return notice(e, a.notice);
     case "storageGet":
@@ -512,8 +541,7 @@ function runCommand(id: string, command: string): void {
   const e = entries.get(id);
   const c = e?.plugin.commands.find((x) => x.id === command);
   if (!e || !c || e.state !== "running") return toast("プラグインがまだ準備できていないため、コマンドを実行できません");
-  const requestId = e.nextRequest++;
-  e.pending.set(requestId, { kind: "command", title: c.title });
+  const requestId = track(e, { kind: "command", title: c.title });
   e.sandbox?.post({ type: "runCommand", requestId, command });
 }
 
@@ -536,8 +564,7 @@ async function runImport(id: string, importer: string): Promise<void> {
   const run = e.run;
   const base64 = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
   if (e.run !== run || e.state !== "running") return toast("プラグインが停止したため、読み込めませんでした");
-  const requestId = e.nextRequest++;
-  e.pending.set(requestId, { kind: "import", title: imp.label });
+  const requestId = track(e, { kind: "import", title: imp.label });
   e.sandbox?.post({ type: "import", requestId, importer, fileName: file.name, base64 });
 }
 
@@ -553,10 +580,65 @@ function runExport(id: string, exporter: string): void {
   const e = entries.get(id);
   const x = e?.plugin.exporters.find((y) => y.id === exporter);
   if (!e || !x || e.state !== "running") return toast("プラグインがまだ準備できていないため、書き出せません");
-  const requestId = e.nextRequest++;
-  e.pending.set(requestId, { kind: "export", title: x.label, extension: x.extension });
+  const requestId = track(e, { kind: "export", title: x.label, extension: x.extension });
   const view = modelView()?.name;
   e.sandbox?.post(view === undefined ? { type: "export", requestId, exporter } : { type: "export", requestId, exporter, view });
+}
+
+/**
+ * 頼んだことを、答えを待つものとして覚え、期限の見張りを始める。
+ *
+ * @param e プラグインの状態
+ * @param request 頼んだこと（種類と表示名）
+ * @returns 依頼の番号（プラグインに送るメッセージに付ける）
+ * @example
+ * track(e, { kind: "command", title: "ID を付ける" }) // → 1（次は 2）
+ */
+function track(e: Entry, request: PendingRequest): number {
+  const requestId = e.nextRequest++;
+  e.pending.set(requestId, { ...request, since: Date.now() });
+  watch(e);
+  return requestId;
+}
+
+/**
+ * 答えが届いた依頼を、待つものから外す。
+ *
+ * @param e プラグインの状態
+ * @param requestId 依頼の番号
+ */
+function settle(e: Entry, requestId: number): void {
+  e.pending.delete(requestId);
+  watch(e);
+}
+
+/**
+ * まだ知らせていない依頼のうち、いちばん早い期限に合わせてタイマーを置き直す（無ければ止める）。
+ *
+ * @param e プラグインの状態
+ */
+function watch(e: Entry): void {
+  clearTimeout(e.watchdog);
+  e.watchdog = undefined;
+  const waiting = [...e.pending.values()].filter((r) => !r.reported);
+  if (waiting.length === 0) return;
+  const earliest = Math.min(...waiting.map((r) => r.since));
+  e.watchdog = setTimeout(() => reportOverdue(e), Math.max(0, earliest + REQUEST_TIMEOUT_MS - Date.now()));
+}
+
+/**
+ * 期限を過ぎた依頼を、トーストと一覧で知らせ、残りの見張りを続ける（F-PLUG-8）。
+ *
+ * @param e プラグインの状態
+ */
+function reportOverdue(e: Entry): void {
+  for (const id of overdueRequests(e.pending, Date.now(), REQUEST_TIMEOUT_MS)) {
+    const request = e.pending.get(id);
+    if (!request) continue;
+    request.reported = true;
+    reportStuck(e, stuckNotice(request, REQUEST_TIMEOUT_MS));
+  }
+  watch(e);
 }
 
 /**
