@@ -620,7 +620,7 @@ package ModelithRequirements {
         }
         verification def StartupLoadingTest {
             doc /* web/src/app/loading.test.ts：起動中の表示を 15 秒（期限の 1 ms 手前は「読み込み中…」のまま）で案内に切り替え、使える状態になったら消す（案内の後に使える状態になっても消す）。
-                   web/e2e/startup.spec.ts：wasm の読み込みが遅いときに最初の表示から「読み込み中…」を示して読み込めたら消すこと、15 秒たつと案内に切り替え、その後に読み込めたら案内を消して図を描くこと（Chromium で操作） */
+                   web/e2e/startup.spec.ts：wasm の読み込みが遅いときに最初の表示から「読み込み中…」を示して読み込めたら消すこと、15 秒たつと案内に切り替え、その後に読み込めたら案内を消して図を描くこと、読み込めないときは「読み込み中…」を消して理由と対処を示すこと（Chromium で操作） */
             objective {
                 verify RobustReq;
             }
