@@ -9,7 +9,7 @@
  *  - 方式設計（部品）     ：システム要求を満たす部品（satisfy）
  *  - 検証（verification）：要求を確かめる自動テスト。doc にテストファイルを書く（verify）
  *  - 「実装済み」とは verify されていること。verify の無い要求は未実装か未検証で、トレースの抜けとして表示される
- *  - ID は一度振ったら変えない。廃止した要求は消さずに doc の先頭に「廃止：」と書く
+ *  - ID は一度振ったら変えない。廃止した要求は消さずに doc の先頭に「廃止：」と書く。先送りした要求は doc の先頭に「保留：<版> 以降」と書く（verify が無くてよい）
  *  - 振る舞いを変えるときは、実装より先にこのファイルを更新する（CLAUDE.md）
  */
 package ModelithRequirements {
@@ -78,7 +78,7 @@ package ModelithRequirements {
 
         // ---- 編集 --------------------------------------------------
         requirement def <'F-EDIT-1'> TextToDiagramReq {
-            doc /* テキストを編集すると、入力が止まってから 0.3 秒以内に図・ツリー・問題一覧に反映する */
+            doc /* テキストを編集すると、入力が止まってから 0.3 秒以内に解析を始め、結果を図・ツリー・問題一覧に反映する（反映までの目安は 1 秒以内） */
         }
         requirement def <'F-EDIT-2'> DiagramToTextReq {
             doc /* 図での操作（要素の追加・削除・関係の追加・移動）は、すべてテキストの編集として反映する（ADR-0001） */
@@ -194,7 +194,7 @@ package ModelithRequirements {
                    下書きを保存できないとき（ブラウザの保存領域がいっぱい）は、黙って諦めずに 1 回だけ知らせて「名前を付けて保存」を案内し、保存できていない下書きがあるままページを離れようとしたら警告する */
         }
         requirement def <'F-FILE-12'> CloudReq {
-            doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
+            doc /* 保留：0.2.0 以降（ADR-0012。利用者の声が出てから着手する）。クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
         }
         requirement def <'F-FILE-13'> ResumeSessionReq {
             doc /* 起動すると、前回の続き（開いていたフォルダとファイル、表示していたファイル、図のタブ）から始める。フォルダを読み直すのにブラウザの許可が要るときは、サンプルの代わりに「前回の続きを開く」を示し、1 回の操作で戻れる。設定で、起動時にサンプルを開くようにもできる */
@@ -257,10 +257,10 @@ package ModelithRequirements {
 
         // ---- 文書へのリンク（ADR-0019） --------------------------------
         requirement def <'F-LINK-1'> DocumentLinkReq {
-            doc /* 要素に文書（プロジェクトの中のファイル・Web の URL）へのリンクを付け、画面から開ける。リンクはテキストにメタデータとして書き、プロジェクトの中のファイルはプロジェクトのフォルダからの相対パスで書く。リンク先を勝手に読みに行かない */
+            doc /* 保留：0.2.0 以降（ADR-0019）。要素に文書（プロジェクトの中のファイル・Web の URL）へのリンクを付け、画面から開ける。リンクはテキストにメタデータとして書き、プロジェクトの中のファイルはプロジェクトのフォルダからの相対パスで書く。リンク先を勝手に読みに行かない */
         }
         requirement def <'F-LINK-2'> LinkCheckReq {
-            doc /* プロジェクトの中のファイルへのリンクが切れていたら、問題一覧に示す */
+            doc /* 保留：0.2.0 以降（ADR-0019。F-LINK-1 の後）。プロジェクトの中のファイルへのリンクが切れていたら、問題一覧に示す */
         }
 
         // ---- 品質 --------------------------------------------------
@@ -841,6 +841,14 @@ package ModelithRequirements {
             doc /* crates/modelith-core/src/project_file：プロジェクトの設定ファイル（modelith.json）の読み取り（名前・使うプラグインと既定値・知らない項目を残して書き戻す・JSON の誤りと型の誤りの行と列・空のテキスト）と作成。crates/modelith-wasm：結果の JSON での受け渡し。web/src/core/client.test.ts：コア（Worker）への読み取りと作成の依頼（コアが壊れた返事をしても例外を投げない）。web/src/files/local-folder.test.ts：開いたフォルダの中のファイルの読み書き（偽のファイルシステムで）。web/src/workspace/workspace.test.ts：フォルダを開く・一覧の更新で読み、「プロジェクトにする」で書く（既にあれば上書きしない）。web/src/app/project.test.ts：見出しに出す名前と、問題の知らせ方。web/e2e/project.spec.ts：プロジェクト名の表示・前回のフォルダと一覧の更新・「プロジェクトにする」とやめたとき・設定ファイルの無いフォルダ・誤りと知らない項目の知らせ（OPFS で） */
             objective {
                 verify ProjectReq;
+            }
+        }
+        verification def SettingsLevelTest {
+            doc /* crates/modelith-core/src/project_file：「プロジェクトにする」で作る modelith.json には、このプロジェクトの設定（名前・使うプラグイン）だけを書き、
+                   見た目と操作の好み（パネルの表示・幅・自動保存・起動時にサンプルを開く・線の描き方）は書かない（create_writes_pretty_json_with_the_name・create_trims_the_name_and_omits_an_empty_one）。
+                   modelith.json の知らない項目は残して知らせる（parse_keeps_unknown_keys_and_warns_with_their_positions）。自分の設定はこのブラウザ（localStorage）にだけ置く（web/src/app/panels.ts の modelith-ui-v1 ほか） */
+            objective {
+                verify SettingsLevelReq;
             }
         }
         verification def RuleEngineTest {
