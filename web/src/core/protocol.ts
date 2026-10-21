@@ -27,15 +27,27 @@ export type CoreRequest =
 export type CoreResponse =
   | { type: "ready" }
   | { type: "failed"; message: string }
-  | { type: "analyzed"; version: number; json: string }
-  | { type: "edited"; version: number; id: number; json: string }
-  | { type: "projectParsed"; id: number; json: string }
-  | { type: "projectCreated"; id: number; json: string }
-  | { type: "projectUpdated"; id: number; json: string }
-  | { type: "pluginsSet"; id: number; json: string }
-  | { type: "pluginDescribed"; id: number; json: string }
-  | { type: "snapshotMade"; version: number; id: number; json: string }
-  | { type: "pluginMessageChecked"; version: number; id: number; json: string };
+  | ({ type: "analyzed"; version: number; json: string } & Failure)
+  | ({ type: "edited"; version: number; id: number; json: string } & Failure)
+  | ({ type: "projectParsed"; id: number; json: string } & Failure)
+  | ({ type: "projectCreated"; id: number; json: string } & Failure)
+  | ({ type: "projectUpdated"; id: number; json: string } & Failure)
+  | ({ type: "pluginsSet"; id: number; json: string } & Failure)
+  | ({ type: "pluginDescribed"; id: number; json: string } & Failure)
+  | ({ type: "snapshotMade"; version: number; id: number; json: string } & Failure)
+  | ({ type: "pluginMessageChecked"; version: number; id: number; json: string } & Failure);
+
+/** 依頼への返事（起動の `ready`・`failed` を除く）。 */
+export type CoreReply = Exclude<CoreResponse, { type: "ready" } | { type: "failed" }>;
+
+/**
+ * コアの中で予期しない失敗（wasm の例外）が起きた返事に付く印。画面の側は、この印のある返事を受け取ったら、
+ * 壊れたかもしれない wasm を使い続けず、コアを作り直す（Q-6）。
+ */
+interface Failure {
+  /** 失敗の理由（例外のメッセージ）。ふつうの返事には無い。 */
+  failure?: string;
+}
 
 /** 読み込んだチェックルールのプラグイン（wasm の `RulePlugins`）。Worker が持ち続ける。 */
 export interface LoadedRules {
@@ -139,18 +151,32 @@ function setPlugins(state: CoreState, plugins: PluginFiles[], fns: CoreFns): str
  *
  * @param req 失敗した依頼（`init` 以外）
  * @param message 失敗の理由（例外のメッセージ）
- * @returns 依頼に対応する返事。json はコアの返事と同じ形（`error`・`refused`・`problems`）
+ * @returns 依頼に対応する返事。json はコアの返事と同じ形（`error`・`refused`・`problems`）で、`failure` に理由を付ける
  * @example
  * failedReply({ type: "didChange", version: 2, text: "" }, "boom")
- * // → { type: "analyzed", version: 2, json: '{"error":"boom"}' }
+ * // → { type: "analyzed", version: 2, json: '{"error":"boom"}', failure: "boom" }
  * failedReply({ type: "parseProject", id: 3, text: "{}" }, "boom")
- * // → { type: "projectParsed", id: 3, json: '{"project":null,"problems":[{"severity":"error","line":1,"column":1,"message":"設定ファイルを読み込めませんでした（boom）"}]}' }
+ * // → { type: "projectParsed", id: 3, json: '{"project":null,"problems":[{"severity":"error","line":1,"column":1,"message":"設定ファイルを読み込めませんでした（boom）"}]}', failure: "boom" }
  * failedReply({ type: "setPlugins", id: 4, plugins: [] }, "boom")
- * // → { type: "pluginsSet", id: 4, json: '{"error":"プラグインを読み込めませんでした（boom）"}' }
+ * // → { type: "pluginsSet", id: 4, json: '{"error":"プラグインを読み込めませんでした（boom）"}', failure: "boom" }
  * failedReply({ type: "checkPluginMessage", version: 5, id: 6, message: "{}", permissions: [] }, "boom")
- * // → { type: "pluginMessageChecked", version: 5, id: 6, json: '{"refused":"メッセージを確かめられませんでした（boom）"}' }
+ * // → { type: "pluginMessageChecked", version: 5, id: 6, json: '{"refused":"メッセージを確かめられませんでした（boom）"}', failure: "boom" }
  */
-export function failedReply(req: Exclude<CoreRequest, { type: "init" }>, message: string): CoreResponse {
+export function failedReply(req: Exclude<CoreRequest, { type: "init" }>, message: string): CoreReply {
+  return { ...failedReplyBody(req, message), failure: message };
+}
+
+/**
+ * 失敗の返事の中身（印を除く）を作る。
+ *
+ * @param req 失敗した依頼（`init` 以外）
+ * @param message 失敗の理由（例外のメッセージ）
+ * @returns 依頼に対応する返事（`failure` は付けない）
+ * @example
+ * failedReplyBody({ type: "edit", version: 1, id: 2, intent }, "boom")
+ * // → { type: "edited", version: 1, id: 2, json: '{"refused":"操作できませんでした（boom）"}' }
+ */
+function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: string): CoreReply {
   switch (req.type) {
     case "didChange":
       return { type: "analyzed", version: req.version, json: JSON.stringify({ error: message }) };

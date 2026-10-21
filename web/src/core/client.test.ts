@@ -206,8 +206,8 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
   ])("%o には %s で返す", (req, type) => {
     // Arrange・Act
     const r = failedReply(req, "boom");
-    // Assert
-    expect(r.type).toBe(type);
+    // Assert（失敗の印が付く。Q-6）
+    expect([r.type, "failure" in r ? r.failure : undefined]).toEqual([type, "boom"]);
   });
 
   it("CoreClient は、失敗の返事を読み取れない設定・断りとして受け取る", async () => {
@@ -466,6 +466,6 @@ describe("CoreClient（v1 のプラグイン、ADR-0018 §3・§4）", () => {
     // Act
     const res = failedReply(req as Exclude<CoreRequest, { type: "init" }>, "boom");
     // Assert
-    expect(res).toEqual({ type: "pluginMessageChecked", version: 5, id: 6, json: '{"refused":"メッセージを確かめられませんでした（boom）"}' });
+    expect(res).toEqual({ type: "pluginMessageChecked", version: 5, id: 6, json: '{"refused":"メッセージを確かめられませんでした（boom）"}', failure: "boom" });
   });
 });
