@@ -1,7 +1,8 @@
 //! 解析結果から、図に描く要素・関係・問題・フェーズ・保存された図を作る（ADR-0016 の手順 A）。
 //!
-//! alpha.4 では、暫定コア（`web/src/core/model.ts`・`views.ts`）の振る舞いをそのまま移す。
-//! 一致は web の golden.test.ts・spec.test.ts が TS と Rust の両方で確かめる。
+//! alpha.4 で、暫定の TS コア（ADR-0009。beta.1 で削除）のモデル構築の振る舞いをそのまま移した。
+//! 「暫定コアの X と同じ」は、移した元の関数の名前を指す。
+//! ゴールデンと仕様のケースとの一致は、web の golden.test.ts・spec.test.ts が確かめる。
 //! SysML v2 の意味（名前解決・継承など）に沿った作り直しは、0.1.0 の後に行う。
 
 mod chains;
@@ -198,7 +199,7 @@ pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
         && (quantities_imported || (qualified && is_quantity_path(path)))
 }
 
-/// 種類から色分けの系統を決める。暫定コアの `family`（`web/src/core/model.ts`）と同じ。
+/// 種類から色分けの系統を決める。web の種類のアイコンの色（`web/src/app/svg.ts` の `family`）と同じ。
 /// 種類の頭（`requirement`・`concern`・`verification`・`analysis`・`constraint`・`calc`・`state`・`action`・`use case`・`part`）で決め、定義と使用を区別しない。
 ///
 /// # 引数
@@ -260,7 +261,7 @@ fn has_word(mods: &str, w: &str) -> bool {
     mods.split_whitespace().any(|x| x == w)
 }
 
-/// 解析結果からモデルを作る。暫定コアの `build`（`web/src/core/model.ts`）と同じ振る舞い。
+/// 解析結果からモデルを作る。暫定コアの `build` から移した振る舞い。
 /// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → アクションの流れ → 解析の問題 → フェーズ → view の順に組み立てる。
 ///
 /// # 引数

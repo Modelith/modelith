@@ -13,13 +13,13 @@
 | [0006](0006-licensing.md) | ライセンス：AGPL＋プラグイン例外＋CLA | 採用 |
 | [0007](0007-dev-integration-branch.md) | dev 統合ブランチとマイルストーン単位のリリース | 採用（2026-10-15 改訂） |
 | [0008](0008-principles-as-harness.md) | プログラミング原則・テスト原則のスキル化とハーネスでの強制 | 採用（2026-10-16 改訂） |
-| [0009](0009-port-mock-for-public-alpha.md) | モックのコードを移植して最初の alpha を公開する | 採用 |
+| [0009](0009-port-mock-for-public-alpha.md) | モックのコードを移植して最初の alpha を公開する | 採用（暫定コアは beta.1 で削除） |
 | [0010](0010-file-providers.md) | ファイル操作をストレージごとのプロバイダに分け、ワークスペースが束ねる | 採用 |
 | [0011](0011-requirements-ssot.md) | 要求仕様を 1 つの SysML v2 ファイルで管理する | 採用 |
 | [0012](0012-google-drive-without-server.md) | クラウド保存は Google ドライブから始め、サーバを持たずにブラウザから直接つなぐ | 保留 |
 | [0013](0013-spec-over-mock.md) | モックと SysML v2 仕様が食い違うときは仕様に従う | 採用 |
 | [0014](0014-plain-words-for-users.md) | 画面の言葉は、SysML v2 の構文を知らない人に合わせる | 採用（2026-10-17 改訂） |
-| [0015](0015-rust-parser.md) | Rust パーサの作り方と、暫定コアからの差し替え方 | 採用（2026-10-15 改訂） |
-| [0016](0016-rust-model-and-worker.md) | モデル構築と図の操作を Rust に移し、コアを Worker で動かす | 採用 |
+| [0015](0015-rust-parser.md) | Rust パーサの作り方と、暫定コアからの差し替え方 | 採用（2026-10-15 改訂、暫定コアは beta.1 で削除） |
+| [0016](0016-rust-model-and-worker.md) | モデル構築と図の操作を Rust に移し、コアを Worker で動かす | 採用（暫定コアは beta.1 で削除） |
 | [0018](0018-plugin-host.md) | プラグインのホスト（v0 の検査ルールと v1 の TypeScript プラグイン） | 採用（2026-10-19 改訂） |
 | [0019](0019-projects.md) | プロジェクト（フォルダ単位の作業の場と、チームで共有する設定） | 採用 |

@@ -1,4 +1,4 @@
-//! 投影の単体テスト。暫定コアとの一致そのものは、web の golden.test.ts・spec.test.ts が TS と Rust の両方で確かめる（ADR-0015）。
+//! 投影の単体テスト。ゴールデンと仕様のケースとの一致は、web の golden.test.ts・spec.test.ts が確かめる（ADR-0015）。
 //! ここでは、番号での参照・UTF-16 の位置・書いた順など、投影に固有の約束を確かめる。
 
 use super::*;

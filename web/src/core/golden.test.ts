@@ -1,8 +1,8 @@
-// 暫定コアの出力がゴールデン（モックの出力）と一致することを確かめる結合テスト（ADR-0002・ADR-0009）。
+// Rust のコアの出力がゴールデン（モックの出力）と一致することを確かめる結合テスト（ADR-0002・ADR-0015・ADR-0016）。
 // 投影の方法は reference/tools/gen-golden.mjs と同じにする。
 import { describe, expect, it } from "vitest";
-import { PARSERS } from "./testing/parsers";
-import type { Entry, Model, ParseResult } from "./types";
+import { build, parse } from "./rust";
+import type { Entry } from "./types";
 
 const goldens = import.meta.glob<Record<string, unknown>>("../../../reference/golden/*.json", { eager: true, import: "default" });
 const cases = {
@@ -89,7 +89,7 @@ function withoutAllowed(v: unknown, positions: number[]): unknown {
   return { ...o, errors: o.errors.filter(keep), model: { ...o.model, problems: o.model.problems.filter(keep) } };
 }
 
-function project(text: string, parse: (text: string) => ParseResult, build: (P: ParseResult) => Model): Record<string, unknown> {
+function project(text: string): Record<string, unknown> {
   const P = parse(text);
   const M = build(P);
   const ref = (e: Entry | null): number | null => (e ? e.idx : null);
@@ -109,7 +109,7 @@ function project(text: string, parse: (text: string) => ParseResult, build: (P: 
   return { entries, rels, errors: P.errors, layout: P.layout, model: { nodes, edges, problems: simplify(M.problems), phases: simplify(M.phases) } };
 }
 
-describe("暫定コアとゴールデンの一致", () => {
+describe("Rust のコアとゴールデンの一致", () => {
   const names = Object.keys(cases).map(baseName);
 
   it("すべてのケースにゴールデンがある", () => {
@@ -121,22 +121,20 @@ describe("暫定コアとゴールデンの一致", () => {
     expect(missing).toEqual([]);
   });
 
-  for (const [impl, parse, build] of PARSERS) {
-    for (const [path, text] of Object.entries(cases)) {
-      const name = baseName(path);
-      it(`${impl}: ${name}: 解析とモデル構築の結果がモックと一致する`, () => {
-        // Arrange
-        const golden = Object.entries(goldens).find(([p]) => baseName(p) === name)?.[1];
-        const allowed = impl === "Rust" ? (RUST_EXTRA_ERRORS[name]?.pos(text) ?? []) : [];
-        // Act
-        const projected = JSON.parse(JSON.stringify({ case: name, ...project(text, parse, build) })) as unknown;
-        const actual = impl === "Rust" ? withoutExtraRels(projected) : projected;
-        // Assert
-        expect(withoutWording(withoutAllowed(actual, allowed))).toEqual(withoutWording(golden));
-        // 許容リストが古くなっていない（取り除いた位置に、本当にエラーがある）
-        const errors = (actual as { errors: { pos: number }[] }).errors.map((e) => e.pos);
-        expect(allowed.filter((p) => !errors.includes(p))).toEqual([]);
-      });
-    }
+  for (const [path, text] of Object.entries(cases)) {
+    const name = baseName(path);
+    it(`${name}: 解析とモデル構築の結果がモックと一致する`, () => {
+      // Arrange
+      const golden = Object.entries(goldens).find(([p]) => baseName(p) === name)?.[1];
+      const allowed = RUST_EXTRA_ERRORS[name]?.pos(text) ?? [];
+      // Act
+      const projected = JSON.parse(JSON.stringify({ case: name, ...project(text) })) as unknown;
+      const actual = withoutExtraRels(projected);
+      // Assert
+      expect(withoutWording(withoutAllowed(actual, allowed))).toEqual(withoutWording(golden));
+      // 許容リストが古くなっていない（取り除いた位置に、本当にエラーがある）
+      const errors = (actual as { errors: { pos: number }[] }).errors.map((e) => e.pos);
+      expect(allowed.filter((p) => !errors.includes(p))).toEqual([]);
+    });
   }
 });

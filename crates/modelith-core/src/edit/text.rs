@@ -1,4 +1,4 @@
-//! テキストを書き換える小さな関数（暫定コアの `web/src/core/text-ops.ts` と同じ振る舞い）。
+//! テキストを書き換える小さな関数（alpha.4 で暫定の TS コア（beta.1 で削除）の `text-ops.ts` から移した振る舞い）。
 //! 位置はバイトオフセット。UTF-16 の位置との変換は [`Utf16`] で行う。
 
 /// UTF-16 の位置とバイトオフセットの対応（解析結果の位置は UTF-16）。
@@ -107,7 +107,7 @@ pub fn utf16_of(text: &str, byte: usize) -> usize {
     text[..floor_boundary(text, byte)].encode_utf16().count()
 }
 
-/// p を含む行の先頭。暫定コアの `lineStart`（`web/src/core/text-ops.ts`）と同じ。
+/// p を含む行の先頭。web の `lineStart`（`web/src/core/text.ts`）と同じ。
 ///
 /// # 引数
 ///
@@ -123,7 +123,7 @@ pub fn utf16_of(text: &str, byte: usize) -> usize {
 /// ```text
 /// line_start("ab\ncd", 4) → 3
 /// line_start("ab\ncd", 0) → 0   // 先頭行
-/// line_start("ab\ncd", 9) → 3   // 範囲外は最後の行（暫定コアと同じ）
+/// line_start("ab\ncd", 9) → 3   // 範囲外は最後の行（web の lineStart と同じ）
 /// ```
 pub fn line_start(t: &str, p: usize) -> usize {
     t[..floor_boundary(t, p)].rfind('\n').map_or(0, |i| i + 1)

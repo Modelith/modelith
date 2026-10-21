@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { CoreClient, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
-import { applyTextEdits } from "./text-ops";
+import { applyTextEdits } from "./text";
 import { analyze, checkPluginMessage, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
 import type { PluginFiles, RuleFinding } from "./rust";
 import type { Model, ParseResult } from "./types";

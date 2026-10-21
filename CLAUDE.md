@@ -36,7 +36,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 - **仕様の基準は SysML v2 仕様、次にモック**（ADR-0002・ADR-0013）。モックと仕様が食い違うときは仕様に従い、根拠（BNF の規則・章）付きのケースを `web/src/core/spec.test.ts` に書く。
   `reference/mock/` と `reference/golden/*.json` は手で編集しない。
   モックの HTML ファイルと内蔵のサンプルモデルは非公開。`reference/mock/` をコミットしたり、サンプルモデルをコード・ケース・ドキュメントに転記したりしない。
-  モックのコードは `web/` へ TypeScript として移植してよい（ADR-0009）。移植した暫定コアは `web/src/core/` に閉じ込める。
+  モックのコードは `web/` へ TypeScript として移植してよい（ADR-0009）。ただし解析・モデル構築・図の操作は Rust のコアに置き、TS に写さない（暫定の TS コアは beta.1 で削除した。ADR-0016）。
   モックと同じ振る舞いを確かめるケースは `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
 - **画面の言葉は、SysML v2 の構文を知らない人に合わせる**（ADR-0014）。トースト・ダイアログ・案内などの文言は [画面の言葉の手引き](docs/development/ui-writing.md) に従う。
 - **プラグインとの契約は plugin-sdk に置く**（ADR-0004）。本リポジトリでプラグイン向けの型を独自に定義しない。
@@ -65,7 +65,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | 高速チェック | `scripts/check.sh --fast` |
 | 単体テスト絞り込み | `cargo test -p <crate> <name>` |
 | ハーネスのテスト | `tests/harness/node_modules/.bin/bats tests/harness/{unit,integration}` |
-| web のテスト | `npm test --prefix web`（単体・結合。パーサのテストは TS と Rust の両方で動く）、`scripts/e2e.sh`（統合・UI。ブラウザは Docker の公式イメージで動かす。テスト名に要求 ID を書く） |
+| web のテスト | `npm test --prefix web`（単体・結合。コアのテストは Rust の wasm で動く）、`scripts/e2e.sh`（統合・UI。ブラウザは Docker の公式イメージで動かす。テスト名に要求 ID を書く） |
 | wasm のビルド（web のテスト・アプリの前に必要） | `scripts/build-wasm.sh` |
 | ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
 | リリースの準備（版の書き換えとノートのひな形） | `scripts/release-prepare.sh <版>`（リリースノートの検査は `node web/tools/release-notes-cli.ts check [<版>]`） |
