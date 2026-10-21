@@ -16,7 +16,15 @@ scripts/build-wasm.sh
 # そこで動いているときだけ、止まっていれば起動する（開発者のコンピュータでは何もしない）
 if [[ ${CLAUDE_CODE_REMOTE:-} == true ]] && command -v dockerd >/dev/null && ! docker info >/dev/null 2>&1; then
   echo "Docker のデーモンを起動します（クラウドの作業環境）" >&2
-  nohup dockerd >/tmp/dockerd.log 2>&1 &
+  # デーモンは残り続けるので、呼び出し元から受け継いだファイル記述子（flock のロックなど）を閉じてから起動する。
+  # 閉じないと、デーモンがそれを持ち続け、e2e が終わってもロックが解けない
+  (
+    for fd in /proc/self/fd/*; do
+      n=${fd##*/}
+      if ((n > 2)); then eval "exec ${n}>&-" 2>/dev/null || true; fi
+    done
+    exec nohup dockerd >/tmp/dockerd.log 2>&1
+  ) &
   for _ in $(seq 30); do
     docker info >/dev/null 2>&1 && break
     sleep 1
