@@ -296,6 +296,10 @@ package ModelithRequirements {
         requirement def <'C-8'> StageNoticeReq {
             doc /* 正式版の前（alpha・beta・rc）は、見出しと「ヘルプ」に、動いている版の開発段階を示す。段階は版の名前から決め、正式版では示さない */
         }
+        requirement def <'C-9'> ContentPolicyReq {
+            doc /* 配信する画面に Content-Security-Policy を付け、配信元以外との通信・外から読み込むスクリプト・インラインのスクリプトを、
+                   ブラウザの仕組みで止める。エスケープの漏れが 1 つあっても、それだけでは任意のスクリプトが動かないようにする（C-2 の機械的な裏付け） */
+        }
         requirement def <'C-6'> NoSilentWriteReq {
             doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
                    古い形式の配置（テキスト内の @layout コメント）は黙って消さず、配置ファイルに移してコメントを消すかを、ファイルを開いたときに一度だけ尋ねる */
@@ -367,6 +371,7 @@ package ModelithRequirements {
         #derivation dependency from StaticHostingReq to AnywhereNeed;
         #derivation dependency from LegalNoticeReq to OpenSourceNeed;
         #derivation dependency from StageNoticeReq to SafetyNeed;
+        #derivation dependency from ContentPolicyReq to SafetyNeed;
         #derivation dependency from StaticHostingReq to OpenSourceNeed;
     }
 
@@ -503,6 +508,7 @@ package ModelithRequirements {
         satisfy StaticHostingReq by AppShell;
         satisfy LegalNoticeReq by AppShell;
         satisfy StageNoticeReq by AppShell;
+        satisfy ContentPolicyReq by AppShell;
     }
 
     // =================================================================
@@ -594,6 +600,12 @@ package ModelithRequirements {
             objective {
                 verify WordHelpReq;
                 verify PlainWordsReq;
+            }
+        }
+        verification def CspTest {
+            doc /* web/tools/csp.test.ts：Content-Security-Policy の中身（既定は配信元だけ・eval を許さない・wasm と Worker と同梱フォントは許す）と、ビルドした HTML への差し込み */
+            objective {
+                verify ContentPolicyReq;
             }
         }
         verification def StageTest {
@@ -724,9 +736,10 @@ package ModelithRequirements {
             }
         }
         verification def ShellE2E {
-            doc /* web/e2e/shell.spec.ts：外部に通信しない・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
             objective {
                 verify PrivacyReq;
+                verify ContentPolicyReq;
                 verify SourceOfferReq;
                 verify NarrowScreenReq;
                 verify SvgExportReq;

@@ -1,4 +1,4 @@
-// アプリ全体の約束（C-2・C-3・C-8・Q-2・F-EXP-*）
+// アプリ全体の約束（C-2・C-3・C-8・C-9・Q-2・F-EXP-*）
 import { readFileSync } from "node:fs";
 import { stageLabel } from "../src/app/stage";
 import { expect, openApp, test } from "./fixtures";
@@ -21,6 +21,28 @@ test("C-2・C-4: 起動から操作まで、配信元の静的ファイルを読
   // Assert
   expect([...hosts]).toEqual([new URL(baseURL ?? "").host]);
   expect([...methods]).toEqual(["GET"]);
+});
+
+test("C-9: Content-Security-Policy が、配信元以外への通信とインラインのスクリプトをブラウザの仕組みで止める", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  const meta = page.locator('meta[http-equiv="Content-Security-Policy"]');
+  await expect(meta).toHaveAttribute("content", /default-src 'self'/);
+  // Act：外部への fetch と、動的に足したインラインのスクリプトを試みる（CSP の違反イベントで止まったことを確かめる）
+  const blocked = await page.evaluate(async () => {
+    const seen: string[] = [];
+    document.addEventListener("securitypolicyviolation", (ev) => seen.push(`${ev.violatedDirective}:${ev.blockedURI}`));
+    await fetch("https://example.com/").catch(() => undefined);
+    const s = document.createElement("script");
+    s.textContent = "window.__cspInline = true;";
+    document.head.append(s);
+    await new Promise((r) => setTimeout(r, 100));
+    return { seen, inlineRan: "__cspInline" in window };
+  });
+  // Assert
+  expect(blocked.inlineRan).toBe(false);
+  expect(blocked.seen).toContain("connect-src:https://example.com/");
+  expect(blocked.seen.some((v) => /^script-src(-elem)?:inline$/.test(v))).toBe(true);
 });
 
 test("C-3: ヘルプのソースへのリンクは、動いている版のコミットを指す", async ({ page }) => {

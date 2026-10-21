@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
+import { cspPlugin } from "./tools/csp";
 import { appLicense, chooseLicenses, LICENSE_FILES, licenseDirs, thirdPartyNotices, viteCoreLicense, wasmRuntimeCrates, type BundledPart, type CargoMetadata } from "./tools/licenses";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
@@ -70,7 +71,7 @@ export default defineConfig({
   // GitHub Pages ではリポジトリ名のパス（/modelith/）の下に置く。CI が MODELITH_BASE で渡す
   base: process.env.MODELITH_BASE ?? "/",
   define: { __APP_COPYRIGHT__: JSON.stringify(COPYRIGHT), __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT__: JSON.stringify(commitSha()) },
-  plugins: [bundledLicenses()],
+  plugins: [bundledLicenses(), cspPlugin()],
   server: { fs: { allow: [".."] } },
   // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src と tools の単体・結合テストだけを拾う
   test: { include: ["src/**/*.test.ts", "tools/**/*.test.ts"], setupFiles: ["src/core/testing/setup.ts"] },
