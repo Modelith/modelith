@@ -24,9 +24,9 @@ import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi } from "./
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
-import { attachCore, onAnalyzed, relayout, settled, toast } from "./app/sync";
+import { attachCore, coreHooks, onAnalyzed, relayout, settled, toast } from "./app/sync";
 import { CC } from "./app/views";
-import { startCore } from "./core";
+import { superviseCore } from "./core";
 import CoreWorker from "./core/worker?worker";
 import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
@@ -131,9 +131,9 @@ function initToolbar(): void {
 }
 
 // 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
-// 待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
+// コアが止まった・返事をしないときは作り直す（Q-6）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
 try {
-  const [core] = await Promise.all([startCore(new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed), document.fonts.ready]);
+  const [core] = await Promise.all([superviseCore(() => new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed, coreHooks), document.fonts.ready]);
   attachCore(core);
 } catch (e) {
   showStartupError(e);

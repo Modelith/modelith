@@ -1,6 +1,6 @@
 // テキストを更新し、解析し直して画面全体を同期する。図の操作も最後は setText を通る（ADR-0001）。
 
-import { lineOf, type CoreClient, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
+import { CORE_STOPPED, lineOf, type CoreClient, type CoreSupervisorHooks, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
 import { autoPlace, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight, stackedWidth } from "./geometry";
 import { scheduleRecord } from "./history";
@@ -126,12 +126,35 @@ export function onAnalyzedVersion(fn: (version: number) => void): void {
 
 /**
  * 今のテキストの解析結果が画面に反映されるまで待つ（操作の直後に、追加した要素を選ぶときなど）。
- * コアがまだつながっていない・既に反映済みなら、すぐに終わる。
+ * コアがまだつながっていない・既に反映済み・コアをあきらめた（もう解析結果は届かない）なら、すぐに終わる。
  */
 export function settled(): Promise<void> {
-  if (!core || applied === core.current) return Promise.resolve();
+  if (!core || applied === core.current || coreGaveUp) return Promise.resolve();
   return new Promise((resolve) => waiters.push(resolve));
 }
+
+/** コアを作り直すのをあきらめたか（以後、解析結果は届かない。Q-6）。 */
+let coreGaveUp = false;
+
+/**
+ * コアが止まった・あきらめたときに画面を更新する処理（`superviseCore` に渡す。Q-6）。
+ * 止まったら、図の操作をやめたことをトーストで知らせ、同期の表示を読み込み直し中にする（作り直して送り直したテキストの解析結果が届けば、同期済みに戻る）。
+ * あきらめたら、同期の表示で再読み込みを案内し、解析結果を待っている処理を進める（テキストの編集と保存は続けられる）。
+ */
+export const coreHooks: CoreSupervisorHooks = {
+  onDown: () => {
+    toast(CORE_STOPPED);
+    setSync("busy", "図を読み込み直しています…");
+  },
+  onGaveUp: () => {
+    coreGaveUp = true;
+    setSync("bad", "図を更新できません。ページを再読み込みしてください");
+    toast("図を更新できなくなりました。テキストは保存できます。ページを再読み込みしてください");
+    const ws = waiters;
+    waiters = [];
+    for (const w of ws) w();
+  },
+};
 
 /**
  * テキスト（S.text）をコアに送って解析を頼む。結果は届いたとき（onAnalyzed）に描き直す。
