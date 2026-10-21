@@ -25,12 +25,17 @@ import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
 import { attachCore, onAnalyzed, relayout, settled, toast } from "./app/sync";
+import { installUnexpectedErrorHandlers } from "./app/unexpected";
 import { CC } from "./app/views";
 import { startCore } from "./core";
 import CoreWorker from "./core/worker?worker";
 import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
 const EDGE_KEY = "modelith-edgestyle";
+
+// 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）の受け口は、ここに 1 つだけ置く（Q-6）。
+// 黙って止まらずにトーストで知らせ、詳しい内容はコンソールに残す
+installUnexpectedErrorHandlers(window, toast, (detail) => console.error("予期しない問題:", detail));
 
 /**
  * 線の描き方を切り替え、ボタンの文言を合わせ、選んだ描き方を覚える（次に開いたときも使う）。図の描き直しはしない。

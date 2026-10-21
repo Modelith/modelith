@@ -1,7 +1,7 @@
 // 黙って失われない・黙って止まらない（F-FILE-6・F-FILE-11・F-VIEW-2・Q-6）。
 // 保存の失敗やブラウザの保存領域の不足、壊れた記憶、予期しない例外を起こして、利用者に知らせることを確かめる。
-import type { Page } from "@playwright/test";
-import { expect, openApp, putFiles, readFile, test, typeAtEnd } from "./fixtures";
+import { test as raw, type Page } from "@playwright/test";
+import { editorText, expect, openApp, putFiles, readFile, test, typeAtEnd } from "./fixtures";
 
 const A = "package A {\n    part def Pump;\n}\n";
 
@@ -125,4 +125,40 @@ test("F-VIEW-2: 記憶した図のタブが配列でなければ、既定のタ�
   // Assert
   await expect(page.locator("#tabbar .tab")).toHaveCount(4);
   await expect(page.locator('.tab[aria-selected="true"]')).toContainText("トレーサビリティ");
+});
+
+// ---- Q-6 unexpected
+// 予期しない例外をわざと起こすので、画面の例外が無いことを確かめる共通の page は使わない
+const UNEXPECTED = "予期しない問題が起きました。テキストはそのまま残っています";
+
+raw("Q-6: 結果を待たない処理が失敗しても黙って止まらず、知らせてコンソールに残す", async ({ page }) => {
+  // Arrange
+  const logs: string[] = [];
+  page.on("console", (m) => {
+    if (m.type() === "error") logs.push(m.text());
+  });
+  await openApp(page);
+  const before = await editorText(page);
+  // Act
+  await page.evaluate(() => {
+    setTimeout(() => Promise.reject(new Error("e2e: 待たない処理の失敗")), 0);
+  });
+  // Assert
+  await expect(page.locator("#toast")).toHaveText(UNEXPECTED);
+  expect(await editorText(page)).toBe(before);
+  await expect.poll(() => logs.some((l) => l.includes("予期しない問題") && l.includes("待たない処理の失敗"))).toBe(true);
+});
+
+raw("Q-6: 捕まえていない例外が起きても黙って止まらず、知らせる", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  await page.evaluate(() => {
+    setTimeout(() => {
+      throw new Error("e2e: 捕まえていない例外");
+    }, 0);
+  });
+  // Assert
+  await expect(page.locator("#toast")).toHaveText(UNEXPECTED);
+  await expect(page.locator("#gNodes .node").first()).toBeVisible();
 });
