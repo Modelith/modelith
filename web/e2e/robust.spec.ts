@@ -162,3 +162,39 @@ raw("Q-6: 捕まえていない例外が起きても黙って止まらず、知�
   await expect(page.locator("#toast")).toHaveText(UNEXPECTED);
   await expect(page.locator("#gNodes .node").first()).toBeVisible();
 });
+
+// ---- Q-6 recovery
+test("Q-6: 起動の途中で失敗したら、保存した設定を初期化して読み直す操作を示し、下書きは消さない（異常系）", async ({ page }) => {
+  // Arrange（下書きとタブを記憶させてから、次の起動で画面の組み立てが失敗するブラウザのふり）
+  await openApp(page);
+  await typeAtEnd(page, "// draft\n");
+  await page.evaluate(() => {
+    localStorage.setItem("modelith-ui-v1", '{"tree":false}');
+    localStorage.setItem("e2e-break-init", "1");
+  });
+  await page.addInitScript(() => {
+    if (localStorage.getItem("e2e-break-init")) {
+      window.matchMedia = () => {
+        throw new Error("e2e: matchMedia failed");
+      };
+    }
+  });
+  // Act
+  await page.reload();
+  // Assert
+  const box = page.locator("#startupError");
+  await expect(box).toContainText("保存した設定を初期化して読み直す");
+  await expect(box).toContainText("下書き・前回の続き・プラグインの許可は消えません");
+  await expect(box).toContainText("e2e: matchMedia failed");
+  const reloaded = page.waitForEvent("load");
+  await page.locator("#btnResetSettings").click();
+  await reloaded;
+  const keys = await page.evaluate(() => ({
+    tabs: localStorage.getItem("modelith-tabs-v1"),
+    ui: localStorage.getItem("modelith-ui-v1"),
+    drafts: localStorage.getItem("modelith-drafts-v1") ?? "",
+  }));
+  expect(keys.tabs).toBeNull();
+  expect(keys.ui).toBeNull();
+  expect(keys.drafts).toContain("// draft");
+});

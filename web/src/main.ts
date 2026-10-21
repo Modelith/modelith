@@ -20,7 +20,8 @@ import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
 import { saveAsView } from "./app/view-ops";
-import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi } from "./app/panels";
+import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
+import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
@@ -141,46 +142,42 @@ try {
   const [core] = await Promise.all([startCore(new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed), document.fonts.ready]);
   attachCore(core);
 } catch (e) {
-  showStartupError(e);
+  showStartupBox(startupErrorHtml(e));
   // 続きの組み立てはしない（解析できないまま画面を組み立てると、壊れた状態で操作できてしまう）
   await new Promise<never>(() => {});
 }
 
 /**
- * 起動できなかったことを、画面の真ん中に出す（通信の失敗や、WebAssembly を使えない古いブラウザ）。
- * 案内の文と、失敗の詳しい内容（例外のメッセージ）を body の最後に加える。
- *
- * @param e 起動のときに投げられた値（Error ならそのメッセージを出す）
+ * 保存した設定（パネルの配置・図のタブ）を消して、ページを読み直す（Q-6）。下書き・前回の続き・プラグインの許可は消さない。
  */
-function showStartupError(e: unknown): void {
-  const box = document.createElement("div");
-  box.id = "startupError";
-  box.setAttribute("role", "alert");
-  box.innerHTML =
-    "<b>Modelith を起動できませんでした</b>" +
-    "<p>テキストの解析に必要なモジュール（WebAssembly）を読み込めませんでした。ページを再読み込みしてください。" +
-    "解決しないときは、新しいブラウザ（Chrome・Edge・Firefox・Safari の最新版）で開いてください。</p>";
-  const detail = document.createElement("small");
-  detail.textContent = e instanceof Error ? e.message : String(e);
-  box.append(detail);
-  document.body.append(box);
+function resetSettingsAndReload(): void {
+  for (const key of [UI_KEY, TABS_KEY]) store.remove(key);
+  location.reload();
 }
-$("#defs").innerHTML = DEFS;
-loadUi();
-if (store.get(EDGE_KEY) === "curve") setEdgeStyle("curve");
-initInspector();
-initPanels();
-initCanvas();
-initCtxMenu();
-initEditor();
-initWordHelp();
-initTextMode();
-initHistory();
-initExport();
-initMenus();
-initToolbar();
-await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });
-// タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
-await settled();
-applyPanes();
-initTabs();
+
+// 画面の組み立て。途中で失敗したら、白い画面のままにせず、保存した設定を初期化して読み直す操作を示す（Q-6）
+try {
+  $("#defs").innerHTML = DEFS;
+  loadUi();
+  if (store.get(EDGE_KEY) === "curve") setEdgeStyle("curve");
+  initInspector();
+  initPanels();
+  initCanvas();
+  initCtxMenu();
+  initEditor();
+  initWordHelp();
+  initTextMode();
+  initHistory();
+  initExport();
+  initMenus();
+  initToolbar();
+  await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });
+  // タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
+  await settled();
+  applyPanes();
+  initTabs();
+} catch (e) {
+  console.error("起動に失敗:", e);
+  const box = showStartupBox(recoveryHtml(e));
+  box.querySelector<HTMLButtonElement>("#btnResetSettings")?.addEventListener("click", resetSettingsAndReload);
+}

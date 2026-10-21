@@ -670,7 +670,7 @@ package ModelithRequirements {
             }
         }
         verification def UnexpectedErrorTest {
-            doc /* web/src/app/unexpected.test.ts：捕まえていない例外と結果を待たない処理の失敗を 1 回ずつ知らせ、詳しい内容をコンソールに残す。web/src/app/dom.test.ts：localStorage に書けたか（容量超過・使えない環境）を store が返す。web/src/app/recovery.test.ts：起動に失敗したときの案内の文と、初期化する設定のキー（下書き・前回の続き・プラグインの許可は含めない） */
+            doc /* web/src/app/unexpected.test.ts：捕まえていない例外と結果を待たない処理の失敗を 1 回ずつ知らせ、詳しい内容をコンソールに残す。web/src/app/dom.test.ts：localStorage に書けたか（容量超過・使えない環境）を store が返す。web/src/app/recovery.test.ts：起動に失敗したときの案内の文（初期化して読み直す操作・消えないものの説明・失敗の内容のエスケープ） */
             objective {
                 verify NoSilentFailureReq;
                 verify UntitledDraftReq;
