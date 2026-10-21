@@ -1,6 +1,7 @@
 // 選択肢を示して利用者に選ばせるダイアログ。結果は Promise で返す（Esc・枠外は null）。
 
 import { $, esc } from "./dom";
+import { openModal } from "./modal";
 
 export interface Choice {
   id: string;
@@ -48,6 +49,7 @@ export interface AskResult {
 /**
  * ダイアログを出し、押されたボタンの id（と入力値）を返す。入力欄を出すときはそこに、無ければ
  * primary のボタン（無ければ最初のボタン）にフォーカスを置く。Esc・枠外のクリックでは null で閉じる。
+ * 開いている間は背景を操作できず、Tab はダイアログの中で回り、閉じると開く前の要素へフォーカスを戻す（Q-8）。
  * 入力欄があるときの Enter は primary のボタンを押したことにする。
  *
  * @param title ダイアログの見出し
@@ -79,7 +81,7 @@ export function ask(title: string, text: string, choices: Choice[], input?: { va
   more.hidden = !detail;
   more.innerHTML = detail ? `<ul>${detail.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>${detail.warning ? `<p class="warn" role="note">${esc(detail.warning)}</p>` : ""}` : "";
   $("#dialogButtons").innerHTML = choices.map((c) => `<button data-id="${esc(c.id)}" class="${c.kind ?? ""}">${esc(c.label)}</button>`).join("");
-  box.hidden = false;
+  const close = openModal(box);
   const field = document.querySelector<HTMLInputElement>("#dialogInput");
   const picked = (): string => document.querySelector<HTMLInputElement>('#dialogPick input[name="dialogPick"]:checked')?.value ?? "";
   if (pick) {
@@ -92,7 +94,7 @@ export function ask(title: string, text: string, choices: Choice[], input?: { va
   field?.select();
   return new Promise((resolve) => {
     const done = (r: AskResult | null): void => {
-      box.hidden = true;
+      close();
       box.onclick = null;
       box.onkeydown = null;
       picker.onchange = null;

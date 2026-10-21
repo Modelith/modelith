@@ -8,6 +8,7 @@ import type { PluginFiles, PluginInfo, PluginSummary, ProjectFile, ProjectFileRe
 import { PROJECT_FILE, type OpenFolder } from "../workspace/workspace";
 import { ask } from "./dialog";
 import { $, closest, esc } from "./dom";
+import { openModal } from "./modal";
 import {
   addPrompt, browserPluginFiles, browserRows, browserScriptPlugins, installFiles, isSafeName, MANIFEST_FILE, missingNotice, panelIntro, PLACE_LABEL, pluginNotes, pluginRows, PLUGINS_DIR,
   projectBlocked, removePrompt, scriptPlugins, SHADOWED_NOTICE, STATE_LABEL, type PanelPlace, type PluginPlace, type PluginRow,
@@ -304,16 +305,22 @@ function renderPanel(): void {
   $("#pluginsBody").innerHTML = `<p>${esc(intro)}</p>` + rows.map(rowHtml).join("");
 }
 
-/** プラグインの一覧を開き、閉じるボタンに入力を移す（F-PLUG-8）。 */
+/** 開いているプラグインの一覧を閉じる操作（閉じていれば null）。 */
+let closePanel: (() => void) | null = null;
+
+/**
+ * プラグインの一覧を開き、閉じるボタンに入力を移す（F-PLUG-8）。開いている間は背景を操作できない（Q-8）。
+ */
 export function openPlugins(): void {
-  $("#plugins").hidden = false;
+  closePanel = openModal($("#plugins"));
   renderPanel();
   $<HTMLButtonElement>("#pluginsClose").focus();
 }
 
-/** プラグインの一覧を閉じる。 */
+/** プラグインの一覧を閉じ、開く前の要素へ入力を戻す（Q-8）。 */
 function closePlugins(): void {
-  $("#plugins").hidden = true;
+  closePanel?.();
+  closePanel = null;
 }
 
 /* ---- 書き換え ---- */

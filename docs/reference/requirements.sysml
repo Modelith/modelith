@@ -292,6 +292,11 @@ package ModelithRequirements {
                    1 分の間に 3 回作り直しても止まるときはあきらめ、
                    同期の表示で図を更新できないことと、ページの再読み込みを案内する（ADR-0016） */
         }
+        requirement def <'Q-8'> KeyboardReq {
+            doc /* マウスを使わず、キーボードだけで画面を操作できる。ダイアログを開いている間は、Tab で入力がダイアログの外へ出ず、背景のボタンを押せない。
+                   ダイアログを閉じたら、開く前の要素（メニューから開いたときはそのメニュー）に入力を戻す。ダイアログとファイル・ヘルプのメニューは Esc で閉じる。
+                   図のタブとモデルツリーには Tab で入れる（入る先は選んでいるタブ・行。行を選んでいなければ先頭の行）。図のタブは左右の矢印キーと Home・End で切り替え、ツリーは上下の矢印キーで行を移る */
+        }
 
         // ---- 制約 --------------------------------------------------
         requirement def <'C-1'> TextIsSourceReq {
@@ -385,6 +390,7 @@ package ModelithRequirements {
         #derivation dependency from RobustReq to SafetyNeed;
         #derivation dependency from NoSilentFailureReq to SafetyNeed;
         #derivation dependency from CoreRecoveryReq to SafetyNeed;
+        #derivation dependency from KeyboardReq to EditBothWaysNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
@@ -527,6 +533,8 @@ package ModelithRequirements {
         satisfy NoSilentFailureReq by AppShell;
         satisfy CoreRecoveryReq by Core;
         satisfy CoreRecoveryReq by AppShell;
+        satisfy KeyboardReq by AppShell;
+        satisfy KeyboardReq by DiagramUI;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
@@ -840,6 +848,26 @@ package ModelithRequirements {
                 verify SourceOfferReq;
                 verify WordHelpReq;
                 verify PhoneTextReq;
+            }
+        }
+        verification def KeyboardTest {
+            doc /* web/src/app/keyboard.test.ts：ダイアログの中で Tab を回す先（最後から次・先頭から前・途中・1 つだけ・外から入る・0 個）と、図のタブを移る先（左右の矢印キー・両端で回る・Home・End・1 つだけ・移さないキー・タブの外）と、Tab でツリーに入る行（選んでいる行・先頭・末尾・選んでいなければ先頭・1 行・0 行） */
+            objective {
+                verify KeyboardReq;
+            }
+        }
+        verification def KeyboardE2E {
+            doc /* web/e2e/keyboard.spec.ts：ダイアログを開いている間は Tab・Shift+Tab で外へ出ず背景が inert になり、Esc で閉じると開いたボタンへ入力が戻る。
+                   開いているファイルが無いときにメニューから開いたダイアログを閉じると、メニューの見出しへ入力が戻り、図とテキストは操作できないまま。
+                   draw.io の書き出しはダイアログの役割と見出しを持ち、Esc で閉じるとファイルのメニューへ入力が戻る。
+                   ファイル・ヘルプのメニューは Esc で閉じ、見出しへ入力が戻る。Tab で選んでいる図のタブに入り、左右の矢印キー（両端で回る）・Home・End で切り替わる。
+                   モデルツリーには検索欄から Tab で入り（選んでいる行、無ければ先頭の行）、下の矢印キーで次の行へ移る（Chromium で操作） */
+            objective {
+                verify KeyboardReq;
+                verify NoOpenFileReq;
+                verify DrawioExportReq;
+                verify ViewTabsReq;
+                verify TreeReq;
             }
         }
         verification def LayoutTest {

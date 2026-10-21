@@ -4,6 +4,7 @@ import { stdViewLabel, type Entry } from "../core";
 import { fit, local, placeUsageAt, toCanvas } from "./canvas";
 import { $, closest, esc, isFormField, store } from "./dom";
 import { W } from "./geometry";
+import { nextTabIndex, rovingStop } from "./keyboard";
 import { act, renderInspector } from "./inspector";
 import { kindLabel, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
 import { addToView, canAddToView, editableView } from "./view-ops";
@@ -489,6 +490,26 @@ export function initTabs(): void {
     const tb = closest(ev, ".tab");
     if (tb && ev.button === 1) closeTab(Number(tb.dataset["tab"]));
   });
+  bar.addEventListener("keydown", moveTabByKey);
+}
+
+/**
+ * 図のタブに入力があるとき、左右の矢印キー・Home・End で隣や端のタブに切り替え、そのタブへ入力を移す（Q-8。ARIA のタブの型）。
+ * タブの中の閉じるボタンや「＋」メニューに入力があるとき、ほかのキーでは何もしない。
+ *
+ * @param ev タブバーで受けたキーの押下
+ */
+function moveTabByKey(ev: KeyboardEvent): void {
+  const cur = ev.target instanceof HTMLElement && ev.target.matches(".tab") ? ev.target : null;
+  if (!cur) return;
+  const tabs = [...$("#tabbar").querySelectorAll<HTMLElement>(".tab")];
+  const next = nextTabIndex(tabs.length, tabs.indexOf(cur), ev.key);
+  if (next === null) return;
+  ev.preventDefault();
+  const id = Number(tabs[next]?.dataset["tab"]);
+  if (id !== S.tabId) activateTab(id);
+  // 切り替えるとタブバーを描き直すので、描き直した後のタブを探して入力を移す
+  $("#tabbar").querySelector<HTMLElement>(`.tab[data-tab="${id}"]`)?.focus();
 }
 
 /* ---- パレット（クリックで配置） ---- */
@@ -795,11 +816,42 @@ function selectedEntry(): Entry | null {
 let lastTreeSel: Entry | null = null;
 
 /**
+ * ツリーの行を、描き直した後に同じ行として探すためのセレクタを作る。
+ *
+ * @param row ツリーの行（.ti）
+ * @returns 要素の行なら data-idx、メッセージの行なら data-msg で探すセレクタ。どちらも無ければ null
+ * @example
+ * treeRowSelector(<div class="ti" data-idx="3">)  // → '.ti[data-idx="3"]'
+ * treeRowSelector(<div class="ti" data-msg="120">) // → '.ti[data-msg="120"]'
+ * treeRowSelector(<div class="ti">)                // → null
+ */
+function treeRowSelector(row: HTMLElement): string | null {
+  const idx = row.dataset["idx"];
+  if (idx !== undefined) return `.ti[data-idx="${CSS.escape(idx)}"]`;
+  const msg = row.dataset["msg"];
+  return msg !== undefined ? `.ti[data-msg="${CSS.escape(msg)}"]` : null;
+}
+
+/**
+ * ツリーの行のうち、Tab で入る行（tabindex="0"）を row だけにし、ほかの行は -1 にする（Q-8。ARIA のツリーの型）。
+ *
+ * @param tree ツリー（#tree）
+ * @param row Tab で入る行。null なら、どの行にも入らない
+ */
+function setTreeStop(tree: HTMLElement, row: HTMLElement | null): void {
+  for (const r of tree.querySelectorAll<HTMLElement>('.ti[tabindex="0"]')) r.tabIndex = -1;
+  if (row) row.tabIndex = 0;
+}
+
+/**
  * モデルツリーを描き直す（F-VIEW-5）。絞り込みの文字列（S.treeQ）に名前か短い名前が合う要素と、その外側だけを出す。
  * 選択中の要素の外側は開き、選択が変わったらその行が見えるようにスクロールする。行には追加・開く・テキストで見るのボタンを付ける。
+ * Tab で入る行は、選んでいる行（無ければ先頭の行）の 1 つだけにする。描き直す前に行に入力があれば、同じ行へ入力を戻す（Q-8）。
  */
 export function renderTree(): void {
   const el = $("#tree");
+  const focusedRow = document.activeElement instanceof HTMLElement && el.contains(document.activeElement) ? document.activeElement.closest<HTMLElement>(".ti") : null;
+  const focusedKey = focusedRow ? treeRowSelector(focusedRow) : null;
   const q = S.treeQ.trim().toLowerCase();
   const selE = selectedEntry();
   const anc = new Set<Entry>();
@@ -843,6 +895,11 @@ export function renderTree(): void {
   };
   for (const e of S.P.entries) if (!e.pe) walk(e, 0);
   el.innerHTML = rows.join("") || `<div class="tree-empty">${q ? "一致する要素がありません" : "要素を追加すると、ここにモデルの構造が表示されます"}</div>`;
+  // Tab で入る行は 1 つだけにする。描き直す前に行に入力があれば、同じ行へ入力を戻す（行が消えたら選んでいる行か先頭の行）
+  const again = focusedKey ? el.querySelector<HTMLElement>(focusedKey) : null;
+  const items = [...el.querySelectorAll<HTMLElement>(".ti")];
+  setTreeStop(el, again ?? items[rovingStop(items.map((r) => r.classList.contains("sel")))] ?? null);
+  if (focusedKey) (again ?? el.querySelector<HTMLElement>('.ti[tabindex="0"]'))?.focus({ preventScroll: true });
   const s = el.querySelector(".ti.sel");
   if (s && (selE !== lastTreeSel || S.treeScrollForce)) s.scrollIntoView({ block: "nearest" });
   lastTreeSel = selE;
@@ -903,7 +960,7 @@ const entryAt = (idx: string | undefined): Entry | undefined => (idx == null ? u
 
 /**
  * モデルツリーに操作をつなぐ（F-VIEW-5）。行のクリックで選択、開閉の印で開閉、ボタンで開く・図に入れる・テキストで見る、
- * ダブルクリックと Enter で開く、矢印キーで行を移る、検索欄で絞り込む。マウスで行を図へドラッグすると、
+ * ダブルクリックと Enter で開く、矢印キーで行を移る（入力を受け取った行が、次に Tab で入る行になる）、検索欄で絞り込む。マウスで行を図へドラッグすると、
  * 保存された図に入れるか、内部ブロック図・シーケンス図に部品として置く。
  */
 function initTree(): void {
@@ -962,6 +1019,11 @@ function initTree(): void {
     const row = closest(ev, ".ti[data-idx]");
     const e = entryAt(row?.dataset["idx"]);
     if (e && !closest(ev, "button")) openEntry(e);
+  });
+  // Tab で戻ってきたときに同じ行に入れるよう、入力を受け取った行を Tab で入る行にする
+  tree.addEventListener("focusin", (ev) => {
+    const row = ev.target instanceof HTMLElement && ev.target.matches(".ti") ? ev.target : null;
+    if (row) setTreeStop(tree, row);
   });
   tree.addEventListener("keydown", (ev) => {
     const rows = [...tree.querySelectorAll<HTMLElement>(".ti")];

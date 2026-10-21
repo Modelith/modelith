@@ -149,9 +149,9 @@
     <div class="row" id="dialogButtons"></div>
   </div>
 </div>
-<div class="modal" id="modal" hidden>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="box">
-    <b>draw.io 形式で書き出す</b>
+    <b id="modalTitle">draw.io 形式で書き出す</b>
     <p>現在のビューを draw.io の XML にしました。draw.io で「その他 → 図を編集」を開き、この内容を貼り付けると読み込めます。</p>
     <textarea id="modalText" readonly></textarea>
     <div class="row"><button id="modalCopy" class="primary">コピー</button><button id="modalClose">閉じる</button></div>
