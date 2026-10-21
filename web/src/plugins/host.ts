@@ -7,6 +7,7 @@
 import { applyTextEdits, type VersionedSnapshot } from "../core";
 import { ask } from "../app/dialog";
 import { $, closest, esc, store } from "../app/dom";
+import { errorText } from "../app/error-text";
 import { download } from "../app/export";
 import { S } from "../app/state";
 import { coreClient, onAnalyzedVersion, renderProblems, setText, toast, updateSync } from "../app/sync";
@@ -484,7 +485,8 @@ async function useStorage(e: Entry, a: Extract<HostAction, { kind: "storageGet" 
     await data.write(e.plugin.id, updated.json);
     reply();
   } catch (err) {
-    const text = `プラグイン用の保存場所を使えませんでした：${err instanceof Error ? err.message : String(err)}`;
+    console.warn("プラグイン用の保存場所を使えませんでした:", err);
+    const text = `プラグイン用の保存場所を使えませんでした：${errorText(err)}`;
     notice(e, text);
     reply();
   }

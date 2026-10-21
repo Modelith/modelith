@@ -419,8 +419,9 @@ describe("AutoSaver（F-FILE-6）", () => {
   it("保存が例外で失敗したら（フォルダの許可が切れた）、理由を知らせて未保存のままにする（異常系）", async () => {
     // Arrange
     const a = await setupAuto();
+    const revoked = new DOMException("permission revoked", "NotAllowedError");
     a.file.createWritable = async () => {
-      throw new DOMException("permission revoked", "NotAllowedError");
+      throw revoked;
     };
     a.ws.setText(a.doc.key, "mine");
     a.auto.notify(a.doc.key);
@@ -428,7 +429,7 @@ describe("AutoSaver（F-FILE-6）", () => {
     a.timer.advance(1000);
     await flush();
     // Assert
-    expect(a.outcomes).toEqual([{ failed: "permission revoked" }]);
+    expect(a.outcomes).toEqual([{ failed: revoked }]);
     expect(a.ws.isDirty(a.doc)).toBe(true);
     expect(a.file.content).toBe("package A;");
   });
@@ -437,8 +438,9 @@ describe("AutoSaver（F-FILE-6）", () => {
     // Arrange
     const a = await setupAuto();
     const original = a.file.createWritable.bind(a.file);
+    const full = new DOMException("disk full", "QuotaExceededError");
     a.file.createWritable = async () => {
-      throw new DOMException("disk full", "QuotaExceededError");
+      throw full;
     };
     a.ws.setText(a.doc.key, "v1");
     a.auto.notify(a.doc.key);
@@ -451,7 +453,7 @@ describe("AutoSaver（F-FILE-6）", () => {
     a.timer.advance(1000);
     await flush();
     // Assert
-    expect(a.outcomes).toEqual([{ failed: "disk full" }, "saved"]);
+    expect(a.outcomes).toEqual([{ failed: full }, "saved"]);
     expect(a.file.content).toBe("v2");
   });
 });

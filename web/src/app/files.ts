@@ -24,7 +24,7 @@ import { pluginFolderPath } from "./plugins";
 import { idbBrowserPlugins, idbPluginData } from "../plugins/browser-store";
 import { importedDocName } from "../plugins/transfer";
 import { projectNotice, projectTitle } from "./project";
-import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast } from "./sync";
+import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast, toastFailure } from "./sync";
 import { opsIdle } from "./intent";
 
 const AUTOSAVE_KEY = "modelith-autosave";
@@ -199,7 +199,7 @@ async function openFile(): Promise<void> {
     const doc = await ws.openWith(picker);
     if (doc) showDoc(doc.key);
   } catch (e) {
-    toast(`開けませんでした：${(e as Error).message}`);
+    toastFailure("開けませんでした", e);
   }
 }
 
@@ -218,7 +218,7 @@ async function openFolder(reopen = false): Promise<void> {
     }
     else if (reopen) toast("フォルダを開く許可が得られませんでした");
   } catch (e) {
-    toast(`フォルダを開けませんでした：${(e as Error).message}`);
+    toastFailure("フォルダを開けませんでした", e);
   }
 }
 
@@ -268,7 +268,7 @@ async function newFileInFolder(): Promise<void> {
   try {
     showDoc((await ws.createFile(path, "")).key);
   } catch (e) {
-    toast(`作成できませんでした：${(e as Error).message}`);
+    toastFailure("作成できませんでした", e);
   }
 }
 
@@ -294,7 +294,7 @@ async function save(key: string, as = false): Promise<void> {
     toast(ws.canWriteInPlace(doc) ? `「${doc.name}」を保存しました` : `「${doc.name}」をダウンロードしました`);
     if (ws.layoutUnsaved(doc)) await offerFolderForLayout(key);
   } catch (e) {
-    toast(`保存できませんでした：${(e as Error).message}`);
+    toastFailure("保存できませんでした", e);
   }
 }
 
@@ -454,7 +454,7 @@ async function makeProject(): Promise<void> {
     await ws.makeProject(made.text);
     toast(`フォルダ「${f.ref.name}」を、プロジェクト「${name}」にしました`);
   } catch (e) {
-    toast(`プロジェクトにできませんでした：${(e as Error).message}`);
+    toastFailure("プロジェクトにできませんでした", e);
   }
 }
 
@@ -920,7 +920,7 @@ function initExplorer(): void {
     if (e?.kind === "file") {
       void ws.openRef(e.ref).then(
         (d) => showDoc(d.key),
-        (err: Error) => toast(`開けませんでした：${err.message}`),
+        (err: unknown) => toastFailure("開けませんでした", err),
       );
     }
   });
@@ -997,7 +997,7 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   auto = new AutoSaver(ws, browserTimer, () => autoSave, (key, outcome) => {
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
     // 失敗しても文書は未保存のまま（●）なので、知らせるだけにして、保存（Ctrl+S）で試し直してもらう（F-FILE-6）
-    else if (typeof outcome === "object") toast(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした：${outcome.failed}`);
+    else if (typeof outcome === "object") toastFailure(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした`, outcome.failed);
   });
   onTextChange((text) => {
     if (!shownKey) return;

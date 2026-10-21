@@ -11,10 +11,11 @@ export interface Timer {
 }
 
 /**
- * 自動保存の結果。保存の結果（saved・conflict・cancelled）か、保存が例外で失敗したこと（failed は理由の文）。
+ * 自動保存の結果。保存の結果（saved・conflict・cancelled）か、保存が例外で失敗したこと（failed は投げられた値そのもの）。
  * 失敗は、フォルダの許可が切れた・ディスクの空きが無い、など。文書は未保存のまま残る（F-FILE-6）。
+ * 利用者に見せる文にするのと、詳しい内容を残すのは、知らせる側（画面）が行う。
  */
-export type AutoSaveOutcome = SaveOutcome | { failed: string };
+export type AutoSaveOutcome = SaveOutcome | { failed: unknown };
 
 export const browserTimer: Timer = {
   set: (fn, ms) => setTimeout(fn, ms),
@@ -44,7 +45,7 @@ export class AutoSaver {
 
   /**
    * 文書が編集されたときに呼ぶ。編集が止まってから delay ミリ秒後に、未保存なら上書き保存し、結果を onSaved で知らせる。
-   * 保存が例外で失敗しても黙らず、{ failed: 理由 } として知らせる（文書は未保存のまま）。続けて呼ぶと待ち時間をやり直す。自動保存が切ってある・上書きできる保存先が無い・外で変更された文書は何もしない。
+   * 保存が例外で失敗しても黙らず、{ failed: 投げられた値 } として知らせる（文書は未保存のまま）。続けて呼ぶと待ち時間をやり直す。自動保存が切ってある・上書きできる保存先が無い・外で変更された文書は何もしない。
    *
    * @param key 文書のキー（Workspace の文書の key）
    */
@@ -60,7 +61,7 @@ export class AutoSaver {
         if (!d || !this.ws.isDirty(d)) return;
         this.ws.save(key, NO_SAVE_AS).then(
           (o) => this.onSaved(key, o),
-          (e: unknown) => this.onSaved(key, { failed: failureReason(e) }),
+          (e: unknown) => this.onSaved(key, { failed: e }),
         );
       }, this.delay),
     );
@@ -71,7 +72,8 @@ export class AutoSaver {
 const NO_SAVE_AS: SaveAsTarget = { id: "none", label: "", saveAs: async () => null };
 
 /**
- * 保存の失敗（例外）から、利用者に見せる理由の文を取り出す。
+ * 例外から、詳しい内容（元のメッセージ）を取り出す。起動に失敗したときの案内の、診断用の小さな文字に使う。
+ * トーストに出す理由の文は、ブラウザの英語を見せない app/error-text.ts の errorText で作る。
  *
  * @param e 投げられた値
  * @returns Error ならそのメッセージ、それ以外は文字列にしたもの
