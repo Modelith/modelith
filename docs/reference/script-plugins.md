@@ -11,7 +11,7 @@ TypeScript では `@modelith/plugin-sdk`、JSON Schema では plugin-sdk の `sc
 
 ## 置き方
 
-画面では「ファイル → プラグイン… → 追加…」でプラグインのフォルダを選び、使う権限と追加先を示して確かめてから追加する。追加先は 2 つ（ADR-0018 §1）。
+画面では「プラグイン → プラグインの一覧… → 追加…」でプラグインのフォルダを選び、使う権限と追加先を示して確かめてから追加する。追加先は 2 つ（ADR-0018 §1）。
 
 | 追加先 | 置き場所 | 使える人 |
 | --- | --- | --- |
@@ -66,9 +66,9 @@ CLI（`modelith check`）は TypeScript のプラグインを動かさない（�
 | `license` | SPDX のライセンス式 |
 | `main` | プログラムのファイル。プラグインのフォルダからの相対パスで、フォルダの外は指せない。無い・見つからないときはプラグインの一覧にエラーを出し、動かさない |
 | `permissions` | 使う権限（下の表）。宣言していない権限が要るメッセージは、ホストが使わずに一覧で知らせる |
-| `contributes.commands` | 「ファイル」メニューの「プラグインのコマンド」に出すコマンド（`id` と、画面に出す `title`） |
-| `contributes.importers` | 「ファイル」メニューの「プラグインで読み込む」に出す読み込み（`id`・画面に出す `label`・選べるファイルの拡張子 `extensions`） |
-| `contributes.exporters` | 「ファイル」メニューの「プラグインで書き出す」に出す書き出し（`id`・画面に出す `label`・ファイルの拡張子 `extension`） |
+| `contributes.commands` | 「プラグイン」メニューの「プラグインのコマンド」に出すコマンド（`id` と、画面に出す `title`） |
+| `contributes.importers` | 「プラグイン」メニューの「プラグインで読み込む」に出す読み込み（`id`・画面に出す `label`・選べるファイルの拡張子 `extensions`） |
+| `contributes.exporters` | 「プラグイン」メニューの「プラグインで書き出す」に出す書き出し（`id`・画面に出す `label`・ファイルの拡張子 `extension`） |
 
 ### 権限
 
@@ -161,7 +161,7 @@ function check(model: ModelSnapshot) {
 
 ## 読み込み（取り込み）
 
-1. 利用者が「ファイル → プラグインで読み込む → <label>…」を選ぶと、`extensions` で絞ったファイルの選択画面を出す（`extensions` が空なら絞らない）。
+1. 利用者が「プラグイン → プラグインで読み込む → <label>…」を選ぶと、`extensions` で絞ったファイルの選択画面を出す（`extensions` が空なら絞らない）。
 2. 選んだファイルの中身を base64 にして、`import { requestId, importer, fileName, base64 }` を送る。`fileName` は選んだファイルの名前。
 3. プラグインは SysML v2 のテキストを作り、`imported { requestId, fileName, text }` を返す（できなければ `failed`）。
 4. ホストは、`fileName` の拡張子を `.sysml` にした名前（開いている文書と重なれば `-2` などを付ける）の **新しい無題のファイル** として開く。
@@ -169,7 +169,7 @@ function check(model: ModelSnapshot) {
 
 ## 書き出し
 
-1. 利用者が「ファイル → プラグインで書き出す → <label>」を選ぶと、`export { requestId, exporter, view? }` を送る。モデルは、最後の `didChange` で受け取ったものを使う。
+1. 利用者が「プラグイン → プラグインで書き出す → <label>」を選ぶと、`export { requestId, exporter, view? }` を送る。モデルは、最後の `didChange` で受け取ったものを使う。
 2. プラグインは `exported { requestId, fileName, mediaType, base64 }` を返す（できなければ `failed`）。
 3. ホストはファイルを **ダウンロードさせる**（プロジェクトのフォルダには書かない）。`fileName` はパスを除き、使えない文字を `_` にし、拡張子が無ければマニフェストの `extension` を付ける。
    `mediaType` の形が正しくなければ `application/octet-stream` にする。base64 として正しくないものは使わず、書き出しができなかったと知らせる。
