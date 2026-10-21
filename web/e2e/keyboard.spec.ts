@@ -77,3 +77,31 @@ test.describe("draw.io の書き出し", () => {
     await expect(page.locator(".app")).toHaveJSProperty("inert", false);
   });
 });
+
+test.describe("メニュー", () => {
+  test("Q-8: Esc でファイルのメニューを閉じると、メニューの見出しへ入力が戻る", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#fileMenu summary").click();
+    await expect(page.locator("#btnNew")).toBeVisible();
+    // Act
+    await page.keyboard.press("Escape");
+    // Assert
+    await expect(page.locator("#fileMenu")).not.toHaveAttribute("open");
+    await expect(page.locator("#fileMenu summary")).toBeFocused();
+  });
+
+  test("Q-8: キーボードで開いたヘルプのメニューも、項目に入力があるときに Esc で閉じられる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#helpMenu summary").focus();
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Tab");
+    expect(await focusInside(page, "#helpMenu .pop")).toBe(true);
+    // Act
+    await page.keyboard.press("Escape");
+    // Assert
+    await expect(page.locator("#helpMenu")).not.toHaveAttribute("open");
+    await expect(page.locator("#helpMenu summary")).toBeFocused();
+  });
+});

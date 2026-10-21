@@ -55,7 +55,23 @@ function closeMenus(): void {
 }
 
 /**
- * メニューを組み立てる。メニューの外をクリックしたら閉じ、SVG の保存・draw.io への書き出しのボタンをつなぎ、
+ * Esc で、開いているメニュー（details.menu）を閉じる（Q-8）。入力がメニューの中にあれば、その見出しへ戻す。
+ * メニューを閉じたときは、Esc をほかの操作（図の選択を解くなど）に渡さない。メニューが開いていなければ何もしない。
+ *
+ * @param ev キーの押下（文書の捕捉の段階で受ける）
+ */
+function closeMenusOnEscape(ev: KeyboardEvent): void {
+  if (ev.key !== "Escape") return;
+  const open = [...document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")];
+  if (!open.length) return;
+  ev.stopPropagation();
+  const focused = open.find((d) => d.contains(document.activeElement));
+  closeMenus();
+  focused?.querySelector<HTMLElement>(":scope > summary")?.focus();
+}
+
+/**
+ * メニューを組み立てる。メニューの外をクリックしたとき・Esc を押したときに閉じ、SVG の保存・draw.io への書き出しのボタンをつなぎ、
  * 版・著作権・動いている版のソースとライセンスへのリンク（AGPL §13）を入れる。
  */
 function initMenus(): void {
@@ -64,6 +80,7 @@ function initMenus(): void {
       if (!(ev.target instanceof Node) || !d.contains(ev.target)) d.open = false;
     });
   });
+  document.addEventListener("keydown", closeMenusOnEscape, true);
   $("#btnSaveSvg").onclick = () => {
     closeMenus();
     download(`modelith-${S.view}.svg`, svgExport(), "image/svg+xml");
