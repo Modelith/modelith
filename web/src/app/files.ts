@@ -8,7 +8,8 @@ import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "..
 import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
-import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc } from "../workspace/workspace";
+import { afterRestore, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
+import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
 import { $, closest, esc, store } from "./dom";
@@ -28,6 +29,8 @@ import { opsIdle } from "./intent";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
+/** 設定「起動時にサンプルを開く」を有効にしたら "1" を置くキー（F-FILE-13）。 */
+const START_SAMPLE_KEY = "modelith-start-sample";
 
 let ws: Workspace;
 let local: LocalFolderProvider | null = null;
@@ -48,6 +51,15 @@ const legacyAsked = new Set<string>();
 let projectKey: string | null = null;
 /** 開いているフォルダのプロジェクトの設定を読み取った結果（ADR-0019）。まだ読み取っていない・設定ファイルが無ければ null。 */
 let project: ProjectFileResult | null = null;
+/** サンプルの文書（起動したときに開く）。 */
+let sampleDoc: Sample;
+/**
+ * 「前回の続きを開く」を示して、利用者の操作を待っている前回の続き（F-FILE-13）。フォルダを開く許可が要るときだけ。
+ * folder は前回のフォルダの名前、drafts は起動したときに下書きを戻した結果。待っていなければ null。
+ */
+let resumeAsk: { session: Session; folder: string; drafts: StartWith } | null = null;
+/** 「前回の続きを開く」で前回の続きを戻し、その解析結果が届いた後に呼ぶ（図のタブを戻す）。 */
+let onResumed: () => void = () => {};
 
 /**
  * まだ使われていない無題の名前を作る（untitled-1.sysml から順に空いている番号）。
@@ -116,6 +128,7 @@ function showDoc(key: string): void {
   flushEdit(); // 反映待ちの入力は、切り替える前の文書（shownKey）に書き込む
   const doc = ws.get(key);
   if (!doc) return;
+  endResumeAsk();
   shownKey = key;
   ws.activate(key);
   useHistory(key);
@@ -199,7 +212,10 @@ async function openFolder(reopen = false): Promise<void> {
   if (!local) return;
   try {
     const ok = reopen ? await ws.reopenFolder(local) : await ws.openFolder(local);
-    if (ok) showSide("files");
+    if (ok) {
+      endResumeAsk();
+      showSide("files");
+    }
     else if (reopen) toast("フォルダを開く許可が得られませんでした");
   } catch (e) {
     toast(`フォルダを開けませんでした：${(e as Error).message}`);
@@ -524,9 +540,114 @@ function renderFiles(): void {
 function renderNoDoc(): void {
   const none = shownKey === null;
   $("#noDoc").hidden = !none;
+  renderResumeAsk();
   $("#main").toggleAttribute("data-nodoc", none);
   for (const pane of document.querySelectorAll<HTMLElement>(".diagrampane, .textpane")) pane.inert = none;
   for (const id of ["#btnSave", "#btnSaveAs", "#btnSaveSvg", "#btnDrawio"]) $<HTMLButtonElement>(id).disabled = none;
+}
+
+/**
+ * 開いている文書が無いときの案内を、「前回の続きを開く」を待っているかに合わせる（F-FILE-13）。
+ * 待っている間は、見出しと説明を前回の続きのものにし、「前回の続きを開く」を主なボタンとして先頭に出す。
+ */
+function renderResumeAsk(): void {
+  const ask = resumeAsk;
+  $("#noDocTitle").textContent = ask ? "前回の続きから始められます" : "開いているファイルはありません";
+  $("#noDocText").hidden = !!ask;
+  const text = $("#noDocResume");
+  text.hidden = !ask;
+  text.textContent = ask ? `前回は、フォルダ「${ask.folder}」のファイルを開いていました。「前回の続きを開く」を押して、ブラウザの確認でフォルダの編集を許可すると、続きから始めます。` : "";
+  $('#noDoc [data-nodoc="resume"]').hidden = !ask;
+  $('#noDoc [data-nodoc="new"]').classList.toggle("primary", !ask);
+}
+
+/**
+ * 「前回の続きを開く」を待つのをやめる（文書を表示した・フォルダを開いた）。以後は、今の状態を前回の続きとして書く（F-FILE-13）。
+ * 待っていなければ何もしない。
+ */
+function endResumeAsk(): void {
+  if (!resumeAsk) return;
+  resumeAsk = null;
+  ws.holdSession(false);
+}
+
+/**
+ * 前回の続きを戻し、表示する（F-FILE-13）。フォルダを開いていたなら開き直し（ask なら許可を求める）、
+ * 前回の順番で文書を戻して、表示していた文書を表示する。見つからなかったファイル・開けなかったフォルダは、トーストで知らせる。
+ * 戻せる文書が無ければ、フォルダを開いたか、すべて閉じて終えたなら何も開かず、そうでなければサンプルを開く。
+ *
+ * @param session 前回の続き
+ * @param drafts 起動したときに下書きを戻した結果
+ * @param folder フォルダを開き直すか（"no"：開かない・"quiet"：許可を求めない・"ask"：許可を求める）
+ * @returns 戻したら true。ask で許可が得られなかったら、何も変えずに false
+ * @example
+ * await resumeFrom(session, "drafts", "quiet") // → true（フォルダを開き直して続きを表示した）
+ * await resumeFrom(session, "drafts", "ask")   // → false（許可が得られなかった）
+ */
+async function resumeFrom(session: Session, drafts: StartWith, folder: "no" | "quiet" | "ask"): Promise<boolean> {
+  let opened = false;
+  let gone = false;
+  if (folder !== "no" && local) {
+    try {
+      opened = await ws.reopenFolder(local, { ask: folder === "ask" });
+    } catch {
+      gone = true;
+      toast(`前回のフォルダ「${(await local.recentFolder()) ?? ""}」を開けませんでした。移動したか、削除された可能性があります`);
+    }
+  }
+  // 許可が得られなければ、もう一度押せるように待ち続ける（フォルダが無くなっていたら、待たずに下書きだけを戻す）
+  if (folder === "ask" && !opened && !gone) {
+    toast("フォルダを開く許可が得られませんでした");
+    return false;
+  }
+  const missing = await ws.resumeSession(session);
+  if (missing.length === 1) toast(`前回開いていた「${missing[0] ?? ""}」が見つかりませんでした`);
+  else if (missing.length > 1) toast(`前回開いていたファイルのうち、${missing.length} 個が見つかりませんでした`);
+  if (afterRestore(ws.list().length, opened, drafts) === "sample") ws.newUntitled(sampleDoc.name, sampleDoc.text, sampleDoc.layout);
+  showCurrent();
+  return true;
+}
+
+/**
+ * 「前回の続きを開く」を押したときに、フォルダを開く許可を求めて前回の続きを戻す（F-FILE-13）。
+ * 許可が得られなければ、トーストで知らせて待ち続ける。戻したら、その解析結果が届いてから図のタブを戻す。
+ */
+async function resumeAsked(): Promise<void> {
+  const ask = resumeAsk;
+  if (!ask || !(await resumeFrom(ask.session, ask.drafts, "ask"))) return;
+  endResumeAsk();
+  renderFiles();
+  await settled();
+  onResumed();
+}
+
+/**
+ * 起動したときに、何から始めるかを決めて表示する（F-FILE-11・F-FILE-13・F-FILE-14）。
+ * 前回の続きが無ければ今までどおり（下書き、無ければサンプル。すべて閉じて終えたなら何も開かない）。
+ * 設定「起動時にサンプルを開く」が有効なら、下書きを戻したうえでサンプルを表示する（手を付けていないサンプルがあればそれを使う）。
+ * フォルダを開く許可が残っていれば、フォルダを開き直して続きを表示する。許可が要るなら「前回の続きを開く」を示して待つ。
+ * 戻し終えたら、今の状態を前回の続きとして書き始める（待つ間は書かない）。
+ */
+async function start(): Promise<void> {
+  const session = kvSessionStore(store).load();
+  const sampleAtStart = store.get(START_SAMPLE_KEY) === "1";
+  const access = local && session?.folder && !sampleAtStart ? await local.recentAccess() : "none";
+  const plan = planStart(session, sampleAtStart, access);
+  const drafts = ws.restoreDrafts();
+  if (plan === "ask" && session && local) {
+    resumeAsk = { session, folder: (await local.recentFolder()) ?? "", drafts };
+    showNoDoc();
+    return;
+  }
+  if (plan === "default") {
+    if (drafts === "sample") ws.newUntitled(sampleDoc.name, sampleDoc.text, sampleDoc.layout);
+    showCurrent();
+  } else if (plan === "sample") {
+    showDoc(sampleDraft(ws.list(), sampleDoc) ?? ws.newUntitled(sampleDoc.name, sampleDoc.text, sampleDoc.layout).key);
+  } else if (session) {
+    await resumeFrom(session, drafts, plan === "resume" ? "quiet" : "no");
+  }
+  ws.holdSession(false);
 }
 
 /**
@@ -706,7 +827,7 @@ function closeMenus(): void {
 }
 
 /**
- * ファイルメニュー・自動保存の切り替え（F-FILE-6）・ショートカット（Ctrl+S で保存、Ctrl+Shift+S で名前を付けて保存、Ctrl+O で開く）に操作をつなぐ。
+ * ファイルメニュー・自動保存の切り替え（F-FILE-6）・起動時にサンプルを開く設定（F-FILE-13）・ショートカット（Ctrl+S で保存、Ctrl+Shift+S で名前を付けて保存、Ctrl+O で開く）に操作をつなぐ。
  * 開いている文書が無いときの Ctrl+S は、そのことをトーストで知らせる（F-FILE-14）。
  */
 function initMenu(): void {
@@ -723,6 +844,9 @@ function initMenu(): void {
   cmd("#btnSaveAs", () => void save(shownKey ?? "", true));
   $<HTMLButtonElement>("#btnOpenFolder").disabled = !local;
   $("#fileNote").textContent = local ? "保存先の無いファイルは、このブラウザに下書き保存されます" : "このブラウザでは、保存はダウンロードになります。図の配置は .layout.json として一緒にダウンロードされ、開くときに 2 つを一緒に選ぶと戻ります";
+  const startSample = $<HTMLInputElement>("#startSample");
+  startSample.checked = store.get(START_SAMPLE_KEY) === "1";
+  startSample.onchange = () => store.set(START_SAMPLE_KEY, startSample.checked ? "1" : "0");
   const auto = $<HTMLInputElement>("#autoSave");
   auto.checked = autoSave;
   auto.onchange = () => {
@@ -817,7 +941,7 @@ interface Sample {
 }
 
 /**
- * 開いているファイルが無いときの案内のボタン（新しいファイル・ファイルを開く・フォルダを開く・サンプルを開く）に操作をつなぐ（F-FILE-14）。
+ * 開いているファイルが無いときの案内のボタン（前回の続きを開く・新しいファイル・ファイルを開く・フォルダを開く・サンプルを開く）に操作をつなぐ（F-FILE-13・F-FILE-14）。
  * フォルダを開けないブラウザでは、フォルダを開くボタンを出さない。
  *
  * @param sample サンプルの文書
@@ -826,7 +950,8 @@ function initNoDoc(sample: Sample): void {
   $('#noDoc [data-nodoc="openFolder"]').hidden = !local;
   $("#noDoc").addEventListener("click", (ev) => {
     const c = closest(ev, "[data-nodoc]")?.dataset["nodoc"];
-    if (c === "new") newUntitled();
+    if (c === "resume") void resumeAsked();
+    else if (c === "new") newUntitled();
     else if (c === "open") void openFile();
     else if (c === "openFolder") void openFolder();
     else if (c === "sample") openSample(sample);
@@ -834,19 +959,26 @@ function initNoDoc(sample: Sample): void {
 }
 
 /**
- * ファイル操作を初期化し、前回の下書きを表示する（F-FILE-11）。下書きが無ければサンプルを表示し、
- * 前回すべてのファイルを閉じて終えたなら、開いているファイルが無いことの案内を出す（F-FILE-14）。起動時に 1 回呼ぶ。
+ * ファイル操作を初期化し、前回の続き（開いていたフォルダとファイル・下書き・表示していたファイル）から始める（F-FILE-11・F-FILE-13）。
+ * 前回の続きが無ければサンプルを表示し、前回すべてのファイルを閉じて終えたなら、開いているファイルが無いことの案内を出す（F-FILE-14）。
+ * フォルダを開く許可が要るときは、「前回の続きを開く」を示す。起動時に 1 回呼ぶ。
  * テキストと配置の変更をワークスペースに反映し、未保存のままページを離れるときに警告し（F-FILE-5）、
  * 画面に戻ったときに他のアプリでの変更を確かめる（F-FILE-8）。
  *
  * @param sample サンプルの文書（名前・テキスト・配置ファイルの文字列）
+ * @param opts onResumed は、「前回の続きを開く」で戻した文書の解析結果が届いた後に呼ぶ関数（図のタブを戻す）
+ * @returns 始め方を決めて表示し終えたら解決する Promise（「前回の続きを開く」を示したときは、押されるのを待たずに解決する）
+ * @example
+ * await initFiles(SAMPLE_DOC, { onResumed: resumeTabs }) // → 前回の続き（無ければサンプル）を表示している
  */
-export function initFiles(sample: Sample): void {
+export async function initFiles(sample: Sample, opts: { onResumed?: () => void } = {}): Promise<void> {
+  sampleDoc = sample;
+  if (opts.onResumed) onResumed = opts.onResumed;
   const w = window as unknown as FsApi;
   local = hasFsAccess(window) ? new LocalFolderProvider(w, idbHandleStore) : null;
   browser = new BrowserFileProvider({ choose: chooseFiles, download: (name, text) => download(name, text, "text/plain;charset=utf-8") });
   const providers: FileProvider[] = local ? [local, browser] : [browser];
-  ws = new Workspace(new ProviderRegistry(providers), kvDraftStore(store));
+  ws = new Workspace(new ProviderRegistry(providers), kvDraftStore(store), kvSessionStore(store));
   autoSave = store.get(AUTOSAVE_KEY) === "1";
   auto = new AutoSaver(ws, browserTimer, () => autoSave, (key, outcome) => {
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
@@ -888,8 +1020,7 @@ export function initFiles(sample: Sample): void {
     if (ws.hasUnsavedFiles()) ev.preventDefault();
   });
   window.addEventListener("focus", () => void checkExternal());
-  if (ws.restoreDrafts() === "sample") ws.newUntitled(sample.name, sample.text, sample.layout);
-  showCurrent();
+  await start();
   renderFiles();
   void local?.recentFolder().then((name) => {
     recentName = name;

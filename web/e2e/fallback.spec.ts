@@ -1,4 +1,4 @@
-// File System Access API の無いブラウザ（Safari・Firefox）での代替（F-FILE-10）。
+// File System Access API の無いブラウザ（Safari・Firefox）での代替（F-FILE-10・F-FILE-13）。
 import { editorText, expect, openApp, test, typeAtEnd } from "./fixtures";
 
 test.use({ fsAccess: false });
@@ -80,4 +80,18 @@ test("F-FILE-14・F-FILE-10: 何も開いていないときの案内に、開け
   // Assert
   await expect(page.locator('#noDoc [data-nodoc="open"]')).toBeVisible();
   await expect(page.locator('#noDoc [data-nodoc="openFolder"]')).toBeHidden();
+});
+
+test("F-FILE-13: フォルダを開けないブラウザでも、再読み込みすると下書きと表示していたファイルから始まる", async ({ page }) => {
+  // Arrange（後から作った無題のファイルを表示したまま終える）
+  await openApp(page);
+  await page.locator('[data-cmd="new"]').click();
+  await typeAtEnd(page, "package U;\n");
+  await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ
+  // Act
+  await page.reload();
+  // Assert
+  await expect(page.locator("#docName")).toHaveText("untitled-1.sysml");
+  await expect.poll(() => editorText(page)).toBe("package U;\n");
+  expect(await page.locator("#explorer [data-doc] .nm").allInnerTexts()).toEqual(["electric-kettle.sysml", "untitled-1.sysml"]);
 });

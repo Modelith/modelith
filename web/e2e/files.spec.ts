@@ -1,5 +1,5 @@
-// VS Code のようなファイル操作（F-FILE-1〜9・11・14）。ローカルフォルダの代わりに OPFS を使う。
-import { editorText, expect, openApp, putFiles, readFile, test, typeAtEnd } from "./fixtures";
+// VS Code のようなファイル操作（F-FILE-1〜9・11・13・14）。ローカルフォルダの代わりに OPFS を使う。
+import { editorText, expect, needPermission, openApp, putFiles, readFile, test, typeAtEnd } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const A = "package A {\n    part def Alpha;\n}\n";
@@ -144,10 +144,10 @@ test("F-FILE-8: 画面に戻ったとき、未編集のファイルは他のア�
 });
 
 test("F-FILE-9: 再読み込みの後、前回のフォルダを開き直せる", async ({ page }) => {
-  // Arrange
+  // Arrange（許可が残っていなければ、フォルダは自動では開き直さない）
   await openProject(page);
+  await needPermission(page);
   await page.reload();
-  await page.locator("#gNodes .node").first().waitFor();
   // Act
   await page.locator('[data-cmd="reopen"]').click();
   // Assert
@@ -284,4 +284,130 @@ test("F-FILE-14・F-FILE-11: 以前の版が残した中身の無い下書きが
   // Assert
   await expect(page.locator("#docName")).toHaveText("electric-kettle.sysml");
   await expect(page.locator("#explorer [data-doc]")).toHaveCount(1);
+});
+
+/** 開いている文書の名前（エクスプローラーの「開いているファイル」の順）。 */
+const openDocs = (page: Page): Promise<string[]> => page.locator("#explorer [data-doc] .nm").allInnerTexts();
+
+/** フォルダの a.sysml と models/b.sysml を開き、a.sysml を表示し、図のタブ「ブロック定義図」を開く。 */
+async function work(page: Page): Promise<void> {
+  await openProject(page);
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  await page.locator('#explorer [data-file][title="models/b.sysml"]').click();
+  await page.locator('#explorer [data-doc]:has-text("a.sysml")').click();
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="structure"]').click();
+}
+
+test("F-FILE-13: 再読み込みすると、開いていたフォルダとファイル・表示していたファイル・図のタブから始まる", async ({ page }) => {
+  // Arrange
+  await work(page);
+  // Act
+  await page.reload();
+  // Assert
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  await expect.poll(() => editorText(page)).toBe(A);
+  expect(await openDocs(page)).toEqual(["electric-kettle.sysml", "a.sysml", "b.sysml"]);
+  await expect(page.locator('#explorer [data-file][title="models/b.sysml"]')).toBeVisible();
+  await expect(page.locator('.tab[aria-selected="true"]')).toContainText("ブロック定義図");
+  await expect(page.locator("#noDoc")).toBeHidden();
+});
+
+test("F-FILE-13: フォルダの許可が要るときは、サンプルの代わりに「前回の続きを開く」を示し、1 回の操作で戻れる", async ({ page }) => {
+  // Arrange
+  await work(page);
+  await needPermission(page);
+  await page.reload();
+  await expect(page.locator("#noDocTitle")).toHaveText("前回の続きから始められます");
+  await expect(page.locator("#noDoc")).toContainText("フォルダ「project」");
+  await expect(page.locator("#docName")).toHaveText("");
+  // Act
+  await page.locator('#noDoc [data-nodoc="resume"]').click();
+  // Assert
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  await expect(page.locator("#noDoc")).toBeHidden();
+  expect(await openDocs(page)).toEqual(["electric-kettle.sysml", "a.sysml", "b.sysml"]);
+  await expect(page.locator('#explorer [data-file][title="models/b.sysml"]')).toBeVisible();
+  await expect(page.locator('.tab[aria-selected="true"]')).toContainText("ブロック定義図");
+});
+
+test("F-FILE-13: フォルダの許可が得られなければ、そのことを知らせ、「前回の続きを開く」を示したままにする", async ({ page }) => {
+  // Arrange
+  await work(page);
+  await needPermission(page, false);
+  await page.reload();
+  // Act
+  await page.locator('#noDoc [data-nodoc="resume"]').click();
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("フォルダを開く許可が得られませんでした");
+  await expect(page.locator('#noDoc [data-nodoc="resume"]')).toBeVisible();
+  await expect(page.locator("#docName")).toHaveText("");
+});
+
+test("F-FILE-13: 「前回の続きを開く」を待つ間に別の操作を選んでも、下書きは失われない", async ({ page }) => {
+  // Arrange
+  await work(page);
+  await needPermission(page);
+  await page.reload();
+  // Act
+  await page.locator('#noDoc [data-nodoc="new"]').click();
+  // Assert
+  await expect(page.locator("#docName")).toHaveText("untitled-1.sysml");
+  expect(await openDocs(page)).toEqual(["electric-kettle.sysml", "untitled-1.sysml"]);
+});
+
+test("F-FILE-13: 前回開いていたファイルが消されていたら、残りから始め、そのことを知らせる", async ({ page }) => {
+  // Arrange
+  await work(page);
+  await page.evaluate(async () => {
+    const project = await (await navigator.storage.getDirectory()).getDirectoryHandle("project");
+    await project.removeEntry("a.sysml");
+  });
+  // Act
+  await page.reload();
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("前回開いていた「a.sysml」が見つかりませんでした");
+  expect(await openDocs(page)).toEqual(["electric-kettle.sysml", "b.sysml"]);
+  await expect(page.locator("#docName")).toHaveText("electric-kettle.sysml");
+});
+
+test("F-FILE-13: 設定「起動時にサンプルを開く」を有効にすると、前回の続きではなくサンプルから始まる", async ({ page }) => {
+  // Arrange
+  await work(page);
+  await page.locator("#fileMenu summary").click();
+  await page.locator("#startSample").check();
+  await page.locator("#fileMenu summary").click();
+  // Act
+  await page.reload();
+  // Assert
+  await expect(page.locator("#docName")).toHaveText("electric-kettle.sysml");
+  expect(await openDocs(page)).toEqual(["electric-kettle.sysml"]);
+  await expect(page.locator('[data-cmd="reopen"]')).toBeVisible();
+  await page.locator("#fileMenu summary").click();
+  await expect(page.locator("#startSample")).toBeChecked();
+});
+
+test.describe("狭い画面", () => {
+  test.use({ viewport: { width: 390, height: 800 } });
+  test("F-FILE-13・Q-2: 幅 390px の画面でも、「前回の続きを開く」が画面に収まる", async ({ page }) => {
+    // Arrange（狭い画面では、エクスプローラーはツリーのタブにある）
+    await openApp(page);
+    await putFiles(page, { "a.sysml": A });
+    await page.locator("#tabTree").click();
+    await page.locator('[data-cmd="openFolder"]').click();
+    await page.locator('#explorer [data-file][title="a.sysml"]').click();
+    await needPermission(page);
+    // Act
+    await page.reload();
+    // Assert
+    const button = page.locator('#noDoc [data-nodoc="resume"]');
+    await expect(button).toBeInViewport({ ratio: 1 });
+    await expect(page.locator("#noDocResume")).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    // Act（1 回の操作で戻る）
+    await button.click();
+    // Assert
+    await expect(page.locator("#docName")).toHaveText("a.sysml");
+  });
 });

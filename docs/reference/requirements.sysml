@@ -598,10 +598,11 @@ package ModelithRequirements {
             }
         }
         verification def LocalFolderProviderTest {
-            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す（偽のファイルシステムで） */
+            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す・起動したときに許可を求めずに前回のフォルダの許可を確かめる（偽のファイルシステムで） */
             objective {
                 verify OpenFolderReq;
                 verify RecentFolderReq;
+                verify ResumeSessionReq;
                 verify RobustReq;
                 verify LayoutReq;
                 verify UnsavedLayoutReq;
@@ -615,8 +616,9 @@ package ModelithRequirements {
             }
         }
         verification def WorkspaceTest {
-            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い */
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い・前回の続きの書き込み（戻し終えるまでは書かない）と戻し方（前回の順番・表示していた文書・消されたファイルとフォルダ・許可が要るとき・フォルダを開けないブラウザ） */
             objective {
+                verify ResumeSessionReq;
                 verify OpenSaveReq;
                 verify NewSaveAsReq;
                 verify MultiDocReq;
@@ -628,6 +630,13 @@ package ModelithRequirements {
                 verify LayoutReq;
                 verify UnsavedLayoutReq;
                 verify NoSilentWriteReq;
+            }
+        }
+        verification def SessionTest {
+            doc /* web/src/workspace/session.test.ts：起動したときの始め方（前回の続きが無い・フォルダを開いていなかった・許可が残っている・許可が要る・拒否・前回のフォルダを覚えていない・設定でサンプルを開く）、覚える文書と戻す順番・表示する文書、戻した後に表示するもの、手を付けていないサンプル、壊れた保存の読み込み */
+            objective {
+                verify ResumeSessionReq;
+                verify NoOpenFileReq;
             }
         }
         verification def AutoSaveTest {
@@ -685,7 +694,7 @@ package ModelithRequirements {
             }
         }
         verification def FilesE2E {
-            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き・最後のファイルを閉じた後の画面、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
+            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き・最後のファイルを閉じた後の画面・前回の続き（再読み込みでフォルダとファイル・表示していたファイル・図のタブから始まる、許可が要るときの「前回の続きを開く」と許可が得られないとき、待つ間の別の操作、消されたファイル、設定「起動時にサンプルを開く」、幅 390px）、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く・下書きと表示していたファイルから始まる）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
             objective {
                 verify UnsavedLayoutReq;
                 verify OpenFolderReq;
@@ -700,6 +709,7 @@ package ModelithRequirements {
                 verify FallbackReq;
                 verify UntitledDraftReq;
                 verify NoOpenFileReq;
+                verify ResumeSessionReq;
             }
         }
         verification def ShellE2E {
@@ -716,7 +726,7 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・シーケンス図（SequenceView のイベントと順序。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・シーケンス図（SequenceView のイベントと順序。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・「前回の続きを開く」（幅 390px を含む）・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
                 verify StandardViewReq;
@@ -728,6 +738,7 @@ package ModelithRequirements {
                 verify OpenFolderReq;
                 verify OpenSaveReq;
                 verify NoOpenFileReq;
+                verify ResumeSessionReq;
                 verify ConflictReq;
                 verify ProblemsReq;
                 verify PhaseReq;

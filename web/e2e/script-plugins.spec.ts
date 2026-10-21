@@ -268,9 +268,8 @@ test.describe("保存場所", () => {
     await startWith(page, installed(["storage"]));
     await runCommand(page, "回数を数える");
     await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」：保存した回数：1`);
-    // Act
+    // Act（開き直すと、前回の続きとしてフォルダも開き直す。F-FILE-13）
     await openApp(page);
-    await page.locator('[data-cmd="openFolder"]').click();
     await waitRunning(page);
     await runCommand(page, "回数を数える");
     // Assert
@@ -388,10 +387,9 @@ test.describe("許可", () => {
   test("F-PLUG-6: 許可したプラグインは、開き直しても尋ねない", async ({ page }) => {
     // Arrange
     await startWith(page, installed(["model:read"]));
-    // Act
+    // Act（前回の続きとして、フォルダを開き直す。F-FILE-13）
     await page.reload();
     await page.locator("#gNodes .node").first().waitFor();
-    await page.locator('[data-cmd="openFolder"]').click();
     // Assert
     await waitRunning(page);
     await expect(dialog(page)).toBeHidden();

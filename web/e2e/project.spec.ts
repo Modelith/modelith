@@ -1,5 +1,5 @@
 // プロジェクト（ADR-0019、F-PROJ-1）。フォルダの一番上の modelith.json を読み、プロジェクト名を示す。ローカルフォルダの代わりに OPFS を使う。
-import { expect, openApp, putFiles, readFile, test } from "./fixtures";
+import { expect, needPermission, openApp, putFiles, readFile, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const A = "package A {\n    part def Alpha;\n}\n";
@@ -65,8 +65,8 @@ test("F-PROJ-1: 「プロジェクトにする」をやめたら、何も書か�
 test("F-PROJ-1: 前回のフォルダを開き直しても、プロジェクト名を示す", async ({ page }) => {
   // Arrange
   await openFolderWith(page, { "a.sysml": A, "modelith.json": '{ "name": "給水システム" }' });
+  await needPermission(page); // 許可が残っていなければ、フォルダは自動では開き直さない
   await page.reload();
-  await page.locator("#gNodes .node").first().waitFor();
   // Act
   await page.locator('[data-cmd="reopen"]').click();
   // Assert
