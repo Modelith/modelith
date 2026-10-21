@@ -459,6 +459,19 @@ async function makeProject(): Promise<void> {
 
 /* ---- 描画 ---- */
 
+/** 下書きを置けないことを、もう知らせたか（置けるようになったら戻し、次に置けなくなったときにまた知らせる）。 */
+let lostDraftsWarned = false;
+
+/**
+ * 下書きを置けなくなったとき（ブラウザの保存領域がいっぱい）に、1 回だけ知らせる（F-FILE-11）。
+ * 置けている間は何もしない。ワークスペースの変更の通知で呼ぶ。
+ */
+function warnLostDrafts(): void {
+  const lost = ws.hasLostDrafts();
+  if (lost && !lostDraftsWarned) toast("下書きを保存できません（ブラウザの保存領域がいっぱいです）。「名前を付けて保存」で保存してください");
+  lostDraftsWarned = lost;
+}
+
 /**
  * 未保存の変更がある文書の印（●）の HTML を作る（F-FILE-5）。
  *
@@ -998,6 +1011,7 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   // 設定ファイルの読み取りの状態を先に変えてから描く
   ws.subscribe(syncProject);
   ws.subscribe(renderFiles);
+  ws.subscribe(warnLostDrafts);
   initMenu();
   initExplorer();
   initPlugins({
