@@ -32,7 +32,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
 
-  # 依存の既知の脆弱性（RustSec・npm advisories）。本番に入る依存だけを見る
+  # 依存の既知の脆弱性（RustSec・npm advisories。本番に入る依存だけを見る）と、npm の配布物の署名・来歴（provenance）
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -44,6 +44,11 @@ jobs:
         with:
           node-version-file: .nvmrc
           check-latest: true  # 毎回その時点の最新の 22.x を使う（セキュリティリリースをすぐ取り込む）
+      # 署名の確かめには、入れた依存が要る（インストール時スクリプトは動かさない）
+      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
+      - run: npm audit signatures --prefix web
+      - run: npm audit signatures --prefix tests/harness
       - run: npm audit --prefix web --omit=dev --audit-level=moderate
 
   check:
