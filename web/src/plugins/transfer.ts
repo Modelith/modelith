@@ -75,16 +75,16 @@ export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * パスの最後の名前を取り出し、ファイル名に使えない文字を「_」に置き換える。
+ * パスの最後の名前を取り出し、ファイル名に使えない文字を「_」に置き換える。図のエクスポートのファイル名（export-file.ts）でも使う。
  *
- * @param fileName プラグインが示したファイル名（パスを含むこともある）
+ * @param fileName プラグインや利用者が示したファイル名（パスを含むこともある）
  * @returns 整えた名前（前後の空白と点を除く）。何も残らなければ ""
  * @example
  * baseName("dir/要求一覧.reqif") // → "要求一覧.reqif"
  * baseName("a:b?.csv")           // → "a_b_.csv"
  * baseName("  ")                 // → ""（境界値）
  */
-function baseName(fileName: string): string {
+export function baseName(fileName: string): string {
   const last = fileName.split(/[\\/]/).pop() ?? "";
   return last.replace(BAD_NAME_CHARS, "_").trim().replace(/^\.+|\.+$/g, "");
 }

@@ -210,7 +210,20 @@ test("Q-9・F-FILE-14: 開いているファイルが無いときは、図と表
   // Act
   await page.locator("#diagramMenu > summary").click();
   // Assert
-  for (const id of ["#menuSaveView", "#menuEdge", "#menuLayout", "#btnSaveSvg", "#btnDrawio", "#menuZoomIn", "#menuFit", "#menuSelectAll"]) await expect(page.locator(id)).toBeDisabled();
+  for (const id of ["#menuSaveView", "#menuEdge", "#menuLayout", "#menuZoomIn", "#menuFit", "#menuSelectAll"]) await expect(page.locator(id)).toBeDisabled();
+});
+
+test("F-FILE-14・F-EXP-1・F-EXP-2: 開いているファイルが無いときは、ファイルのメニューの「エクスポート…」を押せない", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  await page.locator("#explorer [data-close]").click();
+  await page.locator('#dialogButtons [data-id="discard"]').click();
+  await expect(page.locator("#noDoc")).toBeVisible();
+  // Act
+  await page.locator("#fileMenu > summary").click();
+  // Assert
+  await expect(page.locator("#btnExport")).toBeDisabled();
+  await expect(page.locator("#btnSave")).toBeDisabled();
 });
 
 for (const width of [761, 800, 1000, 1001]) {

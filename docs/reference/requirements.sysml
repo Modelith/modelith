@@ -444,7 +444,7 @@ package ModelithRequirements {
             doc /* Google ドライブなどのクラウド（未実装。方式は ADR-0012、保留中） */
         }
         part def Exporter {
-            doc /* SVG・draw.io へのエクスポート（web/src/app/export.ts） */
+            doc /* SVG・draw.io へのエクスポート（中身は web/src/app/export.ts、形式とファイル名は export-file.ts、「エクスポート…」のダイアログは export-dialog.ts） */
         }
         part def RuleEngine {
             doc /* 検査ルール（v0、YAML）の解釈（crates/modelith-core。ブラウザと CLI で同じコード。ADR-0018） */
@@ -831,8 +831,16 @@ package ModelithRequirements {
                 verify ResumeSessionReq;
             }
         }
+        verification def ExportFileTest {
+            doc /* web/src/app/export-file.test.ts：エクスポートの形式の一覧（SVG 画像・draw.io の順、知らない ID は既定）と、ファイル名の決め方（拡張子なし・同じ拡張子・違う形式の拡張子の付け替え・大文字・形式の拡張子でない点・空・空白だけ・拡張子だけ・前後の空白・パス区切り・使えない文字・末尾の点・既定の名前も空）。
+                   web/src/app/export.test.ts：.drawio のファイルの包み方（根の 2 つのセル・図形が 0 個・図の名前の記号の文字参照） */
+            objective {
+                verify SvgExportReq;
+                verify DrawioExportReq;
+            }
+        }
         verification def ShellE2E {
-            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・ファイルのメニューの「エクスポート…」（既定の名前・入力した名前の SVG のダウンロード・draw.io を選ぶと拡張子が替わり mxfile のファイルになる・「やめる」では何もダウンロードしない）。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
             objective {
                 verify PrivacyReq;
                 verify ContentPolicyReq;
@@ -879,7 +887,7 @@ package ModelithRequirements {
         verification def KeyboardE2E {
             doc /* web/e2e/keyboard.spec.ts：ダイアログを開いている間は Tab・Shift+Tab で外へ出ず背景が inert になり、Esc で閉じると開いたボタンへ入力が戻る。
                    開いているファイルが無いときにメニューから開いたダイアログを閉じると、メニューの見出しへ入力が戻り、図とテキストは操作できないまま。
-                   draw.io の書き出しはダイアログの役割と見出しを持ち、Esc で閉じると図のメニューへ入力が戻る。
+                   エクスポートはダイアログの役割と見出しを持ち、入力はファイル名の欄に置き、Esc で閉じるとファイルのメニューへ入力が戻る。
                    ファイル・ヘルプのメニューは Esc で閉じ、見出しへ入力が戻る。Tab で選んでいる図のタブに入り、左右の矢印キー（両端で回る）・Home・End で切り替わる。
                    モデルツリーには検索欄から Tab で入り（選んでいる行、無ければ先頭の行）、下の矢印キーで次の行へ移る（Chromium で操作） */
             objective {
@@ -900,12 +908,15 @@ package ModelithRequirements {
         verification def MenuBarE2E {
             doc /* web/e2e/menubar.spec.ts：左にロゴ・メニュー（ファイル・編集・表示・図・プラグイン・ヘルプの順）・元に戻す・やり直す、右に同期の状態と開発段階の札が並ぶ。
                    1 つ開くとほかは閉じ、開いている間はマウスを乗せた見出しへ切り替わる（開いていなければ開かない）。左右の矢印キーで隣のメニューへ（両端で回る）、上下の矢印キーで項目へ（押せない項目を飛ばす）移り、Esc で閉じて見出しへ入力が戻る。
-                   編集のメニューの元に戻す・やり直す・すべて選択、表示のメニューのパネル・拡大・全体図、図のメニューの線の描き方。開いているファイルが無いときは図の操作の項目を押せない。
+                   編集のメニューの元に戻す・やり直す・すべて選択、表示のメニューのパネル・拡大・全体図、図のメニューの線の描き方。開いているファイルが無いときは図の操作の項目と、ファイルのメニューの「エクスポート…」を押せない。
                    幅 761・800・1000・1001px で見出しがはみ出さず、ヘルプが画面に収まる。幅 390px では ☰ にまとまり、縦に並んだメニューが横にはみ出さず、Esc で閉じて ☰ へ入力が戻り、☰ から開いたダイアログを閉じると ☰ へ戻る（Chromium で操作） */
             objective {
                 verify MenuBarReq;
                 verify KeyboardReq;
                 verify NarrowScreenReq;
+                verify NoOpenFileReq;
+                verify SvgExportReq;
+                verify DrawioExportReq;
             }
         }
         verification def LayoutTest {

@@ -190,6 +190,21 @@ function tabLabel(t: Tab): string {
 }
 
 /**
+ * 表示中のタブの名前を返す（図のエクスポートのファイル名の既定にする。F-EXP-1・F-EXP-2）。
+ *
+ * @returns タブの名前。表示中のタブが無ければ ""
+ * @example
+ * // 表示中のタブがトレーサビリティ
+ * activeTabLabel() // → "トレーサビリティ"
+ * // 表示中のタブが保存された図 Overview
+ * activeTabLabel() // → "Overview"
+ */
+export function activeTabLabel(): string {
+  const t = curTab();
+  return t ? tabLabel(t) : "";
+}
+
+/**
  * タブのツールチップを作る。図の種類の名前に、当たる SysML v2 の標準ビューを補足として添える（ADR-0014）。
  *
  * @param t タブ
