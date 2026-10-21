@@ -152,6 +152,18 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("plugin-list-narrow.png");
     });
 
+    test("Q-9・Q-2: 幅 390px の画面で、☰ のメニューを開いてファイルのメニューを開いたところ", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#menuToggle").click();
+      await page.locator("#fileMenu summary").click();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("menu-narrow.png");
+    });
+
     test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面の「＋」メニュー（SysML v2 の名前の行つき）", async ({ page }) => {
       // Arrange
       await openApp(page);
@@ -437,6 +449,15 @@ const scenes: Scene[] = [
       await page.locator("#fileMenu summary").click();
       await page.locator("#btnSave").hover();
       return [page.locator("#fileMenu .pop")];
+    },
+  },
+  {
+    title: "Q-9: 開いた「表示」メニュー（押されている切り替えの印つき）",
+    shot: "view-menu",
+    act: async (page) => {
+      await page.locator("#viewMenu summary").click();
+      await page.locator("#menuZoomIn").hover();
+      return [page.locator("#viewMenu .pop")];
     },
   },
   {
