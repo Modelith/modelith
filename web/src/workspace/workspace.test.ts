@@ -15,8 +15,11 @@ function setup() {
   let picked: PickedFile[] = [];
   const browser = new BrowserFileProvider({ choose: async () => picked, download: (name) => downloads.push(name) });
   const kv = new Map<string, string>();
-  const drafts = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
-  const sessions = kvSessionStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
+  /** 下書き・前回の続きの保存先。full にすると、保存領域がいっぱいのブラウザのように書けなくなる。 */
+  const storage = { full: false };
+  const kvStore = { get: (k: string) => kv.get(k) ?? null, set: (k: string, v: string) => !storage.full && !!kv.set(k, v) };
+  const drafts = kvDraftStore(kvStore);
+  const sessions = kvSessionStore(kvStore);
   const ws = new Workspace(new ProviderRegistry([local, browser]), drafts, sessions);
   const root = new FakeDir("project");
   api.folder = root;
@@ -24,7 +27,7 @@ function setup() {
   const pick = (files: PickedFile[]): void => {
     picked = files;
   };
-  return { api, local, browser, downloads, kv, drafts, sessions, ws, root, pick };
+  return { api, local, browser, downloads, kv, drafts, sessions, ws, root, pick, storage };
 }
 
 function fileIn(entries: DirEntry[], path: string): FileRef {
@@ -470,7 +473,7 @@ describe("failureReason（F-FILE-6）", () => {
 describe("kvDraftStore", () => {
   it("壊れた下書きは読まない（異常系）", () => {
     // Arrange
-    const store = kvDraftStore({ get: () => "{not json", set: () => {} });
+    const store = kvDraftStore({ get: () => "{not json", set: () => true });
     // Act
     const state = store.load();
     // Assert
@@ -479,7 +482,7 @@ describe("kvDraftStore", () => {
 
   it("形の合わない項目は捨てる", () => {
     // Arrange
-    const store = kvDraftStore({ get: (k) => (k === "modelith-drafts-v1" ? JSON.stringify([{ name: "a", text: "x" }, { name: 1 }, null]) : null), set: () => {} });
+    const store = kvDraftStore({ get: (k) => (k === "modelith-drafts-v1" ? JSON.stringify([{ name: "a", text: "x" }, { name: 1 }, null]) : null), set: () => true });
     // Act
     const state = store.load();
     // Assert
@@ -488,7 +491,7 @@ describe("kvDraftStore", () => {
 
   it("まだ何も置いていなければ、下書きは無く、すべて閉じて終えたことにもならない（境界）", () => {
     // Arrange
-    const store = kvDraftStore({ get: () => null, set: () => {} });
+    const store = kvDraftStore({ get: () => null, set: () => true });
     // Act
     const state = store.load();
     // Assert
@@ -498,7 +501,7 @@ describe("kvDraftStore", () => {
   it("置いた下書きと、すべて閉じて終えたことを読み戻せる（F-FILE-14）", () => {
     // Arrange
     const kv = new Map<string, string>();
-    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
     // Act
     store.save({ drafts: [], closedAll: true });
     // Assert
@@ -508,11 +511,98 @@ describe("kvDraftStore", () => {
   it("下書きは以前の版と同じ形（配列）で置く", () => {
     // Arrange
     const kv = new Map<string, string>();
-    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
     // Act
     store.save({ drafts: [{ name: "a", text: "x" }], closedAll: false });
     // Assert
     expect(JSON.parse(kv.get("modelith-drafts-v1") ?? "")).toEqual([{ name: "a", text: "x" }]);
+  });
+
+  it("置けたら true を返す", () => {
+    // Arrange
+    const store = kvDraftStore({ get: () => null, set: () => true });
+    // Act
+    const saved = store.save({ drafts: [{ name: "a", text: "x" }], closedAll: false });
+    // Assert
+    expect(saved).toBe(true);
+  });
+
+  it("保存先に書けなければ false を返す（異常系：保存領域がいっぱい）", () => {
+    // Arrange
+    const store = kvDraftStore({ get: () => null, set: () => false });
+    // Act
+    const saved = store.save({ drafts: [{ name: "a", text: "x" }], closedAll: false });
+    // Assert
+    expect(saved).toBe(false);
+  });
+});
+
+describe("Workspace: 下書きを置けないとき（F-FILE-11・F-FILE-5）", () => {
+  it("置けなくなったら印を付けて変更を知らせ、中身のある無題の文書を閉じる前の警告の対象にする（異常系）", () => {
+    // Arrange
+    const s = setup();
+    const u = s.ws.newUntitled("無題", "package U;");
+    let notified = 0;
+    s.ws.subscribe(() => notified++);
+    s.storage.full = true;
+    // Act
+    s.ws.setText(u.key, "package U; // more");
+    // Assert
+    expect(s.ws.hasLostDrafts()).toBe(true);
+    expect(s.ws.hasUnsavedFiles()).toBe(true);
+    expect(notified).toBeGreaterThanOrEqual(1);
+  });
+
+  it("置けている間は、無題の文書を編集しても警告の対象にしない（正常系）", () => {
+    // Arrange
+    const s = setup();
+    const u = s.ws.newUntitled("無題", "package U;");
+    // Act
+    s.ws.setText(u.key, "package U; // more");
+    // Assert
+    expect(s.ws.hasLostDrafts()).toBe(false);
+    expect(s.ws.hasUnsavedFiles()).toBe(false);
+  });
+
+  it("置けないまま続けて編集しても、変更の知らせは置けなくなったときの 1 回だけ（知らせは毎回出さない）", () => {
+    // Arrange
+    const s = setup();
+    const u = s.ws.newUntitled("無題", "package U;");
+    s.ws.setText(u.key, "package U; // 1"); // 未保存の印が付く知らせを先に済ませる
+    s.storage.full = true;
+    let notified = 0;
+    s.ws.subscribe(() => notified++);
+    // Act
+    s.ws.setText(u.key, "package U; // 2");
+    s.ws.setText(u.key, "package U; // 3");
+    s.ws.setText(u.key, "package U; // 4");
+    // Assert
+    expect(notified).toBe(1);
+  });
+
+  it("置けるようになったら印を消し、警告の対象から外す（境界：回復）", () => {
+    // Arrange
+    const s = setup();
+    const u = s.ws.newUntitled("無題", "package U;");
+    s.storage.full = true;
+    s.ws.setText(u.key, "package U; // 1");
+    s.storage.full = false;
+    // Act
+    s.ws.setText(u.key, "package U; // 2");
+    // Assert
+    expect(s.ws.hasLostDrafts()).toBe(false);
+    expect(s.ws.hasUnsavedFiles()).toBe(false);
+  });
+
+  it("置けなくても、中身の無い無題の文書だけなら警告しない（境界）", () => {
+    // Arrange
+    const s = setup();
+    const u = s.ws.newUntitled("無題", "x");
+    s.storage.full = true;
+    // Act
+    s.ws.setText(u.key, "   ");
+    // Assert
+    expect(s.ws.hasUnsavedFiles()).toBe(false);
   });
 });
 
