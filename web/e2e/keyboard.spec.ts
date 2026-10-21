@@ -6,6 +6,15 @@ import { expect, openApp, test } from "./fixtures";
 const focusInside = (page: Page, sel: string): Promise<boolean> =>
   page.evaluate((sel) => document.querySelector(sel)?.contains(document.activeElement) ?? false, sel);
 
+/** Tab を最大 max 回押し、セレクタに合う要素に入力が来たら true を返す（来なければ false）。 */
+async function tabUntil(page: Page, sel: string, max = 80): Promise<boolean> {
+  for (let i = 0; i < max; i++) {
+    await page.keyboard.press("Tab");
+    if (await page.evaluate((sel) => document.activeElement?.matches(sel) ?? false, sel)) return true;
+  }
+  return false;
+}
+
 /** エクスプローラーのサンプルの「閉じる」をキーボードで押し、閉じる前の確認のダイアログを開く。 */
 async function openCloseDialog(page: Page): Promise<void> {
   await page.locator("#explorer [data-close]").focus();
@@ -103,5 +112,51 @@ test.describe("メニュー", () => {
     // Assert
     await expect(page.locator("#helpMenu")).not.toHaveAttribute("open");
     await expect(page.locator("#helpMenu summary")).toBeFocused();
+  });
+});
+
+test.describe("図のタブ", () => {
+  test("Q-8・F-VIEW-2: Tab で選んでいる図のタブに入り、右の矢印キーで次のタブに切り替わる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    const tabs = page.locator("#tabbar .tab");
+    expect(await tabUntil(page, "#tabbar .tab")).toBe(true);
+    await expect(tabs.nth(0)).toBeFocused();
+    await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+    // Act
+    await page.keyboard.press("ArrowRight");
+    // Assert
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(tabs.nth(1)).toBeFocused();
+    await expect(tabs.nth(1)).toHaveAttribute("tabindex", "0");
+    await expect(tabs.nth(0)).toHaveAttribute("tabindex", "-1");
+  });
+
+  test("Q-8・F-VIEW-2: 先頭の図のタブで左の矢印キーを押すと、最後のタブへ回る", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    const tabs = page.locator("#tabbar .tab");
+    const last = (await tabs.count()) - 1;
+    await tabs.nth(0).focus();
+    // Act
+    await page.keyboard.press("ArrowLeft");
+    // Assert
+    await expect(tabs.nth(last)).toHaveAttribute("aria-selected", "true");
+    await expect(tabs.nth(last)).toBeFocused();
+  });
+
+  test("Q-8・F-VIEW-2: 図のタブで End を押すと最後のタブへ、Home を押すと先頭のタブへ切り替わる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    const tabs = page.locator("#tabbar .tab");
+    const last = (await tabs.count()) - 1;
+    await tabs.nth(0).focus();
+    await page.keyboard.press("End");
+    await expect(tabs.nth(last)).toHaveAttribute("aria-selected", "true");
+    // Act
+    await page.keyboard.press("Home");
+    // Assert
+    await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+    await expect(tabs.nth(0)).toBeFocused();
   });
 });

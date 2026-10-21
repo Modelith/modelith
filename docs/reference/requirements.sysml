@@ -840,7 +840,7 @@ package ModelithRequirements {
             }
         }
         verification def KeyboardTest {
-            doc /* web/src/app/keyboard.test.ts：ダイアログの中で Tab を回す先（最後から次・先頭から前・途中・1 つだけ・外から入る・0 個） */
+            doc /* web/src/app/keyboard.test.ts：ダイアログの中で Tab を回す先（最後から次・先頭から前・途中・1 つだけ・外から入る・0 個）と、図のタブを移る先（左右の矢印キー・両端で回る・Home・End・1 つだけ・移さないキー・タブの外） */
             objective {
                 verify KeyboardReq;
             }
@@ -849,11 +849,12 @@ package ModelithRequirements {
             doc /* web/e2e/keyboard.spec.ts：ダイアログを開いている間は Tab・Shift+Tab で外へ出ず背景が inert になり、Esc で閉じると開いたボタンへ入力が戻る。
                    開いているファイルが無いときにメニューから開いたダイアログを閉じると、メニューの見出しへ入力が戻り、図とテキストは操作できないまま。
                    draw.io の書き出しはダイアログの役割と見出しを持ち、Esc で閉じるとファイルのメニューへ入力が戻る。
-                   ファイル・ヘルプのメニューは Esc で閉じ、見出しへ入力が戻る（Chromium で操作） */
+                   ファイル・ヘルプのメニューは Esc で閉じ、見出しへ入力が戻る。Tab で選んでいる図のタブに入り、左右の矢印キー（両端で回る）・Home・End で切り替わる（Chromium で操作） */
             objective {
                 verify KeyboardReq;
                 verify NoOpenFileReq;
                 verify DrawioExportReq;
+                verify ViewTabsReq;
             }
         }
         verification def LayoutTest {

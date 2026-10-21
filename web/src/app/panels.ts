@@ -4,6 +4,7 @@ import { stdViewLabel, type Entry } from "../core";
 import { fit, local, placeUsageAt, toCanvas } from "./canvas";
 import { $, closest, esc, isFormField, store } from "./dom";
 import { W } from "./geometry";
+import { nextTabIndex } from "./keyboard";
 import { act, renderInspector } from "./inspector";
 import { kindLabel, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
 import { addToView, canAddToView, editableView } from "./view-ops";
@@ -489,6 +490,26 @@ export function initTabs(): void {
     const tb = closest(ev, ".tab");
     if (tb && ev.button === 1) closeTab(Number(tb.dataset["tab"]));
   });
+  bar.addEventListener("keydown", moveTabByKey);
+}
+
+/**
+ * 図のタブに入力があるとき、左右の矢印キー・Home・End で隣や端のタブに切り替え、そのタブへ入力を移す（Q-8。ARIA のタブの型）。
+ * タブの中の閉じるボタンや「＋」メニューに入力があるとき、ほかのキーでは何もしない。
+ *
+ * @param ev タブバーで受けたキーの押下
+ */
+function moveTabByKey(ev: KeyboardEvent): void {
+  const cur = ev.target instanceof HTMLElement && ev.target.matches(".tab") ? ev.target : null;
+  if (!cur) return;
+  const tabs = [...$("#tabbar").querySelectorAll<HTMLElement>(".tab")];
+  const next = nextTabIndex(tabs.length, tabs.indexOf(cur), ev.key);
+  if (next === null) return;
+  ev.preventDefault();
+  const id = Number(tabs[next]?.dataset["tab"]);
+  if (id !== S.tabId) activateTab(id);
+  // 切り替えるとタブバーを描き直すので、描き直した後のタブを探して入力を移す
+  $("#tabbar").querySelector<HTMLElement>(`.tab[data-tab="${id}"]`)?.focus();
 }
 
 /* ---- パレット（クリックで配置） ---- */

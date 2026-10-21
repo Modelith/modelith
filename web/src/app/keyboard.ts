@@ -23,3 +23,26 @@ export function wrapFocus(count: number, current: number, backward: boolean): nu
   if (backward && current === 0) return last;
   return null;
 }
+
+/**
+ * 横に並んだタブで、矢印キー・Home・End を押したときに移る先を決める。左右の端では反対の端へ回る。
+ *
+ * @param count タブの数
+ * @param current 今入力を受け取っているタブの位置（0 から）
+ * @param key 押したキー（KeyboardEvent.key）
+ * @returns 移る先のタブの位置。タブを移すキーでない・タブが無い・今の位置がタブの外なら null
+ * @example
+ * nextTabIndex(3, 0, "ArrowRight") // → 1
+ * nextTabIndex(3, 2, "ArrowRight") // → 0（右端から先頭へ回る）
+ * nextTabIndex(3, 0, "ArrowLeft")  // → 2（左端から最後へ回る）
+ * nextTabIndex(3, 1, "End")        // → 2
+ * nextTabIndex(3, 1, "Enter")      // → null（タブを移すキーでない）
+ */
+export function nextTabIndex(count: number, current: number, key: string): number | null {
+  if (count <= 0 || current < 0 || current >= count) return null;
+  if (key === "ArrowRight") return (current + 1) % count;
+  if (key === "ArrowLeft") return (current - 1 + count) % count;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return null;
+}
