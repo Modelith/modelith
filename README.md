@@ -56,7 +56,7 @@
 
 ## SysML v2 の対応状況
 
-SysML v2 のテキストの書き方のうち、よく使う部分から対応しています（**0.1.0-beta.3 時点**、2026-10-20 に [SysML v2 の規格](https://github.com/Systems-Modeling/SysML-v2-Release) と照合）。
+SysML v2 のテキストの書き方のうち、よく使う部分から対応しています（**0.1.0-beta.4 時点**、2026-10-20 に [SysML v2 の規格](https://github.com/Systems-Modeling/SysML-v2-Release) と照合）。
 
 状況の欄は、「対応」（使える）・「一部対応」（足りないところがある）・「未対応」（まだ使えない）で表します。
 
