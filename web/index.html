@@ -11,55 +11,89 @@
 <div class="app">
   <header>
     <h1><svg class="logo" viewBox="0 0 128 128" width="26" height="26" aria-hidden="true"><rect width="128" height="128" rx="30" fill="#16293F"></rect><path d="M34 92 L34 42 L64 72" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path><path d="M64 72 L94 42 L94 92" fill="none" stroke="#2ED3B7" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="name">Modelith</span><span class="long"> — SysML v2 双方向エディタ</span></h1>
-    <span class="badge" id="stageBadge" title="開発中の alpha 版です。保存形式や操作は予告なく変わります">alpha</span>
-    <div class="sync" id="sync" title="テキストと図の同期状態"><i></i><span id="syncText">同期済み</span></div>
+    <button class="menutoggle" id="menuToggle" aria-label="メニュー" aria-expanded="false" aria-controls="menubar" title="メニュー">☰</button>
+    <nav class="menubar" id="menubar" aria-label="メニュー">
+      <details class="menu" id="fileMenu">
+        <summary>ファイル</summary>
+        <div class="pop">
+          <button id="btnNew">新しいファイル</button>
+          <button id="btnOpen">ファイルを開く…<span class="kbd">Ctrl+O</span></button>
+          <button id="btnOpenFolder">フォルダを開く…</button>
+          <div class="sep"></div>
+          <button id="btnSave">保存<span class="kbd">Ctrl+S</span></button>
+          <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
+          <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
+          <div class="sep"></div>
+          <button id="btnSample">サンプルを開く</button>
+          <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
+          <div class="note" id="fileNote"></div>
+        </div>
+      </details>
+      <details class="menu" id="editMenu">
+        <summary>編集</summary>
+        <div class="pop">
+          <button id="menuUndo" disabled>元に戻す<span class="kbd">Ctrl+Z</span></button>
+          <button id="menuRedo" disabled>やり直す<span class="kbd">Ctrl+Shift+Z</span></button>
+          <div class="sep"></div>
+          <button id="menuSelectAll" title="図の要素をすべて選択する">すべて選択<span class="kbd">Ctrl+A</span></button>
+        </div>
+      </details>
+      <details class="menu" id="viewMenu">
+        <summary>表示</summary>
+        <div class="pop">
+          <button id="togTree" class="hide-narrow" aria-pressed="true" title="モデルツリーの表示を切り替える">ツリー</button>
+          <button id="togText" class="hide-narrow" aria-pressed="true" title="テキストの表示を切り替える">テキスト</button>
+          <div class="sep hide-narrow"></div>
+          <button id="menuZoomIn">拡大</button>
+          <button id="menuZoomOut">縮小</button>
+          <button id="menuFit">全体を表示</button>
+          <button id="menuMini" aria-pressed="true" title="全体図（アウトライン）の表示を切り替える">全体図</button>
+        </div>
+      </details>
+      <details class="menu" id="diagramMenu">
+        <summary>図</summary>
+        <div class="pop">
+          <button id="menuSaveView" title="この図を名前を付けて保存する。保存した図には、あとから要素を入れたり外したりできる">図を保存…</button>
+          <button id="menuEdge" aria-pressed="false" title="線の描き方を、直角と曲線で切り替える">線を曲線で描く</button>
+          <button id="menuLayout" title="この図を自動で並べ直す">整列</button>
+          <div class="sep"></div>
+          <button id="btnSaveSvg">図を SVG で保存</button>
+          <button id="btnDrawio">draw.io 形式で書き出す…</button>
+        </div>
+      </details>
+      <details class="menu" id="pluginMenu">
+        <summary>プラグイン</summary>
+        <div class="pop">
+          <button id="btnPlugins">プラグインの一覧…</button>
+          <div id="pluginCommands" hidden></div>
+        </div>
+      </details>
+      <details class="menu" id="helpMenu">
+        <summary>ヘルプ</summary>
+        <div class="pop">
+          <a href="https://github.com/modelith/modelith/issues/new/choose" target="_blank" rel="noopener">不具合・要望を送る（GitHub）</a>
+          <a href="reports/requirements.html" target="_blank" rel="noopener">このバージョンのテスト結果</a>
+          <a id="sourceLink" href="https://github.com/modelith/modelith" target="_blank" rel="noopener">ソースコード</a>
+          <a id="licenseLink" href="https://github.com/modelith/modelith#license" target="_blank" rel="noopener">ライセンス（AGPL-3.0＋プラグイン例外）</a>
+          <a id="noticesLink" href="licenses.txt" target="_blank" rel="noopener">同梱ソフトウェアのライセンス</a>
+          <div class="about" id="legal"><span id="appCopyright"></span><br><b>無保証</b>です。上のライセンスの条件で再配布・改変できます。</div>
+          <div class="about" id="trademarks">SysML®・OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です。Modelith は OMG と関係がなく、その認定・推奨も受けていません。</div>
+          <div class="about">Modelith <span id="appVersion"></span><span id="stageNote">（開発中の alpha 版）</span><br>保存形式や操作は予告なく変わります。保存先の無い文書は、このブラウザの下書きにだけ残ります。手元に残すには「ファイル → 名前を付けて保存」。</div>
+        </div>
+      </details>
+    </nav>
+    <div class="undo" role="group" aria-label="履歴">
+      <button id="btnUndo" title="元に戻す（Ctrl+Z）" aria-label="元に戻す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+      <button id="btnRedo" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    </div>
     <div class="spacer"></div>
+    <div class="sync" id="sync" title="テキストと図の同期状態"><i></i><span id="syncText">同期済み</span></div>
+    <span class="badge" id="stageBadge" title="開発中の alpha 版です。保存形式や操作は予告なく変わります">alpha</span>
     <div class="tabs" role="group" aria-label="表示の切り替え">
       <button id="tabTree" aria-pressed="false">ツリー</button>
       <button id="tabDiagram" aria-pressed="true">図</button>
       <button id="tabText" aria-pressed="false">テキスト</button>
     </div>
-    <div class="panes" role="group" aria-label="パネルの表示">
-      <button id="togTree" aria-pressed="true" title="モデルツリーの表示を切り替える">ツリー</button>
-      <button id="togText" aria-pressed="true" title="テキストの表示を切り替える">テキスト</button>
-    </div>
-    <div class="undo" role="group" aria-label="履歴">
-      <button id="btnUndo" title="元に戻す（Ctrl+Z）" aria-label="元に戻す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
-      <button id="btnRedo" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
-    </div>
-    <details class="menu" id="fileMenu">
-      <summary><span class="long">ファイル</span><span class="short" aria-label="ファイル">⋯</span></summary>
-      <div class="pop">
-        <button id="btnNew">新しいファイル</button>
-        <button id="btnOpen">ファイルを開く…<span class="kbd">Ctrl+O</span></button>
-        <button id="btnOpenFolder">フォルダを開く…</button>
-        <button id="btnPlugins">プラグイン…</button>
-        <div id="pluginCommands" hidden></div>
-        <div class="sep"></div>
-        <button id="btnSave">保存<span class="kbd">Ctrl+S</span></button>
-        <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
-        <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
-        <div class="sep"></div>
-        <button id="btnSaveSvg">図を SVG で保存</button>
-        <button id="btnDrawio">draw.io 形式で書き出す</button>
-        <button id="btnSample">サンプルを開く</button>
-        <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
-        <div class="note" id="fileNote"></div>
-      </div>
-    </details>
-    <details class="menu" id="helpMenu">
-      <summary><span class="long">ヘルプ</span><span class="short" aria-label="ヘルプ">?</span></summary>
-      <div class="pop">
-        <a href="https://github.com/modelith/modelith/issues/new/choose" target="_blank" rel="noopener">不具合・要望を送る（GitHub）</a>
-        <a href="reports/requirements.html" target="_blank" rel="noopener">このバージョンのテスト結果</a>
-        <a id="sourceLink" href="https://github.com/modelith/modelith" target="_blank" rel="noopener">ソースコード</a>
-        <a id="licenseLink" href="https://github.com/modelith/modelith#license" target="_blank" rel="noopener">ライセンス（AGPL-3.0＋プラグイン例外）</a>
-        <a id="noticesLink" href="licenses.txt" target="_blank" rel="noopener">同梱ソフトウェアのライセンス</a>
-        <div class="about" id="legal"><span id="appCopyright"></span><br><b>無保証</b>です。上のライセンスの条件で再配布・改変できます。</div>
-        <div class="about" id="trademarks">SysML®・OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です。Modelith は OMG と関係がなく、その認定・推奨も受けていません。</div>
-        <div class="about">Modelith <span id="appVersion"></span><span id="stageNote">（開発中の alpha 版）</span><br>保存形式や操作は予告なく変わります。保存先の無い文書は、このブラウザの下書きにだけ残ります。手元に残すには「ファイル → 名前を付けて保存」。</div>
-      </div>
-    </details>
     <input type="file" id="fileInput" accept=".sysml,.kerml,.txt,.json,text/plain,application/json" multiple hidden>
     <input type="file" id="pluginFileInput" hidden>
     <input type="file" id="pluginDirInput" webkitdirectory hidden>

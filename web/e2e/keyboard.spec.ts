@@ -56,24 +56,24 @@ test.describe("ダイアログ", () => {
     await page.locator("#explorer [data-close]").click();
     await page.locator('#dialogButtons [data-id="discard"]').click();
     await expect(page.locator("#noDoc")).toBeVisible();
-    await page.locator("#fileMenu summary").click();
+    await page.locator("#pluginMenu summary").click();
     await page.locator("#btnPlugins").click();
     await expect(page.locator("#plugins")).toBeVisible();
     // Act
     await page.keyboard.press("Escape");
     // Assert
     await expect(page.locator("#plugins")).toBeHidden();
-    await expect(page.locator("#fileMenu summary")).toBeFocused();
+    await expect(page.locator("#pluginMenu summary")).toBeFocused();
     await expect(page.locator(".app")).toHaveJSProperty("inert", false);
     await expect(page.locator(".diagrampane")).toHaveJSProperty("inert", true);
   });
 });
 
 test.describe("draw.io の書き出し", () => {
-  test("Q-8・F-EXP-2: draw.io の書き出しはダイアログとして読み上げられ、Esc で閉じるとファイルのメニューへ入力が戻る", async ({ page }) => {
+  test("Q-8・F-EXP-2: draw.io の書き出しはダイアログとして読み上げられ、Esc で閉じると図のメニューへ入力が戻る", async ({ page }) => {
     // Arrange
     await openApp(page);
-    await page.locator("#fileMenu summary").click();
+    await page.locator("#diagramMenu summary").click();
     await page.locator("#btnDrawio").click();
     const dialog = page.getByRole("dialog", { name: "draw.io 形式で書き出す" });
     await expect(dialog).toBeVisible();
@@ -82,7 +82,7 @@ test.describe("draw.io の書き出し", () => {
     await page.keyboard.press("Escape");
     // Assert
     await expect(dialog).toBeHidden();
-    await expect(page.locator("#fileMenu summary")).toBeFocused();
+    await expect(page.locator("#diagramMenu summary")).toBeFocused();
     await expect(page.locator(".app")).toHaveJSProperty("inert", false);
   });
 });

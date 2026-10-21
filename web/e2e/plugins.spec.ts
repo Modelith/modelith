@@ -44,9 +44,9 @@ async function preparePluginFolder(page: Page, manifest = MANIFEST): Promise<voi
   await pickDirNext(page, "trace-rules");
 }
 
-/** ファイルメニューから、プラグインの一覧を開く。 */
+/** プラグインのメニューから、プラグインの一覧を開く。 */
 async function openPluginList(page: Page): Promise<void> {
-  await page.locator("#fileMenu summary").click();
+  await page.locator("#pluginMenu summary").click();
   await page.locator("#btnPlugins").click();
   await expect(page.locator("#plugins")).toBeVisible();
 }

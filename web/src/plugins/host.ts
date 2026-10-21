@@ -94,7 +94,7 @@ let syncing: Promise<void> = Promise.resolve();
 let snapshotCache: { version: number; snapshot: Promise<VersionedSnapshot | null> } | null = null;
 
 /**
- * ホストを初期化する。解析結果の反映のたびにプラグインへ didChange を送り、ファイルメニューのコマンド・読み込み・書き出しをつなぐ。起動時に 1 回呼ぶ。
+ * ホストを初期化する。解析結果の反映のたびにプラグインへ didChange を送り、プラグインのメニューのコマンド・読み込み・書き出しをつなぐ。起動時に 1 回呼ぶ。
  *
  * @param e 画面の他の部分の操作と保存場所
  */
@@ -675,7 +675,7 @@ function clearDiagnostics(id: string): void {
   updateSync();
 }
 
-/** ファイルメニューの「プラグインのコマンド」「プラグインで読み込む」「プラグインで書き出す」を、実行中のプラグインのもので描き直す（無ければ隠す）。 */
+/** プラグインのメニューの「プラグインのコマンド」「プラグインで読み込む」「プラグインで書き出す」を、実行中のプラグインのもので描き直す（無ければ隠す）。 */
 function renderCommands(): void {
   const plugins = [...entries.values()].map((e) => ({ ...e.plugin, state: e.state }));
   const sections: [string, string, CommandItem[]][] = [

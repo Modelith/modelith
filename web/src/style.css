@@ -49,12 +49,21 @@ header h1 .long{font-weight:400;color:var(--ink2);font-size:12px;letter-spacing:
 .menu{position:relative}
 .menu>summary{list-style:none;border:1px solid var(--rule);border-radius:6px;padding:6px 11px;cursor:pointer;background:var(--panel);white-space:nowrap}
 .menu>summary::-webkit-details-marker{display:none}
-.menu .pop{position:absolute;right:0;top:calc(100% + 4px);z-index:30;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.menu .pop{position:absolute;left:0;top:calc(100% + 4px);z-index:30;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
 .menu .pop button{border:0;text-align:left;border-radius:4px}
 .menu .pop button:hover{background:var(--panel2)}
 .menu .pop .phead{margin:6px 6px 2px;padding-top:6px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink2)}
 .menu .pop .pnote{padding:2px 6px 4px;font-size:11px;color:var(--ink2);max-width:220px;white-space:normal}
 .menu .pop .note{font-size:11px;color:var(--ink2);padding:4px 11px}
+/* メニューバー（Q-9）：見出しは枠を付けずに並べ、開いている見出しだけ色を付ける。切り替えの項目は、押されているときに印を付ける */
+header{position:relative}
+.menubar{display:flex;align-items:center;gap:2px}
+.menubar .menu>summary{border-color:transparent;padding:6px 10px;background:transparent}
+.menubar .menu>summary:hover,.menubar .menu[open]>summary{background:var(--panel2);border-color:var(--rule)}
+.menu .pop button[aria-pressed]::before{content:"";flex:none;width:13px;text-align:center}
+.menu .pop button[aria-pressed="true"]::before{content:"✓"}
+.menutoggle{display:none;padding:4px 10px;font-size:16px;line-height:1.2}
+@media (max-width:1100px){ header h1 .long{display:none} }
 .tabs{display:none}
 .undo{display:flex;gap:4px}
 .undo button{width:36px;padding:6px 0;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center}
@@ -68,10 +77,6 @@ main[data-tree="off"] .treepane,main[data-tree="off"] #splitTree,main[data-text=
 .split{background:var(--rule);cursor:col-resize;touch-action:none;position:relative}
 .split::after{content:"";position:absolute;inset:0 -4px}
 .split:hover,.split.on{background:var(--sel)}
-.panes{display:flex;border:1px solid var(--rule);border-radius:7px;overflow:hidden}
-.panes button{border:0;border-radius:0;padding:5px 10px;font-size:12px;color:var(--ink2)}
-.panes button[aria-pressed="true"]{background:var(--panel2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--sel)}
-header .short{display:none}
 .treepane{background:var(--panel)}
 .treepane .panehead input{width:100%;border:1px solid var(--rule);border-radius:6px;padding:5px 8px;background:var(--panel2);font-size:12px}
 .tree{flex:1;overflow:auto;padding:4px 0 24px;font-size:12.5px}
@@ -203,11 +208,10 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
   .tabs button{border:0;border-radius:0;padding:6px 12px}
   .tabs button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
   main{grid-template-columns:1fr !important}
-  .split,.panes{display:none}
+  .split{display:none}
   main .pane{display:none;visibility:visible !important}
   main[data-tab="diagram"] .diagrampane,main[data-tab="text"] .textpane,main[data-tab="tree"] .treepane{display:flex}
   .tabs button{padding:6px 7px;font-size:13px}
-  header .short{display:inline} header .menu .long{display:none}
   .ti .acts{visibility:visible} .ti .acts .nar{display:inline-block}
   .ti{min-height:34px}
   .tool span{display:none} .tool{padding:5px}
@@ -228,11 +232,24 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .menu .pop .about{font-size:11px;color:var(--ink2);padding:6px 11px;line-height:1.6;max-width:260px;white-space:normal}
 #helpMenu .pop{width:320px}
 #helpMenu .pop .about{max-width:none}
+/* 幅がほどほどの画面では、右端のヘルプが画面からはみ出さないよう、見出しの右端にそろえて開く */
+@media (max-width:1000px){ #helpMenu .pop{left:auto;right:0} }
 
 @media (max-width:760px){
   header .badge{display:none}
   header h1 .name{display:none}
-  #helpMenu>summary{padding:6px 9px}
+  /* 狭い画面（Q-9）：メニューは ☰ の 1 つにまとめ、押すと縦に並べたパネルを開く。各メニューはその場で下に開く（アコーディオン） */
+  .menutoggle{display:block}
+  .menutoggle[aria-expanded="true"]{background:var(--panel2);border-color:var(--ink2)}
+  .menubar{display:none;position:absolute;left:8px;top:calc(100% + 4px);z-index:40;flex-direction:column;align-items:stretch;width:min(320px,calc(100vw - 16px));max-height:calc(100dvh - 72px);overflow:auto;
+    background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+  .menubar[data-open]{display:flex}
+  .menubar .menu>summary{display:flex;justify-content:space-between;padding:8px 11px}
+  .menubar .menu>summary::after{content:"▾";color:var(--ink2)}
+  .menubar .menu[open]>summary::after{content:"▴"}
+  .menubar .menu .pop{position:static;min-width:0;border:0;box-shadow:none;padding:2px 0 6px 12px}
+  #helpMenu .pop{width:auto}
+  .menu .pop .hide-narrow{display:none}
 }
 /* ---- ファイル（エクスプローラー・メニュー・ダイアログ） ---- */
 .sidetabs{display:flex;border-bottom:1px solid var(--rule);flex:none}
@@ -283,7 +300,7 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 #dialog .row{flex-wrap:wrap}
 #dialog .ddetail ul{margin:0;padding-left:20px;font-size:13px;line-height:1.6}
 #dialog .ddetail .warn{margin:8px 0 0;padding:8px 10px;border:1px solid var(--err);border-radius:6px;color:var(--err);font-size:13px;font-weight:700;line-height:1.5}
-/* v1 のプラグイン（web/src/plugins）。コマンドはファイルメニューの中、隔離用の iframe は画面に出さない */
+/* v1 のプラグイン（web/src/plugins）。コマンドはプラグインのメニューの中、隔離用の iframe は画面に出さない */
 .plugin-sandbox{display:none}
 #pluginCommands{display:flex;flex-direction:column;gap:2px}
 #pluginCommands[hidden]{display:none}

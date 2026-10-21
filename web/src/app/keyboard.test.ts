@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
+import { nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
 
 describe("wrapFocus（Q-8：ダイアログの中で Tab を回す）", () => {
   it("最後の要素で Tab を押すと、先頭へ回す（境界：末尾）", () => {
@@ -158,5 +158,117 @@ describe("rovingStop（Q-8：Tab でツリーに入る行）", () => {
     const stop = rovingStop(selected);
     // Assert
     expect(stop).toBe(-1);
+  });
+});
+
+describe("nextMenuIndex（Q-9：メニューバーで左右の矢印キーを押して隣のメニューへ移る）", () => {
+  it("右の矢印キーで次の、左の矢印キーで前のメニューへ移る（正常系）", () => {
+    // Arrange
+    const count = 6;
+    // Act
+    const next = [nextMenuIndex(count, 2, "ArrowRight"), nextMenuIndex(count, 2, "ArrowLeft")];
+    // Assert
+    expect(next).toEqual([3, 1]);
+  });
+
+  it("右端で右へ進むと先頭へ、左端で左へ戻ると最後へ回る（境界：両端）", () => {
+    // Arrange
+    const count = 6;
+    // Act
+    const next = [nextMenuIndex(count, 5, "ArrowRight"), nextMenuIndex(count, 0, "ArrowLeft")];
+    // Assert
+    expect(next).toEqual([0, 5]);
+  });
+
+  it("メニューが 1 つなら、そのメニューにとどまる（境界：1 つ）", () => {
+    // Arrange
+    const count = 1;
+    // Act
+    const next = [nextMenuIndex(count, 0, "ArrowRight"), nextMenuIndex(count, 0, "ArrowLeft")];
+    // Assert
+    expect(next).toEqual([0, 0]);
+  });
+
+  it("左右の矢印キーでなければ移らない（Home・End・上下も含む。異常系）", () => {
+    // Arrange
+    const keys = ["Home", "End", "ArrowDown", "ArrowUp", "Enter"];
+    // Act
+    const next = keys.map((key) => nextMenuIndex(6, 2, key));
+    // Assert
+    expect(next).toEqual([null, null, null, null, null]);
+  });
+
+  it("メニューが無い・今の位置がメニューの外なら移らない（境界：0 個・範囲外）", () => {
+    // Arrange
+    const cases: [number, number][] = [[0, 0], [6, -1], [6, 6]];
+    // Act
+    const next = cases.map(([count, current]) => nextMenuIndex(count, current, "ArrowRight"));
+    // Assert
+    expect(next).toEqual([null, null, null]);
+  });
+});
+
+describe("nextMenuItem（Q-9：開いているメニューで上下の矢印キーを押して項目を移る）", () => {
+  it("下の矢印キーで次の、上の矢印キーで前の項目へ移る（正常系）", () => {
+    // Arrange
+    const usable = [true, true, true];
+    // Act
+    const next = [nextMenuItem(usable, 1, "ArrowDown"), nextMenuItem(usable, 1, "ArrowUp")];
+    // Assert
+    expect(next).toEqual([2, 0]);
+  });
+
+  it("最後の項目から下へは先頭へ、先頭の項目から上へは最後へ回る（境界：両端）", () => {
+    // Arrange
+    const usable = [true, true, true];
+    // Act
+    const next = [nextMenuItem(usable, 2, "ArrowDown"), nextMenuItem(usable, 0, "ArrowUp")];
+    // Assert
+    expect(next).toEqual([0, 2]);
+  });
+
+  it("見出しにいるときは、下へは先頭の、上へは最後の項目へ入る（境界：-1）", () => {
+    // Arrange
+    const usable = [true, true, true];
+    // Act
+    const next = [nextMenuItem(usable, -1, "ArrowDown"), nextMenuItem(usable, -1, "ArrowUp")];
+    // Assert
+    expect(next).toEqual([0, 2]);
+  });
+
+  it("押せない項目は飛ばす（端を回るときも。同値：無効な項目）", () => {
+    // Arrange
+    const usable = [false, true, false, true, false];
+    // Act
+    const next = [nextMenuItem(usable, 1, "ArrowDown"), nextMenuItem(usable, 3, "ArrowDown"), nextMenuItem(usable, 1, "ArrowUp"), nextMenuItem(usable, -1, "ArrowDown")];
+    // Assert
+    expect(next).toEqual([3, 1, 3, 1]);
+  });
+
+  it("押せる項目が 1 つだけなら、その項目にとどまる（境界：1 つ）", () => {
+    // Arrange
+    const usable = [false, true, false];
+    // Act
+    const next = [nextMenuItem(usable, 1, "ArrowDown"), nextMenuItem(usable, 1, "ArrowUp")];
+    // Assert
+    expect(next).toEqual([1, 1]);
+  });
+
+  it("押せる項目が無い・項目が 0 個なら移らない（境界：0 個）", () => {
+    // Arrange
+    const cases: boolean[][] = [[false, false], []];
+    // Act
+    const next = cases.map((usable) => nextMenuItem(usable, -1, "ArrowDown"));
+    // Assert
+    expect(next).toEqual([null, null]);
+  });
+
+  it("上下の矢印キーでなければ移らない（異常系）", () => {
+    // Arrange
+    const usable = [true, true, true];
+    // Act
+    const next = ["ArrowLeft", "ArrowRight", "Tab", "Home"].map((key) => nextMenuItem(usable, 0, key));
+    // Assert
+    expect(next).toEqual([null, null, null, null]);
   });
 });

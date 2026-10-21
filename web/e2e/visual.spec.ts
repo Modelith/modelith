@@ -230,12 +230,12 @@ async function openPluginProject(page: Page, plugins: Record<string, unknown>, f
 const installedPlugin = (): Record<string, string> => ({ [`${PLUGIN_DIR}/modelith-plugin.json`]: PLUGIN_MANIFEST, [`${PLUGIN_DIR}/rules.yaml`]: PLUGIN_RULES });
 
 /**
- * ファイルメニューから、プラグインの一覧を開く。
+ * プラグインのメニューから、プラグインの一覧を開く。
  *
  * @param page 画面
  */
 async function openPluginList(page: Page): Promise<void> {
-  await page.locator("#fileMenu summary").click();
+  await page.locator("#pluginMenu summary").click();
   await page.locator("#btnPlugins").click();
   await expect(page.locator("#plugins")).toBeVisible();
 }

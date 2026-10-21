@@ -585,9 +585,9 @@ export function initCanvas(): void {
     S.spaceDown = false;
     wrap.classList.remove("panning");
   });
-  $("#zIn").onclick = () => zoomBy(1.2);
-  $("#zOut").onclick = () => zoomBy(1 / 1.2);
-  $("#zFit").onclick = () => fit();
+  $("#zIn").onclick = $("#menuZoomIn").onclick = () => zoomBy(1.2);
+  $("#zOut").onclick = $("#menuZoomOut").onclick = () => zoomBy(1 / 1.2);
+  $("#zFit").onclick = $("#menuFit").onclick = () => fit();
   // ミニマップ
   const mini = $("#mini");
   let miniDrag = false;
