@@ -24,6 +24,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GitHub の実行環境の rustup は古いことがある。古い rustup はツールチェーンを取るときの TLS の確かめが甘い
+      # （RUSTSEC-2026-0382）ので、ツールチェーンを入れる前に rustup 自身を更新し、1.29.2 以上であることを確かめる
+      - name: Update rustup itself
+        run: |
+          rustup self update
+          scripts/check-rustup.sh
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (2026-10)
         with:
           toolchain: stable

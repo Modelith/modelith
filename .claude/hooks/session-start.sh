@@ -6,6 +6,8 @@ cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 
 prepare_toolchain() {
   command -v rustup >/dev/null || return 0
+  # 古い rustup はツールチェーンを取るときの TLS の確かめが甘い（RUSTSEC-2026-0382。1.29.2 で修正）
+  rustup self update >/dev/null 2>&1 || echo "警告: rustup 自身を更新できませんでした（1.29.2 以上を使ってください）"
   rustup component add rustfmt clippy >/dev/null 2>&1 || echo "警告: rustfmt / clippy を追加できませんでした"
   rustup target add wasm32-unknown-unknown >/dev/null 2>&1 || echo "警告: wasm32 ターゲットを追加できませんでした"
 }
