@@ -6,7 +6,7 @@ import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "../files/local-folder";
 import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
-import { AutoSaver, browserTimer } from "../workspace/autosave";
+import { AutoSaver, browserTimer, failureReason } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
 import { afterRestore, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
@@ -997,7 +997,7 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   auto = new AutoSaver(ws, browserTimer, () => autoSave, (key, outcome) => {
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
     // 失敗しても文書は未保存のまま（●）なので、知らせるだけにして、保存（Ctrl+S）で試し直してもらう（F-FILE-6）
-    else if (typeof outcome === "object") toast(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした：${outcome.failed}`);
+    else if (typeof outcome === "object") toast(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした：${failureReason(outcome.failed)}`);
   });
   onTextChange((text) => {
     if (!shownKey) return;
