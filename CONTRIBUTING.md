@@ -34,6 +34,16 @@ scripts/check.sh               # 静的検査 → 単体 → 結合 → 統合�
 scripts/check.sh --fast        # 静的検査と単体テストだけ
 ```
 
+## 依存の追加・更新
+
+サプライチェーン攻撃（乗っ取られたパッケージの版の配布）から守るための決まりです。
+
+- lockfile（`Cargo.lock`・`package-lock.json`）をコミットする。npm の依存は `npm ci` で入れる（`npm install` は依存を変えるときだけ）。
+- インストール時のスクリプト（`postinstall` など）は動かさない。lockfile のあるフォルダの `.npmrc` に `ignore-scripts=true` を置き、CI も `npm ci --ignore-scripts` で入れる。
+- 公開から 7 日たっていない版は入れない（Dependabot の `cooldown` も 7 日）。急ぎのセキュリティ修正は除く。
+- Python のパッケージには依存しない。
+- CI の `audit` が、既知の脆弱性（RustSec・npm）と npm の署名・来歴（`npm audit signatures`）を確かめる。
+
 ## 構成
 
 ```
