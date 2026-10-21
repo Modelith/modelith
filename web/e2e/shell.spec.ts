@@ -1,5 +1,9 @@
-// アプリ全体の約束（C-2・C-3・Q-2・F-EXP-*）
+// アプリ全体の約束（C-2・C-3・C-8・Q-2・F-EXP-*）
+import { readFileSync } from "node:fs";
+import { stageLabel } from "../src/app/stage";
 import { expect, openApp, test } from "./fixtures";
+
+const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 
 test("C-2・C-4: 起動から操作まで、配信元の静的ファイルを読むだけで、外部やサーバの API に通信しない", async ({ page, baseURL }) => {
   // Arrange
@@ -27,6 +31,22 @@ test("C-3: ヘルプのソースへのリンクは、動いている版のコミ
   // Assert
   await expect(page.locator("#sourceLink")).toHaveAttribute("href", /^https:\/\/github\.com\/modelith\/modelith\/tree\/[0-9a-f]{40}$/);
   await expect(page.locator("#appVersion")).toHaveText(/^\d+\.\d+\.\d+\S* \([0-9a-f]{7}\)$/);
+});
+
+test("C-8: 見出しと「ヘルプ」に、版の名前から決めた開発段階を示す", async ({ page }) => {
+  // Arrange
+  const stage = stageLabel(pkg.version);
+  await openApp(page);
+  // Act
+  await page.locator("#helpMenu summary").click();
+  // Assert
+  if (stage) {
+    await expect(page.locator("#stageBadge")).toHaveText(stage.badge);
+    await expect(page.locator("#stageNote")).toHaveText(`（${stage.note}）`);
+  } else {
+    await expect(page.locator("#stageBadge")).toBeHidden();
+    await expect(page.locator("#stageNote")).toHaveText("");
+  }
 });
 
 test("C-5: ヘルプに著作権・無保証・再配布の条件を示してライセンスへつなぎ、本体と同梱物のライセンス文を配信する", async ({ page, request }) => {

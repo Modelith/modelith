@@ -10,7 +10,7 @@
 <div class="app">
   <header>
     <h1><svg class="logo" viewBox="0 0 128 128" width="26" height="26" aria-hidden="true"><rect width="128" height="128" rx="30" fill="#16293F"></rect><path d="M34 92 L34 42 L64 72" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path><path d="M64 72 L94 42 L94 92" fill="none" stroke="#2ED3B7" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="name">Modelith</span><span class="long"> — SysML v2 双方向エディタ</span></h1>
-    <span class="badge" title="開発中の alpha 版です。保存形式や操作は予告なく変わります">alpha</span>
+    <span class="badge" id="stageBadge" title="開発中の alpha 版です。保存形式や操作は予告なく変わります">alpha</span>
     <div class="sync" id="sync" title="テキストと図の同期状態"><i></i><span id="syncText">同期済み</span></div>
     <div class="spacer"></div>
     <div class="tabs" role="group" aria-label="表示の切り替え">
@@ -56,7 +56,7 @@
         <a id="noticesLink" href="licenses.txt" target="_blank" rel="noopener">同梱ソフトウェアのライセンス</a>
         <div class="about" id="legal"><span id="appCopyright"></span><br><b>無保証</b>です。上のライセンスの条件で再配布・改変できます。</div>
         <div class="about" id="trademarks">SysML®・OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です。Modelith は OMG と関係がなく、その認定・推奨も受けていません。</div>
-        <div class="about">Modelith <span id="appVersion"></span>（開発中の alpha 版）<br>保存形式や操作は予告なく変わります。保存先の無い文書は、このブラウザの下書きにだけ残ります。手元に残すには「ファイル → 名前を付けて保存」。</div>
+        <div class="about">Modelith <span id="appVersion"></span><span id="stageNote">（開発中の alpha 版）</span><br>保存形式や操作は予告なく変わります。保存先の無い文書は、このブラウザの下書きにだけ残ります。手元に残すには「ファイル → 名前を付けて保存」。</div>
       </div>
     </details>
     <input type="file" id="fileInput" accept=".sysml,.kerml,.txt,.json,text/plain,application/json" multiple hidden>
