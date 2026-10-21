@@ -45,12 +45,30 @@ function removeFsAccess(): void {
   delete w["showOpenFilePicker"];
 }
 
+/**
+ * 作った Worker（コアの Worker）を `__e2e.workers` に控え、テストから止められるようにする（Q-6）。
+ * ピッカーの置き換えの後に動かす（`__e2e` は置き換えが作る。無ければここで作る）。
+ */
+function exposeWorkers(): void {
+  const w = window as unknown as { __e2e?: { workers?: Worker[] }; Worker: typeof Worker };
+  const workers: Worker[] = [];
+  (w.__e2e ??= {}).workers = workers;
+  const Original = w.Worker;
+  w.Worker = class extends Original {
+    constructor(url: string | URL, options?: WorkerOptions) {
+      super(url, options);
+      workers.push(this);
+    }
+  };
+}
+
 export const test = base.extend<{ fsAccess: boolean }>({
   fsAccess: [true, { option: true }],
   page: async ({ page, fsAccess }, use) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.addInitScript(fsAccess ? installPickers : removeFsAccess);
+    await page.addInitScript(exposeWorkers);
     await use(page);
     // どのテストでも、画面の例外が出ていないことを確かめる
     expect(errors, "画面で例外が発生した").toEqual([]);

@@ -25,16 +25,16 @@ import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
-import { attachCore, onAnalyzed, relayout, settled, toast } from "./app/sync";
+import { attachCore, coreHooks, onAnalyzed, relayout, settled, toast } from "./app/sync";
 import { installUnexpectedErrorHandlers } from "./app/unexpected";
 import { CC } from "./app/views";
-import { startCore } from "./core";
+import { superviseCore } from "./core";
 import CoreWorker from "./core/worker?worker";
 import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
 const EDGE_KEY = "modelith-edgestyle";
 
-// 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）の受け口は、ここに 1 つだけ置く（Q-6）。
+// 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）の受け口は、ここに 1 つだけ置く（Q-7）。
 // 黙って止まらずにトーストで知らせ、詳しい内容はコンソールに残す
 installUnexpectedErrorHandlers(window, toast, (detail) => console.error("予期しない問題:", detail));
 
@@ -137,9 +137,9 @@ function initToolbar(): void {
 }
 
 // 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
-// 待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
+// コアが止まった・返事をしないときは作り直す（Q-7）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
 try {
-  const [core] = await Promise.all([startCore(new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed), document.fonts.ready]);
+  const [core] = await Promise.all([superviseCore(() => new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed, coreHooks), document.fonts.ready]);
   attachCore(core);
 } catch (e) {
   showStartupBox(startupErrorHtml(e));
@@ -148,14 +148,14 @@ try {
 }
 
 /**
- * 保存した設定（パネルの配置・図のタブ）を消して、ページを読み直す（Q-6）。下書き・前回の続き・プラグインの許可は消さない。
+ * 保存した設定（パネルの配置・図のタブ）を消して、ページを読み直す（Q-7）。下書き・前回の続き・プラグインの許可は消さない。
  */
 function resetSettingsAndReload(): void {
   for (const key of [UI_KEY, TABS_KEY]) store.remove(key);
   location.reload();
 }
 
-// 画面の組み立て。途中で失敗したら、白い画面のままにせず、保存した設定を初期化して読み直す操作を示す（Q-6）
+// 画面の組み立て。途中で失敗したら、白い画面のままにせず、保存した設定を初期化して読み直す操作を示す（Q-7）
 try {
   $("#defs").innerHTML = DEFS;
   loadUi();
