@@ -8,6 +8,7 @@ import "./style.css";
 import SAMPLE from "./samples/electric-kettle.sysml?raw";
 import SAMPLE_LAYOUT from "./samples/electric-kettle.layout.json?raw";
 import { initCanvas, fit } from "./app/canvas";
+import { stageLabel } from "./app/stage";
 import { initCtxMenu } from "./app/ctxmenu";
 import { $, isFormField, store } from "./app/dom";
 import { initEditor } from "./app/editor";
@@ -66,6 +67,15 @@ function initMenus(): void {
     showDrawio();
   };
   $("#appVersion").textContent = __APP_VERSION__ + (__APP_COMMIT__ ? ` (${__APP_COMMIT__.slice(0, 7)})` : "");
+  // 見出しの札と「ヘルプ」の開発段階は、版の名前（alpha・beta・rc）から決める。正式版では出さない
+  const stage = stageLabel(__APP_VERSION__);
+  const badge = $("#stageBadge");
+  badge.hidden = !stage;
+  if (stage) {
+    badge.textContent = stage.badge;
+    badge.title = `${stage.note}です。保存形式や操作は予告なく変わります`;
+  }
+  $("#stageNote").textContent = stage ? `（${stage.note}）` : "";
   $("#appCopyright").textContent = __APP_COPYRIGHT__;
   // AGPL §13：動いている版のソースを指す
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#sourceLink").href = `https://github.com/modelith/modelith/tree/${__APP_COMMIT__}`;
