@@ -329,7 +329,7 @@ async function act(e: Entry, a: HostAction): Promise<void> {
       void sendDidChange(e);
       return;
     case "diagnostics":
-      S.pluginDiagnostics = [...S.pluginDiagnostics.filter((d) => d.plugin !== e.plugin.id), { plugin: e.plugin.id, version: a.version, items: a.items }];
+      S.pluginDiagnostics = [...S.pluginDiagnostics.filter((d) => d.plugin !== e.plugin.id), { plugin: e.plugin.id, version: a.version, items: a.items, dropped: a.dropped }];
       renderProblems();
       updateSync();
       return;
