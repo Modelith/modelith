@@ -1,7 +1,7 @@
 // 画面とコア（Worker）のやり取り（ADR-0016 §4）。Worker の代わりに、同じ処理（handle）を同じスレッドで動かし、
 // 返事を届ける順番をテストで決める。
-import { describe, expect, it } from "vitest";
-import { CoreClient, STALE_EDIT, type CorePort } from "./client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CoreClient, CORE_STOPPED, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text";
 import { analyze, checkPluginMessage, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
@@ -210,7 +210,7 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
     expect([r.type, "failure" in r ? r.failure : undefined]).toEqual([type, "boom"]);
   });
 
-  it("CoreClient は、失敗の返事を読み取れない設定・断りとして受け取る", async () => {
+  it("CoreClient は、失敗の返事を読み取れない設定・断りとして受け取り、つなぎ直すまでの依頼は読み込み直し中と断る", async () => {
     // Arrange
     const fail = (): string => {
       throw new Error("boom");
@@ -233,12 +233,12 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
       },
       () => {},
     );
-    // Act
+    // Act（失敗の返事でコアは止まったと見なし、つなぎ直すまでは依頼をすぐ断る。Q-6）
     const parsed = await c.parseProjectFile("{}");
     const created = await c.createProjectFile("A");
     // Assert
     expect(parsed.problems[0]?.message).toBe("設定ファイルを読み込めませんでした（boom）");
-    expect(created).toEqual({ refused: "プロジェクトの設定ファイルを作成できませんでした（boom）" });
+    expect(created).toEqual({ refused: "プロジェクトの設定ファイルを作成できませんでした（図を読み込み直しています）" });
   });
 });
 
@@ -467,5 +467,164 @@ describe("CoreClient（v1 のプラグイン、ADR-0018 §3・§4）", () => {
     const res = failedReply(req as Exclude<CoreRequest, { type: "init" }>, "boom");
     // Assert
     expect(res).toEqual({ type: "pluginMessageChecked", version: 5, id: 6, json: '{"refused":"メッセージを確かめられませんでした（boom）"}', failure: "boom" });
+  });
+});
+
+/** 返事をためておき、deliverAll() で届けるか、crash() でコアが落ちたと知らせる偽の Worker（Q-6 の異常系）。 */
+function stallableWorker(fns: CoreFns = wasm) {
+  const state: CoreState = { text: "", plugins: null };
+  const queue: CoreResponse[] = [];
+  const posted: CoreRequest[] = [];
+  let listener: (r: CoreResponse) => void = () => {};
+  let failure: (reason: string) => void = () => {};
+  const port: CorePort = {
+    post: (req: CoreRequest) => {
+      posted.push(req);
+      if (req.type === "init") return;
+      try {
+        queue.push(handle(state, req, fns));
+      } catch (e) {
+        queue.push(failedReply(req, (e as Error).message));
+      }
+    },
+    listen: (fn) => {
+      listener = fn;
+    },
+    listenFailure: (fn) => {
+      failure = fn;
+    },
+  };
+  return { port, posted, deliverAll: (): void => queue.splice(0).forEach((r) => listener(r)), crash: (reason: string): void => failure(reason) };
+}
+
+describe("CoreClient（コアが止まった・返事をしないときの出口、Q-6）", () => {
+  const TIMEOUT = 1000;
+
+  function supervised(fns?: CoreFns) {
+    const w = stallableWorker(fns);
+    const downs: string[] = [];
+    const got: number[] = [];
+    const c = new CoreClient(w.port, (version) => got.push(version), { timeoutMs: TIMEOUT, onDown: (reason) => downs.push(reason) });
+    return { c, w, downs, got };
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("期限の直前に届いた返事は使う（境界値: 期限 - 1 ms）", async () => {
+    // Arrange
+    const { c, w, downs } = supervised();
+    const pending = c.edit("package P { part def A; }", { op: "rename", key: "A", name: "B" });
+    // Act
+    vi.advanceTimersByTime(TIMEOUT - 1);
+    w.deliverAll();
+    vi.advanceTimersByTime(1);
+    // Assert
+    expect("edits" in (await pending)).toBe(true);
+    expect([downs, c.connected]).toEqual([[], true]);
+  });
+
+  it("期限までに返事が来なければ、待っていた図の操作をやめ、コアが止まったと知らせる（境界値: 期限ちょうど）", async () => {
+    // Arrange
+    const { c, w, downs } = supervised();
+    const pending = c.edit("package P { part def A; }", { op: "rename", key: "A", name: "B" });
+    // Act
+    vi.advanceTimersByTime(TIMEOUT);
+    w.deliverAll(); // 遅れて届いた返事は捨てる
+    // Assert
+    expect(await pending).toEqual({ refused: CORE_STOPPED });
+    expect([downs, c.connected]).toEqual([["1 秒たっても返事がありません"], false]);
+  });
+
+  it("解析の返事が来なくても、期限で止まったと知らせる（編集を待っていなくても）", () => {
+    // Arrange
+    const { c, downs } = supervised();
+    c.sync("package P;");
+    // Act
+    vi.advanceTimersByTime(TIMEOUT);
+    // Assert
+    expect(downs).toHaveLength(1);
+  });
+
+  it("Worker のエラーで、待っていた依頼をすべて失敗にする（異常系）", async () => {
+    // Arrange
+    const { c, w, downs } = supervised();
+    const edit = c.edit("package P;", { op: "delete", keys: [] });
+    const parsed = c.parseProjectFile("{}");
+    const snapshot = c.modelSnapshot();
+    // Act
+    w.crash("boom");
+    // Assert
+    expect(await edit).toEqual({ refused: CORE_STOPPED });
+    expect((await parsed).problems[0]?.message).toBe("設定ファイルを読み込めませんでした（boom）");
+    expect(await snapshot).toBeNull();
+    expect(downs).toEqual(["boom"]);
+  });
+
+  it("wasm の例外（失敗の返事）を受け取ったら、その返事は断りにし、コアが止まったと知らせる", async () => {
+    // Arrange
+    const fail = (): string => {
+      throw new Error("panic");
+    };
+    const { c, w, downs } = supervised({ ...wasm, edit: fail });
+    const pending = c.edit("package P;", { op: "delete", keys: [] });
+    // Act
+    w.deliverAll();
+    // Assert
+    expect(await pending).toEqual({ refused: "操作できませんでした（panic）" });
+    expect(downs).toEqual(["panic"]);
+  });
+
+  it("止まった後、つなぎ直すまでの依頼はすぐ断る", async () => {
+    // Arrange
+    const { c, w } = supervised();
+    w.crash("boom");
+    // Act
+    const r = await c.edit("package P;", { op: "delete", keys: [] });
+    // Assert
+    expect(r).toEqual({ refused: CORE_STOPPED });
+  });
+
+  it("つなぎ直すと、今のテキストとプラグインを新しいコアに送り直し、解析結果が届く（正常系）", () => {
+    // Arrange
+    const { c, w, got } = supervised();
+    void c.setPlugins([plugin()]);
+    c.sync("package P { requirement def R; }");
+    w.deliverAll();
+    w.crash("boom");
+    const next = stallableWorker();
+    // Act
+    c.reconnect(next.port);
+    next.deliverAll();
+    // Assert
+    expect(next.posted.map((r) => r.type)).toEqual(["setPlugins", "didChange"]);
+    expect([c.connected, got.at(-1)]).toEqual([true, c.current]);
+    expect(c.text).toBe("package P { requirement def R; }");
+  });
+
+  it("止まっている間に変えたテキストを、つなぎ直したときに送る", () => {
+    // Arrange
+    const { c, w } = supervised();
+    c.sync("package P;");
+    w.crash("boom");
+    c.sync("package Q;");
+    const next = stallableWorker();
+    // Act
+    c.reconnect(next.port);
+    // Assert
+    expect(next.posted).toEqual([{ type: "didChange", version: c.current, text: "package Q;" }]);
+  });
+
+  it("古い通り道から遅れて届いた返事は捨てる", () => {
+    // Arrange
+    const { c, w, got } = supervised();
+    c.sync("package P;");
+    w.crash("boom");
+    const next = stallableWorker();
+    c.reconnect(next.port);
+    // Act
+    w.deliverAll();
+    // Assert
+    expect(got).toEqual([]);
   });
 });

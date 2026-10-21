@@ -1,7 +1,7 @@
 // 画面の側から見たコア（ADR-0016 §4）。テキストを変えるたびに版を 1 つ上げてコアに送り、
 // 返ってきた結果の版が今の版と同じときだけ使う。違えば捨てる（解析なら次の結果を待ち、編集なら適用しない）。
 
-import { projectReadProblem, type CoreRequest, type CoreResponse } from "./protocol";
+import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type CoreResponse } from "./protocol";
 import type { Permission } from "../plugins/generated/protocol";
 import {
   fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
@@ -13,13 +13,38 @@ import type { Model, ParseResult } from "./types";
 export interface CorePort {
   post(req: CoreRequest): void;
   listen(fn: (res: CoreResponse) => void): void;
+  /** コアが落ちた（Worker の `error`・`messageerror`）ことを聞く。同じスレッドのテストでは省ける。 */
+  listenFailure?(fn: (reason: string) => void): void;
 }
 
 /** 編集の返事が古かったときの断り（ADR-0014 の言葉）。 */
 export const STALE_EDIT = "テキストが変わったため、この操作はやめました。もう一度操作してください";
 
+/** コアが止まった・返事をしないときに、待っていた図の操作に返す断りと、画面に出す知らせ（Q-6）。 */
+export const CORE_STOPPED = "図の操作をやめました。テキストはそのまま残っています";
+
+/** コアの返事を待つ期限（ミリ秒）。これを過ぎたら、コアは止まったと見なす（Q-6）。 */
+export const CORE_REPLY_TIMEOUT_MS = 10_000;
+
 /** 解析結果を受け取ったときの処理。findings はチェックルールの結果（プラグインが無ければ空）。 */
 export type AnalyzedListener = (version: number, P: ParseResult, M: Model, findings: RuleFinding[]) => void;
+
+/** コアの受け口の設定。 */
+export interface CoreClientOptions {
+  /** 返事を待つ期限（ミリ秒。既定は CORE_REPLY_TIMEOUT_MS） */
+  timeoutMs?: number;
+  /** コアが止まった（期限切れ・Worker のエラー・wasm の例外）ときに呼ぶ。待っていた依頼はすべて失敗にした後で呼ぶ */
+  onDown?: (reason: string) => void;
+}
+
+/** コアへの依頼（起動の `init` を除く）。 */
+type CoreCall = Exclude<CoreRequest, { type: "init" }>;
+
+/** 返事を待っている依頼。期限のタイマーと、期限切れ・コアの停止のときに結果を失敗にする処理。 */
+interface Pending {
+  timer: ReturnType<typeof setTimeout>;
+  fail: (reason: string) => void;
+}
 
 export class CoreClient {
   private version = 0;
@@ -32,18 +57,30 @@ export class CoreClient {
   private readonly jsonWaiting = new Map<number, (json: string) => void>();
   /** 今のテキストに対する依頼（プラグインに渡すモデル・プラグインのメッセージの確認）のうち、返事を待っているもの。返事と、その間にテキストが変わったかを受け取る。 */
   private readonly textWaiting = new Map<number, (res: { json: string; stale: boolean }) => void>();
+  /** 返事を待っている依頼（解析は "v" + 版、ほかは "r" + id）。期限と、失敗にする処理。 */
+  private readonly pending = new Map<string, Pending>();
+  /** 最後にコアに読み込ませたプラグイン（つなぎ直したときに送り直す）。 */
+  private plugins: PluginFiles[] = [];
+  /** 今の通り道。コアが止まってから、つなぎ直すまでは null（その間の依頼はすぐ失敗にする）。 */
+  private port: CorePort | null = null;
+  private readonly timeoutMs: number;
+  private readonly onDown: (reason: string) => void;
 
   /**
    * コアの受け口を作り、コアからの返事を聞き始める。
    *
    * @param port コアとの通り道（Worker、またはテストでは同じスレッドの関数）
    * @param onAnalyzed 今の版の解析結果を受け取ったときに呼ぶ処理
+   * @param options 返事の期限と、コアが止まったときの処理
    */
   constructor(
-    private readonly port: CorePort,
+    port: CorePort,
     private readonly onAnalyzed: AnalyzedListener,
+    options: CoreClientOptions = {},
   ) {
-    port.listen((res) => this.receive(res));
+    this.timeoutMs = options.timeoutMs ?? CORE_REPLY_TIMEOUT_MS;
+    this.onDown = options.onDown ?? (() => {});
+    this.connect(port);
   }
 
   /**
@@ -71,6 +108,45 @@ export class CoreClient {
   }
 
   /**
+   * コアにつながっているか（止まってから、つなぎ直すまでは false）。
+   *
+   * @returns つながっていれば true
+   * @example
+   * new CoreClient(port, onAnalyzed).connected // → true
+   * // 返事の期限が切れた後 → false。c.reconnect(port) の後 → true
+   */
+  get connected(): boolean {
+    return this.port !== null;
+  }
+
+  /**
+   * 新しいコア（作り直した Worker）につなぎ直し、今のテキストとプラグインを送り直す（Q-6）。
+   * プラグインを読み込ませていれば先に送り、テキストを送っていれば新しい版で送り直す（解析結果が届き、画面が描き直される）。
+   *
+   * @param port 新しいコアとの通り道（`ready` を返した後のもの）
+   */
+  reconnect(port: CorePort): void {
+    this.connect(port);
+    if (this.plugins.length) void this.request((id) => ({ type: "setPlugins", id, plugins: this.plugins }));
+    if (this.sent !== null) this.send(this.sent);
+  }
+
+  /**
+   * 通り道をつなぎ、返事とコアの停止を聞き始める。古い通り道から届いた返事は捨てる。
+   *
+   * @param port コアとの通り道
+   */
+  private connect(port: CorePort): void {
+    this.port = port;
+    port.listen((res) => {
+      if (this.port === port) this.receive(res);
+    });
+    port.listenFailure?.((reason) => {
+      if (this.port === port) this.down(reason);
+    });
+  }
+
+  /**
    * テキストをコアに送る（コアに `didChange` を投げる）。前に送ったものと同じなら送らない。
    *
    * @param text 今のテキストの全文
@@ -87,6 +163,7 @@ export class CoreClient {
 
   /**
    * テキストに新しい版を付けてコアに送る（`didChange`）。同じテキストでも送る。
+   * コアが止まっている間は版とテキストを控えるだけにし、つなぎ直したときに送る。
    *
    * @param text 今のテキストの全文
    * @returns 送ったテキストの版
@@ -98,7 +175,7 @@ export class CoreClient {
     this.version += 1;
     this.sent = text;
     this.texts.set(this.version, text);
-    this.port.post({ type: "didChange", version: this.version, text });
+    if (this.port) this.post({ type: "didChange", version: this.version, text }, `v${this.version}`, () => {});
     return this.version;
   }
 
@@ -108,18 +185,22 @@ export class CoreClient {
    * @param text 編集の元にするテキストの全文
    * @param intent 図からの操作の意図（改名・削除など）
    * @returns 編集の結果（`TextEdit` の列など）。返事が来るまでにテキストが変わっていれば `{ refused: STALE_EDIT }`、
-   *   コアの返事が読めなければ `{ refused: "操作できませんでした…" }`。例外は投げない
+   *   コアの返事が読めなければ `{ refused: "操作できませんでした…" }`、コアが止まった・返事の期限が切れたときは `{ refused: CORE_STOPPED }`。例外は投げない
    * @example
    * await c.edit("package P { part def A; }", { op: "rename", key: "A", name: "B" })
    * // → { edits: [...] }（当てると "package P { part def B; }"）
    * // 返事の前に c.sync(別のテキスト) をしたとき → { refused: STALE_EDIT }
+   * // 返事が期限（10 秒）までに来ないとき → { refused: CORE_STOPPED }
    */
   edit(text: string, intent: Intent): Promise<EditResult | Refused> {
     const version = this.sync(text);
     const id = this.nextId++;
     return new Promise((resolve) => {
       this.waiting.set(id, resolve);
-      this.port.post({ type: "edit", version, id, intent });
+      this.post({ type: "edit", version, id, intent }, `r${id}`, () => {
+        this.waiting.delete(id);
+        resolve({ refused: CORE_STOPPED });
+      });
     });
   }
 
@@ -169,6 +250,7 @@ export class CoreClient {
   /**
    * チェックルールのプラグインをコアに読み込ませる（前のものは置き換える。ADR-0018 §2）。
    * 前にテキストを送っていれば、同じテキストを新しい版で送り直し、ルールの結果を付けた解析結果を受け取れるようにする。
+   * 読み込ませたプラグインは控えておき、コアを作り直したときに送り直す。
    *
    * @param plugins プラグインごとの ID・使うか・ファイル（空なら、ルールを当てない）
    * @returns プラグインごとのまとめ。コアの返事が読めなければ、まとめは空で error に理由。例外は投げない
@@ -178,6 +260,7 @@ export class CoreClient {
    * await c.setPlugins([]) // → { plugins: [] }
    */
   async setPlugins(plugins: PluginFiles[]): Promise<PluginsResult> {
+    this.plugins = plugins;
     const pending = this.request((id) => ({ type: "setPlugins", id, plugins }));
     if (this.sent !== null) this.send(this.sent);
     return parsePlugins(await pending);
@@ -233,15 +316,19 @@ export class CoreClient {
    * 今のテキストに対する依頼をコアに送り、返事の JSON を待つ。
    *
    * @param make 依頼の id から依頼を作る関数
-   * @returns 同じ id の返事の JSON と、返事が来るまでにテキストが変わったか
+   * @returns 同じ id の返事の JSON と、返事が来るまでにテキストが変わったか。コアが止まったときは、失敗の返事の JSON
    * @example
    * await this.requestForText((id) => ({ type: "modelSnapshot", version: 1, id })) // → { json: '{"elements":[],"relations":[]}', stale: false }
    */
-  private requestForText(make: (id: number) => CoreRequest): Promise<{ json: string; stale: boolean }> {
+  private requestForText(make: (id: number) => CoreCall): Promise<{ json: string; stale: boolean }> {
     const id = this.nextId++;
+    const req = make(id);
     return new Promise((resolve) => {
       this.textWaiting.set(id, resolve);
-      this.port.post(make(id));
+      this.post(req, `r${id}`, (reason) => {
+        this.textWaiting.delete(id);
+        resolve({ json: failedReply(req, reason).json, stale: false });
+      });
     });
   }
 
@@ -249,34 +336,103 @@ export class CoreClient {
    * 設定ファイル・プラグインの依頼をコアに送り、返事の JSON を待つ。
    *
    * @param make 依頼の id から依頼を作る関数
-   * @returns 同じ id の返事の JSON の文字列で解決する Promise
+   * @returns 同じ id の返事の JSON の文字列で解決する Promise。コアが止まったときは、失敗の返事の JSON
    * @example
    * await this.request((id) => ({ type: "parseProject", id, text: "{}" })) // → '{"project":{"plugins":{}},"problems":[]}'
    */
-  private request(make: (id: number) => CoreRequest): Promise<string> {
+  private request(make: (id: number) => CoreCall): Promise<string> {
     const id = this.nextId++;
+    const req = make(id);
     return new Promise((resolve) => {
       this.jsonWaiting.set(id, resolve);
-      this.port.post(make(id));
+      this.post(req, `r${id}`, (reason) => {
+        this.jsonWaiting.delete(id);
+        resolve(failedReply(req, reason).json);
+      });
     });
+  }
+
+  /**
+   * 依頼をコアに送り、返事の期限を付ける。期限までに返事が来なければ、コアは止まったと見なす（down）。
+   * コアが止まっている間（つなぎ直すまで）は送らず、すぐ失敗にする。
+   *
+   * @param req 送る依頼
+   * @param key 返事と結ぶ鍵（解析は "v" + 版、ほかは "r" + id）
+   * @param fail 期限切れ・コアの停止のときに、この依頼の結果を失敗にする処理（理由を受け取る）
+   */
+  private post(req: CoreRequest, key: string, fail: (reason: string) => void): void {
+    if (!this.port) {
+      fail("図を読み込み直しています");
+      return;
+    }
+    const timer = setTimeout(() => this.down(`${this.timeoutMs / 1000} 秒たっても返事がありません`), this.timeoutMs);
+    this.pending.set(key, { timer, fail });
+    this.port.post(req);
+  }
+
+  /**
+   * 返事が来た依頼の期限を解く。
+   *
+   * @param key 依頼の鍵（"v" + 版、または "r" + id）
+   */
+  private settle(key: string): void {
+    const p = this.pending.get(key);
+    if (!p) return;
+    clearTimeout(p.timer);
+    this.pending.delete(key);
+  }
+
+  /**
+   * コアが止まった（返事の期限切れ・Worker のエラー・wasm の例外）。通り道を外し、待っていた依頼をすべて失敗にしてから、onDown に知らせる。
+   * 送ったテキストは控えたままにし、つなぎ直したときに送り直す。
+   *
+   * @param reason 止まった理由（画面には出さず、作り直す側に渡す）
+   */
+  private down(reason: string): void {
+    if (!this.port) return;
+    this.port = null;
+    const failed = [...this.pending.values()];
+    this.pending.clear();
+    this.texts.clear();
+    for (const p of failed) {
+      clearTimeout(p.timer);
+      p.fail(reason);
+    }
+    this.onDown(reason);
   }
 
   /**
    * コアからの返事を 1 つ受け取る。今の版の解析結果なら onAnalyzed を呼び、編集の返事なら待っている edit を、
    * 設定ファイル・プラグインの返事なら、待っている依頼（parseProjectFile・setPlugins など）を解決する。
    * 古い版の解析結果は捨て、古い版の編集の返事は断り（STALE_EDIT）にし、モデル・メッセージの確認には古い版かどうかを添える。
+   * wasm の例外による失敗の返事（failure 付き）は、そのまま解決したうえで、コアが止まったと見なす（壊れた wasm を使い続けない）。
    *
    * @param res コアからの返事
    */
   private receive(res: CoreResponse): void {
+    if (res.type === "ready" || res.type === "failed") return;
+    this.resolve(res);
+    if (res.failure !== undefined) this.down(res.failure);
+  }
+
+  /**
+   * 依頼への返事を、待っている処理に渡す。
+   *
+   * @param res 依頼への返事
+   */
+  private resolve(res: CoreReply): void {
     if (res.type === "analyzed") {
+      this.settle(`v${res.version}`);
       const text = this.texts.get(res.version);
       for (const v of this.texts.keys()) if (v <= res.version) this.texts.delete(v);
       // 古い版の結果は捨てて、次の結果を待つ
       if (res.version !== this.version || text === undefined) return;
       const { P, M, findings } = fromAnalysis(res.json, text);
       this.onAnalyzed(res.version, P, M, findings);
-    } else if (res.type === "edited") {
+      return;
+    }
+    this.settle(`r${res.id}`);
+    if (res.type === "edited") {
       const resolve = this.waiting.get(res.id);
       this.waiting.delete(res.id);
       resolve?.(res.version === this.version ? parseEdited(res.json) : { refused: STALE_EDIT });
@@ -284,7 +440,7 @@ export class CoreClient {
       const resolve = this.textWaiting.get(res.id);
       this.textWaiting.delete(res.id);
       resolve?.({ json: res.json, stale: res.version !== this.version });
-    } else if (res.type !== "ready" && res.type !== "failed") {
+    } else {
       const resolve = this.jsonWaiting.get(res.id);
       this.jsonWaiting.delete(res.id);
       resolve?.(res.json);
@@ -449,31 +605,69 @@ function parseChecked(json: string): CheckedPluginMessage | Refused {
 }
 
 /**
- * Worker の中でコアを動かし、使える状態になったら受け口を返す。Worker に `init` を送る。
+ * Worker をコアとの通り道にする。返事は `message`、コアが落ちたことは `error`・`messageerror` で聞く。
+ * `error` は、画面の側で受け取ったと印を付け（preventDefault）、ページ全体のエラーにしない。
+ *
+ * @param worker コアを動かす Worker（worker.ts を読み込んだもの）
+ * @returns 通り道
+ * @example
+ * const port = workerPort(new CoreWorker());
+ * port.listenFailure((reason) => …); // Worker が落ちると reason（エラーのメッセージ）で呼ばれる
+ */
+export function workerPort(worker: Worker): CorePort {
+  return {
+    post: (req) => worker.postMessage(req),
+    listen: (fn) => worker.addEventListener("message", (ev: MessageEvent<CoreResponse>) => fn(ev.data)),
+    listenFailure: (fn) => {
+      worker.addEventListener("error", (ev) => {
+        ev.preventDefault();
+        fn(ev.message || "コアの Worker でエラーが起きました");
+      });
+      worker.addEventListener("messageerror", () => fn("コアの Worker からの返事を読めませんでした"));
+    },
+  };
+}
+
+/**
+ * Worker の中でコアを動かし、使える状態になったら通り道を返す。Worker に `init` を送る。
  *
  * @param worker コアを動かす Worker（worker.ts を読み込んだもの）
  * @param wasmUrl コアの wasm の URL
- * @param onAnalyzed 今の版の解析結果を受け取ったときに呼ぶ処理
- * @returns Worker が `ready` を返したら、受け口（CoreClient）で解決する Promise。
- *   wasm を読み込めない（`failed`）・Worker を起動できないときは Error で拒否する（起動の失敗として画面に出す）
+ * @returns Worker が `ready` を返したら、通り道で解決する Promise。
+ *   wasm を読み込めない（`failed`）・Worker を起動できないときは Error で拒否する
  * @example
- * await startCore(worker, "/modelith_core_bg.wasm", onAnalyzed) // → CoreClient（current は 0）
- * await startCore(worker, "/missing.wasm", onAnalyzed)           // → Error で拒否
+ * await initWorker(worker, "/modelith_core_bg.wasm") // → CorePort
+ * await initWorker(worker, "/missing.wasm")          // → Error で拒否
  */
-export function startCore(worker: Worker, wasmUrl: string, onAnalyzed: AnalyzedListener): Promise<CoreClient> {
+export function initWorker(worker: Worker, wasmUrl: string): Promise<CorePort> {
+  const port = workerPort(worker);
   return new Promise((resolve, reject) => {
-    const port: CorePort = {
-      post: (req) => worker.postMessage(req),
-      listen: (fn) => worker.addEventListener("message", (ev: MessageEvent<CoreResponse>) => fn(ev.data)),
-    };
     const first = (ev: MessageEvent<CoreResponse>): void => {
-      if (ev.data.type === "ready") resolve(new CoreClient(port, onAnalyzed));
+      if (ev.data.type === "ready") resolve(port);
       else if (ev.data.type === "failed") reject(new Error(ev.data.message));
       else return;
       worker.removeEventListener("message", first);
     };
     worker.addEventListener("message", first);
     worker.addEventListener("error", (ev) => reject(new Error(ev.message || "コアの Worker を起動できませんでした")), { once: true });
-    worker.postMessage({ type: "init", wasmUrl } satisfies CoreRequest);
+    port.post({ type: "init", wasmUrl });
   });
+}
+
+/**
+ * Worker の中でコアを動かし、使える状態になったら受け口を返す。Worker に `init` を送る。
+ * コアが止まったときの作り直しは supervisor.ts の `superviseCore` が行う。
+ *
+ * @param worker コアを動かす Worker（worker.ts を読み込んだもの）
+ * @param wasmUrl コアの wasm の URL
+ * @param onAnalyzed 今の版の解析結果を受け取ったときに呼ぶ処理
+ * @param options 返事の期限と、コアが止まったときの処理
+ * @returns Worker が `ready` を返したら、受け口（CoreClient）で解決する Promise。
+ *   wasm を読み込めない（`failed`）・Worker を起動できないときは Error で拒否する（起動の失敗として画面に出す）
+ * @example
+ * await startCore(worker, "/modelith_core_bg.wasm", onAnalyzed) // → CoreClient（current は 0）
+ * await startCore(worker, "/missing.wasm", onAnalyzed)           // → Error で拒否
+ */
+export async function startCore(worker: Worker, wasmUrl: string, onAnalyzed: AnalyzedListener, options: CoreClientOptions = {}): Promise<CoreClient> {
+  return new CoreClient(await initWorker(worker, wasmUrl), onAnalyzed, options);
 }
