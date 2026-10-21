@@ -25,6 +25,21 @@ export function wrapFocus(count: number, current: number, backward: boolean): nu
 }
 
 /**
+ * ツリーの行のうち、Tab で入る行（tabindex="0" にする 1 行）を決める。選んでいる行があればその行、無ければ先頭の行にする（ARIA のツリーの型）。
+ *
+ * @param selected 行ごとの、選んでいるか（上から順）
+ * @returns Tab で入る行の位置（0 から）。行が無ければ -1
+ * @example
+ * rovingStop([false, true, false]) // → 1（選んでいる行）
+ * rovingStop([false, false])       // → 0（選んでいなければ先頭）
+ * rovingStop([])                   // → -1（行が無い）
+ */
+export function rovingStop(selected: readonly boolean[]): number {
+  if (!selected.length) return -1;
+  return Math.max(0, selected.indexOf(true));
+}
+
+/**
  * 横に並んだタブで、矢印キー・Home・End を押したときに移る先を決める。左右の端では反対の端へ回る。
  *
  * @param count タブの数

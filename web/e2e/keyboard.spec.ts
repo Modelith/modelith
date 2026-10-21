@@ -160,3 +160,33 @@ test.describe("図のタブ", () => {
     await expect(tabs.nth(0)).toBeFocused();
   });
 });
+
+test.describe("モデルツリー", () => {
+  test("Q-8・F-VIEW-5: 行を選んでいなければ、検索欄から Tab で先頭の行に入り、下の矢印キーで次の行へ移る", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#sideModel").click();
+    const rows = page.locator("#tree .ti");
+    await page.locator("#treeSearch").focus();
+    await page.keyboard.press("Tab");
+    await expect(rows.nth(0)).toBeFocused();
+    // Act
+    await page.keyboard.press("ArrowDown");
+    // Assert
+    await expect(rows.nth(1)).toBeFocused();
+    await expect(page.locator('#tree .ti[tabindex="0"]')).toHaveCount(1);
+  });
+
+  test("Q-8・F-VIEW-5: 行を選んでいれば、検索欄から Tab でその行に入る", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#sideModel").click();
+    await page.locator("#tree .ti").nth(1).locator(".nm").click();
+    await expect(page.locator("#tree .ti.sel")).toHaveCount(1);
+    await page.locator("#treeSearch").focus();
+    // Act
+    await page.keyboard.press("Tab");
+    // Assert
+    await expect(page.locator("#tree .ti.sel")).toBeFocused();
+  });
+});

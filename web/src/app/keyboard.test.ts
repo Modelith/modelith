@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextTabIndex, wrapFocus } from "./keyboard";
+import { nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
 
 describe("wrapFocus（Q-8：ダイアログの中で Tab を回す）", () => {
   it("最後の要素で Tab を押すと、先頭へ回す（境界：末尾）", () => {
@@ -110,5 +110,53 @@ describe("nextTabIndex（Q-8：図のタブを矢印キーで移る）", () => {
     const next = [nextTabIndex(0, 0, "ArrowRight"), nextTabIndex(count, -1, "ArrowRight"), nextTabIndex(count, 3, "ArrowLeft")];
     // Assert
     expect(next).toEqual([null, null, null]);
+  });
+});
+
+describe("rovingStop（Q-8：Tab でツリーに入る行）", () => {
+  it("選んでいる行があれば、その行に入る（正常系）", () => {
+    // Arrange
+    const selected = [false, false, true, false];
+    // Act
+    const stop = rovingStop(selected);
+    // Assert
+    expect(stop).toBe(2);
+  });
+
+  it("選んでいる行が無ければ、先頭の行に入る（正常系）", () => {
+    // Arrange
+    const selected = [false, false, false];
+    // Act
+    const stop = rovingStop(selected);
+    // Assert
+    expect(stop).toBe(0);
+  });
+
+  it("選んでいる行が先頭・末尾でも、その行に入る（境界：両端）", () => {
+    // Arrange
+    const first = [true, false, false];
+    const last = [false, false, true];
+    // Act
+    const stops = [rovingStop(first), rovingStop(last)];
+    // Assert
+    expect(stops).toEqual([0, 2]);
+  });
+
+  it("行が 1 つなら、選んでいなくてもその行に入る（境界：1 行）", () => {
+    // Arrange
+    const selected = [false];
+    // Act
+    const stop = rovingStop(selected);
+    // Assert
+    expect(stop).toBe(0);
+  });
+
+  it("行が無ければ、入る行は無い（境界：0 行）", () => {
+    // Arrange
+    const selected: boolean[] = [];
+    // Act
+    const stop = rovingStop(selected);
+    // Assert
+    expect(stop).toBe(-1);
   });
 });
