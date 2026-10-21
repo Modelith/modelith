@@ -1,7 +1,8 @@
 // v1 のプラグイン（TypeScript、ADR-0018 §3〜§5）のホスト。プロジェクトかこのブラウザに入れたプラグインを、許可を確かめてから隔離した場所で動かし、
 // テキストの変更を知らせ、届いたメッセージをコアに確かめてもらってから使う。コマンド・読み込み・書き出しをメニューから頼み、
 // プラグイン用の保存場所（storage）をプラグインごとに分けて貸す。
-// 判断は純粋関数（trust.ts・messages.ts・view.ts・permissions.ts・storage.ts・transfer.ts）とコア（Rust）に任せ、ここは状態の出し入れと画面の操作だけを行う。
+// 届いたメッセージは、入口で大きさと待ちの件数を制限する（limits.ts、F-PLUG-7）。
+// 判断は純粋関数（trust.ts・messages.ts・limits.ts・view.ts・permissions.ts・storage.ts・transfer.ts）とコア（Rust）に任せ、ここは状態の出し入れと画面の操作だけを行う。
 
 import { applyTextEdits, type VersionedSnapshot } from "../core";
 import { ask } from "../app/dialog";
@@ -12,6 +13,7 @@ import { coreClient, onAnalyzedVersion, renderProblems, setText, toast, updateSy
 import { modelView } from "../app/views";
 import type { PluginDataStore } from "./browser-store";
 import { API_VERSION, type HostMessage, type Permission } from "./generated/protocol";
+import { DROPPED_NOTIFY_PREFIX, droppedNotifyNotice, intake, MAX_NOTIFIES_PER_SECOND, MESSAGE_LIMITS, notifyAllowance, type IntakeState } from "./limits";
 import { addNotice, decideMessage, flashRange, messageJson, STALE_PLUGIN_EDIT, type HostAction, type PendingRequest } from "./messages";
 import { sandboxPage } from "./permissions";
 import { startSandbox, type Sandbox } from "./sandbox";
@@ -53,7 +55,16 @@ interface Entry {
   queue: Promise<void>;
   /** 動かし始めるたびに増える番号。止めた後に届いた古い知らせを捨てる。 */
   run: number;
+  /** 入口の数え上げ（扱い終わっていない数・捨てた数）。 */
+  intake: IntakeState;
+  /** 最近出した利用者への知らせ（notify）の時刻（頻度の上限のため）。 */
+  notifies: number[];
+  /** 頻度の上限を超えて捨てた知らせの数。 */
+  droppedNotifies: number;
 }
+
+/** 動かし始めたときの、入口の数え上げ。 */
+const FRESH_INTAKE: IntakeState = { queued: 0, dropped: 0 };
 
 /** 開いているファイルが無いときに、コマンドや書き出しを頼まれたときの知らせ（F-FILE-14）。 */
 const NO_OPEN_FILE = "開いているファイルがありません。ファイルを開いてから実行してください";
@@ -165,7 +176,10 @@ async function applyPlugins(plugins: readonly ScriptPlugin[]): Promise<void> {
  * replace(plugin, "ab…", "checking", []) // → { plugin, sha256: "ab…", state: "checking", notices: [], sandbox: null, … }
  */
 function replace(plugin: ScriptPlugin, sha256: string, state: RunState, notices: string[]): Entry {
-  const e: Entry = { plugin, sha256, state, notices, sandbox: null, pending: new Map(), nextRequest: 1, queue: Promise.resolve(), run: 0 };
+  const e: Entry = {
+    plugin, sha256, state, notices, sandbox: null, pending: new Map(), nextRequest: 1, queue: Promise.resolve(), run: 0,
+    intake: FRESH_INTAKE, notifies: [], droppedNotifies: 0,
+  };
   entries.set(plugin.id, e);
   return e;
 }
@@ -246,11 +260,12 @@ function remember(id: string, record: TrustRecord): void {
  */
 function start(e: Entry): void {
   const run = ++e.run;
+  e.intake = FRESH_INTAKE;
+  e.notifies = [];
+  e.droppedNotifies = 0;
   const page = new URL(`${import.meta.env.BASE_URL}${sandboxPage(e.plugin.permissions)}`, location.href).href;
   e.sandbox = startSandbox(page, e.plugin.code, {
-    message: (data) => {
-      e.queue = e.queue.then(() => receive(e, run, data));
-    },
+    message: (data) => enqueue(e, run, data),
     error: (message) => {
       if (e.run !== run) return;
       notice(e, `プラグインの中でエラーが発生しました：${message || "（詳細は不明です）"}`);
@@ -276,6 +291,33 @@ function halt(e: Entry): void {
 }
 
 /**
+ * プラグインから届いたデータを、入口で確かめてから待ちに入れる（F-PLUG-7）。
+ * 待ちが上限に達している・大きすぎるものは捨てて一覧で知らせ、捨てた数が上限に達したら止める。
+ *
+ * @param e プラグインの状態
+ * @param run 届いたときの、動かし始めた番号（止めた後なら捨てる）
+ * @param data 届いたデータ（まだ確かめていない値）
+ */
+function enqueue(e: Entry, run: number, data: unknown): void {
+  if (e.run !== run) return;
+  const verdict = intake(e.intake, data, MESSAGE_LIMITS);
+  e.intake = verdict.state;
+  if (verdict.kind === "halt") {
+    halt(e);
+    setState(e, "failed");
+    toast(`プラグイン「${e.plugin.name}」に停止を指示しました（届いたメッセージが多すぎるため）`);
+    return notice(e, verdict.notice);
+  }
+  if (verdict.kind === "drop") return notice(e, verdict.notice);
+  e.queue = e.queue
+    .then(() => receive(e, run, data))
+    .finally(() => {
+      // 止めて動かし直した後は、数え直しているので触らない
+      if (e.run === run) e.intake = { ...e.intake, queued: e.intake.queued - 1 };
+    });
+}
+
+/**
  * 状態を変え、一覧とメニューを描き直す。
  *
  * @param e プラグインの状態
@@ -294,7 +336,20 @@ function setState(e: Entry, state: RunState): void {
  * @param text 知らせの文
  */
 function notice(e: Entry, text: string): void {
-  e.notices = addNotice(e.notices, text);
+  const next = addNotice(e.notices, text);
+  // 同じ知らせが続くときは変わらないので、描き直さない（大量のメッセージを捨てるときに画面を固めない）
+  if (next.length === e.notices.length && next[0] === e.notices[0]) return;
+  e.notices = next;
+  changed();
+}
+
+/**
+ * 頻度の上限を超えて捨てた知らせの数を、一覧の 1 行で示す（数が変わるたびに、前の行を置き換える）。
+ *
+ * @param e プラグインの状態
+ */
+function noticeDroppedNotifies(e: Entry): void {
+  e.notices = addNotice(e.notices.filter((n) => !n.startsWith(DROPPED_NOTIFY_PREFIX)), droppedNotifyNotice(e.droppedNotifies, MAX_NOTIFIES_PER_SECOND));
   changed();
 }
 
@@ -359,10 +414,17 @@ async function act(e: Entry, a: HostAction): Promise<void> {
     case "storageGet":
     case "storageSet":
       return useStorage(e, a);
-    case "notify":
+    case "notify": {
+      const allowance = notifyAllowance(e.notifies, Date.now(), MAX_NOTIFIES_PER_SECOND);
+      e.notifies = allowance.recent;
+      if (!allowance.allowed) {
+        e.droppedNotifies++;
+        return noticeDroppedNotifies(e);
+      }
       toast(`プラグイン「${name}」：${a.message}`);
       if (a.level !== "info") notice(e, a.message);
       return;
+    }
     case "drop":
       return notice(e, a.notice);
     case "ignore":
