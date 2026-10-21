@@ -380,6 +380,8 @@ const scenes: Scene[] = [
     act: async (page) => {
       await openSampleFolder(page, "package A;\n");
       await typeAtEnd(page, "// edited\n");
+      // 未保存の印は、入力の反映の後に付く。開いているファイルとフォルダの一覧の両方に付いてから撮る
+      await expect(page.locator(".treepane .dot")).toHaveCount(2);
       return [page.locator(".treepane")];
     },
   },
