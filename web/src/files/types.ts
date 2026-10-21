@@ -113,10 +113,22 @@ export type RecentAccess = "granted" | "prompt" | "denied" | "none";
 export interface SiblingFiles extends ProviderInfo {
   /** このファイルの隣を扱えるか（フォルダから開いたファイルだけ。1 つだけ選んだファイルは隣を扱えない）。 */
   hasSiblings(ref: FileRef): boolean;
-  /** 隣のファイル name を読む（無ければ null）。 */
-  readSibling(ref: FileRef, name: string): Promise<string | null>;
-  /** 隣のファイル name に書く（無ければ作る）。 */
-  writeSibling(ref: FileRef, name: string, text: string): Promise<void>;
+  /** 隣のファイル name を読む（内容と版。無ければ null）。 */
+  readSibling(ref: FileRef, name: string): Promise<FileContent | null>;
+  /**
+   * 隣のファイル name に書く。無ければ作る。あれば expectedVersion と今の版を比べ、違えば ConflictError（null なら比べない）。
+   *
+   * @param ref モデルのファイルの参照
+   * @param name 隣のファイルの名前（`m.layout.json` など）
+   * @param text 書く内容
+   * @param expectedVersion 読んだときの版。null なら比べずに上書きする（強制上書き・まだ読んでいない）
+   * @returns 書いた後の新しい版
+   * @example
+   * await p.writeSibling(ref, "m.layout.json", "L", version) // → 新しい版
+   * await p.writeSibling(ref, "m.layout.json", "L", version) // → ConflictError を投げる（読んだ後に他で変更されていたとき）
+   * await p.writeSibling(ref, "m.layout.json", "L", null)    // → 新しい版（比べずに書く）
+   */
+  writeSibling(ref: FileRef, name: string, text: string, expectedVersion: string | null): Promise<string>;
 }
 
 /** 開いたフォルダの中の、決まった場所のファイルを読み書きできる（プロジェクトの設定ファイル modelith.json など、ADR-0019）。 */

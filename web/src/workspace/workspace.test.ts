@@ -624,6 +624,57 @@ describe("Workspace: 配置ファイル（ADR-0005、F-VIEW-3・6、C-6）", () 
     expect((s.root.entries.get("a.layout.json") as { content: string }).content).toBe("L3");
   });
 
+  it("配置ファイルが開いた後に他のアプリで変更されていたら、上書きせず conflict を返す（F-FILE-7）", async () => {
+    // Arrange
+    const s = setup();
+    const layoutFile = s.root.put("a.layout.json", "L1");
+    const { file, doc } = await openA(s);
+    layoutFile.externalWrite("theirs");
+    s.ws.setLayout(doc.key, "mine");
+    // Act
+    const outcome = await s.ws.save(doc.key, s.browser);
+    // Assert（テキストのファイルには触らず、配置は未保存のまま）
+    expect(outcome).toBe("conflict");
+    expect(layoutFile.content).toBe("theirs");
+    expect(doc.layoutStale).toBe(true);
+    expect(doc.stale).toBe(false);
+    expect(file.content).toBe("package A;");
+    expect(s.ws.isDirty(doc)).toBe(true);
+  });
+
+  it("配置ファイルの競合も、強制すれば上書きする", async () => {
+    // Arrange
+    const s = setup();
+    const layoutFile = s.root.put("a.layout.json", "L1");
+    const { doc } = await openA(s);
+    layoutFile.externalWrite("theirs");
+    s.ws.setLayout(doc.key, "mine");
+    // Act
+    const outcome = await s.ws.save(doc.key, s.browser, { force: true });
+    // Assert
+    expect(outcome).toBe("saved");
+    expect(layoutFile.content).toBe("mine");
+    expect(doc.layoutStale).toBe(false);
+    expect(s.ws.isDirty(doc)).toBe(false);
+  });
+
+  it("配置ファイルの競合で読み直すと、自分の配置を捨てて配置ファイルの内容になる", async () => {
+    // Arrange
+    const s = setup();
+    const layoutFile = s.root.put("a.layout.json", "L1");
+    const { doc } = await openA(s);
+    layoutFile.externalWrite("theirs");
+    s.ws.setLayout(doc.key, "mine");
+    await s.ws.save(doc.key, s.browser);
+    // Act
+    await s.ws.reload(doc.key);
+    // Assert（読み直した版で、次の保存は競合しない）
+    expect(doc).toMatchObject({ layout: "theirs", savedLayout: "theirs", layoutStale: false });
+    s.ws.setLayout(doc.key, "L3");
+    expect(await s.ws.save(doc.key, s.browser)).toBe("saved");
+    expect(layoutFile.content).toBe("L3");
+  });
+
   it("配置を変えていなければ、配置ファイルを作らない（境界値）", async () => {
     // Arrange
     const s = setup();

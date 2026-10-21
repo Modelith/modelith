@@ -345,14 +345,15 @@ async function offerFolderForLayout(key: string): Promise<void> {
 }
 
 /**
- * 保存しようとしたファイルが他のアプリで変わっていたとき、上書き・読み直し・やめるを選ばせる（F-FILE-7）。
+ * 保存しようとしたファイル（か、その図の配置を保存する配置ファイル）が他のアプリで変わっていたとき、上書き・読み直し・やめるを選ばせる（F-FILE-7）。
  *
  * @param key 文書のキー
  */
 async function resolveConflict(key: string): Promise<void> {
   const doc = ws.get(key);
   if (!doc) return;
-  const r = await ask("ファイルが他で変更されています", `「${doc.name}」は開いた後に他のアプリで変更されました。どうしますか？`, [
+  const what = doc.stale ? `「${doc.name}」` : `「${doc.name}」の図の配置（要素の位置）`;
+  const r = await ask("ファイルが他で変更されています", `${what}は開いた後に他のアプリで変更されました。どうしますか？`, [
     { id: "cancel", label: "やめる" },
     { id: "reload", label: "ファイルの内容を読み込む（自分の変更を捨てる）" },
     { id: "overwrite", label: "自分の内容で上書きする", kind: "danger" },
@@ -490,12 +491,12 @@ const layoutMark = (d: Doc): string =>
  * @param d 文書
  * @returns 印の HTML。変更されていなければ ""
  * @example
- * // d.stale が true
+ * // d.stale か d.layoutStale が true
  * staleMark(d) // → '<span class="st" title="他のアプリで変更されています">⚠</span>'
- * // d.stale が false
+ * // どちらも false
  * staleMark(d) // → ""
  */
-const staleMark = (d: Doc): string => (d.stale ? `<span class="st" title="他のアプリで変更されています">⚠</span>` : "");
+const staleMark = (d: Doc): string => (d.stale || d.layoutStale ? `<span class="st" title="他のアプリで変更されています">⚠</span>` : "");
 
 /**
  * エクスプローラー（開いているファイルと、開いているフォルダの中身）を描き直す（F-FILE-1・F-FILE-4）。

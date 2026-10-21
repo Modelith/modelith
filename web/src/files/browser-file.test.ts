@@ -59,7 +59,7 @@ describe("BrowserFileProvider: 配置ファイル（ADR-0005、F-VIEW-6）", () 
     const ref = await p.pickFile();
     // Assert
     expect(ref?.name).toBe("m.sysml");
-    expect(await p.readSibling(ref!, "m.layout.json")).toBe("L");
+    expect(await p.readSibling(ref!, "m.layout.json")).toEqual({ text: "L", version: "0" });
   });
 
   it("モデルだけを選んだら、隣のファイルは無い（境界値）", async () => {
@@ -76,9 +76,9 @@ describe("BrowserFileProvider: 配置ファイル（ADR-0005、F-VIEW-6）", () 
     const { p, downloads } = setup();
     const { ref } = await p.saveAs("m.sysml", "package M;");
     // Act
-    await p.writeSibling(ref, "m.layout.json", "L2");
+    const version = await p.writeSibling(ref, "m.layout.json", "L2");
     // Assert
     expect(downloads.map((d) => d.name)).toEqual(["m.sysml", "m.layout.json"]);
-    expect(await p.readSibling(ref, "m.layout.json")).toBe("L2");
+    expect(await p.readSibling(ref, "m.layout.json")).toEqual({ text: "L2", version });
   });
 });

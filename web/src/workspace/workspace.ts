@@ -37,6 +37,10 @@ export interface Doc {
   savedLayout: string;
   /** 配置の保存先。sibling は隣の配置ファイル、none は保存先が無い（ファイルを 1 つだけ開いた・無題）。 */
   layoutHome: "sibling" | "none";
+  /** 最後に保存した（読み込んだ）配置ファイルの版。配置ファイルが無い・保存先が無ければ null。 */
+  layoutVersion: string | null;
+  /** 配置ファイルが開いた後に他のアプリで変更された（保存で競合した）。 */
+  layoutStale: boolean;
 }
 
 /** 無題の文書の下書き。 */
@@ -464,15 +468,17 @@ export class Workspace {
   /**
    * 保存する。上書きできる保存先があれば版を比べて上書きし（force なら比べない）、
    * 無ければ saveAs で保存先を選ばせる。配置だけを変えたときは配置ファイルだけを書く（C-6）。
+   * 配置ファイルも読んだときの版と比べ、他で変更されていれば書かない（F-FILE-7）。
    *
    * @param key 文書のキー
    * @param saveAs 上書きできないときに保存先を選ばせる先（ダイアログ・ダウンロード）
-   * @param opts `force: true` なら、他で変更されていても版を比べずに上書きする
-   * @returns "saved"（保存した）・"conflict"（読んだ後に他で変更されていた。文書に stale の印を付ける）・
+   * @param opts `force: true` なら、他で変更されていても版を比べずに上書きする（配置ファイルも）
+   * @returns "saved"（保存した）・"conflict"（読んだ後に他で変更されていた。文書に stale（配置ファイルなら layoutStale）の印を付ける）・
    *   "cancelled"（文書が無い・保存先を選ばなかった）。ConflictError 以外の失敗はそのまま投げる
    * @example
    * await ws.save(doc.key, browser)                    // → "saved"
    * await ws.save(doc.key, browser)                    // → "conflict"（他のアプリで書き換えられていた）
+   * await ws.save(doc.key, browser)                    // → "conflict"（配置ファイルが他のアプリで書き換えられていた）
    * await ws.save(doc.key, browser, { force: true })   // → "saved"（強制上書き）
    */
   async save(key: string, saveAs: SaveAsTarget, opts: { force?: boolean } = {}): Promise<SaveOutcome> {
@@ -493,7 +499,14 @@ export class Workspace {
       doc.savedText = doc.text;
       doc.stale = false;
     }
-    await this.writeLayout(doc);
+    try {
+      await this.writeLayout(doc, { force: opts.force });
+    } catch (e) {
+      if (!(e instanceof ConflictError)) throw e;
+      doc.layoutStale = true;
+      this.changed();
+      return "conflict";
+    }
     this.changed();
     return "saved";
   }
@@ -570,7 +583,7 @@ export class Workspace {
     const doc = this.get(key);
     if (!doc?.ref) return;
     const { text, version } = await this.readable(doc.ref).read(doc.ref);
-    Object.assign(doc, { text, savedText: text, version, stale: false, ...(await this.readLayout(doc.ref)) });
+    Object.assign(doc, { text, savedText: text, version, stale: false, layoutStale: false, ...(await this.readLayout(doc.ref)) });
     this.changed();
   }
 
@@ -615,7 +628,7 @@ export class Workspace {
       any = true;
       if (this.isDirty(doc)) doc.stale = true;
       else {
-        Object.assign(doc, { text: cur.text, savedText: cur.text, version: cur.version, stale: false, ...(await this.readLayout(doc.ref)) });
+        Object.assign(doc, { text: cur.text, savedText: cur.text, version: cur.version, stale: false, layoutStale: false, ...(await this.readLayout(doc.ref)) });
         reloaded.push(doc.key);
       }
     }
@@ -760,9 +773,9 @@ export class Workspace {
    */
   private async moveTo(doc: Doc, ref: FileRef, version: string): Promise<void> {
     const wasUntitled = !doc.ref;
-    Object.assign(doc, { ref, name: ref.name, savedText: doc.text, version, stale: false });
+    Object.assign(doc, { ref, name: ref.name, savedText: doc.text, version, stale: false, layoutVersion: null, layoutStale: false });
     doc.layoutHome = this.siblingsOf(ref) ? "sibling" : "none";
-    if (doc.layout) await this.writeLayout(doc, true);
+    if (doc.layout) await this.writeLayout(doc, { always: true });
     if (wasUntitled) this.persistDrafts();
     this.changed();
   }
@@ -785,42 +798,46 @@ export class Workspace {
    * 開いたファイルの配置を、隣の配置ファイル（`名前.layout.json`）から読む。
    *
    * @param ref 開いたファイルの参照
-   * @returns 配置と配置の保存先。隣を扱えなければ空の配置と "none"、隣に配置ファイルが無ければ空の配置と "sibling"
+   * @returns 配置と配置の保存先と配置ファイルの版。隣を扱えなければ空の配置と "none"、隣に配置ファイルが無ければ空の配置と "sibling"（版は null）
    * @example
-   * await this.readLayout(fromFolder) // → { layout: "L", savedLayout: "L", layoutHome: "sibling" }
-   * await this.readLayout(picked)     // → { layout: "", savedLayout: "", layoutHome: "none" }
+   * await this.readLayout(fromFolder) // → { layout: "L", savedLayout: "L", layoutHome: "sibling", layoutVersion: "1001:1" }
+   * await this.readLayout(picked)     // → { layout: "", savedLayout: "", layoutHome: "none", layoutVersion: null }
    */
-  private async readLayout(ref: FileRef): Promise<Pick<Doc, "layout" | "savedLayout" | "layoutHome">> {
+  private async readLayout(ref: FileRef): Promise<Pick<Doc, "layout" | "savedLayout" | "layoutHome" | "layoutVersion">> {
     const p = this.siblingsOf(ref);
     if (!p) return this.noLayoutHome("");
-    const layout = (await p.readSibling(ref, layoutNameFor(ref.name))) ?? "";
-    return { layout, savedLayout: layout, layoutHome: "sibling" };
+    const file = await p.readSibling(ref, layoutNameFor(ref.name));
+    const layout = file?.text ?? "";
+    return { layout, savedLayout: layout, layoutHome: "sibling", layoutVersion: file?.version ?? null };
   }
 
   /**
-   * 保存先のある配置を、変わっていれば（force なら変わっていなくても）隣の配置ファイルに書く。
+   * 保存先のある配置を、変わっていれば（always なら変わっていなくても）隣の配置ファイルに書く。
+   * 読んだときの版と比べ、他で変更されていれば書かずに ConflictError を投げる（force なら比べない）。
    * 隣を扱えない文書なら何もしない。
    *
    * @param doc 文書
-   * @param force true なら、配置が変わっていなくても書く（新しい保存先に移したとき）
+   * @param opts `always: true` なら、配置が変わっていなくても書く（新しい保存先に移したとき）。
+   *   `force: true` なら、配置ファイルが他で変更されていても版を比べずに上書きする
    */
-  private async writeLayout(doc: Doc, force = false): Promise<void> {
+  private async writeLayout(doc: Doc, opts: { always?: boolean; force?: boolean } = {}): Promise<void> {
     const p = doc.ref && this.siblingsOf(doc.ref);
-    if (!doc.ref || !p || (!force && doc.layout === doc.savedLayout)) return;
-    await p.writeSibling(doc.ref, layoutNameFor(doc.ref.name), doc.layout);
+    if (!doc.ref || !p || (!opts.always && doc.layout === doc.savedLayout)) return;
+    doc.layoutVersion = await p.writeSibling(doc.ref, layoutNameFor(doc.ref.name), doc.layout, opts.force ? null : doc.layoutVersion);
     doc.savedLayout = doc.layout;
+    doc.layoutStale = false;
   }
 
   /**
    * 配置の保存先が無い文書の、配置の初めの値を作る。
    *
    * @param layout 配置（配置ファイルの文字列）
-   * @returns 保存済みとして扱う配置と、保存先 "none"
+   * @returns 保存済みとして扱う配置と、保存先 "none"（配置ファイルの版は null）
    * @example
-   * this.noLayoutHome("") // → { layout: "", savedLayout: "", layoutHome: "none" }
+   * this.noLayoutHome("") // → { layout: "", savedLayout: "", layoutHome: "none", layoutVersion: null }
    */
-  private noLayoutHome(layout: string): Pick<Doc, "layout" | "savedLayout" | "layoutHome"> {
-    return { layout, savedLayout: layout, layoutHome: "none" };
+  private noLayoutHome(layout: string): Pick<Doc, "layout" | "savedLayout" | "layoutHome" | "layoutVersion"> {
+    return { layout, savedLayout: layout, layoutHome: "none", layoutVersion: null };
   }
 
   /**
@@ -839,14 +856,14 @@ export class Workspace {
   /**
    * 文書に新しいキーを付けて一覧の最後に加える（変更は知らせない）。
    *
-   * @param init key と stale を除いた文書の中身
-   * @returns 加えた文書（key は `doc:番号`、stale は false）
+   * @param init key・stale・layoutStale を除いた文書の中身
+   * @returns 加えた文書（key は `doc:番号`、stale と layoutStale は false）
    * @example
-   * this.add({ ref: null, name: "u", text: "", savedText: "", version: null, layout: "", savedLayout: "", layoutHome: "none" })
-   * // → { key: "doc:1", stale: false, … }
+   * this.add({ ref: null, name: "u", text: "", savedText: "", version: null, layout: "", savedLayout: "", layoutHome: "none", layoutVersion: null })
+   * // → { key: "doc:1", stale: false, layoutStale: false, … }
    */
-  private add(init: Omit<Doc, "key" | "stale">): Doc {
-    const doc: Doc = { key: `doc:${++this.seq}`, stale: false, ...init };
+  private add(init: Omit<Doc, "key" | "stale" | "layoutStale">): Doc {
+    const doc: Doc = { key: `doc:${++this.seq}`, stale: false, layoutStale: false, ...init };
     this.docs.push(doc);
     return doc;
   }

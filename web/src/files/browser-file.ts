@@ -100,27 +100,33 @@ export class BrowserFileProvider implements Readable, FilePicker, SaveAsTarget, 
    *
    * @param ref モデルのファイルの参照
    * @param name 隣のファイルの名前（`m.layout.json` など）
-   * @returns 内容。一緒に選んでいなければ null
+   * @returns 内容と版（上書きできないので版はいつも "0"）。一緒に選んでいなければ null
    * @example
-   * await p.readSibling(ref, "m.layout.json") // → "L"（一緒に選んだとき）
+   * await p.readSibling(ref, "m.layout.json") // → { text: "L", version: "0" }（一緒に選んだとき）
    * await p.readSibling(ref, "m.layout.json") // → null（モデルだけを選んだとき）
    */
-  async readSibling(ref: FileRef, name: string): Promise<string | null> {
-    return this.siblings.get(ref.id)?.get(name) ?? null;
+  async readSibling(ref: FileRef, name: string): Promise<FileContent | null> {
+    const text = this.siblings.get(ref.id)?.get(name);
+    return text === undefined ? null : { text, version: "0" };
   }
 
   /**
    * 隣のファイルに書く。上書きできないのでダウンロードになり、その内容を写しとして覚える。
+   * ダウンロードは他で変更されたファイルを上書きしないので、版は比べない。
    *
    * @param ref モデルのファイルの参照
    * @param name 隣のファイルの名前（`m.layout.json` など）
    * @param text 書く内容
+   * @returns 版（いつも "0"）
+   * @example
+   * await p.writeSibling(ref, "m.layout.json", "L") // → "0"（m.layout.json をダウンロード）
    */
-  async writeSibling(ref: FileRef, name: string, text: string): Promise<void> {
+  async writeSibling(ref: FileRef, name: string, text: string): Promise<string> {
     this.io.download(name, text);
     const m = this.siblings.get(ref.id) ?? new Map<string, string>();
     m.set(name, text);
     this.siblings.set(ref.id, m);
+    return "0";
   }
 
   /**
