@@ -111,20 +111,26 @@ export function importedDocName(fileName: string, used: ReadonlySet<string>): st
 }
 
 /**
- * 書き出されたファイルを保存する名前を決める。拡張子が無ければ、書き出しの拡張子を付ける。
+ * 書き出されたファイルを保存する名前を決める。拡張子は、マニフェストで宣言したものにそろえる（F-PLUG-4）。
+ * プラグインが示した名前の拡張子が違えば置き換え、無ければ補う。同じなら（大文字と小文字の違いは問わず）そのまま使う。
  *
  * @param fileName プラグインが示したファイル名（`exported` の fileName）
- * @param extension 書き出しの拡張子（マニフェストの `extension`。例：".csv"）
+ * @param extension 書き出しの拡張子（マニフェストの `extension`。例：".csv"。"" なら拡張子をそろえない）
  * @returns ファイル名
  * @example
- * exportFileName("要求一覧.csv", ".csv") // → "要求一覧.csv"
- * exportFileName("要求一覧", ".csv")     // → "要求一覧.csv"
- * exportFileName("../x/a?.csv", ".csv")  // → "a_.csv"
- * exportFileName("", ".csv")             // → "export.csv"（境界値）
+ * exportFileName("要求一覧.csv", ".csv")  // → "要求一覧.csv"
+ * exportFileName("要求一覧", ".csv")      // → "要求一覧.csv"
+ * exportFileName("要求一覧.html", ".csv") // → "要求一覧.csv"（宣言と違う拡張子は置き換える）
+ * exportFileName("../x/a?.csv", ".csv")   // → "a_.csv"
+ * exportFileName("", ".csv")              // → "export.csv"（境界値）
  */
 export function exportFileName(fileName: string, extension: string): string {
   const name = baseName(fileName) || "export";
-  return name.includes(".") ? name : `${name}${extension.startsWith(".") || extension === "" ? "" : "."}${extension}`;
+  if (extension === "") return name;
+  const ext = extension.startsWith(".") ? extension : `.${extension}`;
+  if (name.toLowerCase().endsWith(ext.toLowerCase())) return name;
+  const dot = name.lastIndexOf(".");
+  return `${dot > 0 ? name.slice(0, dot) : name}${ext}`;
 }
 
 /**
