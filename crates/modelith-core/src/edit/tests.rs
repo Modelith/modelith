@@ -2,7 +2,7 @@
 //! 画面からの振る舞いは e2e テストで確かめる。
 
 use super::more::sysml_name;
-use super::text::{diff, indent_at, line_start, remove_range, utf16_of};
+use super::text::{Target, diff, indent_at, insert_into, line_start, remove_range, utf16_of};
 use super::*;
 
 /// UTF-16 の位置の編集を適用する。
@@ -568,9 +568,43 @@ fn line_start_clamps_to_the_text_like_the_ts_core() {
     assert_eq!(
         line_start("ab\ncd", 9),
         3,
-        "範囲外は最後の行（暫定コアの lineStart と同じ）"
+        "範囲外は最後の行（web の lineStart と同じ）"
     );
     assert_eq!(indent_at("x\n  y", 99), "  ");
+}
+
+#[test]
+fn indent_at_keeps_spaces_and_tabs_of_the_line() {
+    // 同値分割：空白とタブの混じった字下げ・字下げなし
+    assert_eq!(indent_at("x\n \t  y", 5), " \t  ");
+    assert_eq!(indent_at("x", 0), "");
+}
+
+#[test]
+fn insert_into_puts_the_line_in_the_block_or_turns_the_declaration_into_one() {
+    // 同値分割：閉じ括弧だけの行がある・閉じ括弧が同じ行にある・`;` で終わる宣言
+    let block = |close| Target {
+        start: 0,
+        head_end: 11,
+        close: Some(close),
+    };
+    assert_eq!(
+        insert_into("part def A {\n}\n", block(13), "part b : B;").0,
+        "part def A {\n    part b : B;\n}\n"
+    );
+    assert_eq!(
+        insert_into("part def A {}", block(12), "part b : B;"),
+        ("part def A { part b : B; }".to_owned(), 12, 25)
+    );
+    let decl = Target {
+        start: 2,
+        head_end: 12,
+        close: None,
+    };
+    assert_eq!(
+        insert_into("  part def A;", decl, "part b : B;").0,
+        "  part def A {\n      part b : B;\n  }"
+    );
 }
 
 #[test]

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyEdits, diffRange, indentAt, insertInto, lineStart, removeLayoutComment, removeRange } from "./text-ops";
+import type { ParseError } from "./types";
+import { applyTextEdits, diffRange, lineStart, readLayout, removeLayoutComment, removeRange } from "./text";
 
-describe("lineStart / indentAt", () => {
+describe("lineStart", () => {
   it("先頭行の位置は 0（境界値: pos = 0）", () => {
     // Arrange
     const t = "ab\ncd";
@@ -19,23 +20,14 @@ describe("lineStart / indentAt", () => {
     // Assert
     expect(p).toBe(3);
   });
-
-  it("行頭の空白とタブを字下げとして返す", () => {
-    // Arrange
-    const t = "x\n \t  y";
-    // Act
-    const ind = indentAt(t, 5);
-    // Assert
-    expect(ind).toBe(" \t  ");
-  });
 });
 
-describe("applyEdits", () => {
+describe("applyTextEdits", () => {
   it("複数の編集を位置がずれないように適用する", () => {
     // Arrange
-    const edits = [{ at: 0, del: 1, ins: "A" }, { at: 4, del: 1, ins: "EE" }];
+    const edits = [{ start: 0, end: 1, text: "A" }, { start: 4, end: 5, text: "EE" }];
     // Act
-    const t = applyEdits("abcde", edits);
+    const t = applyTextEdits("abcde", edits);
     // Assert
     expect(t).toBe("AbcdEE");
   });
@@ -44,38 +36,9 @@ describe("applyEdits", () => {
     // Arrange
     const text = "abc";
     // Act
-    const t = applyEdits(text, []);
+    const t = applyTextEdits(text, []);
     // Assert
     expect(t).toBe("abc");
-  });
-});
-
-describe("insertInto", () => {
-  it("閉じ括弧だけの行があれば、その前に字下げした行を足す", () => {
-    // Arrange
-    const t = "part def A {\n}\n";
-    // Act
-    const r = insertInto(t, { start: 0, headEnd: 11, close: 13 }, "part b : B;");
-    // Assert
-    expect(r.text).toBe("part def A {\n    part b : B;\n}\n");
-  });
-
-  it("閉じ括弧が同じ行にあれば、空白を挟んで括弧の前に入れる", () => {
-    // Arrange
-    const t = "part def A {}";
-    // Act
-    const r = insertInto(t, { start: 0, headEnd: 11, close: 12 }, "part b : B;");
-    // Assert
-    expect(r.text).toBe("part def A { part b : B; }");
-  });
-
-  it("; で終わる宣言はブロックに書き換える", () => {
-    // Arrange
-    const t = "  part def A;";
-    // Act
-    const r = insertInto(t, { start: 2, headEnd: 12 }, "part b : B;");
-    // Assert
-    expect(r.text).toBe("  part def A {\n      part b : B;\n  }");
   });
 });
 
@@ -172,5 +135,37 @@ describe("diffRange", () => {
     const r = diffRange(a, b);
     // Assert
     expect(r).toEqual([2, 2]);
+  });
+});
+
+describe("readLayout（ADR-0005 の移行）", () => {
+  it("@layout コメントの JSON を読む", () => {
+    // Arrange
+    const errors: ParseError[] = [];
+    // Act
+    const layout = readLayout('package P;\n/* @layout {"A":{"x":1}} */\n', errors);
+    // Assert
+    expect(layout).toEqual({ A: { x: 1 } });
+    expect(errors).toEqual([]);
+  });
+
+  it("@layout が無ければ空のオブジェクト（境界値）", () => {
+    // Arrange
+    const errors: ParseError[] = [];
+    // Act
+    const layout = readLayout("package P;", errors);
+    // Assert
+    expect(layout).toEqual({});
+    expect(errors).toEqual([]);
+  });
+
+  it("JSON が読めなければ、空のオブジェクトにしてコメントの位置に誤りを足す（異常系）", () => {
+    // Arrange
+    const errors: ParseError[] = [];
+    // Act
+    const layout = readLayout("package P;\n/* @layout {x */", errors);
+    // Assert
+    expect(layout).toEqual({});
+    expect(errors).toEqual([{ pos: 11, msg: "@layout コメントを読み込めません" }]);
   });
 });

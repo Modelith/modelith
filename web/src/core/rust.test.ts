@@ -1,7 +1,8 @@
 // Rust のコア（wasm）との境界（ADR-0015）。解析は例外を投げず、失敗しても画面に知らせる（Q-5）。
 import { describe, expect, it } from "vitest";
 import { build, edit, parse, safeEdit, safeParse } from "./rust";
-import { applyTextEdits } from "./text-ops";
+import { applyTextEdits } from "./text";
+import type { ParseResult } from "./types";
 
 describe("parse（Rust のパーサ）", () => {
   it("Q-5: とても深い入れ子でも例外を投げず、問題として知らせる（異常系）", () => {
@@ -77,6 +78,13 @@ describe("build（Rust のモデル構築）", () => {
       ["a:a", "a"],
     ]);
     expect(flow?.edges.map((e) => e.id)).toEqual(["succession|a:start|a:a|#1"]);
+  });
+
+  it("parse（Rust）が返したものでない解析結果は受け付けない（異常系）", () => {
+    // Arrange
+    const P: ParseResult = { entries: [], rels: [], errors: [], layout: {}, unsupported: [] };
+    // Act・Assert
+    expect(() => build(P)).toThrow(/parse（Rust）/);
   });
 });
 

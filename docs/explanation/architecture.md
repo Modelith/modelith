@@ -39,4 +39,6 @@
 | P5 | LSP |
 | P6 | サーバ（Git 保管・認証・SysML v2 標準 API）、プラグイン v2（WASM Component） |
 
-0.1.0 では、早く使ってもらうために P2 の UI 移植を P1 より先に行う（ADR-0009、[リリース計画](../development/release-plan.md)）。
+0.1.0 では、早く使ってもらうために P2 の UI 移植を P1 より先に行った（ADR-0009、[リリース計画](../development/release-plan.md)）。
+そのとき移植した暫定の TS コアは、Rust のコアに差し替えたあと `0.1.0-beta.1` で削除した（ADR-0015・ADR-0016）。
+`web/src/core/` には、Worker で動く Rust のコアを呼ぶクライアントと、画面との間の型・小さなテキストの関数だけを置く。

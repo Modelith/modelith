@@ -23,7 +23,7 @@ pub fn version() -> String {
     modelith_core::VERSION.to_owned()
 }
 
-/// テキストを解析してモデルを作り、暫定コアと同じ形の `{ parse, model }` を JSON で返す（ADR-0015・ADR-0016）。
+/// テキストを解析してモデルを作り、画面の型（`web/src/core/types.ts`）と同じ形の `{ parse, model }` を JSON で返す（ADR-0015・ADR-0016）。
 ///
 /// 中身は `analyze_json` に任せる（wasm の境界を薄く保ち、テストを wasm なしで動かすため）。
 ///
