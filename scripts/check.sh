@@ -16,7 +16,7 @@ step() { printf '\n==> %s\n' "$*"; }
 ensure_dependencies() {
   [[ -d web/node_modules ]] || npm ci --prefix web --ignore-scripts --no-audit --no-fund
   [[ -d tests/harness/node_modules ]] || npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
-  command -v shellcheck >/dev/null || { echo "ERROR: shellcheck が必要です（pip install shellcheck-py など）" >&2; exit 1; }
+  command -v shellcheck >/dev/null || { echo "ERROR: shellcheck が必要です（apt-get install shellcheck・brew install shellcheck など）" >&2; exit 1; }
 }
 
 stage_static() {
