@@ -114,6 +114,7 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 | [SysML v2 の対応表](docs/reference/sysml-conformance.md) | 規格の書き方ごとの対応状況 |
 | [検査ルール](docs/reference/check-rules.md)・[スクリプトのプラグイン](docs/reference/script-plugins.md) | プラグインの作り方 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 開発に参加する方法（手元で動かす・構成・開発者向けの文書） |
+| [SECURITY.md](SECURITY.md) | セキュリティの問題を見つけたときの、非公開の報告の仕方 |
 
 ## 開発に参加する
 
