@@ -8,6 +8,7 @@ import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
 import { serializeLayout } from "./layout-file";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
+import { droppedDiagnosticsNote, MAX_DIAGNOSTICS } from "../plugins/limits";
 import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
 import { highlight, render } from "./render";
@@ -133,11 +134,11 @@ export function settled(): Promise<void> {
   return new Promise((resolve) => waiters.push(resolve));
 }
 
-/** コアを作り直すのをあきらめたか（以後、解析結果は届かない。Q-6）。 */
+/** コアを作り直すのをあきらめたか（以後、解析結果は届かない。Q-7）。 */
 let coreGaveUp = false;
 
 /**
- * コアが止まった・あきらめたときに画面を更新する処理（`superviseCore` に渡す。Q-6）。
+ * コアが止まった・あきらめたときに画面を更新する処理（`superviseCore` に渡す。Q-7）。
  * 止まったら、図の操作をやめたことをトーストで知らせ、同期の表示を読み込み直し中にする（作り直して送り直したテキストの解析結果が届けば、同期済みに戻る）。
  * あきらめたら、同期の表示で再読み込みを案内し、解析結果を待っている処理を進める（テキストの編集と保存は続けられる）。
  */
@@ -347,7 +348,7 @@ export function updateSync(): void {
 
 /**
  * 問題（構文エラー・参照切れ・チェックルールの結果・v1 のプラグインの診断・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
- * エラー → チェックルールの結果 → プラグインの診断 → プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
+ * エラー → チェックルールの結果 → プラグインの診断（件数の上限を超えて捨てた分があれば、その知らせを先に）→ プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
  * テキストの中の位置があるもの（モデルの問題・チェックルールの結果・プラグインの診断）は行番号を付け、押すとその行に移る。
  * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
  */
@@ -362,9 +363,13 @@ export function renderProblems(): void {
   const notes = S.pluginNotes.map((n) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""}>⚠ ${esc(n.msg)}</button>`);
   const diagnostic = ({ plugin, item }: { plugin: string; item: PlacedDiagnostic }): string =>
     `<button data-pos="${item.pos}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${lineOf(S.text, item.pos)} 行目：${esc(diagnosticText(item, S.pluginNames.get(plugin) ?? plugin))}</button>`;
+  const dropped = S.pluginDiagnostics
+    .filter((d) => d.version === applied && d.dropped > 0)
+    .map((d) => `<button class="plugin">⚠ ${esc(droppedDiagnosticsNote(S.pluginNames.get(d.plugin) ?? d.plugin, d.dropped, MAX_DIAGNOSTICS))}</button>`);
   const items = [
     ...sorted.filter((p) => !p.kind).map(model),
     ...S.findings.map(rule),
+    ...dropped,
     ...currentDiagnostics().map(diagnostic),
     ...notes,
     ...sorted.filter((p) => p.kind).map(model),

@@ -115,7 +115,7 @@ package ModelithRequirements {
             doc /* トレーサビリティ・ブロック定義図・制御ループ・内部ブロック図・振る舞い・シーケンス図・アクティビティ図・すべて、の 8 つのビューを持つ */
         }
         requirement def <'F-VIEW-2'> ViewTabsReq {
-            doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する */
+            doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する。記憶したタブが壊れていても（JSON でない・形の合わない項目がある）起動は止まらず、形の合わない項目だけを捨てて残りを戻す */
         }
         requirement def <'F-VIEW-3'> LayoutReq {
             doc /* 未配置の要素は自動で並べ、手で動かした配置は、モデルごとの配置ファイル（model.sysml の隣の model.layout.json）に保存する（ADR-0005） */
@@ -174,7 +174,7 @@ package ModelithRequirements {
             doc /* 未保存の変更があるファイルを示し、未保存のままページを離れようとしたら警告する */
         }
         requirement def <'F-FILE-6'> AutoSaveReq {
-            doc /* 自動保存を選べる。有効なら、編集が止まってから 1 秒後に保存する */
+            doc /* 自動保存を選べる。有効なら、編集が止まってから 1 秒後に保存する。保存できなかったとき（フォルダの許可が切れた・ディスクの空きが無い）は、黙って失敗せずに理由を知らせ、未保存の印（●）を残す */
         }
         requirement def <'F-FILE-7'> ConflictReq {
             doc /* 開いた後に他のアプリでファイルが変わっていたら、黙って上書きせずに、上書き・読み直し・やめるを選ばせる */
@@ -189,7 +189,8 @@ package ModelithRequirements {
             doc /* フォルダを開けないブラウザ（Safari・Firefox）でも、ファイルの読み込みと、ダウンロードでの保存ができる */
         }
         requirement def <'F-FILE-11'> UntitledDraftReq {
-            doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す。中身の無いファイルは下書きに残さない */
+            doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す。中身の無いファイルは下書きに残さない。
+                   下書きを保存できないとき（ブラウザの保存領域がいっぱい）は、黙って諦めずに 1 回だけ知らせて「名前を付けて保存」を案内し、保存できていない下書きがあるままページを離れようとしたら警告する */
         }
         requirement def <'F-FILE-12'> CloudReq {
             doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
@@ -220,7 +221,8 @@ package ModelithRequirements {
             doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
         }
         requirement def <'F-PLUG-4'> ScriptPluginReq {
-            doc /* TypeScript のプラグインが足したコマンド・取り込み・書き出しを、画面から使える。取り込んだ結果は新しいファイルとして開き、既存のファイルを黙って書き換えない */
+            doc /* TypeScript のプラグインが足したコマンド・取り込み・書き出しを、画面から使える。取り込んだ結果は新しいファイルとして開き、既存のファイルを黙って書き換えない。
+                   書き出したファイルは、プラグインが宣言した拡張子で保存する（プラグインが返した名前の拡張子が違っても、宣言した拡張子に置き換える） */
         }
         requirement def <'F-PLUG-5'> PluginEditReq {
             doc /* プラグインからの変更は、テキストの編集案として受け取り、テキストが変わっていたら適用せずに知らせる。適用した変更は 1 回の「元に戻す」で取り消せる（ADR-0001） */
@@ -229,11 +231,14 @@ package ModelithRequirements {
             doc /* コードを含むプラグインは、初めて動かす前に、名前・作者・版・使う権限を示して利用者に許可を求める。外部と通信できるプラグインは、そのことをはっきり示す。権限が増えたとき、または外部と通信できるプラグインの版かファイルが変わったときは、もう一度尋ねる */
         }
         requirement def <'F-PLUG-7'> PluginSandboxReq {
-            doc /* プラグインは、宣言していない権限を使えない。外部との通信を宣言していなければ通信できず、アプリの下書き・開いているフォルダ・ブラウザの保存場所に直接触れない */
+            doc /* プラグインは、宣言していない権限を使えない。外部との通信を宣言していなければ通信できず、アプリの下書き・開いているフォルダ・ブラウザの保存場所に直接触れない。
+                   プラグインが大きすぎるメッセージや大量のメッセージを送っても、画面は動き続ける：大きさの上限を超えたメッセージと、扱い終わっていないメッセージの数の上限を超えた分は、入口で捨てて一覧で知らせ、
+                   捨てた数が上限に達したら止めて知らせる。1 回の診断で問題一覧に出す件数と、利用者への知らせ（通知）の 1 秒あたりの件数にも上限を置き、超えた分は捨ててそのことを示す */
         }
         requirement def <'F-PLUG-8'> PluginListReq {
             doc /* 画面でプラグインを追加できる。入れる先は「このプロジェクト」（既定。チームと CI で共有）か「このブラウザ」（自分だけ）から選ぶ。
-                   入れたプラグインの一覧・状態・誤り・許可を確かめ、有効・無効の切り替えと削除ができる（ADR-0018・ADR-0019） */
+                   入れたプラグインの一覧・状態・誤り・許可を確かめ、有効・無効の切り替えと削除ができる（ADR-0018・ADR-0019）。
+                   コマンド・取り込み・書き出しが期限（30 秒）までに、起動が期限（10 秒）までに終わらないときは、トーストと一覧の行でそのことを知らせ、一覧の「停止」で止められる。勝手には止めない */
         }
         requirement def <'F-PLUG-9'> MissingPluginReq {
             doc /* プロジェクトが使うと書いてあるプラグインが入っていない・版が違うときは、何が足りないかと、追加する操作を示す */
@@ -272,7 +277,11 @@ package ModelithRequirements {
         requirement def <'Q-4'> PlainWordsReq {
             doc /* 画面の文言（トースト・ダイアログ・空の図の案内・メニュー・問題一覧）は、SysML v2 の構文を知らない人にも分かる図の言葉で書き、次の操作を画面の操作で示す。SysML v2 の用語は補足にとどめる（ADR-0014） */
         }
-        requirement def <'Q-6'> CoreRecoveryReq {
+        requirement def <'Q-6'> NoSilentFailureReq {
+            doc /* 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）で黙って止まらず、「予期しない問題が起きました。テキストはそのまま残っています」と知らせる（例外 1 つにつき知らせは 1 回。詳しい内容はブラウザのコンソールに残す）。
+                   起動して画面を組み立てる途中で失敗したら、白い画面のままにせず、保存した設定（パネルの配置・図のタブ）を初期化して読み直す操作を示す。下書き・前回の続き・プラグインの許可は消さない */
+        }
+        requirement def <'Q-7'> CoreRecoveryReq {
             doc /* テキストを読み取り図の操作を計算する部品（コア。Worker で動く）が止まった・10 秒たっても返事をしないときは、待ち続けない。
                    待っていた図の操作はやめて「図の操作をやめました。テキストはそのまま残っています」と知らせ、テキストの編集と保存（Ctrl+S）は続けられる。
                    部品は作り直して、今のテキストとプラグインを送り直し、解析と図の操作を再開する。1 分の間に 3 回作り直しても止まるときはあきらめ、
@@ -301,6 +310,10 @@ package ModelithRequirements {
         }
         requirement def <'C-8'> StageNoticeReq {
             doc /* 正式版の前（alpha・beta・rc）は、見出しと「ヘルプ」に、動いている版の開発段階を示す。段階は版の名前から決め、正式版では示さない */
+        }
+        requirement def <'C-9'> ContentPolicyReq {
+            doc /* 配信する画面に Content-Security-Policy を付け、配信元以外との通信・外から読み込むスクリプト・インラインのスクリプトを、
+                   ブラウザの仕組みで止める。エスケープの漏れが 1 つあっても、それだけでは任意のスクリプトが動かないようにする（C-2 の機械的な裏付け） */
         }
         requirement def <'C-6'> NoSilentWriteReq {
             doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
@@ -365,6 +378,7 @@ package ModelithRequirements {
         #derivation dependency from LookReq to AnywhereNeed;
         #derivation dependency from PlainWordsReq to EditBothWaysNeed;
         #derivation dependency from RobustReq to SafetyNeed;
+        #derivation dependency from NoSilentFailureReq to SafetyNeed;
         #derivation dependency from CoreRecoveryReq to SafetyNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
@@ -374,6 +388,7 @@ package ModelithRequirements {
         #derivation dependency from StaticHostingReq to AnywhereNeed;
         #derivation dependency from LegalNoticeReq to OpenSourceNeed;
         #derivation dependency from StageNoticeReq to SafetyNeed;
+        #derivation dependency from ContentPolicyReq to SafetyNeed;
         #derivation dependency from StaticHostingReq to OpenSourceNeed;
     }
 
@@ -504,6 +519,7 @@ package ModelithRequirements {
         satisfy PlainWordsReq by AppShell;
         satisfy RobustReq by Core;
         satisfy RobustReq by AppShell;
+        satisfy NoSilentFailureReq by AppShell;
         satisfy CoreRecoveryReq by Core;
         satisfy CoreRecoveryReq by AppShell;
         satisfy TextIsSourceReq by Core;
@@ -512,6 +528,7 @@ package ModelithRequirements {
         satisfy StaticHostingReq by AppShell;
         satisfy LegalNoticeReq by AppShell;
         satisfy StageNoticeReq by AppShell;
+        satisfy ContentPolicyReq by AppShell;
     }
 
     // =================================================================
@@ -616,6 +633,12 @@ package ModelithRequirements {
                 verify PlainWordsReq;
             }
         }
+        verification def CspTest {
+            doc /* web/tools/csp.test.ts：Content-Security-Policy の中身（既定は配信元だけ・eval を許さない・wasm と Worker と同梱フォントは許す）と、ビルドした HTML への差し込み */
+            objective {
+                verify ContentPolicyReq;
+            }
+        }
         verification def StageTest {
             doc /* web/src/app/stage.test.ts：版の名前から開発段階の表示を決める（alpha・beta・rc の札と説明、正式版・知らない段階・読めない版では示さない） */
             objective {
@@ -647,7 +670,7 @@ package ModelithRequirements {
             }
         }
         verification def WorkspaceTest {
-            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い・前回の続きの書き込み（戻し終えるまでは書かない）と戻し方（前回の順番・表示していた文書・消されたファイルとフォルダ・許可が要るとき・フォルダを開けないブラウザ） */
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い・前回の続きの書き込み（戻し終えるまでは書かない）と戻し方（前回の順番・表示していた文書・消されたファイルとフォルダ・許可が要るとき・フォルダを開けないブラウザ）・下書きを保存できないとき（保存先が容量超過を返す）の印と閉じる前の警告の対象、kvDraftStore・kvSessionStore が保存の成否を返すこと */
             objective {
                 verify ResumeSessionReq;
                 verify OpenSaveReq;
@@ -671,9 +694,32 @@ package ModelithRequirements {
             }
         }
         verification def AutoSaveTest {
-            doc /* web/src/workspace/workspace.test.ts（AutoSaver）：編集が止まってから 1 秒後に保存、無効・無題・競合のときは保存しない */
+            doc /* web/src/workspace/workspace.test.ts（AutoSaver）：編集が止まってから 1 秒後に保存、無効・無題・競合のときは保存しない、保存できなかったとき（書き込みが例外を投げる）は理由を知らせて未保存の印を残す */
             objective {
                 verify AutoSaveReq;
+            }
+        }
+        verification def SavedTabsTest {
+            doc /* web/src/app/saved-tabs.test.ts：記憶した図のタブの読み込み（JSON でない・配列でない・null の項目・id が整数でない・知らないビュー・ctx や phase の型違い・文字列でない mv・重なった id・表示中のタブが無い）。形の合わない項目だけを捨てる */
+            objective {
+                verify ViewTabsReq;
+            }
+        }
+        verification def UnexpectedErrorTest {
+            doc /* web/src/app/unexpected.test.ts：捕まえていない例外と結果を待たない処理の失敗を 1 回ずつ知らせ、詳しい内容をコンソールに残す。web/src/app/dom.test.ts：localStorage に書けたか（容量超過・使えない環境）を store が返す。web/src/app/recovery.test.ts：起動に失敗したときの案内の文（初期化して読み直す操作・消えないものの説明・失敗の内容のエスケープ） */
+            objective {
+                verify NoSilentFailureReq;
+                verify UntitledDraftReq;
+            }
+        }
+        verification def RobustE2E {
+            doc /* web/e2e/robust.spec.ts：壊れた図のタブの記憶があっても起動して形の合う項目だけ戻す、ブラウザの保存領域がいっぱいのときの下書きの知らせ（1 回）と閉じる前の警告、自動保存に失敗したときの知らせと未保存の印、予期しない例外の知らせ、起動の途中で失敗したときの「保存した設定を初期化して読み直す」（下書きは残る）（Chromium で操作） */
+            objective {
+                verify ViewTabsReq;
+                verify UntitledDraftReq;
+                verify DirtyReq;
+                verify AutoSaveReq;
+                verify NoSilentFailureReq;
             }
         }
         verification def ViewsE2E {
@@ -744,9 +790,10 @@ package ModelithRequirements {
             }
         }
         verification def ShellE2E {
-            doc /* web/e2e/shell.spec.ts：外部に通信しない・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・SVG と draw.io の書き出し。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
             objective {
                 verify PrivacyReq;
+                verify ContentPolicyReq;
                 verify SourceOfferReq;
                 verify NarrowScreenReq;
                 verify SvgExportReq;
@@ -838,6 +885,22 @@ package ModelithRequirements {
                 verify PluginTrustReq;
                 verify PluginSandboxReq;
                 verify ScriptPluginReq;
+                verify PluginListReq;
+            }
+        }
+        verification def PluginLimitsTest {
+            doc /* web/src/plugins/limits.test.ts：届いたメッセージの入口の判断（大きさの上限ちょうどと + 1・待ちの件数の上限 - 1 と上限・捨てた数が上限に達したら止める・入れ子と循環するデータ）、知らせの頻度（1 秒に 5 件目と 6 件目・1 秒たてば数え直す）、
+                   期限の判断（期限 - 1 ミリ秒と + 1 ミリ秒）と、終わらないときの知らせの文。web/src/plugins/messages.test.ts：診断の件数の上限（上限ちょうどと + 1 件）。web/src/plugins/transfer.test.ts：書き出しの名前を宣言した拡張子に合わせる（同じ拡張子・違う拡張子・拡張子なし・パス付き・大文字） */
+            objective {
+                verify PluginSandboxReq;
+                verify PluginListReq;
+                verify ScriptPluginReq;
+            }
+        }
+        verification def PluginLimitsE2E {
+            doc /* web/e2e/script-plugins.spec.ts：大量の知らせを送るプラグインがあっても画面は動き、超えた分を捨てたことと止めたことを一覧で知らせる。止まらないコマンドと、起動が終わらないプラグインは、期限がきたらトーストと一覧の行で知らせ、一覧の「停止」で止められる */
+            objective {
+                verify PluginSandboxReq;
                 verify PluginListReq;
             }
         }

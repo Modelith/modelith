@@ -40,6 +40,7 @@ const manifest = (permissions: string[], version = "1.0.0"): string =>
           { id: "loop", title: "止まらない処理" },
           { id: "count", title: "回数を数える" },
           { id: "big", title: "大きな値を保存する" },
+          { id: "flood", title: "大量に知らせる" },
         ],
         importers: [{ id: "lines", label: IMPORTER, extensions: [".txt"] }],
         exporters: [{ id: "text", label: EXPORTER, extension: ".txt" }],
@@ -102,7 +103,7 @@ async function runCommand(page: Page, title: string, kind = "command"): Promise<
 
 /** プラグインが動き始める（コマンドがメニューに出る）まで待つ。 */
 async function waitRunning(page: Page): Promise<void> {
-  await expect(page.locator('#pluginCommands [data-kind="command"]')).toHaveCount(6);
+  await expect(page.locator('#pluginCommands [data-kind="command"]')).toHaveCount(7);
 }
 
 /** マニフェストから、このブラウザに追加したときに覚える情報（一覧に出すため）を作る。 */
@@ -259,6 +260,53 @@ test.describe("隔離", () => {
     await expect(pluginRow(page).locator(".pst")).toHaveText("停止");
     await expect(page.locator("iframe.plugin-sandbox")).toHaveCount(0);
     await expect(page.locator("#pluginCommands button")).toHaveCount(0);
+  });
+});
+
+test.describe("上限と期限", () => {
+  test("F-PLUG-7: 大量の知らせを送るプラグインがあっても画面は動き、超えた分を捨てて止めたことを一覧で知らせる", async ({ page }) => {
+    // Arrange
+    await startWith(page, installed([]));
+    // Act（5,000 件の知らせを一度に送る）
+    await runCommand(page, "大量に知らせる");
+    // Assert（待ちの上限を超えた分を捨て、捨てた数が上限に達したので停止を指示する。その間もテキストを編集できる）
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」に停止を指示しました（届いたメッセージが多すぎるため）`);
+    await page.locator("#ed").fill("package Q {\n    part def A;\n    part def B;\n}\n");
+    await expect(page.locator("#textInfo")).toHaveText("SysML v2 テキスト：要素 2、関係 0");
+    await openPluginList(page);
+    await expect(pluginRow(page).locator(".pst")).toHaveText("エラーあり");
+    await expect(pluginRow(page).locator(".pp li").first()).toHaveText("届いたメッセージが多すぎるため、停止を指示しました（使わなかったメッセージ 1000 件）");
+    await expect(pluginRow(page).locator(".pp li", { hasText: "待ちの上限 100 件" })).toHaveCount(1);
+    await expect(page.locator("iframe.plugin-sandbox")).toHaveCount(0);
+  });
+
+  test("F-PLUG-8: 止まらないコマンドは、期限がきたら知らせ、一覧の「停止」で止められる", async ({ page }) => {
+    // Arrange（期限の 30 秒を待つ）
+    test.slow();
+    await startWith(page, installed([]));
+    // Act
+    await runCommand(page, "止まらない処理");
+    // Assert（勝手には止めない。知らせてから、利用者が止める）
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」のコマンド「止まらない処理」が 30 秒たっても終わりません。プラグインの一覧の「停止」で止められます`, { timeout: 45_000 });
+    await openPluginList(page);
+    await expect(pluginRow(page).locator(".pst")).toHaveText("実行中");
+    await expect(pluginRow(page).locator(".pp li")).toHaveText(["コマンド「止まらない処理」が 30 秒たっても終わりません。「停止」で止められます"]);
+    await pluginRow(page).locator("[data-plugin-stop]").click();
+    await expect(pluginRow(page).locator(".pst")).toHaveText("停止");
+    await expect(page.locator("iframe.plugin-sandbox")).toHaveCount(0);
+  });
+
+  test("F-PLUG-8: 起動が終わらないプラグインは、期限がきたら知らせ、一覧の「停止」で止められる", async ({ page }) => {
+    // Arrange（activate に ready を返さないプラグイン）
+    await openProject(page, installed([], CODE.replace('host.send({ type: "ready" })', "0")));
+    await allow(page);
+    // Act・Assert（10 秒の期限がきたら知らせる。状態は起動中のまま）
+    await expect(page.locator("#toast")).toHaveText(`プラグイン「${NAME}」の起動が 10 秒たっても終わりません。プラグインの一覧の「停止」で止められます`, { timeout: 20_000 });
+    await openPluginList(page);
+    await expect(pluginRow(page).locator(".pst")).toHaveText("起動中");
+    await expect(pluginRow(page).locator(".pp li")).toHaveText(["起動が 10 秒たっても終わりません。「停止」で止められます"]);
+    await pluginRow(page).locator("[data-plugin-stop]").click();
+    await expect(pluginRow(page).locator(".pst")).toHaveText("停止");
   });
 });
 

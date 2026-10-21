@@ -42,7 +42,7 @@ export type CoreReply = Exclude<CoreResponse, { type: "ready" } | { type: "faile
 
 /**
  * コアの中で予期しない失敗（wasm の例外）が起きた返事に付く印。画面の側は、この印のある返事を受け取ったら、
- * 壊れたかもしれない wasm を使い続けず、コアを作り直す（Q-6）。
+ * 壊れたかもしれない wasm を使い続けず、コアを作り直す（Q-7）。
  */
 interface Failure {
   /** 失敗の理由（例外のメッセージ）。ふつうの返事には無い。 */

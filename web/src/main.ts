@@ -20,17 +20,23 @@ import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
 import { saveAsView } from "./app/view-ops";
-import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi } from "./app/panels";
+import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
+import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
 import { DEFS } from "./app/svg";
 import { attachCore, coreHooks, onAnalyzed, relayout, settled, toast } from "./app/sync";
+import { installUnexpectedErrorHandlers } from "./app/unexpected";
 import { CC } from "./app/views";
 import { superviseCore } from "./core";
 import CoreWorker from "./core/worker?worker";
 import CORE_WASM from "./core/wasm/modelith_core_bg.wasm?url";
 
 const EDGE_KEY = "modelith-edgestyle";
+
+// 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）の受け口は、ここに 1 つだけ置く（Q-7）。
+// 黙って止まらずにトーストで知らせ、詳しい内容はコンソールに残す
+installUnexpectedErrorHandlers(window, toast, (detail) => console.error("予期しない問題:", detail));
 
 /**
  * 線の描き方を切り替え、ボタンの文言を合わせ、選んだ描き方を覚える（次に開いたときも使う）。図の描き直しはしない。
@@ -131,51 +137,47 @@ function initToolbar(): void {
 }
 
 // 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
-// コアが止まった・返事をしないときは作り直す（Q-6）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
+// コアが止まった・返事をしないときは作り直す（Q-7）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
 try {
   const [core] = await Promise.all([superviseCore(() => new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed, coreHooks), document.fonts.ready]);
   attachCore(core);
 } catch (e) {
-  showStartupError(e);
+  showStartupBox(startupErrorHtml(e));
   // 続きの組み立てはしない（解析できないまま画面を組み立てると、壊れた状態で操作できてしまう）
   await new Promise<never>(() => {});
 }
 
 /**
- * 起動できなかったことを、画面の真ん中に出す（通信の失敗や、WebAssembly を使えない古いブラウザ）。
- * 案内の文と、失敗の詳しい内容（例外のメッセージ）を body の最後に加える。
- *
- * @param e 起動のときに投げられた値（Error ならそのメッセージを出す）
+ * 保存した設定（パネルの配置・図のタブ）を消して、ページを読み直す（Q-7）。下書き・前回の続き・プラグインの許可は消さない。
  */
-function showStartupError(e: unknown): void {
-  const box = document.createElement("div");
-  box.id = "startupError";
-  box.setAttribute("role", "alert");
-  box.innerHTML =
-    "<b>Modelith を起動できませんでした</b>" +
-    "<p>テキストの解析に必要なモジュール（WebAssembly）を読み込めませんでした。ページを再読み込みしてください。" +
-    "解決しないときは、新しいブラウザ（Chrome・Edge・Firefox・Safari の最新版）で開いてください。</p>";
-  const detail = document.createElement("small");
-  detail.textContent = e instanceof Error ? e.message : String(e);
-  box.append(detail);
-  document.body.append(box);
+function resetSettingsAndReload(): void {
+  for (const key of [UI_KEY, TABS_KEY]) store.remove(key);
+  location.reload();
 }
-$("#defs").innerHTML = DEFS;
-loadUi();
-if (store.get(EDGE_KEY) === "curve") setEdgeStyle("curve");
-initInspector();
-initPanels();
-initCanvas();
-initCtxMenu();
-initEditor();
-initWordHelp();
-initTextMode();
-initHistory();
-initExport();
-initMenus();
-initToolbar();
-await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });
-// タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
-await settled();
-applyPanes();
-initTabs();
+
+// 画面の組み立て。途中で失敗したら、白い画面のままにせず、保存した設定を初期化して読み直す操作を示す（Q-7）
+try {
+  $("#defs").innerHTML = DEFS;
+  loadUi();
+  if (store.get(EDGE_KEY) === "curve") setEdgeStyle("curve");
+  initInspector();
+  initPanels();
+  initCanvas();
+  initCtxMenu();
+  initEditor();
+  initWordHelp();
+  initTextMode();
+  initHistory();
+  initExport();
+  initMenus();
+  initToolbar();
+  await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });
+  // タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
+  await settled();
+  applyPanes();
+  initTabs();
+} catch (e) {
+  console.error("起動に失敗:", e);
+  const box = showStartupBox(recoveryHtml(e));
+  box.querySelector<HTMLButtonElement>("#btnResetSettings")?.addEventListener("click", resetSettingsAndReload);
+}

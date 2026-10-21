@@ -18,10 +18,10 @@ export interface Session {
   active: number | null;
 }
 
-/** 前回の続きの保存先（ブラウザでは localStorage）。 */
+/** 前回の続きの保存先（ブラウザでは localStorage）。save は置けたかを返す。 */
 export interface SessionStore {
   load(): Session | null;
-  save(session: Session): void;
+  save(session: Session): boolean;
 }
 
 /**
@@ -258,9 +258,12 @@ export function kvSessionStore(kv: KeyValue): SessionStore {
      * 前回の続きを置き換える。
      *
      * @param session 置く前回の続き
+     * @returns 置けたら true。保存先に書けなかった（保存領域がいっぱい）なら false
+     * @example
+     * save({ folder: false, docs: [{ draft: 0 }], active: 0 }) // → true
      */
     save(session) {
-      kv.set(KEY, JSON.stringify(session));
+      return kv.set(KEY, JSON.stringify(session));
     },
   };
 }

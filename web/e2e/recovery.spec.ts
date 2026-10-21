@@ -1,4 +1,4 @@
-// コアの Worker が落ちた・返事をしないときの出口（Q-6）。待ち続けず、テキストの保存は続けられ、Worker を作り直して図の操作を再開する。
+// コアの Worker が落ちた・返事をしないときの出口（Q-7）。待ち続けず、テキストの保存は続けられ、Worker を作り直して図の操作を再開する。
 import type { Page } from "@playwright/test";
 import { expect, openApp, putFiles, readFile, test, typeAtEnd } from "./fixtures";
 
@@ -49,7 +49,7 @@ async function renameAlpha(page: Page): Promise<void> {
   await page.keyboard.press("Enter");
 }
 
-test("Q-6・F-FILE-2: Worker がエラーを起こしても、図の操作をやめたと知らせ、Ctrl+S で保存でき、作り直した後は図の操作が効く", async ({ page }) => {
+test("Q-7・F-FILE-2: Worker がエラーを起こしても、図の操作をやめたと知らせ、Ctrl+S で保存でき、作り直した後は図の操作が効く", async ({ page }) => {
   // Arrange
   await openProjectFile(page);
   await typeAtEnd(page, "// edited\n");
@@ -64,7 +64,7 @@ test("Q-6・F-FILE-2: Worker がエラーを起こしても、図の操作をや
   await expect(page.locator('#gNodes .node[data-key="Gamma"]')).toBeVisible();
 });
 
-test("Q-6・F-FILE-2: Worker が返事をしなくなっても、期限で図の操作をやめたと知らせ、Ctrl+S で保存できる", async ({ page }) => {
+test("Q-7・F-FILE-2: Worker が返事をしなくなっても、期限で図の操作をやめたと知らせ、Ctrl+S で保存できる", async ({ page }) => {
   // Arrange
   await openProjectFile(page);
   await stallWorker(page);
@@ -77,7 +77,7 @@ test("Q-6・F-FILE-2: Worker が返事をしなくなっても、期限で図の
   await restarted(page, 2);
 });
 
-test("Q-6・F-FILE-2: 短い間に止まり続けたらあきらめ、再読み込みを案内する。テキストの保存はできる（境界値: 4 回目）", async ({ page }) => {
+test("Q-7・F-FILE-2: 短い間に止まり続けたらあきらめ、再読み込みを案内する。テキストの保存はできる（境界値: 4 回目）", async ({ page }) => {
   // Arrange（3 回までは作り直す）
   await openProjectFile(page);
   for (let i = 0; i < 3; i++) {

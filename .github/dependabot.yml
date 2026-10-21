@@ -1,0 +1,27 @@
+# 依存の更新を PR で受け取る（dev 向け）。
+# Actions は SHA で固定しているので、更新もここで受ける。npm と cargo は本番の依存だけでなく開発の依存も含む。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"
+  - package-ecosystem: npm
+    directory: /web
+    target-branch: dev
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+  - package-ecosystem: cargo
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5

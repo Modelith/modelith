@@ -3,7 +3,8 @@
 //   review … 先頭に「// レビュー済み」の行を足す変更を提案する（F-PLUG-5：1 回の「元に戻す」で取り消せる）
 //   stale  … 1 つ前の版に対する変更を提案する（F-PLUG-5：適用されない）
 //   probe  … 通信・ブラウザの保存場所・親の画面に触れてみて、結果を知らせる（F-PLUG-7：すべて失敗するはず）
-//   loop   … 止まらない処理をする（ホストは動き続け、停止できる）
+//   loop   … 止まらない処理をする（ホストは動き続け、停止できる。期限がきたら知らせる）
+//   flood  … 大量の知らせ（notify）を一度に送る（F-PLUG-7：超えた分を捨て、止める）
 //   count  … 保存場所の count を 1 増やし、読み直した値を知らせる（storage）
 //   big    … 保存場所の上限（1 MB）を超える値を保存してみて、読み直した結果を知らせる（storage）
 // 取り込み lines … テキストの 1 行を 1 つの要求にしたモデルを返す（F-PLUG-4）。「失敗」と書いたファイルは failed を返す
@@ -107,6 +108,7 @@
       else if (m.command === "stale") host.send({ type: "proposeEdits", version: version - 1, edits: [{ range: at, newText: MARK }] });
       else if (m.command === "probe") host.send({ type: "notify", level: "info", message: `確認の結果：${await probe()}` });
       else if (m.command === "loop") for (;;) { /* 止まらない */ }
+      else if (m.command === "flood") for (let i = 0; i < 5000; i++) host.send({ type: "notify", level: "info", message: `知らせ ${i}` });
       else if (m.command === "count") {
         const now = (await storage({ type: "storageGet", key: "count" })).value ?? 0;
         await storage({ type: "storageSet", key: "count", value: now + 1 });

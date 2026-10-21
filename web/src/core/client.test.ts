@@ -206,7 +206,7 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
   ])("%o には %s で返す", (req, type) => {
     // Arrange・Act
     const r = failedReply(req, "boom");
-    // Assert（失敗の印が付く。Q-6）
+    // Assert（失敗の印が付く。Q-7）
     expect([r.type, "failure" in r ? r.failure : undefined]).toEqual([type, "boom"]);
   });
 
@@ -233,7 +233,7 @@ describe("failedReply（コアの中の予期しない失敗）", () => {
       },
       () => {},
     );
-    // Act（失敗の返事でコアは止まったと見なし、つなぎ直すまでは依頼をすぐ断る。Q-6）
+    // Act（失敗の返事でコアは止まったと見なし、つなぎ直すまでは依頼をすぐ断る。Q-7）
     const parsed = await c.parseProjectFile("{}");
     const created = await c.createProjectFile("A");
     // Assert
@@ -470,7 +470,7 @@ describe("CoreClient（v1 のプラグイン、ADR-0018 §3・§4）", () => {
   });
 });
 
-/** 返事をためておき、deliverAll() で届けるか、crash() でコアが落ちたと知らせる偽の Worker（Q-6 の異常系）。 */
+/** 返事をためておき、deliverAll() で届けるか、crash() でコアが落ちたと知らせる偽の Worker（Q-7 の異常系）。 */
 function stallableWorker(fns: CoreFns = wasm) {
   const state: CoreState = { text: "", plugins: null };
   const queue: CoreResponse[] = [];
@@ -497,7 +497,7 @@ function stallableWorker(fns: CoreFns = wasm) {
   return { port, posted, deliverAll: (): void => queue.splice(0).forEach((r) => listener(r)), crash: (reason: string): void => failure(reason) };
 }
 
-describe("CoreClient（コアが止まった・返事をしないときの出口、Q-6）", () => {
+describe("CoreClient（コアが止まった・返事をしないときの出口、Q-7）", () => {
   const TIMEOUT = 1000;
 
   function supervised(fns?: CoreFns) {

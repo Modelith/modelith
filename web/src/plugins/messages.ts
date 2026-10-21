@@ -2,6 +2,7 @@
 
 import type { CheckedPluginMessage, PlacedDiagnostic, Refused, TextEdit } from "../core";
 import type { NotifyLevel, PluginMessage } from "./generated/protocol";
+import { MAX_DIAGNOSTICS } from "./limits";
 import { utf8Bytes } from "./storage";
 import { base64Bytes, exportFileName, MAX_TRANSFER_BYTES, mediaTypeOf, sizeText } from "./transfer";
 
@@ -17,7 +18,7 @@ export type PendingRequest =
 /** ホストが行うこと。notice があれば、プラグインの一覧にも出す。ignore は、知らせずに捨てる（古いテキストに対する診断など、ふつうに起きること）。 */
 export type HostAction =
   | { kind: "ready" }
-  | { kind: "diagnostics"; version: number; items: PlacedDiagnostic[] }
+  | { kind: "diagnostics"; version: number; items: PlacedDiagnostic[]; dropped: number }
   | { kind: "applyEdits"; version: number; edits: TextEdit[]; label?: string }
   | { kind: "refuseEdits"; notice: string }
   | { kind: "commandDone"; requestId: number }
@@ -44,12 +45,16 @@ export interface CheckResult {
  * 変更案と診断は、プラグインが示した版が、確かめたテキストの版と同じで、その後もテキストが変わっていないときだけ使う。
  * コマンド・取り込み・書き出しの答えは、その種類で頼んで、まだ答えの無い依頼の番号のものだけを使う。
  * 保存場所の依頼（storageGet・storageSet）は、コアが storage の権限を確かめた後なので、そのままホストに任せる。
+ * 診断は maxDiagnostics 件までを使い、超えた分は捨てて件数を添える（F-PLUG-7）。
  *
  * @param result コアが確かめた結果
  * @param pending 頼んで、まだ答えの無い依頼（依頼の番号 → 種類と表示名）
+ * @param maxDiagnostics 1 回の診断で使う件数の上限
  * @returns ホストが行うこと
  * @example
  * decideMessage({ version: 3, stale: false, checked: { message: { type: "ready" } } }, new Map()) // → { kind: "ready" }
+ * decideMessage({ version: 3, stale: false, checked: { message: { type: "diagnostics", version: 3, items }, diagnostics: placed } }, new Map(), 1)
+ * // → { kind: "diagnostics", version: 3, items: [placed[0]], dropped: placed.length - 1 }
  * decideMessage({ version: 3, stale: false, checked: { message: { type: "proposeEdits", version: 3, edits }, edits: placed } }, new Map())
  * // → { kind: "applyEdits", version: 3, edits: placed }
  * decideMessage({ version: 4, stale: false, checked: { message: { type: "proposeEdits", version: 3, … }, … } }, new Map())
@@ -62,7 +67,7 @@ export interface CheckResult {
  * decideMessage({ …, checked: { message: { type: "imported", requestId: 2, … } } }, new Map([[2, { kind: "export", … }]]))
  * // → { kind: "drop", notice: "依頼していない結果（imported）が届いたため、使いませんでした" }（書き出しの依頼に、取り込みの答え）
  */
-export function decideMessage(result: CheckResult, pending: ReadonlyMap<number, PendingRequest>): HostAction {
+export function decideMessage(result: CheckResult, pending: ReadonlyMap<number, PendingRequest>, maxDiagnostics = MAX_DIAGNOSTICS): HostAction {
   const { version, stale, checked } = result;
   if ("refused" in checked) return { kind: "drop", notice: checked.refused };
   const m = checked.message;
@@ -71,7 +76,7 @@ export function decideMessage(result: CheckResult, pending: ReadonlyMap<number, 
       return { kind: "ready" };
     case "diagnostics":
       if (stale || m.version !== version) return { kind: "ignore" };
-      return { kind: "diagnostics", version, items: checked.diagnostics ?? [] };
+      return cappedDiagnostics(version, checked.diagnostics ?? [], maxDiagnostics);
     case "proposeEdits":
       if (stale || m.version !== version) return { kind: "refuseEdits", notice: STALE_PLUGIN_EDIT };
       return { kind: "applyEdits", version, edits: checked.edits ?? [], label: m.label };
@@ -96,6 +101,21 @@ export function decideMessage(result: CheckResult, pending: ReadonlyMap<number, 
     case "storageSet":
       return { kind: "storageSet", requestId: m.requestId, key: m.key, value: m.value };
   }
+}
+
+/**
+ * 診断を上限の件数までにする。
+ *
+ * @param version 診断の対象のテキストの版
+ * @param items コアが位置を確かめた診断（届いた順）
+ * @param max 使う件数の上限
+ * @returns 先頭 max 件を使い、捨てた件数を添えた扱い
+ * @example
+ * cappedDiagnostics(3, [a, b, c], 3) // → { kind: "diagnostics", version: 3, items: [a, b, c], dropped: 0 }（境界値: 上限ちょうど）
+ * cappedDiagnostics(3, [a, b, c], 2) // → { kind: "diagnostics", version: 3, items: [a, b], dropped: 1 }
+ */
+function cappedDiagnostics(version: number, items: PlacedDiagnostic[], max: number): HostAction {
+  return { kind: "diagnostics", version, items: items.slice(0, max), dropped: Math.max(0, items.length - max) };
 }
 
 /**

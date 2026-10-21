@@ -1,4 +1,4 @@
-// コアの Worker の作り直し（Q-6）。Worker の代わりに、`init` に `ready` を返すだけの偽の Worker を使い、
+// コアの Worker の作り直し（Q-7）。Worker の代わりに、`init` に `ready` を返すだけの偽の Worker を使い、
 // 止まったと知らせる・作り直す・あきらめる、の判断を確かめる。
 import { describe, expect, it } from "vitest";
 import { CORE_STOPPED } from "./client";
@@ -64,7 +64,7 @@ describe("restartAllowed（作り直しの上限）", () => {
   });
 });
 
-describe("superviseCore（コアの作り直し、Q-6）", () => {
+describe("superviseCore（コアの作り直し、Q-7）", () => {
   it("Worker がエラーを起こすと、終了して作り直し、受け口は新しい Worker につながる（正常系）", async () => {
     // Arrange
     const { spawn, workers } = spawner();

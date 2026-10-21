@@ -1,4 +1,4 @@
-// コアの Worker が止まった・返事をしないときに作り直す（Q-6、ADR-0016）。
+// コアの Worker が止まった・返事をしないときに作り直す（Q-7、ADR-0016）。
 // 判断（作り直してよいか）は restartAllowed に集め、Worker の起動と終了はここで行う。
 
 import { CoreClient, initWorker, type AnalyzedListener } from "./client";
@@ -48,7 +48,7 @@ export function restartAllowed(restarts: readonly number[], now: number, max: nu
 }
 
 /**
- * Worker の中でコアを動かして受け口を返し、コアが止まったら Worker を終了して作り直す（Q-6）。
+ * Worker の中でコアを動かして受け口を返し、コアが止まったら Worker を終了して作り直す（Q-7）。
  * 作り直したら、受け口が今のテキストとプラグインを送り直す。短い間に作り直しが続いたとき・作り直せなかったときはあきらめ、
  * 以後の依頼はすぐ断られる（テキストの編集と保存は画面の側で続けられる）。
  *
