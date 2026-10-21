@@ -15,7 +15,7 @@
 ## 必要なツール
 
 - Rust stable（`rust-toolchain.toml` で wasm32 ターゲットごと自動導入）
-- Node.js 22.23.4 以上（`.nvmrc`）
+- Node.js 22 の最新（`.nvmrc`。CI は毎回最新の 22.x を使う）
 
 ## 手元で動かす
 
