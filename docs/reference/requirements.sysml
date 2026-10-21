@@ -839,6 +839,20 @@ package ModelithRequirements {
                 verify PhoneTextReq;
             }
         }
+        verification def KeyboardTest {
+            doc /* web/src/app/keyboard.test.ts：ダイアログの中で Tab を回す先（最後から次・先頭から前・途中・1 つだけ・外から入る・0 個） */
+            objective {
+                verify KeyboardReq;
+            }
+        }
+        verification def KeyboardE2E {
+            doc /* web/e2e/keyboard.spec.ts：ダイアログを開いている間は Tab・Shift+Tab で外へ出ず背景が inert になり、Esc で閉じると開いたボタンへ入力が戻る。
+                   開いているファイルが無いときにメニューから開いたダイアログを閉じると、メニューの見出しへ入力が戻り、図とテキストは操作できないまま（Chromium で操作） */
+            objective {
+                verify KeyboardReq;
+                verify NoOpenFileReq;
+            }
+        }
         verification def LayoutTest {
             doc /* web/src/app/layout.test.ts・layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
             objective {
