@@ -11,6 +11,7 @@ import { deleteSel, OPS, PHASEOPS } from "./ops";
 import { PINOPS, selPinInfo } from "./pins";
 import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type Tab, type Tool, type UiPrefs } from "./state";
+import { parseSavedTabs, type SavedTabs } from "./saved-tabs";
 import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "./svg";
 import { ensureLayout, toast } from "./sync";
 import { defaultFlowContext, flowContexts } from "./action-flow";
@@ -19,8 +20,10 @@ import { baseViewOf, CC, defaultIbdContext, edgeById, ibdContexts, modelView, no
 import { isCtxOpen } from "./ctxmenu";
 
 /* ---- パネル配置 ---- */
-const UI_KEY = "modelith-ui-v1";
-const TABS_KEY = "modelith-tabs-v1";
+/** パネルの設定を置く localStorage のキー（起動に失敗したときに初期化する設定。Q-6）。 */
+export const UI_KEY = "modelith-ui-v1";
+/** 図のタブを置く localStorage のキー（起動に失敗したときに初期化する設定。Q-6）。 */
+export const TABS_KEY = "modelith-tabs-v1";
 
 /**
  * 保存したパネルの設定（表示・幅など）を localStorage から S.ui に読み込む。壊れていれば既定値のままにする。
@@ -33,9 +36,9 @@ export function loadUi(): void {
   }
 }
 /**
- * パネルの設定（S.ui）を localStorage に保存する。
+ * パネルの設定（S.ui）を localStorage に保存する（書けなくても止めない。設定は次に開いたときに既定に戻るだけ）。
  */
-export const saveUi = (): void => store.set(UI_KEY, JSON.stringify(S.ui));
+export const saveUi = (): void => void store.set(UI_KEY, JSON.stringify(S.ui));
 /** 狭い画面のメディアクエリ（style.css の @media (max-width:760px) と同じ幅）。 */
 export const NARROW_QUERY = "(max-width:760px)";
 /**
@@ -383,35 +386,30 @@ const defaultCtx = (view: string): string | null =>
           : null;
 
 /**
- * localStorage に保存したタブを読む。
+ * localStorage に保存したタブを読む。形の合わないタブ（知らないビュー・型違い）は捨て、壊れていても例外にしない（F-VIEW-2）。
  *
- * @returns 保存したタブと表示中のタブの id。無いか壊れていれば null
+ * @returns 保存したタブと表示中のタブの id。無い・壊れている・戻せるタブが無ければ null
  * @example
  * // { "tabs": [{ "id": 1, "view": "trace", … }], "active": 1 } を保存済み
  * readSavedTabs() // → { tabs: [{ id: 1, view: "trace", … }], active: 1 }
- * // 保存が無い
+ * // 保存が無い・{ "tabs": [null] } のように壊れている
  * readSavedTabs() // → null
  */
-function readSavedTabs(): { tabs?: Tab[]; active?: number } | null {
-  try {
-    return JSON.parse(store.get(TABS_KEY) ?? "null") as { tabs?: Tab[]; active?: number } | null;
-  } catch {
-    return null;
-  }
+function readSavedTabs(): SavedTabs | null {
+  return parseSavedTabs(store.get(TABS_KEY), VIEWS.map((v) => v.id));
 }
 
 /** 起動したときに読んだ、保存したタブ（「前回の続きを開く」の後に戻すため。F-FILE-13）。 */
-let startTabs: { tabs?: Tab[]; active?: number } | null = null;
+let startTabs: SavedTabs | null = null;
 
 /**
- * 保存したタブを戻し（知らないビューのタブは捨てる）、無ければ既定の 4 つ（トレーサビリティ・制御ループ・内部ブロック図・シーケンス図）を開く。
+ * 保存したタブを戻し、無ければ既定の 4 つ（トレーサビリティ・制御ループ・内部ブロック図・シーケンス図）を開く。
  * 保存した表示中のタブ（無ければ先頭）に切り替える。
  *
- * @param saved 保存したタブと表示中のタブの id（無ければ null）
+ * @param saved 保存したタブと表示中のタブの id（形は readSavedTabs が確かめ済み。無ければ null）
  */
-function applySavedTabs(saved: { tabs?: Tab[]; active?: number } | null): void {
-  if (saved?.tabs?.length) S.tabs = saved.tabs.filter((t) => VIEWS.some((v) => v.id === t.view));
-  for (const tb of S.tabs) if (typeof tb.mv !== "string") delete tb.mv;
+function applySavedTabs(saved: SavedTabs | null): void {
+  if (saved) S.tabs = saved.tabs;
   if (!S.tabs.length) {
     S.tabs = [
       { id: 1, view: "trace", ctx: null, phase: "" },
@@ -422,8 +420,7 @@ function applySavedTabs(saved: { tabs?: Tab[]; active?: number } | null): void {
   }
   tabSeq = Math.max(...S.tabs.map((t) => t.id)) + 1;
   for (const tb of S.tabs) if (!tb.ctx && !tb.mv) tb.ctx = defaultCtx(tb.view);
-  const first = S.tabs[0];
-  const active = saved?.active != null && S.tabs.some((t) => t.id === saved.active) ? saved.active : first?.id;
+  const active = saved?.active ?? S.tabs[0]?.id;
   if (active != null) activateTab(active, { fit: true });
 }
 
@@ -436,7 +433,7 @@ export function resumeTabs(): void {
 }
 
 /**
- * 図のタブを用意する（F-VIEW-2）。起動時に 1 回呼ぶ。保存したタブを戻し（知らないビューのタブは捨てる）、
+ * 図のタブを用意する（F-VIEW-2）。起動時に 1 回呼ぶ。保存したタブを戻し（知らないビューのタブ・形の合わないタブは捨てる）、
  * 無ければ既定の 4 つ（トレーサビリティ・制御ループ・内部ブロック図・シーケンス図）を開く。
  * 保存した表示中のタブ（無ければ先頭）に切り替え、タブバーのクリック・中クリック・「＋」メニューに操作をつなぐ。
  */

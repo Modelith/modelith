@@ -2,9 +2,10 @@
 
 import type { Draft, DraftStore } from "./workspace";
 
+/** キーと値の保存先。set は書けたかを返す（ブラウザの保存領域がいっぱいのときは false。F-FILE-11）。 */
 export interface KeyValue {
   get(key: string): string | null;
-  set(key: string, value: string): void;
+  set(key: string, value: string): boolean;
 }
 
 const KEY = "modelith-drafts-v1";
@@ -52,10 +53,15 @@ export function kvDraftStore(kv: KeyValue): DraftStore {
      * 下書きの一覧と、すべて閉じて終えたかを、まとめて置き換える。
      *
      * @param state 置く下書きの一覧（空なら空の一覧を置く）と、すべて閉じて終えたか
+     * @returns 下書きを置けたら true。保存先に書けなかった（保存領域がいっぱい）なら false
+     * @example
+     * save({ drafts: [{ name: "無題.sysml", text: "package P;" }], closedAll: false }) // → true
+     * save({ drafts: [huge], closedAll: false })                                       // → false（保存領域がいっぱい）
      */
     save(state) {
-      kv.set(KEY, JSON.stringify(state.drafts));
+      const saved = kv.set(KEY, JSON.stringify(state.drafts));
       kv.set(CLOSED_ALL_KEY, state.closedAll ? "1" : "0");
+      return saved;
     },
   };
 }

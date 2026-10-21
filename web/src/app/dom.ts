@@ -58,7 +58,10 @@ export function isFormField(t: EventTarget | null): boolean {
   return t instanceof Element && /INPUT|TEXTAREA|SELECT/.test(t.tagName);
 }
 
-/** localStorage は使えない環境（プライベートモードなど）があるため、失敗しても止めない。 */
+/**
+ * localStorage は使えない環境（プライベートモードなど）や、保存領域がいっぱいのとき（QuotaExceededError）があるため、失敗しても止めない。
+ * 書けたかは戻り値で返すので、下書きのように失われては困るものを書く側は、それを見て知らせる（F-FILE-11）。
+ */
 export const store = {
   /**
    * localStorage から値を読む。使えない環境では null を返す。
@@ -77,16 +80,38 @@ export const store = {
     }
   },
   /**
-   * localStorage に値を書く。保存できない環境でも例外を出さずに何もしない。
+   * localStorage に値を書く。保存できない環境・保存領域がいっぱいのときも例外を出さず、書けなかったことを返す。
    *
    * @param key 保存のキー
    * @param value 保存する文字列
+   * @returns 書けたら true。保存領域がいっぱい（QuotaExceededError）・localStorage が使えない環境なら false
+   * @example
+   * store.set("modelith-ui-v1", '{"tree":true}') // → true
+   * store.set("modelith-drafts-v1", huge)         // → false（保存領域がいっぱい）
    */
-  set(key: string, value: string): void {
+  set(key: string, value: string): boolean {
     try {
       localStorage.setItem(key, value);
+      return true;
     } catch {
-      /* 保存できなくても編集は続けられる */
+      return false; // 保存できなくても編集は続けられる。知らせるかは呼ぶ側が決める
+    }
+  },
+  /**
+   * localStorage の値を消す。無いキーでも何もしない。
+   *
+   * @param key 消すキー
+   * @returns 消せたら（無いキーを含む）true。localStorage が使えない環境なら false
+   * @example
+   * store.remove("modelith-tabs-v1") // → true（以後 store.get は null）
+   * store.remove("missing")          // → true（もともと無い）
+   */
+  remove(key: string): boolean {
+    try {
+      localStorage.removeItem(key);
+      return true;
+    } catch {
+      return false;
     }
   },
 };

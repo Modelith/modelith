@@ -148,7 +148,7 @@ describe("parseSession・kvSessionStore", () => {
   it("保存したものをそのまま読める", () => {
     // Arrange
     const kv = new Map<string, string>();
-    const store = kvSessionStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => kv.set(k, v) });
+    const store = kvSessionStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
     const s: Session = { folder: true, docs: [{ draft: 0 }, { path: "models/b.sysml" }], active: 1 };
     // Act
     store.save(s);
@@ -158,9 +158,20 @@ describe("parseSession・kvSessionStore", () => {
 
   it("何も置いていなければ null（境界値: 初めて開いた）", () => {
     // Arrange
-    const store = kvSessionStore({ get: () => null, set: () => {} });
+    const store = kvSessionStore({ get: () => null, set: () => true });
     // Act・Assert
     expect(store.load()).toBeNull();
+  });
+
+  it("置けたら true、保存先に書けなければ false を返す（異常系：保存領域がいっぱい）", () => {
+    // Arrange
+    const ok = kvSessionStore({ get: () => null, set: () => true });
+    const full = kvSessionStore({ get: () => null, set: () => false });
+    const s: Session = { folder: false, docs: [{ draft: 0 }], active: 0 };
+    // Act
+    const saved = [ok.save(s), full.save(s)];
+    // Assert
+    expect(saved).toEqual([true, false]);
   });
 
   it.each(["{not json", "null", "[]", '{"folder":"yes","docs":[]}', '{"folder":true}'])("壊れた・形の合わない値（%s）は null（異常系）", (json) => {
