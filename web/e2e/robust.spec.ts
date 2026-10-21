@@ -96,3 +96,33 @@ test("F-FILE-11: 下書きを保存できている間は、無題の文書を編
   // Assert
   expect(dialogs).toBe(0);
 });
+
+// ---- F-VIEW-2
+test("F-VIEW-2: 記憶した図のタブが壊れていても起動し、形の合うタブだけを戻す（異常系）", async ({ page }) => {
+  // Arrange（null・文字列・id が整数でない・知らないビューの項目を混ぜる）
+  await openApp(page);
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "modelith-tabs-v1",
+      JSON.stringify({ tabs: [null, "abc", { id: 1.5, view: "trace", ctx: null, phase: "" }, { id: 9, view: "gone" }, { id: 7, view: "structure", ctx: null, phase: "" }], active: 7 }),
+    ),
+  );
+  // Act
+  await page.reload();
+  await page.locator("#gNodes .node").first().waitFor();
+  // Assert
+  await expect(page.locator("#tabbar .tab")).toHaveCount(1);
+  await expect(page.locator('.tab[aria-selected="true"]')).toContainText("ブロック定義図");
+});
+
+test("F-VIEW-2: 記憶した図のタブが配列でなければ、既定のタブで起動する（異常系）", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  await page.evaluate(() => localStorage.setItem("modelith-tabs-v1", '{"tabs":"abc"}'));
+  // Act
+  await page.reload();
+  await page.locator("#gNodes .node").first().waitFor();
+  // Assert
+  await expect(page.locator("#tabbar .tab")).toHaveCount(4);
+  await expect(page.locator('.tab[aria-selected="true"]')).toContainText("トレーサビリティ");
+});
