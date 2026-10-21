@@ -3,10 +3,10 @@ import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { FakeDir, FakeFile, FakeFsApi, MemoryHandleStore } from "../files/fake-fs";
 import { LocalFolderProvider } from "../files/local-folder";
 import { ProviderRegistry, type DirEntry, type FileRef } from "../files/types";
-import { AutoSaver, type Timer } from "./autosave";
+import { AutoSaver, failureReason, type AutoSaveOutcome, type Timer } from "./autosave";
 import { kvDraftStore } from "./drafts";
 import { kvSessionStore } from "./session";
-import { PROJECT_FILE, Workspace, suggestName, type SaveOutcome } from "./workspace";
+import { PROJECT_FILE, Workspace, suggestName } from "./workspace";
 
 function setup() {
   const api = new FakeFsApi();
@@ -333,7 +333,7 @@ describe("AutoSaver（F-FILE-6）", () => {
     const s = setup();
     const { file, doc } = await openA(s);
     const timer = new ManualTimer();
-    const outcomes: SaveOutcome[] = [];
+    const outcomes: AutoSaveOutcome[] = [];
     const auto = new AutoSaver(s.ws, timer, () => enabled, (_k, o) => outcomes.push(o), 1000);
     return { ...s, file, doc, timer, auto, outcomes };
   }
@@ -411,6 +411,59 @@ describe("AutoSaver（F-FILE-6）", () => {
     // Assert
     expect(a.outcomes).toEqual(["conflict"]);
     expect(a.file.content).toBe("theirs");
+  });
+
+  it("保存が例外で失敗したら（フォルダの許可が切れた）、理由を知らせて未保存のままにする（異常系）", async () => {
+    // Arrange
+    const a = await setupAuto();
+    a.file.createWritable = async () => {
+      throw new DOMException("permission revoked", "NotAllowedError");
+    };
+    a.ws.setText(a.doc.key, "mine");
+    a.auto.notify(a.doc.key);
+    // Act
+    a.timer.advance(1000);
+    await flush();
+    // Assert
+    expect(a.outcomes).toEqual([{ failed: "permission revoked" }]);
+    expect(a.ws.isDirty(a.doc)).toBe(true);
+    expect(a.file.content).toBe("package A;");
+  });
+
+  it("失敗の後に編集すると、もう一度保存を試みる", async () => {
+    // Arrange
+    const a = await setupAuto();
+    const original = a.file.createWritable.bind(a.file);
+    a.file.createWritable = async () => {
+      throw new DOMException("disk full", "QuotaExceededError");
+    };
+    a.ws.setText(a.doc.key, "v1");
+    a.auto.notify(a.doc.key);
+    a.timer.advance(1000);
+    await flush();
+    a.file.createWritable = original;
+    a.ws.setText(a.doc.key, "v2");
+    a.auto.notify(a.doc.key);
+    // Act
+    a.timer.advance(1000);
+    await flush();
+    // Assert
+    expect(a.outcomes).toEqual([{ failed: "disk full" }, "saved"]);
+    expect(a.file.content).toBe("v2");
+  });
+});
+
+describe("failureReason（F-FILE-6）", () => {
+  it.each<[string, unknown, string]>([
+    ["Error はメッセージ", new DOMException("permission revoked", "NotAllowedError"), "permission revoked"],
+    ["文字列はそのまま", "disk full", "disk full"],
+    ["メッセージの無い Error は空（境界）", new Error(), ""],
+    ["undefined は文字列にする（境界）", undefined, "undefined"],
+  ])("%s", (_, e, expected) => {
+    // Arrange・Act
+    const reason = failureReason(e);
+    // Assert
+    expect(reason).toBe(expected);
   });
 });
 
