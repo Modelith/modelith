@@ -1,5 +1,7 @@
 # 依存の更新を PR で受け取る（dev 向け）。
 # Actions は SHA で固定しているので、更新もここで受ける。npm と cargo は本番の依存だけでなく開発の依存も含む。
+# cooldown: 公開から 7 日たっていない版は提案しない（乗っ取られた版を取り込まないため）。
+# セキュリティ更新には cooldown が効かない仕様なので、急ぎの修正は遅れない。
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -7,6 +9,8 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(ci)"
   - package-ecosystem: npm
@@ -14,6 +18,8 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
     open-pull-requests-limit: 5
@@ -22,6 +28,8 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
     open-pull-requests-limit: 5
