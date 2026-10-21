@@ -147,3 +147,46 @@ setup() {
   # Assert
   [ "$r $i" = "0 1" ]
 }
+
+# --- policy_rustup_version ---
+
+@test "policy_rustup_version: 下限ちょうど・それより新しい版を許可する（正常系・境界値）" {
+  # Arrange
+  local equal="rustup 1.29.2 (d8c92c676 2026-10-21)" patch="rustup 1.29.3 (x 2026-11-01)"
+  local minor="rustup 1.30.0 (x 2027-01-01)" major="rustup 2.0.0 (x 2028-01-01)"
+  # Act
+  local e p mi ma
+  e=$(status_of policy_rustup_version "$equal")
+  p=$(status_of policy_rustup_version "$patch")
+  mi=$(status_of policy_rustup_version "$minor")
+  ma=$(status_of policy_rustup_version "$major")
+  # Assert
+  [ "$e $p $mi $ma" = "0 0 0 0" ]
+}
+
+@test "policy_rustup_version: 下限より古い版は理由を出して 1 を返す（異常系・境界値）" {
+  # Arrange
+  local below="rustup 1.29.1 (x 2026-09-01)" older_minor="rustup 1.28.9 (x 2026-01-01)" older_major="rustup 0.99.99"
+  # Act
+  local b om oj
+  b=$(status_of policy_rustup_version "$below")
+  om=$(status_of policy_rustup_version "$older_minor")
+  oj=$(status_of policy_rustup_version "$older_major")
+  run policy_rustup_version "$below"
+  # Assert
+  [ "$b $om $oj" = "1 1 1" ]
+  [[ $output == "rustup 1.29.1 は古すぎます"* ]]
+}
+
+@test "policy_rustup_version: 版を読み取れない入力は 1 を返す（異常系: 空・別のコマンドの出力）" {
+  # Arrange
+  local empty="" other="rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  # Act
+  local e o
+  e=$(status_of policy_rustup_version "$empty")
+  o=$(status_of policy_rustup_version "$other")
+  run policy_rustup_version "$other"
+  # Assert
+  [ "$e $o" = "1 1" ]
+  [[ $output == "rustup の版を読み取れませんでした"* ]]
+}

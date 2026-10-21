@@ -93,3 +93,26 @@ policy_forbidden_paths() {
 policy_needs_verify() {
   grep -qE "$HARNESS_VERIFY_TRIGGER"
 }
+
+# rustup の版の下限。これより古い rustup は、ツールチェーンを取るときの TLS の確かめが甘い（RUSTSEC-2026-0382）。
+POLICY_RUSTUP_MIN_VERSION='1.29.2'
+
+# rustup の版が下限（POLICY_RUSTUP_MIN_VERSION）以上か。`rustup --version` の 1 行目を受け取る。
+# 例: "rustup 1.29.2 (d8c92c676 2026-10-21)" → 0、"rustup 1.28.2 (...)" → 1（理由を出す）、"" → 1（読み取れない）。
+policy_rustup_version() {
+  local line=$1 re='^rustup[[:space:]]+([0-9]+)\.([0-9]+)\.([0-9]+)'
+  if [[ ! $line =~ $re ]]; then
+    echo "rustup の版を読み取れませんでした（'$line'）。"
+    return 1
+  fi
+  local -a have=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}") need
+  IFS=. read -ra need <<<"$POLICY_RUSTUP_MIN_VERSION"
+  local i
+  for i in 0 1 2; do
+    ((10#${have[i]} > 10#${need[i]})) && return 0
+    ((10#${have[i]} < 10#${need[i]})) && break
+    ((i == 2)) && return 0
+  done
+  echo "rustup ${have[0]}.${have[1]}.${have[2]} は古すぎます（${POLICY_RUSTUP_MIN_VERSION} 以上が必要。RUSTSEC-2026-0382）。'rustup self update' で更新してください。"
+  return 1
+}

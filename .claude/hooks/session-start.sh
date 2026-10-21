@@ -6,6 +6,8 @@ cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 
 prepare_toolchain() {
   command -v rustup >/dev/null || return 0
+  # 古い rustup はツールチェーンを取るときの TLS の確かめが甘い（RUSTSEC-2026-0382。1.29.2 で修正）
+  rustup self update >/dev/null 2>&1 || echo "警告: rustup 自身を更新できませんでした（1.29.2 以上を使ってください）"
   rustup component add rustfmt clippy >/dev/null 2>&1 || echo "警告: rustfmt / clippy を追加できませんでした"
   rustup target add wasm32-unknown-unknown >/dev/null 2>&1 || echo "警告: wasm32 ターゲットを追加できませんでした"
 }
@@ -14,13 +16,19 @@ prepare_node_packages() {
   local dir
   for dir in web tests/harness; do
     [[ -f $dir/package-lock.json && ! -d $dir/node_modules ]] || continue
-    npm ci --prefix "$dir" --no-audit --no-fund >/dev/null 2>&1 || echo "警告: $dir の npm ci に失敗しました"
+    npm ci --prefix "$dir" --ignore-scripts --no-audit --no-fund >/dev/null 2>&1 || echo "警告: $dir の npm ci に失敗しました"
   done
 }
 
+# ShellCheck の導入は OS のパッケージ（署名付き）から行う。PyPI など言語のパッケージ置き場は使わない（CONTRIBUTING の依存の決まり）
 prepare_shellcheck() {
   command -v shellcheck >/dev/null && return 0
-  pip install --quiet shellcheck-py >/dev/null 2>&1 || echo "警告: shellcheck を導入できませんでした"
+  local sudo=""
+  [[ $(id -u) -ne 0 ]] && command -v sudo >/dev/null && sudo="sudo"
+  if command -v apt-get >/dev/null; then
+    { $sudo apt-get install -y -qq shellcheck || { $sudo apt-get update -qq && $sudo apt-get install -y -qq shellcheck; }; } >/dev/null 2>&1 && return 0
+  fi
+  echo "警告: shellcheck を導入できませんでした（apt-get install shellcheck・brew install shellcheck などで入れてください）"
 }
 
 announce() {
