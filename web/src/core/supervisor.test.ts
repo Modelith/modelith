@@ -1,22 +1,28 @@
 // コアの Worker の作り直し（Q-7）。Worker の代わりに、`init` に `ready` を返すだけの偽の Worker を使い、
 // 止まったと知らせる・作り直す・あきらめる、の判断を確かめる。
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CORE_STOPPED } from "./client";
-import { MAX_RESTARTS, RESTART_WINDOW_MS, restartAllowed, superviseCore, type CoreSupervisorHooks } from "./supervisor";
+import { MAX_RESTARTS, RESTART_TIMED_OUT, RESTART_WINDOW_MS, restartAllowed, superviseCore, type CoreSupervisorHooks } from "./supervisor";
+
+/** 起動の仕方。ready は起動する、failed は wasm を読み込めない、hang は返事をしない、manual は boot() を呼ぶまで返事をしない。 */
+type Boot = "ready" | "failed" | "hang" | "manual";
 
 /** `init` に `ready`（または失敗）を返し、terminate を数える偽の Worker。crash() で Worker のエラーを起こす。 */
 class FakeWorker extends EventTarget {
   terminated = false;
-  constructor(private readonly boots: "ready" | "failed" = "ready") {
+  constructor(private readonly boots: Boot = "ready") {
     super();
   }
   postMessage(req: { type: string }): void {
-    if (req.type !== "init") return;
+    if (req.type !== "init" || this.boots === "hang" || this.boots === "manual") return;
     const data = this.boots === "ready" ? { type: "ready" } : { type: "failed", message: "wasm を読み込めません" };
     queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data })));
   }
   terminate(): void {
     this.terminated = true;
+  }
+  boot(): void {
+    this.dispatchEvent(new MessageEvent("message", { data: { type: "ready" } }));
   }
   crash(message: string): void {
     const ev = new Event("error", { cancelable: true });
@@ -25,11 +31,11 @@ class FakeWorker extends EventTarget {
   }
 }
 
-/** 偽の Worker を作る関数と、作った Worker の一覧。boots は何個目の Worker が起動に失敗するか。 */
-function spawner(failAt = -1) {
+/** 偽の Worker を作る関数と、作った Worker の一覧。failAt は何個目（0 から）の Worker が起動に失敗するか。boots は何個目の Worker をどう起動するか（failAt より優先）。 */
+function spawner(failAt = -1, boots: (index: number) => Boot | undefined = () => undefined) {
   const workers: FakeWorker[] = [];
   const spawn = (): Worker => {
-    const w = new FakeWorker(workers.length === failAt ? "failed" : "ready");
+    const w = new FakeWorker(boots(workers.length) ?? (workers.length === failAt ? "failed" : "ready"));
     workers.push(w);
     return w as unknown as Worker;
   };
@@ -158,5 +164,80 @@ describe("superviseCore（コアの作り直し、Q-7）", () => {
     const { hooks } = recorder();
     // Act & Assert
     await expect(superviseCore(spawn, "core.wasm", () => {}, hooks)).rejects.toThrow("wasm を読み込めません");
+  });
+});
+
+describe("superviseCore（作り直した Worker の起動の期限、Q-7）", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 1 つ目の Worker は起動し、2 つ目からは boots の通りに起動する偽の Worker で、コアを起動する。 */
+  async function start(boots: (index: number) => Boot | undefined, maxRestarts: number) {
+    vi.useFakeTimers();
+    const { spawn, workers } = spawner(-1, (i) => (i === 0 ? "ready" : boots(i)));
+    const { calls, hooks } = recorder();
+    const c = await superviseCore(spawn, "core.wasm", () => {}, hooks, { now: () => 0, timeoutMs: 1_000, maxRestarts, windowMs: 60_000 });
+    return { c, calls, workers };
+  }
+
+  it("期限の 1 ms 手前に起動すれば、その Worker につなぎ直す（境界値: 期限 - 1）", async () => {
+    // Arrange
+    const { c, calls, workers } = await start(() => "manual", 1);
+    workers[0]!.crash("boom");
+    await vi.advanceTimersByTimeAsync(999);
+    // Act
+    workers[1]!.boot();
+    await vi.advanceTimersByTimeAsync(1);
+    // Assert
+    expect(calls).toEqual(["down:boom"]);
+    expect([workers.length, workers[1]!.terminated, c.connected]).toEqual([2, false, true]);
+  });
+
+  it("期限までに起動しなければ、終了して作り直す（境界値: ちょうど期限）", async () => {
+    // Arrange
+    const { calls, workers } = await start((i) => (i === 1 ? "hang" : "ready"), 2);
+    workers[0]!.crash("boom");
+    await vi.advanceTimersByTimeAsync(999);
+    // Act
+    await vi.advanceTimersByTimeAsync(1);
+    // Assert
+    expect(calls).toEqual(["down:boom"]);
+    expect([workers.length, workers[1]!.terminated, workers[2]!.terminated]).toEqual([3, true, false]);
+  });
+
+  it("起動しない Worker も作り直しの回数に数え、上限の回数目に起動すれば、あきらめない（境界値: N 回）", async () => {
+    // Arrange（上限 2 回。1 回目に作った Worker は起動せず、2 回目に作った Worker は起動する）
+    const { c, calls, workers } = await start((i) => (i === 1 ? "hang" : "ready"), 2);
+    // Act
+    workers[0]!.crash("boom");
+    await vi.advanceTimersByTimeAsync(1_000);
+    // Assert
+    expect(calls).toEqual(["down:boom"]);
+    expect([workers.length, c.connected]).toEqual([3, true]);
+  });
+
+  it("作り直した Worker が上限の回数を超えて起動しなければ、あきらめる（境界値: N + 1 回）", async () => {
+    // Arrange（上限 2 回。作り直した Worker はどれも起動しない）
+    const { c, calls, workers } = await start(() => "hang", 2);
+    // Act
+    workers[0]!.crash("boom");
+    await vi.advanceTimersByTimeAsync(2_000);
+    // Assert
+    expect(calls).toEqual(["down:boom", `gaveUp:${RESTART_TIMED_OUT}`]);
+    expect([workers.length, workers.every((w) => w.terminated), c.connected]).toEqual([3, true, false]);
+  });
+
+  it("期限が切れた後に届いた起動は使わない（異常系）", async () => {
+    // Arrange（上限 1 回。作り直した Worker は期限の後に起動する）
+    const { c, calls, workers } = await start(() => "manual", 1);
+    workers[0]!.crash("boom");
+    await vi.advanceTimersByTimeAsync(1_000);
+    // Act
+    workers[1]!.boot();
+    await vi.advanceTimersByTimeAsync(0);
+    // Assert
+    expect(calls).toEqual(["down:boom", `gaveUp:${RESTART_TIMED_OUT}`]);
+    expect(c.connected).toBe(false);
   });
 });
