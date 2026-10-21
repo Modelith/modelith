@@ -33,6 +33,29 @@ impl TempDir {
     fn path(&self) -> &Path {
         &self.0
     }
+
+    /// フォルダの中に、`target`（フォルダからの相対パス）を指すシンボリックリンクを作る。
+    /// 作れない環境（権限の無い Windows など）なら false を返す（そのテストは飛ばす）。
+    fn symlink(&self, target: &str, rel: &str) -> bool {
+        let link = self.0.join(rel);
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        symlink_file(&self.0.join(target), &link).is_ok()
+    }
+}
+
+#[cfg(unix)]
+fn symlink_file(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(windows)]
+fn symlink_file(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::windows::fs::symlink_file(target, link)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn symlink_file(_target: &Path, _link: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
 }
 
 impl Drop for TempDir {
@@ -287,6 +310,50 @@ fn rule_path_outside_the_plugin_is_rejected() {
             .contains("ルールのファイル「../../../modelith.json」は、プラグインのフォルダの中を"),
         "{}",
         stdout(&out)
+    );
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn symlinked_rule_file_is_not_followed_and_exits_with_1() {
+    // Arrange（rules.yaml がプロジェクトの外のファイルを指すシンボリックリンク。本物は real.yaml に置く）
+    let dir = project();
+    dir.write("real.yaml", RULES);
+    let rules = format!(".modelith/plugins/{PLUGIN}/rules.yaml");
+    fs::remove_file(dir.path().join(&rules)).unwrap();
+    if !dir.symlink("real.yaml", &rules) {
+        eprintln!("シンボリックリンクを作れない環境なので飛ばす");
+        return;
+    }
+    dir.write("model.sysml", "package P { part def A { port p; } }\n");
+    // Act
+    let out = check(&dir);
+    // Assert（リンクはたどらず、読めないファイルとして知らせる。ルールは当てない）
+    assert_eq!(
+        stdout(&out),
+        format!(
+            "{rules}: エラー: ルールのファイルを読み込めません（シンボリックリンクは読みません） [{PLUGIN}]\n\
+             ファイル 1 件をチェックしました：エラー 1 件・警告 0 件・情報 0 件・ヒント 0 件\n"
+        )
+    );
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn symlinked_project_file_is_not_followed() {
+    // Arrange（modelith.json がシンボリックリンク）
+    let dir = TempDir::new();
+    dir.write("real.json", MODELITH_JSON);
+    if !dir.symlink("real.json", "modelith.json") {
+        eprintln!("シンボリックリンクを作れない環境なので飛ばす");
+        return;
+    }
+    // Act
+    let out = check(&dir);
+    // Assert
+    assert_eq!(
+        stderr(&out),
+        "modelith: modelith.json を読み込めません（シンボリックリンクは読みません）\n"
     );
     assert_eq!(out.status.code(), Some(1));
 }

@@ -214,7 +214,8 @@ package ModelithRequirements {
             doc /* プロジェクトかブラウザに入れたプラグインの検査ルール（YAML）でモデルを検査し、結果を問題一覧に、どのプラグインのどのルールかを添えて示す */
         }
         requirement def <'F-PLUG-2'> RuleParityReq {
-            doc /* プロジェクトに入れた検査ルールを CLI（modelith check <フォルダ>）でも実行でき、画面と同じ結果を返す。error の結果があれば 0 以外で終わり、CI で使える */
+            doc /* プロジェクトに入れた検査ルールを CLI（modelith check <フォルダ>）でも実行でき、画面と同じ結果を返す。error の結果があれば 0 以外で終わり、CI で使える。
+                   プロジェクトのフォルダの外を読まないよう、modelith.json とプラグインのファイルのシンボリックリンクはたどらず、読めないファイルとして知らせる */
         }
         requirement def <'F-PLUG-3'> PluginErrorReq {
             doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
@@ -822,7 +823,7 @@ package ModelithRequirements {
             }
         }
         verification def CliCheckTest {
-            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json は誤りとして知らせる。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方 */
+            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json・シンボリックリンクのルールのファイルと modelith.json は誤りとして知らせる（シンボリックリンクを作れない環境では飛ばす）。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方、シンボリックリンクを読まないこと */
             objective {
                 verify RuleParityReq;
             }
