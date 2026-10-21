@@ -108,8 +108,8 @@ export interface AppState {
   pluginNotes: PluginNote[];
   /** プラグインの ID → 画面に出す名前。 */
   pluginNames: Map<string, string>;
-  /** v1 のプラグインが出した診断（プラグインごとに最後のもの。version はそれを出したテキストの版）。 */
-  pluginDiagnostics: { plugin: string; version: number; items: PlacedDiagnostic[] }[];
+  /** v1 のプラグインが出した診断（プラグインごとに最後のもの。version はそれを出したテキストの版。dropped は件数の上限を超えて捨てた数）。 */
+  pluginDiagnostics: { plugin: string; version: number; items: PlacedDiagnostic[]; dropped: number }[];
 }
 
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
