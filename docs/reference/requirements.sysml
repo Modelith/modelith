@@ -847,10 +847,12 @@ package ModelithRequirements {
         }
         verification def KeyboardE2E {
             doc /* web/e2e/keyboard.spec.ts：ダイアログを開いている間は Tab・Shift+Tab で外へ出ず背景が inert になり、Esc で閉じると開いたボタンへ入力が戻る。
-                   開いているファイルが無いときにメニューから開いたダイアログを閉じると、メニューの見出しへ入力が戻り、図とテキストは操作できないまま（Chromium で操作） */
+                   開いているファイルが無いときにメニューから開いたダイアログを閉じると、メニューの見出しへ入力が戻り、図とテキストは操作できないまま。
+                   draw.io の書き出しはダイアログの役割と見出しを持ち、Esc で閉じるとファイルのメニューへ入力が戻る（Chromium で操作） */
             objective {
                 verify KeyboardReq;
                 verify NoOpenFileReq;
+                verify DrawioExportReq;
             }
         }
         verification def LayoutTest {

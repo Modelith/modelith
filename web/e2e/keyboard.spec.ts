@@ -59,3 +59,21 @@ test.describe("ダイアログ", () => {
     await expect(page.locator(".diagrampane")).toHaveJSProperty("inert", true);
   });
 });
+
+test.describe("draw.io の書き出し", () => {
+  test("Q-8・F-EXP-2: draw.io の書き出しはダイアログとして読み上げられ、Esc で閉じるとファイルのメニューへ入力が戻る", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#fileMenu summary").click();
+    await page.locator("#btnDrawio").click();
+    const dialog = page.getByRole("dialog", { name: "draw.io 形式で書き出す" });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("#modalCopy")).toBeFocused();
+    // Act
+    await page.keyboard.press("Escape");
+    // Assert
+    await expect(dialog).toBeHidden();
+    await expect(page.locator("#fileMenu summary")).toBeFocused();
+    await expect(page.locator(".app")).toHaveJSProperty("inert", false);
+  });
+});

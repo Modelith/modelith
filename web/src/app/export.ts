@@ -1,6 +1,7 @@
 // 書き出し（draw.io の XML・SVG）と、ファイルの読み込み・保存。
 
 import { $, esc } from "./dom";
+import { openModal } from "./modal";
 import type { ModelNode, ModelSequenceEvent } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
@@ -308,14 +309,24 @@ export function download(filename: string, data: string | Uint8Array<ArrayBuffer
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+/** 開いている draw.io の書き出しダイアログを閉じる操作（閉じていれば null）。 */
+let closeDrawio: (() => void) | null = null;
+
+/** draw.io の書き出しダイアログを閉じ、開く前の要素へ入力を戻す（Q-8）。閉じていれば何もしない。 */
+function hideDrawio(): void {
+  closeDrawio?.();
+  closeDrawio = null;
+}
+
 /**
  * draw.io の書き出しダイアログのボタンに操作をつなぐ。起動時に 1 回呼ぶ。
- * 閉じるボタンでダイアログを隠し、コピーのボタンで XML をクリップボードに写して、結果をボタンの文字で 2 秒示す。
+ * 閉じるボタンと Esc でダイアログを閉じ、コピーのボタンで XML をクリップボードに写して、結果をボタンの文字で 2 秒示す。
  */
 export function initExport(): void {
-  $("#modalClose").onclick = () => {
-    $("#modal").hidden = true;
-  };
+  $("#modalClose").onclick = hideDrawio;
+  $("#modal").addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") hideDrawio();
+  });
   $("#modalCopy").onclick = async () => {
     const ta = $<HTMLTextAreaElement>("#modalText");
     const btn = $("#modalCopy");
@@ -337,8 +348,11 @@ export function initExport(): void {
 
 /**
  * 現在のビューの draw.io の XML を、書き出しダイアログの欄に入れて表示する（F-EXP-2）。
+ * 開いている間は背景を操作できず、入力は「コピー」のボタンに置く（Q-8）。
  */
 export function showDrawio(): void {
+  // 開く前に入力を受け取っていた要素を覚えるため、XML を作る前に開く
+  closeDrawio = openModal($("#modal"));
   $<HTMLTextAreaElement>("#modalText").value = drawioXml();
-  $("#modal").hidden = false;
+  $<HTMLButtonElement>("#modalCopy").focus();
 }
