@@ -306,7 +306,7 @@ function miniGeom(): MiniGeom | null {
 export function renderMinimap(): void {
   const el = $("#mini");
   el.hidden = !S.ui.mini;
-  $("#zMini").setAttribute("aria-pressed", String(S.ui.mini));
+  for (const id of ["#zMini", "#menuMini"]) $(id).setAttribute("aria-pressed", String(S.ui.mini));
   if (el.hidden) {
     S.mini = null;
     return;

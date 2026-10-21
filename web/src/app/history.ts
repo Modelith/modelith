@@ -128,11 +128,11 @@ function goHistory(step: -1 | 1): void {
 }
 
 /**
- * 元に戻す・やり直すのボタンを、戻れる・進める版があるときだけ押せるようにする。
+ * 元に戻す・やり直すのボタンと編集のメニューの項目を、戻れる・進める版があるときだけ押せるようにする。
  */
 function updateUndoUI(): void {
-  $<HTMLButtonElement>("#btnUndo").disabled = H.i <= 0;
-  $<HTMLButtonElement>("#btnRedo").disabled = H.i >= H.list.length - 1;
+  for (const id of ["#btnUndo", "#menuUndo"]) $<HTMLButtonElement>(id).disabled = H.i <= 0;
+  for (const id of ["#btnRedo", "#menuRedo"]) $<HTMLButtonElement>(id).disabled = H.i >= H.list.length - 1;
 }
 
 /**
@@ -145,9 +145,9 @@ export const undo = (): void => goHistory(-1);
 export const redo = (): void => goHistory(1);
 
 /**
- * 元に戻す・やり直すのボタンに操作をつなぐ。起動時に 1 回呼ぶ。
+ * 元に戻す・やり直すのボタンと編集のメニューの項目に操作をつなぐ。起動時に 1 回呼ぶ。
  */
 export function initHistory(): void {
-  $("#btnUndo").onclick = undo;
-  $("#btnRedo").onclick = redo;
+  $("#btnUndo").onclick = $("#menuUndo").onclick = undo;
+  $("#btnRedo").onclick = $("#menuRedo").onclick = redo;
 }

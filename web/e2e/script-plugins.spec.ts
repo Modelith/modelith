@@ -88,16 +88,16 @@ async function allow(page: Page): Promise<void> {
   await page.locator('#dialogButtons [data-id="allow"]').click();
 }
 
-/** ファイルメニューからプラグインの一覧を開く。 */
+/** プラグインのメニューからプラグインの一覧を開く。 */
 async function openPluginList(page: Page): Promise<void> {
-  await page.locator("#fileMenu summary").click();
+  await page.locator("#pluginMenu summary").click();
   await page.locator("#btnPlugins").click();
   await expect(page.locator("#plugins")).toBeVisible();
 }
 
-/** ファイルメニューの「プラグインのコマンド」（kind が import・export なら「プラグインで読み込む」「プラグインで書き出す」）から実行する。 */
+/** プラグインのメニューの「プラグインのコマンド」（kind が import・export なら「プラグインで読み込む」「プラグインで書き出す」）から実行する。 */
 async function runCommand(page: Page, title: string, kind = "command"): Promise<void> {
-  await page.locator("#fileMenu summary").click();
+  await page.locator("#pluginMenu summary").click();
   await page.locator(`#pluginCommands button[data-kind="${kind}"]`, { hasText: title }).click();
 }
 

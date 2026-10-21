@@ -298,6 +298,11 @@ package ModelithRequirements {
                    ダイアログを閉じたら、開く前の要素（メニューから開いたときはそのメニュー）に入力を戻す。ダイアログとファイル・ヘルプのメニューは Esc で閉じる。
                    図のタブとモデルツリーには Tab で入れる（入る先は選んでいるタブ・行。行を選んでいなければ先頭の行）。図のタブは左右の矢印キーと Home・End で切り替え、ツリーは上下の矢印キーで行を移る */
         }
+        requirement def <'Q-9'> MenuBarReq {
+            doc /* 画面の上の左に、ほかのアプリと同じ並びのメニュー（ファイル・編集・表示・図・プラグイン・ヘルプ）と、元に戻す・やり直すのボタンを置く。同期の状態と開発段階の札は右に置く。
+                   メニューの項目には、近道のキーがあれば添える。メニューを開いている間は、左右の矢印キーで隣のメニューへ、上下の矢印キーで項目を移れ、マウスを隣のメニューに乗せるとそのメニューに切り替わる。
+                   幅の狭い画面では、メニューを左の ☰ の 1 つにまとめる */
+        }
 
         // ---- 制約 --------------------------------------------------
         requirement def <'C-1'> TextIsSourceReq {
@@ -392,6 +397,7 @@ package ModelithRequirements {
         #derivation dependency from NoSilentFailureReq to SafetyNeed;
         #derivation dependency from CoreRecoveryReq to SafetyNeed;
         #derivation dependency from KeyboardReq to EditBothWaysNeed;
+        #derivation dependency from MenuBarReq to EditBothWaysNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
@@ -536,6 +542,7 @@ package ModelithRequirements {
         satisfy CoreRecoveryReq by AppShell;
         satisfy KeyboardReq by AppShell;
         satisfy KeyboardReq by DiagramUI;
+        satisfy MenuBarReq by AppShell;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
@@ -838,9 +845,10 @@ package ModelithRequirements {
             }
         }
         verification def VisualUITest {
-            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・シーケンス図（SequenceView のイベントと順序。幅 390px を含む）・幅 390px・メニュー（＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・「前回の続きを開く」（幅 390px を含む）・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
+            doc /* web/e2e/visual.spec.ts：8 つのビュー・アクティビティ図（ActionFlowView）・状態遷移図（StateTransitionView。幅 390px を含む）・シーケンス図（SequenceView のイベントと順序。幅 390px を含む）・幅 390px・メニュー（ファイル・表示・ヘルプのメニュー、幅 390px の ☰ のメニュー、＋メニューのテキストの view と、幅 390px の＋メニューの SysML v2 の名前の行を含む）・インスペクタ・右クリックメニュー・エクスプローラー・開いているファイルが無いときの画面・「前回の続きを開く」（幅 390px を含む）・競合ダイアログ・問題一覧・トレースの絞り込みと抜け・画面の言葉（package を作る案内・保存された図のメニュー）・マウスやキーボードで選んだ部品の見た目・テキストの語のツールチップ・幅 390px の読み取り専用のテキストでダブルタップした語の説明を、明るい／暗い配色で基準画像と比べる */
             objective {
                 verify PlainWordsReq;
+                verify MenuBarReq;
                 verify StandardViewReq;
                 verify SequenceReq;
                 verify BuiltInViewsReq;
@@ -869,7 +877,7 @@ package ModelithRequirements {
         verification def KeyboardE2E {
             doc /* web/e2e/keyboard.spec.ts：ダイアログを開いている間は Tab・Shift+Tab で外へ出ず背景が inert になり、Esc で閉じると開いたボタンへ入力が戻る。
                    開いているファイルが無いときにメニューから開いたダイアログを閉じると、メニューの見出しへ入力が戻り、図とテキストは操作できないまま。
-                   draw.io の書き出しはダイアログの役割と見出しを持ち、Esc で閉じるとファイルのメニューへ入力が戻る。
+                   draw.io の書き出しはダイアログの役割と見出しを持ち、Esc で閉じると図のメニューへ入力が戻る。
                    ファイル・ヘルプのメニューは Esc で閉じ、見出しへ入力が戻る。Tab で選んでいる図のタブに入り、左右の矢印キー（両端で回る）・Home・End で切り替わる。
                    モデルツリーには検索欄から Tab で入り（選んでいる行、無ければ先頭の行）、下の矢印キーで次の行へ移る（Chromium で操作） */
             objective {
@@ -878,6 +886,24 @@ package ModelithRequirements {
                 verify DrawioExportReq;
                 verify ViewTabsReq;
                 verify TreeReq;
+            }
+        }
+        verification def MenuBarTest {
+            doc /* web/src/app/keyboard.test.ts：メニューバーで左右の矢印キーを押したときに移る先のメニュー（左右・両端で回る・1 つだけ・移さないキー・0 個と範囲外）と、
+                   開いているメニューで上下の矢印キーを押したときに移る先の項目（上下・両端で回る・見出しから入る・押せない項目を飛ばす・1 つだけ・0 個・移さないキー） */
+            objective {
+                verify MenuBarReq;
+            }
+        }
+        verification def MenuBarE2E {
+            doc /* web/e2e/menubar.spec.ts：左にロゴ・メニュー（ファイル・編集・表示・図・プラグイン・ヘルプの順）・元に戻す・やり直す、右に同期の状態と開発段階の札が並ぶ。
+                   1 つ開くとほかは閉じ、開いている間はマウスを乗せた見出しへ切り替わる（開いていなければ開かない）。左右の矢印キーで隣のメニューへ（両端で回る）、上下の矢印キーで項目へ（押せない項目を飛ばす）移り、Esc で閉じて見出しへ入力が戻る。
+                   編集のメニューの元に戻す・やり直す・すべて選択、表示のメニューのパネル・拡大・全体図、図のメニューの線の描き方。開いているファイルが無いときは図の操作の項目を押せない。
+                   幅 761・800・1000・1001px で見出しがはみ出さず、ヘルプが画面に収まる。幅 390px では ☰ にまとまり、縦に並んだメニューが横にはみ出さず、Esc で閉じて ☰ へ入力が戻り、☰ から開いたダイアログを閉じると ☰ へ戻る（Chromium で操作） */
+            objective {
+                verify MenuBarReq;
+                verify KeyboardReq;
+                verify NarrowScreenReq;
             }
         }
         verification def LayoutTest {

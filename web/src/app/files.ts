@@ -547,9 +547,12 @@ function renderFiles(): void {
   renderNoDoc();
 }
 
+/** 開いている文書が無いときに押せなくする、メニューの項目（ファイル・編集・表示・図のメニュー）。 */
+const NEEDS_DOC = ["#btnSave", "#btnSaveAs", "#menuSelectAll", "#menuZoomIn", "#menuZoomOut", "#menuFit", "#menuMini", "#menuSaveView", "#menuEdge", "#menuLayout", "#btnSaveSvg", "#btnDrawio"];
+
 /**
  * 開いている文書が無いときの案内（図とテキストの場所を覆う）を出し入れする（F-FILE-14）。
- * 案内を出している間は、図とテキストを操作できなくし、文書が要るメニュー（保存・名前を付けて保存・書き出し）を押せなくする。
+ * 案内を出している間は、図とテキストを操作できなくし、文書が要るメニューの項目（保存・名前を付けて保存・図の操作・書き出し）を押せなくする。
  */
 function renderNoDoc(): void {
   const none = shownKey === null;
@@ -557,7 +560,7 @@ function renderNoDoc(): void {
   renderResumeAsk();
   $("#main").toggleAttribute("data-nodoc", none);
   for (const pane of document.querySelectorAll<HTMLElement>(".diagrampane, .textpane")) pane.inert = none;
-  for (const id of ["#btnSave", "#btnSaveAs", "#btnSaveSvg", "#btnDrawio"]) $<HTMLButtonElement>(id).disabled = none;
+  for (const id of NEEDS_DOC) $<HTMLButtonElement>(id).disabled = none;
 }
 
 /**

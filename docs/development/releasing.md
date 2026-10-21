@@ -19,7 +19,7 @@
 4. PR（`chore(release): v<版>`）を `dev` に向けて出し、CI グリーンで Squash merge する。
    マージすると「Release draft」ワークフローが動き、`dev` のマージコミットを対象に、リリースの下書き（プレリリース）を作る。
 5. メンテナが下書きを確かめ、「Publish release」を押す。このときタグ `v<版>` が作られ、`.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。
-6. 公開後、画面右上の「ヘルプ」でバージョンを確かめ、[リリース計画](release-plan.md) のその行に「（公開済み）」を足す。
+6. 公開後、画面左上のメニューの「ヘルプ」でバージョンを確かめ、[リリース計画](release-plan.md) のその行に「（公開済み）」を足す。
 
 エージェントは 1〜4 と 6 を行い、5 の公開だけをメンテナに頼む（[release スキル](../../.claude/skills/release/SKILL.md)）。
 

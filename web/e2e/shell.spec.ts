@@ -128,7 +128,7 @@ test("F-EXP-1: 表示中のビューを SVG ファイルとして保存できる
   await openApp(page);
   const download = page.waitForEvent("download");
   // Act
-  await page.locator("#fileMenu summary").click();
+  await page.locator("#diagramMenu summary").click();
   await page.locator("#btnSaveSvg").click();
   // Assert
   const d = await download;
@@ -143,7 +143,7 @@ test("F-EXP-2: 表示中のビューを draw.io の形式で書き出せる", as
   // Arrange
   await openApp(page);
   // Act
-  await page.locator("#fileMenu summary").click();
+  await page.locator("#diagramMenu summary").click();
   await page.locator("#btnDrawio").click();
   // Assert
   const xml = await page.locator("#modalText").inputValue();

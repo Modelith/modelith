@@ -26,6 +26,7 @@ function focusables(box: HTMLElement): HTMLElement[] {
 
 /**
  * 入力を戻す先を決めて、そこへ入力を移す。閉じたメニューの中の項目からダイアログを開いたときは、そのメニューの見出しへ戻す。
+ * 戻す先が畳んだパネル（狭い画面の ☰ のメニューなど）の中にあって見えなければ、そのパネルを開くボタン（aria-controls）へ戻す。
  * 戻す先が画面から消えていれば何もしない。
  *
  * @param opener ダイアログを開く前に入力を受け取っていた要素（無ければ null）
@@ -34,6 +35,12 @@ function restoreFocus(opener: HTMLElement | null): void {
   if (!opener?.isConnected) return;
   const menu = opener.closest("details:not([open])");
   const target = menu?.querySelector<HTMLElement>(":scope > summary") ?? opener;
+  if (target.getClientRects().length === 0) {
+    for (let el = target.parentElement; el; el = el.parentElement) {
+      const control = el.id ? document.querySelector<HTMLElement>(`[aria-controls="${el.id}"]`) : null;
+      if (control) return control.focus();
+    }
+  }
   target.focus();
 }
 

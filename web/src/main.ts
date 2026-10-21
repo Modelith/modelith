@@ -16,6 +16,7 @@ import { initWordHelp } from "./app/word-help";
 import { initTextMode } from "./app/text-mode";
 import { download, initExport, showDrawio, svgExport } from "./app/export";
 import { initFiles } from "./app/files";
+import { closeMenus, initMenuBar } from "./app/menubar";
 import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
@@ -47,41 +48,16 @@ installUnexpectedErrorHandlers(window, toast, (detail) => console.error("予期�
 function setEdgeStyle(s: "ortho" | "curve"): void {
   S.edgeStyle = s;
   $("#btnEdge").textContent = s === "curve" ? "線：曲線" : "線：直角";
+  $("#menuEdge").setAttribute("aria-pressed", String(s === "curve"));
   store.set(EDGE_KEY, s);
 }
 
-/** 開いているメニュー（details.menu）をすべて閉じる。 */
-function closeMenus(): void {
-  document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => (d.open = false));
-}
-
 /**
- * Esc で、開いているメニュー（details.menu）を閉じる（Q-8）。入力がメニューの中にあれば、その見出しへ戻す。
- * メニューを閉じたときは、Esc をほかの操作（図の選択を解くなど）に渡さない。メニューが開いていなければ何もしない。
- *
- * @param ev キーの押下（文書の捕捉の段階で受ける）
- */
-function closeMenusOnEscape(ev: KeyboardEvent): void {
-  if (ev.key !== "Escape") return;
-  const open = [...document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")];
-  if (!open.length) return;
-  ev.stopPropagation();
-  const focused = open.find((d) => d.contains(document.activeElement));
-  closeMenus();
-  focused?.querySelector<HTMLElement>(":scope > summary")?.focus();
-}
-
-/**
- * メニューを組み立てる。メニューの外をクリックしたとき・Esc を押したときに閉じ、SVG の保存・draw.io への書き出しのボタンをつなぎ、
+ * メニューを組み立てる。メニューバーの振る舞い（Q-9）をつなぎ、SVG の保存・draw.io への書き出しの項目をつなぎ、
  * 版・著作権・動いている版のソースとライセンスへのリンク（AGPL §13）を入れる。
  */
 function initMenus(): void {
-  document.addEventListener("click", (ev) => {
-    document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => {
-      if (!(ev.target instanceof Node) || !d.contains(ev.target)) d.open = false;
-    });
-  });
-  document.addEventListener("keydown", closeMenusOnEscape, true);
+  initMenuBar();
   $("#btnSaveSvg").onclick = () => {
     closeMenus();
     download(`modelith-${S.view}.svg`, svgExport(), "image/svg+xml");
@@ -107,42 +83,57 @@ function initMenus(): void {
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#licenseLink").href = `https://github.com/modelith/modelith/blob/${__APP_COMMIT__}/README.md#license`;
 }
 
+/** 線の描き方を、直角と曲線で切り替えて描き直す（図のツールバーの「線：…」と、図のメニューの「線を曲線で描く」）。 */
+function toggleEdgeStyle(): void {
+  setEdgeStyle(S.edgeStyle === "curve" ? "ortho" : "curve");
+  render();
+}
+
+/** 表示中の図を自動で並べ直し、全体を表示する（図のツールバーと図のメニューの「整列」）。 */
+function relayoutView(): void {
+  relayout();
+  fit();
+  toast("このビューを並べ直しました");
+}
+
+/** 全体図（ミニマップ）の表示を切り替え、設定を保存する（図の右下の「全体図」と、表示のメニューの「全体図」）。 */
+function toggleMinimap(): void {
+  S.ui.mini = !S.ui.mini;
+  saveUi();
+  renderMinimap();
+}
+
+/** 表示中の図の要素をすべて選択する（Ctrl/⌘+A と、編集のメニューの「すべて選択」）。 */
+function selectAll(): void {
+  setSelection(CC().nodes.map((n) => n.key));
+  render();
+  highlight();
+  renderInspector();
+}
+
 /**
- * ツールバーのボタン（ビューとして保存・線の描き方・並べ直し・ミニマップ）と、
+ * ツールバーのボタン（ビューとして保存・線の描き方・並べ直し・ミニマップ）と、同じ操作のメニューの項目（編集・表示・図）と、
  * キーボードの近道（Ctrl/⌘+A ですべて選ぶ、Ctrl/⌘+Z で元に戻す、Ctrl/⌘+Shift+Z・Ctrl/⌘+Y でやり直す）をつなぐ。
  */
 function initToolbar(): void {
-  $("#btnSaveView").onclick = () => void saveAsView();
-  $("#btnEdge").onclick = () => {
-    setEdgeStyle(S.edgeStyle === "curve" ? "ortho" : "curve");
-    render();
-  };
-  $("#btnLayout").onclick = () => {
-    relayout();
-    fit();
-    toast("このビューを並べ直しました");
-  };
+  $("#btnSaveView").onclick = $("#menuSaveView").onclick = () => void saveAsView();
+  $("#btnEdge").onclick = $("#menuEdge").onclick = toggleEdgeStyle;
+  $("#btnLayout").onclick = $("#menuLayout").onclick = relayoutView;
+  $("#menuSelectAll").onclick = selectAll;
   $("#miniHide").onclick = (ev) => {
     ev.stopPropagation();
     S.ui.mini = false;
     saveUi();
     renderMinimap();
   };
-  $("#zMini").onclick = () => {
-    S.ui.mini = !S.ui.mini;
-    saveUi();
-    renderMinimap();
-  };
+  $("#zMini").onclick = $("#menuMini").onclick = toggleMinimap;
   document.addEventListener("keydown", (ev) => {
     if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
     if (ev.target instanceof HTMLInputElement) return;
     const k = ev.key.toLowerCase();
     if (k === "a" && !isFormField(ev.target)) {
       ev.preventDefault();
-      setSelection(CC().nodes.map((n) => n.key));
-      render();
-      highlight();
-      renderInspector();
+      selectAll();
     } else if (k === "z") {
       ev.preventDefault();
       if (ev.shiftKey) redo();
