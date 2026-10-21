@@ -277,7 +277,8 @@ package ModelithRequirements {
             doc /* どんなテキストを入れても解析で止まらず（深い入れ子・書き損じ・途中までの入力を含む）、読めない箇所は問題一覧で知らせる。起動に必要な部品を読み込めないときは、白い画面のままにせず、理由と対処を示す */
         }
         requirement def <'Q-4'> PlainWordsReq {
-            doc /* 画面の文言（トースト・ダイアログ・空の図の案内・メニュー・問題一覧）は、SysML v2 の構文を知らない人にも分かる図の言葉で書き、次の操作を画面の操作で示す。SysML v2 の用語は補足にとどめる（ADR-0014） */
+            doc /* 画面の文言（トースト・ダイアログ・空の図の案内・メニュー・問題一覧）は、SysML v2 の構文を知らない人にも分かる図の言葉で書き、次の操作を画面の操作で示す。SysML v2 の用語は補足にとどめる（ADR-0014）。
+                   ブラウザが返したエラー（許可が無い・ファイルが見つからない・空きが足りない など）も、英語のまま見せず、何が起きたかと次の操作を日本語で示す。分からないエラーは一般的な文にし、元の英語はブラウザのコンソールにだけ残す */
         }
         requirement def <'Q-6'> NoSilentFailureReq {
             doc /* 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）で黙って止まらず、「予期しない問題が起きました。テキストはそのまま残っています」と知らせる（例外 1 つにつき知らせは 1 回。詳しい内容はブラウザのコンソールに残す）。
@@ -716,14 +717,23 @@ package ModelithRequirements {
                 verify UntitledDraftReq;
             }
         }
+        verification def ErrorTextTest {
+            doc /* web/src/app/error-text.test.ts：ブラウザのエラー（NotAllowedError・NotFoundError・QuotaExceededError・TypeMismatchError・AbortError・NoModificationAllowedError・InvalidStateError・NotReadableError）ごとの日本語の文、
+                   分からないエラー（知らない名前の DOMException・TypeError・メッセージの無い Error・Error でない値）の一般的な文、Modelith のエラー（日本語のメッセージ・ConflictError）はそのまま */
+            objective {
+                verify PlainWordsReq;
+                verify NoSilentFailureReq;
+            }
+        }
         verification def RobustE2E {
-            doc /* web/e2e/robust.spec.ts：壊れた図のタブの記憶があっても起動して形の合う項目だけ戻す、ブラウザの保存領域がいっぱいのときの下書きの知らせ（1 回）と閉じる前の警告、自動保存に失敗したときの知らせと未保存の印、予期しない例外の知らせ、起動の途中で失敗したときの「保存した設定を初期化して読み直す」（下書きは残る）（Chromium で操作） */
+            doc /* web/e2e/robust.spec.ts：壊れた図のタブの記憶があっても起動して形の合う項目だけ戻す、ブラウザの保存領域がいっぱいのときの下書きの知らせ（1 回）と閉じる前の警告、自動保存に失敗したときの知らせ（ブラウザのエラーは日本語の文で）と未保存の印、予期しない例外の知らせ、起動の途中で失敗したときの「保存した設定を初期化して読み直す」（下書きは残る）（Chromium で操作） */
             objective {
                 verify ViewTabsReq;
                 verify UntitledDraftReq;
                 verify DirtyReq;
                 verify AutoSaveReq;
                 verify NoSilentFailureReq;
+                verify PlainWordsReq;
             }
         }
         verification def ViewsE2E {
