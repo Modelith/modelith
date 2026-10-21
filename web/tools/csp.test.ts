@@ -28,7 +28,7 @@ describe("contentSecurityPolicy", () => {
     // Assert
     expect(directives.get("style-src")).toBe("'self' 'unsafe-inline'");
     expect(directives.get("img-src")).toBe("'self' data:");
-    expect(directives.get("font-src")).toBe("'self'");
+    expect(directives.get("font-src")).toBe("'self' data:"); // 小さなフォントは CSS に data: として埋め込まれる
     expect(directives.get("worker-src")).toBe("'self'");
     expect(directives.get("frame-src")).toBe("'self'");
     expect(directives.get("connect-src")).toBe("'self'");

@@ -9,6 +9,7 @@ import type { Plugin } from "vite";
  * - script-src：配信元のスクリプトと wasm だけ。インラインのスクリプトと eval は許さない（エスケープ漏れの保険）
  * - style-src：同梱の CSS と、要素の style 属性（図やエクスプローラーが style="--d:0" のような値を書く）
  * - img-src：favicon は data: の SVG
+ * - font-src：同梱フォントのうち小さなファイルは、Vite が CSS に data: として埋め込む（assetsInlineLimit）
  * - worker-src：コアの Worker は配信元のファイル
  * - object-src 'none'・base-uri 'none'・form-action 'none'：使わないものは閉じる
  */
@@ -17,7 +18,7 @@ const DIRECTIVES: ReadonlyArray<readonly [string, string]> = [
   ["script-src", "'self' 'wasm-unsafe-eval'"],
   ["style-src", "'self' 'unsafe-inline'"],
   ["img-src", "'self' data:"],
-  ["font-src", "'self'"],
+  ["font-src", "'self' data:"],
   ["connect-src", "'self'"],
   ["worker-src", "'self'"],
   ["frame-src", "'self'"],
