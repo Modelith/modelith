@@ -135,6 +135,28 @@ describe("LocalFolderProvider: 読み書き（F-FILE-2・3）", () => {
     await expect(act).rejects.toThrow("既にあります");
   });
 
+  it.each(["models/../x.sysml", "a\\b.sysml"])("%j はフォルダの外を指すので作らない（異常系）", async (path) => {
+    // Arrange
+    const { p, root } = setup();
+    const folder = await p.pickFolder();
+    // Act
+    const act = p.createFile(folder!, path, "");
+    // Assert（何も作らない）
+    await expect(act).rejects.toThrow("フォルダの外を指しています");
+    expect(root.entries.size).toBe(0);
+  });
+
+  it("名前が空なら作らない（境界値）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    const folder = await p.pickFolder();
+    // Act
+    const act = p.createFile(folder!, "", "");
+    // Assert
+    await expect(act).rejects.toThrow("ファイル名がありません");
+    expect(root.entries.size).toBe(0);
+  });
+
   it("ファイルを 1 つ選んで開ける", async () => {
     // Arrange
     const { api, p } = setup();

@@ -221,13 +221,14 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    * @param folder このプロバイダで開いたフォルダ
    * @param path フォルダからの相対パス（`/` 区切り）
    * @param text 書く内容
-   * @returns 作ったファイルの参照。名前が空・同じ名前のファイルが既にあるときは例外（Error）を投げる
+   * @returns 作ったファイルの参照。名前が空・フォルダの外を指すパス・同じ名前のファイルが既にあるときは例外（Error）を投げる
    * @example
    * await p.createFile(folder, "models/new.sysml", "package P;") // → { …, path: "models/new.sysml" }
    * await p.createFile(folder, "a.sysml", "")                   // → Error「「a.sysml」は既にあります」（あるとき）
+   * await p.createFile(folder, "models/../x.sysml", "")         // → Error「パス「models/../x.sysml」は、フォルダの外を指しています」
    */
   async createFile(folder: FolderRef, path: string, text: string): Promise<FileRef> {
-    const segs = path.split("/").filter(Boolean);
+    const segs = segmentsOf(path);
     const name = segs.pop();
     if (!name) throw new Error("ファイル名がありません");
     let dir = this.folderHandle(folder);

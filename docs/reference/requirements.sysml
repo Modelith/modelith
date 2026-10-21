@@ -165,7 +165,7 @@ package ModelithRequirements {
             doc /* ファイルを開いて編集し、元のファイルに上書き保存できる（Ctrl+S） */
         }
         requirement def <'F-FILE-3'> NewSaveAsReq {
-            doc /* 新しいファイルを作り、名前を付けて保存できる */
+            doc /* 新しいファイルを作り、名前を付けて保存できる。作る場所は開いたフォルダの中だけで、フォルダの外を指す名前（`..`・`.`・`\`）は断って知らせる */
         }
         requirement def <'F-FILE-4'> MultiDocReq {
             doc /* 複数のファイルを開いたまま切り替えられ、未保存の変更は切り替えても失われない */
@@ -610,9 +610,10 @@ package ModelithRequirements {
             }
         }
         verification def LocalFolderProviderTest {
-            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す・起動したときに許可を求めずに前回のフォルダの許可を確かめる（偽のファイルシステムで） */
+            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成（フォルダの外を指す名前と空の名前は断る）・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す・起動したときに許可を求めずに前回のフォルダの許可を確かめる（偽のファイルシステムで） */
             objective {
                 verify OpenFolderReq;
+                verify NewSaveAsReq;
                 verify RecentFolderReq;
                 verify ResumeSessionReq;
                 verify RobustReq;
