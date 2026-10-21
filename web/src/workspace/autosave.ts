@@ -72,7 +72,8 @@ export class AutoSaver {
 const NO_SAVE_AS: SaveAsTarget = { id: "none", label: "", saveAs: async () => null };
 
 /**
- * 保存の失敗（例外）から、利用者に見せる理由の文を取り出す。
+ * 例外から、詳しい内容（元のメッセージ）を取り出す。起動に失敗したときの案内の、診断用の小さな文字に使う。
+ * トーストに出す理由の文は、ブラウザの英語を見せない app/error-text.ts の errorText で作る。
  *
  * @param e 投げられた値
  * @returns Error ならそのメッセージ、それ以外は文字列にしたもの

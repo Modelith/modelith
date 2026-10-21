@@ -17,7 +17,7 @@ async function openWithAutoSave(page: Page): Promise<void> {
 }
 
 // ---- F-FILE-6
-test("F-FILE-6: 自動保存に失敗したら（フォルダの許可が切れた）、理由を知らせて未保存の印を残す（異常系）", async ({ page }) => {
+test("F-FILE-6・Q-4: 自動保存に失敗したら（フォルダの許可が切れた）、理由を日本語で知らせて未保存の印を残す（異常系）", async ({ page }) => {
   // Arrange（書き込みが許可の失効で失敗するブラウザのふり）
   await openWithAutoSave(page);
   await page.evaluate(() => {
@@ -26,7 +26,7 @@ test("F-FILE-6: 自動保存に失敗したら（フォルダの許可が切れ�
   // Act
   await typeAtEnd(page, "// auto\n");
   // Assert
-  await expect(page.locator("#toast")).toHaveText("「a.sysml」を自動保存できませんでした：permission revoked", { timeout: 3000 });
+  await expect(page.locator("#toast")).toHaveText("「a.sysml」を自動保存できませんでした：フォルダやファイルを編集する許可がありません。もう一度開いて、ブラウザの確認で許可してください", { timeout: 3000 });
   await expect(page.locator("#docName")).toHaveText("a.sysml ●");
   expect(await readFile(page, "a.sysml")).toBe(A);
 });

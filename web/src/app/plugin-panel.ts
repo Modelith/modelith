@@ -19,7 +19,7 @@ import { utf8Bytes } from "../plugins/storage";
 import { RUN_STATE_LABEL, type RunState } from "../plugins/view";
 import { projectTitle } from "./project";
 import { S } from "./state";
-import { coreClient, renderProblems, toast, updateSync } from "./sync";
+import { coreClient, renderProblems, toast, toastFailure, updateSync } from "./sync";
 
 /** 選んだプラグインのフォルダ（名前と、フォルダからの相対パス → テキスト）。 */
 export interface PickedPluginFolder {
@@ -152,7 +152,7 @@ async function loadBrowserPlugins(): Promise<BrowserPlugin[]> {
   try {
     return await pluginEnv().browser.list();
   } catch (e) {
-    if (!browserErrorShown) toast(`このブラウザの保存場所を使えないため、このブラウザに追加したプラグインを読み込めません：${(e as Error).message}`);
+    if (!browserErrorShown) toastFailure("このブラウザの保存場所を使えないため、このブラウザに追加したプラグインを読み込めません", e);
     browserErrorShown = true;
     return [];
   }
@@ -174,7 +174,7 @@ async function readPlugin(f: { ref: FolderRef; source: FolderTrees }, id: string
   try {
     return (await f.source.readTree(f.ref, `${PLUGINS_DIR}/${id}`)) ?? {};
   } catch (e) {
-    toast(`プラグイン「${id}」を読み込めませんでした：${(e as Error).message}`);
+    toastFailure(`プラグイン「${id}」を読み込めませんでした`, e);
     return {};
   }
 }
@@ -352,7 +352,7 @@ async function setEnabled(id: string, place: PluginPlace, enabled: boolean): Pro
       await reloadPlugins();
       toast(done);
     } catch (e) {
-      toast(`このブラウザに保存できませんでした：${(e as Error).message}`);
+      toastFailure("このブラウザに保存できませんでした", e);
     }
     return;
   }
@@ -367,7 +367,7 @@ async function setEnabled(id: string, place: PluginPlace, enabled: boolean): Pro
     await pluginEnv().refreshFolder();
     toast(done);
   } catch (e) {
-    toast(`プロジェクトの設定を保存できませんでした：${(e as Error).message}`);
+    toastFailure("プロジェクトの設定を保存できませんでした", e);
   }
 }
 
@@ -400,7 +400,7 @@ async function removePlugin(id: string, place: PluginPlace): Promise<void> {
   try {
     await pluginEnv().data.write(id, null);
   } catch (e) {
-    toast(`プラグインのデータを削除できませんでした：${(e as Error).message}`);
+    toastFailure("プラグインのデータを削除できませんでした", e);
   }
 }
 
@@ -448,7 +448,7 @@ async function removeFromProject(id: string, name: string): Promise<boolean> {
     toast(`プラグイン「${name}」を削除しました`);
     return true;
   } catch (e) {
-    toast(`プラグインを削除できませんでした：${(e as Error).message}`);
+    toastFailure("プラグインを削除できませんでした", e);
     return false;
   }
 }
@@ -469,7 +469,7 @@ async function removeFromBrowser(id: string, name: string): Promise<boolean> {
     toast(`プラグイン「${name}」をこのブラウザから削除しました`);
     return true;
   } catch (e) {
-    toast(`プラグインを削除できませんでした：${(e as Error).message}`);
+    toastFailure("プラグインを削除できませんでした", e);
     return false;
   }
 }
@@ -518,7 +518,7 @@ export async function addPlugin(): Promise<void> {
     if (!f || !place || place.disabled) return;
     await install(f, picked.files, info, place.askName ? r.value.trim() || f.ref.name : null);
   } catch (e) {
-    toast(`プラグインを追加できませんでした：${(e as Error).message}`);
+    toastFailure("プラグインを追加できませんでした", e);
   }
 }
 

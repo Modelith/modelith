@@ -2,6 +2,7 @@
 
 import { CORE_STOPPED, lineOf, type CoreClient, type CoreSupervisorHooks, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
+import { errorText } from "./error-text";
 import { autoPlace, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight, stackedWidth } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
@@ -305,6 +306,20 @@ export function toast(msg: string): void {
   t.classList.add("on");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("on"), 2400);
+}
+
+/**
+ * 失敗をトーストで知らせる。理由はブラウザの英語の文を見せず日本語の文（errorText）にし、詳しい内容（投げられた値）はコンソールに残す（Q-4・Q-6）。
+ *
+ * @param what できなかったこと（「保存できませんでした」など。句点なし）
+ * @param e 投げられた値
+ * @example
+ * toastFailure("保存できませんでした", new DOMException("…", "NotAllowedError"))
+ *   // → トースト「保存できませんでした：フォルダやファイルを編集する許可がありません。…」、コンソールに DOMException
+ */
+export function toastFailure(what: string, e: unknown): void {
+  console.warn(`${what}:`, e);
+  toast(`${what}：${errorText(e)}`);
 }
 
 let textListener: (text: string) => void = () => {};
