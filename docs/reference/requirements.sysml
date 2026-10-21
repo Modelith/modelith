@@ -272,6 +272,12 @@ package ModelithRequirements {
         requirement def <'Q-4'> PlainWordsReq {
             doc /* 画面の文言（トースト・ダイアログ・空の図の案内・メニュー・問題一覧）は、SysML v2 の構文を知らない人にも分かる図の言葉で書き、次の操作を画面の操作で示す。SysML v2 の用語は補足にとどめる（ADR-0014） */
         }
+        requirement def <'Q-6'> CoreRecoveryReq {
+            doc /* テキストを読み取り図の操作を計算する部品（コア。Worker で動く）が止まった・10 秒たっても返事をしないときは、待ち続けない。
+                   待っていた図の操作はやめて「図の操作をやめました。テキストはそのまま残っています」と知らせ、テキストの編集と保存（Ctrl+S）は続けられる。
+                   部品は作り直して、今のテキストとプラグインを送り直し、解析と図の操作を再開する。1 分の間に 3 回作り直しても止まるときはあきらめ、
+                   同期の表示で図を更新できないことと、ページの再読み込みを案内する（ADR-0016） */
+        }
 
         // ---- 制約 --------------------------------------------------
         requirement def <'C-1'> TextIsSourceReq {
@@ -359,6 +365,7 @@ package ModelithRequirements {
         #derivation dependency from LookReq to AnywhereNeed;
         #derivation dependency from PlainWordsReq to EditBothWaysNeed;
         #derivation dependency from RobustReq to SafetyNeed;
+        #derivation dependency from CoreRecoveryReq to SafetyNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
@@ -497,6 +504,8 @@ package ModelithRequirements {
         satisfy PlainWordsReq by AppShell;
         satisfy RobustReq by Core;
         satisfy RobustReq by AppShell;
+        satisfy CoreRecoveryReq by Core;
+        satisfy CoreRecoveryReq by AppShell;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
@@ -573,6 +582,17 @@ package ModelithRequirements {
             objective {
                 verify ResponsiveReq;
                 verify RobustReq;
+            }
+        }
+        verification def CoreRecoveryTest {
+            doc /* web/src/core/client.test.ts：コアの返事の期限（期限の直前の返事は使い、期限で待っていた依頼をすべて失敗にする）・Worker のエラーで待ちを解くこと・
+                   wasm の例外（失敗の返事）を止まったと扱うこと・止まった後に送った依頼をすぐ断ること・つなぎ直したときに今のテキストとプラグインを送り直すこと。
+                   web/src/core/supervisor.test.ts：止まったら Worker を終了して作り直す・1 分の間の作り直しの上限（3 回は作り直し、4 回目はあきらめる）・作り直しに失敗したらあきらめる。
+                   web/e2e/recovery.spec.ts：Worker がエラーを起こしたとき・返事をしなくなったときに、トーストで知らせ、Ctrl+S で保存でき、作り直した後は図の操作が再び効き、
+                   作り直しが続いたら同期の表示で再読み込みを案内する */
+            objective {
+                verify CoreRecoveryReq;
+                verify OpenSaveReq;
             }
         }
         verification def NewPackageTest {
