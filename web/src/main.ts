@@ -21,6 +21,7 @@ import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
 import { saveAsView } from "./app/view-ops";
 import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
+import { loadingView, watchLoading } from "./app/loading";
 import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
@@ -137,11 +138,15 @@ function initToolbar(): void {
 }
 
 // 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
-// コアが止まった・返事をしないときは作り直す（Q-7）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う
+// コアが止まった・返事をしないときは作り直す（Q-7）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う。
+// 待つ間は「読み込み中…」（index.html の #loading）を示し、時間がかかれば案内に切り替えて待ち続ける（Q-5）
+const loaded = watchLoading(loadingView(document.querySelector<HTMLElement>("#loading")));
 try {
   const [core] = await Promise.all([superviseCore(() => new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed, coreHooks), document.fonts.ready]);
+  loaded();
   attachCore(core);
 } catch (e) {
+  loaded();
   showStartupBox(startupErrorHtml(e));
   // 続きの組み立てはしない（解析できないまま画面を組み立てると、壊れた状態で操作できてしまう）
   await new Promise<never>(() => {});
