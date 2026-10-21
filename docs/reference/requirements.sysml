@@ -115,7 +115,7 @@ package ModelithRequirements {
             doc /* トレーサビリティ・ブロック定義図・制御ループ・内部ブロック図・振る舞い・シーケンス図・アクティビティ図・すべて、の 8 つのビューを持つ */
         }
         requirement def <'F-VIEW-2'> ViewTabsReq {
-            doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する */
+            doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する。記憶したタブが壊れていても（JSON でない・形の合わない項目がある）起動は止まらず、形の合わない項目だけを捨てて残りを戻す */
         }
         requirement def <'F-VIEW-3'> LayoutReq {
             doc /* 未配置の要素は自動で並べ、手で動かした配置は、モデルごとの配置ファイル（model.sysml の隣の model.layout.json）に保存する（ADR-0005） */
@@ -174,7 +174,7 @@ package ModelithRequirements {
             doc /* 未保存の変更があるファイルを示し、未保存のままページを離れようとしたら警告する */
         }
         requirement def <'F-FILE-6'> AutoSaveReq {
-            doc /* 自動保存を選べる。有効なら、編集が止まってから 1 秒後に保存する */
+            doc /* 自動保存を選べる。有効なら、編集が止まってから 1 秒後に保存する。保存できなかったとき（フォルダの許可が切れた・ディスクの空きが無い）は、黙って失敗せずに理由を知らせ、未保存の印（●）を残す */
         }
         requirement def <'F-FILE-7'> ConflictReq {
             doc /* 開いた後に他のアプリでファイルが変わっていたら、黙って上書きせずに、上書き・読み直し・やめるを選ばせる */
@@ -189,7 +189,8 @@ package ModelithRequirements {
             doc /* フォルダを開けないブラウザ（Safari・Firefox）でも、ファイルの読み込みと、ダウンロードでの保存ができる */
         }
         requirement def <'F-FILE-11'> UntitledDraftReq {
-            doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す。中身の無いファイルは下書きに残さない */
+            doc /* 保存先の無いファイル（無題・サンプル）は、ブラウザに自動で下書き保存し、次に開いたときに戻す。中身の無いファイルは下書きに残さない。
+                   下書きを保存できないとき（ブラウザの保存領域がいっぱい）は、黙って諦めずに 1 回だけ知らせて「名前を付けて保存」を案内し、保存できていない下書きがあるままページを離れようとしたら警告する */
         }
         requirement def <'F-FILE-12'> CloudReq {
             doc /* クラウドのストレージのファイルも、ローカルと同じ操作で開いて保存できる。最初は Google ドライブに対応し、サーバを持たずにブラウザから直接つなぐ（ADR-0010・ADR-0012） */
@@ -271,6 +272,10 @@ package ModelithRequirements {
         }
         requirement def <'Q-4'> PlainWordsReq {
             doc /* 画面の文言（トースト・ダイアログ・空の図の案内・メニュー・問題一覧）は、SysML v2 の構文を知らない人にも分かる図の言葉で書き、次の操作を画面の操作で示す。SysML v2 の用語は補足にとどめる（ADR-0014） */
+        }
+        requirement def <'Q-6'> NoSilentFailureReq {
+            doc /* 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）で黙って止まらず、「予期しない問題が起きました。テキストはそのまま残っています」と知らせる（例外 1 つにつき知らせは 1 回。詳しい内容はブラウザのコンソールに残す）。
+                   起動して画面を組み立てる途中で失敗したら、白い画面のままにせず、保存した設定（パネルの配置・図のタブ）を初期化して読み直す操作を示す。下書き・前回の続き・プラグインの許可は消さない */
         }
 
         // ---- 制約 --------------------------------------------------
@@ -359,6 +364,7 @@ package ModelithRequirements {
         #derivation dependency from LookReq to AnywhereNeed;
         #derivation dependency from PlainWordsReq to EditBothWaysNeed;
         #derivation dependency from RobustReq to SafetyNeed;
+        #derivation dependency from NoSilentFailureReq to SafetyNeed;
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
@@ -497,6 +503,7 @@ package ModelithRequirements {
         satisfy PlainWordsReq by AppShell;
         satisfy RobustReq by Core;
         satisfy RobustReq by AppShell;
+        satisfy NoSilentFailureReq by AppShell;
         satisfy TextIsSourceReq by Core;
         satisfy PrivacyReq by AppShell;
         satisfy SourceOfferReq by AppShell;
@@ -627,7 +634,7 @@ package ModelithRequirements {
             }
         }
         verification def WorkspaceTest {
-            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い・前回の続きの書き込み（戻し終えるまでは書かない）と戻し方（前回の順番・表示していた文書・消されたファイルとフォルダ・許可が要るとき・フォルダを開けないブラウザ） */
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い・前回の続きの書き込み（戻し終えるまでは書かない）と戻し方（前回の順番・表示していた文書・消されたファイルとフォルダ・許可が要るとき・フォルダを開けないブラウザ）・下書きを保存できないとき（保存先が容量超過を返す）の印と閉じる前の警告の対象、kvDraftStore・kvSessionStore が保存の成否を返すこと */
             objective {
                 verify ResumeSessionReq;
                 verify OpenSaveReq;
@@ -651,9 +658,32 @@ package ModelithRequirements {
             }
         }
         verification def AutoSaveTest {
-            doc /* web/src/workspace/workspace.test.ts（AutoSaver）：編集が止まってから 1 秒後に保存、無効・無題・競合のときは保存しない */
+            doc /* web/src/workspace/workspace.test.ts（AutoSaver）：編集が止まってから 1 秒後に保存、無効・無題・競合のときは保存しない、保存できなかったとき（書き込みが例外を投げる）は理由を知らせて未保存の印を残す */
             objective {
                 verify AutoSaveReq;
+            }
+        }
+        verification def SavedTabsTest {
+            doc /* web/src/app/saved-tabs.test.ts：記憶した図のタブの読み込み（JSON でない・配列でない・null の項目・id が整数でない・知らないビュー・ctx や phase の型違い・文字列でない mv・重なった id・表示中のタブが無い）。形の合わない項目だけを捨てる */
+            objective {
+                verify ViewTabsReq;
+            }
+        }
+        verification def UnexpectedErrorTest {
+            doc /* web/src/app/unexpected.test.ts：捕まえていない例外と結果を待たない処理の失敗を 1 回ずつ知らせ、詳しい内容をコンソールに残す。web/src/app/dom.test.ts：localStorage に書けたか（容量超過・使えない環境）を store が返す。web/src/app/recovery.test.ts：起動に失敗したときの案内の文と、初期化する設定のキー（下書き・前回の続き・プラグインの許可は含めない） */
+            objective {
+                verify NoSilentFailureReq;
+                verify UntitledDraftReq;
+            }
+        }
+        verification def RobustE2E {
+            doc /* web/e2e/robust.spec.ts：壊れた図のタブの記憶があっても起動して形の合う項目だけ戻す、ブラウザの保存領域がいっぱいのときの下書きの知らせ（1 回）と閉じる前の警告、自動保存に失敗したときの知らせと未保存の印、予期しない例外の知らせ、起動の途中で失敗したときの「保存した設定を初期化して読み直す」（下書きは残る）（Chromium で操作） */
+            objective {
+                verify ViewTabsReq;
+                verify UntitledDraftReq;
+                verify DirtyReq;
+                verify AutoSaveReq;
+                verify NoSilentFailureReq;
             }
         }
         verification def ViewsE2E {
