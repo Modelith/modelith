@@ -529,14 +529,29 @@ fn check_plugin_message_json(text: &str, message: &str, permissions: &str) -> St
         .and_then(|p| modelith_core::plugin_host::check_message(text, message, &p));
     let json = match result {
         Ok(checked) => serde_json::to_string(&checked),
-        Err(refused) => serde_json::to_string(&Refused { refused }),
+        Err(refused) => Ok(refused_json(&refused)),
     };
-    json.unwrap_or_else(|e| format!(r#"{{"refused":"{e}"}}"#))
+    json.unwrap_or_else(|e| refused_json(&e.to_string()))
 }
 
-#[derive(Serialize)]
-struct Refused {
-    refused: String,
+/// 断りの JSON（`{ "refused": 理由 }`）を作る。理由に `"` や `\` があっても、JSON として壊れない。
+///
+/// # 引数
+///
+/// - `reason`：画面に出す理由の文
+///
+/// # 戻り値
+///
+/// `{"refused":"理由"}` の JSON 文字列（理由は JSON の決まりで逃がす）。失敗しない。
+///
+/// # 例
+///
+/// ```text
+/// refused_json("使えません")      → r#"{"refused":"使えません"}"#
+/// refused_json(r#"名前 "a\b""#) → r#"{"refused":"名前 \"a\\b\""}"#
+/// ```
+fn refused_json(reason: &str) -> String {
+    serde_json::json!({ "refused": reason }).to_string()
 }
 
 /// 意図の JSON を読み、`edit::edit` でテキストの編集を作って JSON にする（`edit` の中身）。
@@ -564,9 +579,9 @@ fn edit_json(text: &str, intent: &str) -> String {
         .and_then(|i| modelith_core::edit::edit(text, &i));
     let json = match result {
         Ok(out) => serde_json::to_string(&out),
-        Err(refused) => serde_json::to_string(&Refused { refused }),
+        Err(refused) => Ok(refused_json(&refused)),
     };
-    json.unwrap_or_else(|e| format!(r#"{{"refused":"{e}"}}"#))
+    json.unwrap_or_else(|e| refused_json(&e.to_string()))
 }
 
 #[derive(Serialize)]
@@ -642,6 +657,33 @@ mod tests {
         // Assert
         assert!(json.contains(r#""kind":"part def""#), "{json}");
         assert!(json.contains(r#""start":7"#), "{json}");
+    }
+
+    #[test]
+    fn refused_json_escapes_quotes_and_backslashes() {
+        // Arrange（JSON を壊しうる文字：二重引用符・バックスラッシュ）
+        let reason = r#"ファイル "a\b" を読み込めません"#;
+        // Act
+        let json = refused_json(reason);
+        // Assert（JSON として読め、理由がそのまま戻る）
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["refused"], reason);
+    }
+
+    #[test]
+    fn check_plugin_message_json_refusal_is_valid_json() {
+        // Arrange（読めない権限の並び。理由に serde の文が入る）
+        let permissions = r#"["not-a-permission"]"#;
+        // Act
+        let json = check_plugin_message_json("", r#"{"type":"ready"}"#, permissions);
+        // Assert
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert!(
+            parsed["refused"]
+                .as_str()
+                .is_some_and(|r| r.starts_with("権限の並びを読み込めませんでした")),
+            "{json}"
+        );
     }
 
     #[test]

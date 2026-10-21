@@ -165,7 +165,7 @@ package ModelithRequirements {
             doc /* ファイルを開いて編集し、元のファイルに上書き保存できる（Ctrl+S） */
         }
         requirement def <'F-FILE-3'> NewSaveAsReq {
-            doc /* 新しいファイルを作り、名前を付けて保存できる */
+            doc /* 新しいファイルを作り、名前を付けて保存できる。作る場所は開いたフォルダの中だけで、フォルダの外を指す名前（`..`・`.`・`\`）は断って知らせる */
         }
         requirement def <'F-FILE-4'> MultiDocReq {
             doc /* 複数のファイルを開いたまま切り替えられ、未保存の変更は切り替えても失われない */
@@ -177,7 +177,8 @@ package ModelithRequirements {
             doc /* 自動保存を選べる。有効なら、編集が止まってから 1 秒後に保存する。保存できなかったとき（フォルダの許可が切れた・ディスクの空きが無い）は、黙って失敗せずに理由を知らせ、未保存の印（●）を残す */
         }
         requirement def <'F-FILE-7'> ConflictReq {
-            doc /* 開いた後に他のアプリでファイルが変わっていたら、黙って上書きせずに、上書き・読み直し・やめるを選ばせる */
+            doc /* 開いた後に他のアプリでファイルが変わっていたら、黙って上書きせずに、上書き・読み直し・やめるを選ばせる。
+                   図の配置（要素の位置）を保存する隣の配置ファイルも同じ（読んだときの版と比べ、変わっていれば同じ選択を出す。まだ無ければ作る） */
         }
         requirement def <'F-FILE-8'> ExternalChangeReq {
             doc /* 画面に戻ったとき、未保存の変更が無いファイルは、他のアプリでの変更を読み直す */
@@ -215,7 +216,8 @@ package ModelithRequirements {
             doc /* プロジェクトかブラウザに入れたプラグインの検査ルール（YAML）でモデルを検査し、結果を問題一覧に、どのプラグインのどのルールかを添えて示す */
         }
         requirement def <'F-PLUG-2'> RuleParityReq {
-            doc /* プロジェクトに入れた検査ルールを CLI（modelith check <フォルダ>）でも実行でき、画面と同じ結果を返す。error の結果があれば 0 以外で終わり、CI で使える */
+            doc /* プロジェクトに入れた検査ルールを CLI（modelith check <フォルダ>）でも実行でき、画面と同じ結果を返す。error の結果があれば 0 以外で終わり、CI で使える。
+                   プロジェクトのフォルダの外を読まないよう、modelith.json とプラグインのファイルのシンボリックリンクはたどらず、読めないファイルとして知らせる */
         }
         requirement def <'F-PLUG-3'> PluginErrorReq {
             doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
@@ -652,9 +654,11 @@ package ModelithRequirements {
             }
         }
         verification def LocalFolderProviderTest {
-            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成・前回のフォルダ・隣のファイル（配置ファイル）の読み書き・1 つだけ開いたファイルをフォルダの中から探す・起動したときに許可を求めずに前回のフォルダの許可を確かめる（偽のファイルシステムで） */
+            doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成（フォルダの外を指す名前と空の名前は断る）・前回のフォルダ・隣のファイル（配置ファイル）の読み書きと競合の検出（読んだ後に変わっていれば書かない・消えていれば作り直す）・1 つだけ開いたファイルをフォルダの中から探す・起動したときに許可を求めずに前回のフォルダの許可を確かめる（偽のファイルシステムで） */
             objective {
                 verify OpenFolderReq;
+                verify NewSaveAsReq;
+                verify ConflictReq;
                 verify RecentFolderReq;
                 verify ResumeSessionReq;
                 verify RobustReq;
@@ -670,7 +674,7 @@ package ModelithRequirements {
             }
         }
         verification def WorkspaceTest {
-            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い・前回の続きの書き込み（戻し終えるまでは書かない）と戻し方（前回の順番・表示していた文書・消されたファイルとフォルダ・許可が要るとき・フォルダを開けないブラウザ）・下書きを保存できないとき（保存先が容量超過を返す）の印と閉じる前の警告の対象、kvDraftStore・kvSessionStore が保存の成否を返すこと */
+            doc /* web/src/workspace/workspace.test.ts：開く・保存・名前を付けて保存・複数の文書・未保存の変更・競合（テキストと配置ファイル。強制の上書きと読み直し）・外部での変更・下書き・隣の配置ファイルの読み書きと「配置は未保存」・フォルダに名前を付けて保存・1 つだけ開いたファイルのフォルダを開く・古い形式の配置の移行・すべて閉じた状態と中身の無い下書きの扱い・前回の続きの書き込み（戻し終えるまでは書かない）と戻し方（前回の順番・表示していた文書・消されたファイルとフォルダ・許可が要るとき・フォルダを開けないブラウザ）・下書きを保存できないとき（保存先が容量超過を返す）の印と閉じる前の警告の対象、kvDraftStore・kvSessionStore が保存の成否を返すこと */
             objective {
                 verify ResumeSessionReq;
                 verify OpenSaveReq;
@@ -771,7 +775,7 @@ package ModelithRequirements {
             }
         }
         verification def FilesE2E {
-            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合・読み直し・前回のフォルダ・下書き・最後のファイルを閉じた後の画面・前回の続き（再読み込みでフォルダとファイル・表示していたファイル・図のタブから始まる、許可が要るときの「前回の続きを開く」と許可が得られないとき、待つ間の別の操作、消されたファイル、設定「起動時にサンプルを開く」、幅 390px）、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く・下書きと表示していたファイルから始まる）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
+            doc /* web/e2e/files.spec.ts・fallback.spec.ts：OPFS の本物のハンドルでフォルダ・保存・切り替え・離脱時の警告・自動保存・競合（テキストと配置ファイル）・読み直し・前回のフォルダ・下書き・最後のファイルを閉じた後の画面・前回の続き（再読み込みでフォルダとファイル・表示していたファイル・図のタブから始まる、許可が要るときの「前回の続きを開く」と許可が得られないとき、待つ間の別の操作、消されたファイル、設定「起動時にサンプルを開く」、幅 390px）、代替のブラウザ（モデルと配置ファイルを組でダウンロード・一緒に選んで開く・下書きと表示していたファイルから始まる）、テキストを読み取る部品（wasm）を読み込めないときの案内 */
             objective {
                 verify UnsavedLayoutReq;
                 verify OpenFolderReq;
@@ -905,7 +909,7 @@ package ModelithRequirements {
             }
         }
         verification def CliCheckTest {
-            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json は誤りとして知らせる。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方 */
+            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json・シンボリックリンクのルールのファイルと modelith.json は誤りとして知らせる（シンボリックリンクを作れない環境では飛ばす）。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方、シンボリックリンクを読まないこと */
             objective {
                 verify RuleParityReq;
             }

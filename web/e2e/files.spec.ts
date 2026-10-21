@@ -132,6 +132,34 @@ test("F-FILE-7: 競合したとき「読み込む」を選ぶと、自分の変�
   await expect(page.locator("#docName")).toHaveText("a.sysml");
 });
 
+test("F-FILE-7: 図の配置のファイルが他のアプリで変わっていたら、黙って上書きせず、選ばせる", async ({ page }) => {
+  // Arrange（配置ファイルを置いてから開き、要素を動かして配置を変える）
+  await openApp(page);
+  await putFiles(page, { "a.sysml": A, "a.layout.json": "{}\n" });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  // 最初のタブ（トレーサビリティ）には部品定義が出ないので、「すべて」の図を開いてから動かす
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes [data-key="Alpha"]').waitFor();
+  const b = (await page.locator('#gNodes [data-key="Alpha"]').boundingBox())!;
+  await page.mouse.move(b.x + 20, b.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 220, b.y + 90, { steps: 6 });
+  await page.mouse.up();
+  await putFiles(page, { "a.layout.json": '{ "theirs": true }\n' });
+  // Act
+  await page.keyboard.press("Control+s");
+  await expect(page.locator("#dialogTitle")).toHaveText("ファイルが他で変更されています");
+  await expect(page.locator("#dialogText")).toContainText("図の配置（要素の位置）");
+  const untouched = await readFile(page, "a.layout.json");
+  await page.locator('#dialogButtons [data-id="overwrite"]').click();
+  // Assert（選ぶまでは上書きせず、上書きを選べば自分の配置になる。テキストのファイルは触らない）
+  expect(untouched).toBe('{ "theirs": true }\n');
+  await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"Alpha"/);
+  expect(await readFile(page, "a.sysml")).toBe(A);
+});
+
 test("F-FILE-8: 画面に戻ったとき、未編集のファイルは他のアプリでの変更を読み直す", async ({ page }) => {
   // Arrange
   await openProject(page);

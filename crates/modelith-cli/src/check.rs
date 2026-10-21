@@ -113,7 +113,7 @@ fn unreadable_model(path: &str, e: &ReadError) -> Entry {
     }
 }
 
-/// ファイルをテキストとして読む。
+/// ファイルをテキストとして読む。シンボリックリンクはたどらない（プロジェクトのフォルダの外を読まないため）。
 ///
 /// # 引数
 ///
@@ -121,20 +121,68 @@ fn unreadable_model(path: &str, e: &ReadError) -> Entry {
 ///
 /// # 戻り値
 ///
-/// ファイルのテキスト。無ければ `ReadError::NotFound`、読めない・UTF-8 でなければ理由つきの `ReadError::Other`。
+/// ファイルのテキスト。無ければ `ReadError::NotFound`、シンボリックリンク・読めない・UTF-8 でなければ理由つきの `ReadError::Other`。
 ///
 /// # 例
 ///
 /// ```text
 /// read_text("proj/modelith.json") → Ok("{ … }")
 /// read_text("proj/none.json")     → Err(NotFound)
+/// read_text("proj/link.yaml")     → Err(Other("シンボリックリンクは読みません"))   // link.yaml がシンボリックリンク
 /// ```
 fn read_text(path: &Path) -> Result<String, ReadError> {
-    match fs::read(path) {
-        Ok(bytes) => String::from_utf8(bytes)
-            .map_err(|_| ReadError::Other("UTF-8 のテキストではありません".to_owned())),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Err(ReadError::NotFound),
-        Err(e) => Err(ReadError::Other(e.to_string())),
+    if is_symlink(path).map_err(read_error)? {
+        return Err(ReadError::Other(
+            "シンボリックリンクは読みません".to_owned(),
+        ));
+    }
+    let bytes = fs::read(path).map_err(read_error)?;
+    String::from_utf8(bytes)
+        .map_err(|_| ReadError::Other("UTF-8 のテキストではありません".to_owned()))
+}
+
+/// パスそのものがシンボリックリンクか（リンクの先は見ない）。
+///
+/// # 引数
+///
+/// - `path`：調べるパス
+///
+/// # 戻り値
+///
+/// シンボリックリンクなら true。無い・調べられなければ `io::Error`。
+///
+/// # 例
+///
+/// ```text
+/// is_symlink("proj/link.yaml")  → Ok(true)    // ln -s rules.yaml proj/link.yaml
+/// is_symlink("proj/rules.yaml") → Ok(false)
+/// is_symlink("proj/none.yaml")  → Err(NotFound)
+/// ```
+fn is_symlink(path: &Path) -> io::Result<bool> {
+    fs::symlink_metadata(path).map(|m| m.file_type().is_symlink())
+}
+
+/// ファイルの読み込みの `io::Error` を、コアの読み込みの誤りにする。
+///
+/// # 引数
+///
+/// - `e`：読み込みの誤り
+///
+/// # 戻り値
+///
+/// 無いなら `ReadError::NotFound`、それ以外は理由の文を持つ `ReadError::Other`。
+///
+/// # 例
+///
+/// ```text
+/// read_error(io::Error::from(io::ErrorKind::NotFound))         → NotFound
+/// read_error(io::Error::from(io::ErrorKind::PermissionDenied)) → Other("permission denied")
+/// ```
+fn read_error(e: io::Error) -> ReadError {
+    if e.kind() == io::ErrorKind::NotFound {
+        ReadError::NotFound
+    } else {
+        ReadError::Other(e.to_string())
     }
 }
 
@@ -278,6 +326,23 @@ mod tests {
         let got: Vec<bool> = names.iter().map(|n| is_model_file(n)).collect();
         // Assert
         assert_eq!(got, [true, true, false, false, false, false]);
+    }
+
+    #[test]
+    fn read_error_maps_not_found_and_keeps_other_reasons() {
+        // Arrange（同値クラス：無い／それ以外）
+        let missing = io::Error::from(io::ErrorKind::NotFound);
+        let denied = io::Error::new(io::ErrorKind::PermissionDenied, "権限がありません");
+        // Act
+        let got = (read_error(missing), read_error(denied));
+        // Assert
+        assert_eq!(
+            got,
+            (
+                ReadError::NotFound,
+                ReadError::Other("権限がありません".to_owned())
+            )
+        );
     }
 
     #[test]

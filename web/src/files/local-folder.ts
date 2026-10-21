@@ -221,13 +221,14 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    * @param folder このプロバイダで開いたフォルダ
    * @param path フォルダからの相対パス（`/` 区切り）
    * @param text 書く内容
-   * @returns 作ったファイルの参照。名前が空・同じ名前のファイルが既にあるときは例外（Error）を投げる
+   * @returns 作ったファイルの参照。名前が空・フォルダの外を指すパス・同じ名前のファイルが既にあるときは例外（Error）を投げる
    * @example
    * await p.createFile(folder, "models/new.sysml", "package P;") // → { …, path: "models/new.sysml" }
    * await p.createFile(folder, "a.sysml", "")                   // → Error「「a.sysml」は既にあります」（あるとき）
+   * await p.createFile(folder, "models/../x.sysml", "")         // → Error「パス「models/../x.sysml」は、フォルダの外を指しています」
    */
   async createFile(folder: FolderRef, path: string, text: string): Promise<FileRef> {
-    const segs = path.split("/").filter(Boolean);
+    const segs = segmentsOf(path);
     const name = segs.pop();
     if (!name) throw new Error("ファイル名がありません");
     let dir = this.folderHandle(folder);
@@ -326,28 +327,42 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    *
    * @param ref フォルダから開いたファイル
    * @param name 隣のファイルの名前（`a.layout.json` など）
-   * @returns 内容。無ければ null。隣を扱えないファイルなら例外（Error）を投げる
+   * @returns 内容と版（`更新時刻:大きさ`）。無ければ null。隣を扱えないファイルなら例外（Error）を投げる
    * @example
-   * await p.readSibling(ref, "a.layout.json")      // → "{}"
+   * await p.readSibling(ref, "a.layout.json")      // → { text: "{}", version: "1001:2" }
    * await p.readSibling(ref, "none.layout.json")   // → null（まだ作っていない）
    * await p.readSibling(picked, "one.layout.json") // → Error「…（フォルダを開いてください）」を投げる
    */
-  async readSibling(ref: FileRef, name: string): Promise<string | null> {
+  async readSibling(ref: FileRef, name: string): Promise<FileContent | null> {
     const dir = await this.parentDir(ref);
     if (!(await exists(dir, name))) return null;
-    return (await (await dir.getFileHandle(name)).getFile()).text();
+    const f = await (await dir.getFileHandle(name)).getFile();
+    return { text: await f.text(), version: versionOf(f) };
   }
 
   /**
-   * 隣のファイル（同じ階層のファイル）に書く。無ければ作る。隣を扱えないファイルなら例外（Error）を投げる。
+   * 隣のファイル（同じ階層のファイル）に書く。無ければ作る。あれば expectedVersion と今の版を比べ、違えば書かずに ConflictError を投げる。
+   * 隣を扱えないファイルなら例外（Error）を投げる。
    *
    * @param ref フォルダから開いたファイル
    * @param name 隣のファイルの名前（`a.layout.json` など）
    * @param text 書く内容
+   * @param expectedVersion 読んだときの版。null なら比べずに上書きする（強制上書き・まだ読んでいない）
+   * @returns 書いた後の新しい版
+   * @example
+   * await p.writeSibling(ref, "a.layout.json", "L", version) // → 新しい版（version とは違う）
+   * await p.writeSibling(ref, "a.layout.json", "L", version) // → ConflictError を投げる（読んだ後に他で変更されていたとき）
+   * await p.writeSibling(ref, "a.layout.json", "L", version) // → 新しい版（読んだ後に消されていたときは作り直す）
    */
-  async writeSibling(ref: FileRef, name: string, text: string): Promise<void> {
+  async writeSibling(ref: FileRef, name: string, text: string, expectedVersion: string | null): Promise<string> {
     const dir = await this.parentDir(ref);
-    await writeText(await dir.getFileHandle(name, { create: true }), text);
+    if (expectedVersion !== null && (await exists(dir, name))) {
+      const current = await (await dir.getFileHandle(name)).getFile();
+      if (versionOf(current) !== expectedVersion) throw new ConflictError(siblingRef(ref, name));
+    }
+    const fh = await dir.getFileHandle(name, { create: true });
+    await writeText(fh, text);
+    return versionOf(await fh.getFile());
   }
 
   /**
@@ -568,6 +583,21 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
     const byName = (a: DirEntry, b: DirEntry): number => nameOf(a).localeCompare(nameOf(b));
     return [...dirs.sort(byName), ...files.sort(byName)];
   }
+}
+
+/**
+ * 隣のファイルの参照を作る（競合の知らせに、どのファイルかを書くため）。
+ *
+ * @param ref フォルダから開いたファイル（id とパスはファイル名で終わる）
+ * @param name 隣のファイルの名前
+ * @returns 同じ階層の name の参照（id とパスのファイル名を name に替えたもの）
+ * @example
+ * siblingRef({ provider: "local", id: "dir:1/models/a.sysml", name: "a.sysml", path: "models/a.sysml" }, "a.layout.json")
+ * // → { provider: "local", id: "dir:1/models/a.layout.json", name: "a.layout.json", path: "models/a.layout.json" }
+ */
+function siblingRef(ref: FileRef, name: string): FileRef {
+  const renamed = (s: string): string => s.slice(0, s.length - ref.name.length) + name;
+  return { provider: ref.provider, id: renamed(ref.id), name, path: renamed(ref.path) };
 }
 
 /**
