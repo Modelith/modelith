@@ -373,6 +373,7 @@ function onPointerUp(ev: PointerEvent): void {
 function tap(d: Drag): void {
   S.confirmDel = false;
   S.renaming = false;
+  S.docEdit = false;
   if (S.tool && !("hand" in S.tool) && (d.type === "pan" || d.type === "band")) {
     placeTool(d.lx, d.ly);
     return;

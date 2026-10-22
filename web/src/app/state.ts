@@ -91,6 +91,8 @@ export interface AppState {
   gap: GapFocus | null;
   confirmDel: boolean;
   renaming: boolean;
+  /** インスペクタで説明（要求の文章など）を編集しているとき（F-EDIT-12）。 */
+  docEdit: boolean;
   msgEdit: boolean;
   phase: string;
   ibdCtx: string | null;
@@ -153,6 +155,7 @@ export const S: AppState = {
   gap: null,
   confirmDel: false,
   renaming: false,
+  docEdit: false,
   msgEdit: false,
   phase: "",
   ibdCtx: null,
@@ -186,6 +189,7 @@ export function clearSel(): void {
   S.selPin = null;
   S.portForm = false;
   S.renaming = false;
+  S.docEdit = false;
   S.confirmDel = false;
 }
 

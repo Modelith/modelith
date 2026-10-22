@@ -86,7 +86,11 @@ package ModelithRequirements {
                    どちらの要素から線を引き始めても候補に出し、SysML v2 の規格どおりの向き（部品が要求を満たす・検証が要求を確かめる など）でテキストに書く */
         }
         requirement def <'F-EDIT-3'> RenameReq {
-            doc /* 要素の名前を変えると、テキスト中の参照と配置情報もまとめて変える */
+            doc /* 要素の名前を変えると、テキスト中の参照と配置情報もまとめて変える。日本語や空白を含む名前も付けられ、テキストには引用名（'電気 ケトル'）で書く（8.2.2.3） */
+        }
+        requirement def <'F-EDIT-12'> EditDetailsReq {
+            doc /* テキストを書かずに、インスペクタで要素の説明（要求なら要求の文章。テキストの doc）を書き換え・足し・消すことができる。
+                   文が 2 行以上でも、行の区切りを保ってテキストに書く（ADR-0001） */
         }
         requirement def <'F-EDIT-4'> UndoReq {
             doc /* 元に戻す・やり直すができる。履歴はファイルごとに持ち、200 段階まで */
@@ -374,6 +378,7 @@ package ModelithRequirements {
         #derivation dependency from LayoutReq to ViewsNeed;
         #derivation dependency from UnsavedLayoutReq to SafetyNeed;
         #derivation dependency from StandardViewReq to ViewsNeed;
+        #derivation dependency from EditDetailsReq to EditBothWaysNeed;
         #derivation dependency from CreateViewReq to ViewsNeed;
         #derivation dependency from ViewListReq to ViewsNeed;
         #derivation dependency from PackageFrameReq to ViewsNeed;
@@ -506,6 +511,7 @@ package ModelithRequirements {
         satisfy WordHelpReq by TextEditor;
         satisfy PhoneTextReq by TextEditor;
         satisfy RenameReq by DiagramUI;
+        satisfy EditDetailsReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
         satisfy ProblemLevelReq by AppShell;
@@ -632,6 +638,7 @@ package ModelithRequirements {
         verification def RustEditTest {
             doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存（空の一般の図を含む）と図への出し入れ・図の名前の変更と削除。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）、状態遷移の図の遷移の削除（transition の文・省略形の遷移・最初の遷移）・入れ子の状態の削除と名前の変更・図からの遷移の追加（同じ本体・本体をまたぐ名前の道のり・終了の記号へ）・状態遷移の図の保存（StateTransitionView）、シーケンス図のイベントの間の順序の線の削除、3 段以上の連鎖の端の部品（u:a.x.v）の線の削除と名前の変更も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
             objective {
+                verify EditDetailsReq;
                 verify DiagramToTextReq;
                 verify RenameReq;
                 verify NewPackageGuideReq;
@@ -838,8 +845,9 @@ package ModelithRequirements {
             }
         }
         verification def EditingE2E {
-            doc /* web/e2e/editing.spec.ts：図からの追加と削除・要求をつなぐ関係の追加（要求 → 検証・検証 → 要求の «verify»、要求 → 部品の «satisfy»、要求どうしの導出の逆向き）・名前変更・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・要求をつなぐ関係の追加（要求 → 検証・検証 → 要求の «verify»、要求 → 部品の «satisfy»、要求どうしの導出の逆向き）・名前変更（日本語の名前は引用名で書く・「'」は断る）・説明（要求の文章）の書き換え・足す・消す・やめる・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
             objective {
+                verify EditDetailsReq;
                 verify DiagramToTextReq;
                 verify NewPackageGuideReq;
                 verify RenameReq;

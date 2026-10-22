@@ -2,12 +2,15 @@
 
 use std::collections::HashSet;
 
+use super::more::sysml_name;
 use super::text::{Target, indent_at, insert_into, lower_first, remove_range};
 use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
 use crate::syntax::{SyntaxKind, tokenize};
 
 pub(super) const BAD_NAME: &str = "名前は英字か _ で始め、英字・数字・_ だけで付けてください";
+/// 名前を変えるときに使えない文字を含む名前を断る文。
+pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
 
 /// 追加する定義の名前（種類ごと）。
 const NEW_NAME: &[(&str, &str)] = &[
@@ -144,6 +147,7 @@ pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
         }
         Intent::RenameView { view, name } => more::rename_view(d, view, name),
         Intent::DeleteView { view } => more::delete_view(d, view),
+        Intent::SetDoc { key, text, ctx } => more::set_doc(d, &d.find(key, ctx.as_deref())?, text),
         // 遷移は、状態遷移の図の要素のキー（終了の記号を含む）でつなぐ
         Intent::Connect {
             rel, from, to, ctx, ..
@@ -660,30 +664,37 @@ pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
 }
 
 /// 名前を変え、参照もまとめて書き換える。定義なら名前の出てくるところすべて、使用なら持ち主の中の宣言と `名前.`・`名前 :` などの参照。
-/// コメントの中・長い名前の一部・`a.e` の `.` の後ろの名前は変えない。定義なら引用名（`'名前'`）の中も変える。暫定コアの `OPS.rename` と同じ。
+/// コメントの中・長い名前の一部・`a.e` の `.` の後ろの名前・短い名前（`<'R1'>`）は変えない。引用名（`'名前'`）で書いた参照も変える。暫定コアの `OPS.rename` と同じ。
+/// 基本名（英字か `_` で始まり、英数字と `_` だけ）でない名前（日本語・空白を含む名前など）は、引用名で書く（8.2.2.3）。
 ///
 /// # 引数
 ///
 /// - `d`：操作の対象のテキスト
 /// - `f`：名前を変える宣言
-/// - `nn`：新しい名前（基本名）
+/// - `nn`：新しい名前（前後の空白は除く）
 ///
 /// # 戻り値
 ///
 /// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（名前を変えた宣言の頭）。同じ名前なら、テキストを変えずに返す。
-/// 名前が使えないとき・既に使われているときは理由の文（`Err`）。
+/// 名前が空・使えない文字（`'`・`\`・改行などの制御文字）を含む・既に使われているときは理由の文（`Err`）。
 ///
 /// # 例
 ///
 /// ```text
 /// rename(Doc("package P { part def E { port e; } part def C { part e : E; part f : E; flow from e.e to f.e; } }"), C の中の e, "g")
 ///   → Ok(text = "package P { part def E { port e; } part def C { part g : E; part f : E; flow from g.e to f.e; } }")
+/// rename(Doc("package P { part def Kettle; part def C { part k : Kettle; } }"), Kettle, "電気 ケトル")
+///   → Ok(text = "package P { part def '電気 ケトル'; part def C { part k : '電気 ケトル'; } }")
 /// rename(Doc("package P { part def A; part def B; }"), A, "B")  → Err("「B」は既に使われています")
-/// rename(Doc("package P { part def A; }"), A, "1A")             → Err(BAD_NAME)
+/// rename(Doc("package P { part def A; }"), A, "it's")           → Err(BAD_RENAME)
 /// ```
 fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
-    if !is_basic_name(nn) {
-        return Err(BAD_NAME.to_owned());
+    let nn = nn.trim();
+    if nn.is_empty() {
+        return Err("名前を入力してください".to_owned());
+    }
+    if nn.chars().any(|c| c == '\'' || c == '\\' || c.is_control()) {
+        return Err(BAD_RENAME.to_owned());
     }
     let e = d.e(f.entry);
     let old = e.name.as_str();
@@ -708,15 +719,25 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         }
         None
     };
+    // 名前の字句：基本名の IDENT か、短い名前（`<'…'>`）でない引用名
+    let is_name = |i: usize| -> bool {
+        let (kind, _, s) = ts[i];
+        match kind {
+            SyntaxKind::IDENT => s == old,
+            SyntaxKind::QUOTED_NAME => {
+                s.len() >= 2
+                    && &s[1..s.len() - 1] == old
+                    && !significant(i, -1).is_some_and(|t| t.2 == "<")
+            }
+            _ => false,
+        }
+    };
     // 使用の名前は、持ち主（部品定義など）の中でだけ参照される
     let owner =
         e.pe.map_or(0..d.text.len(), |p| d.b(d.e(p).start)..d.b(d.e(p).end));
-    let mut hits: Vec<(usize, usize)> = Vec::new(); // (位置, 消す長さ)
-    for (i, &(kind, at, s)) in ts.iter().enumerate() {
-        if kind == SyntaxKind::QUOTED_NAME && e.is_def && s.len() > 2 && &s[1..s.len() - 1] == old {
-            hits.push((at + 1, old.len()));
-        }
-        if kind != SyntaxKind::IDENT || s != old {
+    let mut hits: Vec<usize> = Vec::new(); // 字句の番号
+    for (i, &(_, at, _)) in ts.iter().enumerate() {
+        if !is_name(i) {
             continue;
         }
         let hit = e.is_def || {
@@ -727,28 +748,43 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
             in_owner && !after_dot && (dot_next || decl_next)
         };
         if hit {
-            hits.push((at, old.len()));
+            hits.push(i);
         }
     }
-    if !e.is_def {
-        let (hs, he) = (d.b(e.start), d.b(e.head_end));
-        let head = ts
-            .iter()
-            .find(|t| t.0 == SyntaxKind::IDENT && t.2 == old && (hs..he).contains(&t.1));
-        if let Some(&(_, at, _)) = head
-            && !hits.iter().any(|h| h.0 == at)
-        {
-            hits.push((at, old.len()));
-        }
+    let (hs, he) = (d.b(e.start), d.b(e.head_end));
+    let head = (0..ts.len()).find(|&i| is_name(i) && (hs..he).contains(&ts[i].1));
+    if let Some(i) = head
+        && !hits.contains(&i)
+    {
+        hits.push(i);
     }
     hits.sort_unstable();
+    // 宣言の名前と基本名の参照は必要なら引用名に（宣言は基本名に戻せる）、ほかの引用名の参照は引用符の中だけを書き換える
+    let quoted_inner = sysml_name(nn);
+    let quoted_inner = quoted_inner.trim_matches('\'');
+    let edits: Vec<(usize, usize, String)> = hits
+        .iter()
+        .map(|&i| {
+            let (kind, at, s) = ts[i];
+            if kind == SyntaxKind::QUOTED_NAME && Some(i) != head {
+                (at + 1, s.len() - 2, quoted_inner.to_owned())
+            } else {
+                (at, s.len(), sysml_name(nn))
+            }
+        })
+        .collect();
     let mut out = d.text.to_owned();
-    for &(at, len) in hits.iter().rev() {
-        out.replace_range(at..at + len, nn);
+    for (at, len, by) in edits.iter().rev() {
+        out.replace_range(*at..*at + *len, by);
     }
-    let grow = nn.len() as isize - old.len() as isize;
-    let shift =
-        |p: usize| (p as isize + grow * hits.iter().filter(|h| h.0 < p).count() as isize) as usize;
+    let shift = |p: usize| {
+        let grow: isize = edits
+            .iter()
+            .filter(|x| x.0 < p)
+            .map(|x| x.2.len() as isize - x.1 as isize)
+            .sum();
+        (p as isize + grow) as usize
+    };
     let flash = (shift(d.b(e.start)), shift(d.b(e.head_end)));
     Ok(Change {
         text: out,
