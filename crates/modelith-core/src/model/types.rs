@@ -106,7 +106,8 @@ pub struct View {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowNode {
-    /// 図の要素のキー（`a:名前`。名前の無い要素は `a:#番号`、開始・終了は `a:start`・`a:done`）。配置はこのキーで覚える。
+    /// 図の要素のキー（`a:名前`。名前の無い要素は `a:#番号`、開始・終了は `a:start`・`a:done`。入れ子の本体の要素は `a:外.中`・`a:外.start`）。
+    /// 配置はこのキーで覚える。
     pub key: String,
     /// 名前（名前の無い要素は空）。
     pub name: String,
@@ -118,6 +119,9 @@ pub struct FlowNode {
     /// パラメータ（向き `in`・`out`・`inout` の付いた特徴量。8.2.3.17 の parameter）。本体に無く型があれば、型の定義のパラメータ。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ports: Vec<Port>,
+    /// 入れ子の本体の要素なら、その本体を持つアクションのキー（中に描く）。アクション定義の直下なら `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container: Option<String>,
 }
 
 /// アクション定義 1 つの、アクションの流れの図（ActionFlowView、8.2.3.17）。

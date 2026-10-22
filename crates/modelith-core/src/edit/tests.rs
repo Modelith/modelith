@@ -1254,6 +1254,41 @@ fn connect_succession_refuses_start_targets_and_unnamed_elements() {
     assert!(refused(text, unnamed).contains("名前の無い要素"));
 }
 
+#[test]
+fn connect_succession_inside_a_nested_body_writes_into_that_body() {
+    // Arrange（入れ子の本体の要素どうしは、その本体に書く。本体の違う要素どうしは断る）
+    let text = "package P {\n    action def A {\n        action boil {\n            action heat;\n            action wait;\n        }\n        action c;\n    }\n}\n";
+    let inside =
+        r#"{"op":"connect","rel":"succession","from":"a:boil.heat","to":"a:boil.wait","ctx":"A"}"#;
+    let across = r#"{"op":"connect","rel":"succession","from":"a:boil.heat","to":"a:c","ctx":"A"}"#;
+    // Act
+    let (after, _) = run(text, inside);
+    // Assert
+    assert!(
+        after.contains("            action wait;\n            first heat then wait;\n        }"),
+        "{after}"
+    );
+    assert!(refused(text, across).contains("同じアクションの中"));
+}
+
+#[test]
+fn nested_flow_elements_and_lines_can_be_renamed_and_deleted() {
+    // Arrange（入れ子の本体の要素のキー a:boil.heat と、その本体の線）
+    let text = "package P { action def A { action boil { first start then heat; action heat; } } }";
+    // Act
+    let (renamed, _) = run(
+        text,
+        r#"{"op":"rename","key":"a:boil.heat","name":"warm","ctx":"A"}"#,
+    );
+    let (no_line, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"succession|a:boil.start|a:boil.heat|#1","ctx":"A"}"#,
+    );
+    // Assert
+    assert!(renamed.contains("action warm;"), "{renamed}");
+    assert!(!no_line.contains("first start then heat;"), "{no_line}");
+}
+
 // ---- 状態遷移の図（StateTransitionView、8.2.3.18） ----
 
 const STATES: &str = "package P {\n    state def S {\n        entry; then off;\n        state off;\n        accept Go then on;\n        state on {\n            entry; then low;\n            state low;\n            state high;\n        }\n        transition t first on accept Stop if ready do beep then off;\n    }\n}\n";

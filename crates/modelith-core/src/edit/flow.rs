@@ -108,8 +108,8 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 ///
 /// # 戻り値
 ///
-/// 書いた後のテキストと、光らせる範囲（足した文）。要素が無いとき・名前の無い要素のとき・終了から始まるとき・開始へ向かうときは
-/// 理由の文（`Err`）。
+/// 書いた後のテキストと、光らせる範囲（足した文）。入れ子の本体の要素どうしなら、その本体に書く。
+/// 要素が無いとき・名前の無い要素のとき・終了から始まるとき・開始へ向かうとき・本体の違う要素どうしのときは理由の文（`Err`）。
 ///
 /// # 例
 ///
@@ -117,6 +117,9 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// // d.text = "package P {\n    action def A {\n        action a;\n        action b;\n    }\n}\n" のとき
 /// add_succession(d, "a:a", "a:b", Some("A")) → Ok(text に "        action b;\n        first a then b;\n    }")
 /// add_succession(d, "a:b", "a:start", Some("A")) → Err("開始の記号へ向かう順序の線は引けません")
+/// // a の中に入れ子の本体（要素 a:a.x・a:a.y）があるとき
+/// add_succession(d, "a:a.x", "a:a.y", Some("A")) → Ok(a の本体に "first x then y;")
+/// add_succession(d, "a:a.x", "a:b", Some("A"))   → Err("順序の線は、同じアクションの中の要素どうしにだけ引けます")
 /// ```
 pub(super) fn add_succession(
     d: &Doc<'_>,
@@ -125,19 +128,31 @@ pub(super) fn add_succession(
     ctx: Option<&str>,
 ) -> Result<Change, Refusal> {
     let c = d.context(ctx.unwrap_or_default())?;
-    if to == "a:start" {
-        return Err("開始の記号へ向かう順序の線は引けません".to_owned());
-    }
-    if from == "a:done" {
-        return Err("終了の記号から始まる順序の線は引けません".to_owned());
-    }
     let flow = flow_of(d, c).ok_or_else(|| missing(ctx.unwrap_or_default()))?;
-    let name_of = |key: &str| -> Result<String, Refusal> {
-        let n = flow
-            .nodes
+    let node = |key: &str| {
+        flow.nodes
             .iter()
             .find(|n| n.key == key)
-            .ok_or_else(|| missing(key))?;
+            .ok_or_else(|| missing(key))
+    };
+    // 開始・終了の記号（入れ子の本体のものも、暗黙の要素は宣言を持たない）
+    if node(to)?.kind == "start" && node(to)?.entry.is_none() {
+        return Err("開始の記号へ向かう順序の線は引けません".to_owned());
+    }
+    if node(from)?.kind == "done" && node(from)?.entry.is_none() {
+        return Err("終了の記号から始まる順序の線は引けません".to_owned());
+    }
+    // 順序は同じ本体の中の要素どうしにだけ引き、その本体（入れ子なら、本体を持つアクション）に書く
+    let container = node(from)?.container.clone();
+    if node(to)?.container != container {
+        return Err("順序の線は、同じアクションの中の要素どうしにだけ引けます".to_owned());
+    }
+    let host = match &container {
+        Some(k) => node(k)?.entry.ok_or_else(|| missing(k))?,
+        None => c,
+    };
+    let name_of = |key: &str| -> Result<String, Refusal> {
+        let n = node(key)?;
         if n.name.is_empty() {
             return Err(
                 "名前の無い要素は、図から順序の線でつなげません。テキストで名前を付けてから線を引いてください"
@@ -147,7 +162,7 @@ pub(super) fn add_succession(
         Ok(sysml_name(&n.name))
     };
     let snippet = format!("first {} then {};", name_of(from)?, name_of(to)?);
-    let (text, a, b) = insert_into(d.text, d.target(c), &snippet);
+    let (text, a, b) = insert_into(d.text, d.target(host), &snippet);
     Ok(Change {
         text,
         select: None,
