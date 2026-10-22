@@ -189,10 +189,61 @@ fn rename_flash_follows_earlier_renamed_references() {
 }
 
 #[test]
+fn rename_writes_non_basic_names_as_quoted_names() {
+    // Arrange（同値分割：日本語・空白を含む・数字で始まる・予約語。引用名の参照は引用符の中だけを変える。短い名前は変えない）
+    let text = "package P {\n    requirement def <'Kettle'> Kettle;\n    part def C { part k : Kettle; part q : 'Kettle'; }\n}";
+    // Act
+    let (jp, out) = run(
+        text,
+        r#"{"op":"rename","key":"Kettle","name":" 電気 ケトル "}"#,
+    );
+    let (num, _) = run(text, r#"{"op":"rename","key":"Kettle","name":"1A"}"#);
+    let (kw, _) = run(text, r#"{"op":"rename","key":"Kettle","name":"part"}"#);
+    // Assert
+    assert_eq!(
+        jp,
+        "package P {\n    requirement def <'Kettle'> '電気 ケトル';\n    part def C { part k : '電気 ケトル'; part q : '電気 ケトル'; }\n}"
+    );
+    assert_eq!(out.select.as_deref(), Some("電気 ケトル"));
+    assert_eq!(
+        flashed(&jp, &out),
+        "requirement def <'Kettle'> '電気 ケトル'"
+    );
+    assert!(num.contains("part k : '1A'; part q : '1A';"), "{num}");
+    assert!(kw.contains("part k : 'part';"), "{kw}");
+}
+
+#[test]
+fn rename_from_a_quoted_name_back_to_a_basic_name() {
+    // Arrange（引用名の定義と使用を、基本名に戻す。宣言は基本名で書き、ほかの引用名の参照は引用符の中だけを変える）
+    let text = "package P { part def '電気 ケトル'; part def C { part '中の 部品' : '電気 ケトル'; flow from '中の 部品'.p to x.q; } }";
+    // Act
+    let (def, _) = run(
+        text,
+        r#"{"op":"rename","key":"電気 ケトル","name":"Kettle"}"#,
+    );
+    let (usage, _) = run(
+        text,
+        r#"{"op":"rename","key":"u:中の 部品","ctx":"C","name":"inner"}"#,
+    );
+    // Assert
+    assert_eq!(
+        def,
+        "package P { part def Kettle; part def C { part '中の 部品' : 'Kettle'; flow from '中の 部品'.p to x.q; } }"
+    );
+    assert_eq!(
+        usage,
+        "package P { part def '電気 ケトル'; part def C { part inner : '電気 ケトル'; flow from 'inner'.p to x.q; } }"
+    );
+}
+
+#[test]
 fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
     // 同値分割：使えない名前・既にある名前・同じ名前
     let text = "package P { part def A; part def B; }";
-    assert!(refused(text, r#"{"op":"rename","key":"A","name":"1A"}"#).contains("英字"));
+    assert!(refused(text, r#"{"op":"rename","key":"A","name":"it's"}"#).contains("使えません"));
+    assert!(refused(text, r#"{"op":"rename","key":"A","name":"a\nb"}"#).contains("使えません"));
+    assert!(refused(text, r#"{"op":"rename","key":"A","name":"  "}"#).contains("名前を入力"));
     assert!(
         refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
     );
