@@ -197,6 +197,11 @@ package ModelithRequirements {
                    線の端のつまみを、同じ要素の別の縁や接続点へ動かすと、端をそこへ付け替える。調整した線の形は配置ファイルに残し（ADR-0005）、要素を動かしても曲がり角は動かさない。
                    エクスポートした SVG と draw.io にも、調整した形で書く。テキストは変えない */
         }
+        requirement def <'F-VIEW-17'> TabsPerFileReq {
+            doc /* 図のタブは、ファイルごとに持つ。ファイルを切り替えると、そのファイルで最後に開いていたタブと表示中の図に戻り、初めて開くファイルは「すべて」の図から始める。
+                   ファイルごとのタブはブラウザに記憶する。表示中の図にそのファイルの要素が無いときも、別の図に切り替えずに開いたままにし、
+                   要素が無いことと、ほかの図をタブの「＋」から開けることを示し、「すべて」の図を開くボタンを添える */
+        }
         requirement def <'F-VIEW-4'> CanvasReq {
             doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える */
         }
@@ -456,6 +461,7 @@ package ModelithRequirements {
         #derivation dependency from SequenceReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
         #derivation dependency from EdgeShapeReq to ViewsNeed;
+        #derivation dependency from TabsPerFileReq to ViewsNeed;
         #derivation dependency from TreeReq to ViewsNeed;
         #derivation dependency from PhaseReq to TraceNeed;
         #derivation dependency from TraceGapReq to TraceNeed;
@@ -614,6 +620,7 @@ package ModelithRequirements {
         satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
         satisfy EdgeShapeReq by DiagramUI;
+        satisfy TabsPerFileReq by DiagramUI;
         satisfy TreeReq by DiagramUI;
         satisfy PhaseReq by Core;
         satisfy TraceGapReq by Core;
