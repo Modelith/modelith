@@ -9,7 +9,7 @@ import { kindLabel } from "./labels";
 import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
 import { nodeH, W } from "./geometry";
-import { renderInspector, startRename } from "./inspector";
+import { docLabel, renderInspector, startRename } from "./inspector";
 import { attachEnds } from "./pins";
 import { KW_FOR, type RelKind } from "./relations";
 import { highlight, render } from "./render";
@@ -153,6 +153,27 @@ export const OPS = {
     setText(r.text, { changeAt: r.at, flash: r.flash });
     if (S.view === "ibd") commitLayout();
     toast(`${c.ctx.name} に部品「${nm}」（${type}）を追加しました`);
+  },
+
+  /**
+   * 要素の説明（要求なら要求の文章。テキストの doc）を書き換える（意図 `setDoc`、F-EDIT-12）。空なら説明を消す。
+   * 書き換えたらトーストで知らせる。
+   *
+   * @param n 説明を書き換える要素
+   * @param text 新しい説明の文（前後の空白は除く）
+   * @returns 書き換えた（または同じ文で変える必要が無かった）なら true。コアが断ったなら false
+   * @example
+   * // requirement def R { doc /* 古い *\/ } があるとき
+   * await OPS.setDoc(R, "3 分で沸かす") // → true（テキストの doc が変わる）
+   * await OPS.setDoc(R, "古い")          // → true（何も変えない）
+   */
+  async setDoc(n: ModelNode, text: string): Promise<boolean> {
+    if (text.trim() === (n.entry.doc ?? "")) return true;
+    const r = await perform({ op: "setDoc", key: n.key, text, ctx: ctxKey() });
+    if (!r) return false;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    toast(text.trim() ? `「${n.name}」の${docLabel(n)}を変えました` : `「${n.name}」の${docLabel(n)}を消しました`);
+    return true;
   },
 
   /**

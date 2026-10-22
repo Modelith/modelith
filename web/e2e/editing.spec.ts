@@ -142,6 +142,61 @@ test("F-EDIT-3: 名前に「'」は使えず、理由を伝える（異常系）
   expect(await editorText(page)).toBe(text);
 });
 
+test.describe("説明の編集（F-EDIT-12）", () => {
+  const REQ = "package P {\n    requirement def BoilReq {\n        doc /* 5 分以内に沸かす */\n    }\n    part def Kettle;\n}\n";
+
+  /** モデルを書き、「すべて」の図で要素を選ぶ。 */
+  async function selectIn(page: Page, key: string): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(REQ);
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="all"]').click();
+    await page.locator(`#gNodes .node[data-key="${key}"]`).click();
+  }
+
+  test("F-EDIT-12: 要求の文章をインスペクタで書き換えると、テキストの doc が変わる", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "BoilReq");
+    await expect(page.locator("#insp .docbox .note")).toHaveText("要求の文章5 分以内に沸かす");
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("3 分以内に\n1 L を沸かす");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("        doc /* 3 分以内に\n           1 L を沸かす */\n");
+    await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を変えました");
+    await expect(page.locator("#insp .docbox .note p")).toHaveText("3 分以内に 1 L を沸かす");
+  });
+
+  test("F-EDIT-12: 説明の無い要素に説明を足せる", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "Kettle");
+    await expect(page.locator("#insp .docbox .note")).toHaveText("説明まだありません");
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("お湯を沸かす道具");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("    part def Kettle {\n        doc /* お湯を沸かす道具 */\n    }\n");
+  });
+
+  test("F-EDIT-12: 文を空にして保存すると説明が消え、「やめる」なら何も変えない", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "BoilReq");
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("書きかけ");
+    await page.locator('[data-act="docCancel"]').click();
+    expect(await editorText(page)).toBe(REQ);
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toBe("package P {\n    requirement def BoilReq {\n    }\n    part def Kettle;\n}\n");
+    await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を消しました");
+  });
+});
+
 /** 要素をドラッグして動かす。 */
 async function dragNode(page: Page, key: string, dx: number, dy: number): Promise<void> {
   const b = (await page.locator(`#gNodes .node[data-key="${key}"]`).boundingBox())!;

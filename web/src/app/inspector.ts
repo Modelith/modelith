@@ -52,8 +52,12 @@ const portName = (pin: string | null | undefined): string => (pin?.startsWith("p
 export function renderInspector(): void {
   const box = $("#insp");
   const html = inspectorHtml();
+  // 説明の編集中に描き直しても、打ちかけの文を残す（F-EDIT-12）
+  const typing = document.querySelector<HTMLTextAreaElement>("#docIn")?.value;
   box.hidden = html === null;
   if (html !== null) box.innerHTML = html;
+  const area = document.querySelector<HTMLTextAreaElement>("#docIn");
+  if (area && typing !== undefined) area.value = typing;
   focusInput();
   renderTree();
   $("#mini").style.bottom = box.hidden ? "" : box.offsetHeight + 22 + "px";
@@ -281,9 +285,49 @@ function nodeHtml(n: ModelNode): string {
     (guide ? `<button data-act="rename">名前を変更</button>` : `<button data-act="goto">テキストで見る</button><button data-act="rename">名前を変更</button><button data-act="connect">関係を追加</button>`) +
     delBtn("del", "削除") +
     `</div>` +
+    docHtml(n) +
     annotationsHtml(e, S.P.entries)
   );
 }
+
+/**
+ * 定義の説明（要求なら「要求の文章」。テキストの `doc /* … *\/`）を見せる欄の HTML を作る（F-EDIT-12）。
+ * 編集中なら入力欄と「保存」「やめる」を、そうでなければ今の文と「編集」のボタンを出す。
+ *
+ * @param n 定義の図の要素
+ * @returns 欄の HTML（文字は esc で逃がす）
+ * @example
+ * // 要求 R（doc /* 3 分で沸かす *\/）を選んでいるとき
+ * docHtml(R) // → '<div class="docbox"><div class="note"><small>要求の文章</small><p>3 分で沸かす</p></div><div class="acts"><button data-act="docEdit">要求の文章を編集</button></div></div>'
+ * // 説明の無い部品定義 A を編集しているとき
+ * docHtml(A) // → '<div class="docbox"><div class="note"><small>説明</small></div><textarea id="docIn" …></textarea><div class="acts"><button class="primary" data-act="docOk">保存</button>…'
+ */
+function docHtml(n: ModelNode): string {
+  const label = docLabel(n);
+  const doc = n.entry.doc ?? "";
+  if (S.docEdit) {
+    return (
+      `<div class="docbox"><div class="note"><small>${label}（空にすると消えます）</small></div>` +
+      `<textarea id="docIn" rows="4" aria-label="${label}">${esc(doc)}</textarea>` +
+      `<div class="acts"><button class="primary" data-act="docOk">保存</button><button data-act="docCancel">やめる</button></div></div>`
+    );
+  }
+  return (
+    `<div class="docbox"><div class="note"><small>${label}</small>${doc ? `<p>${esc(doc)}</p>` : `<p class="muted">まだありません</p>`}</div>` +
+    `<div class="acts"><button data-act="docEdit">${label}を編集</button></div></div>`
+  );
+}
+
+/**
+ * 説明の欄の呼び方。要求は「要求の文章」、ほかは「説明」と呼ぶ（ADR-0014）。
+ *
+ * @param n 定義の図の要素
+ * @returns 欄の呼び方
+ * @example
+ * docLabel({ fam: "req", … })  // → "要求の文章"
+ * docLabel({ fam: "part", … }) // → "説明"
+ */
+export const docLabel = (n: Pick<ModelNode, "fam">): string => (n.fam === "req" ? "要求の文章" : "説明");
 
 /**
  * アクションの流れの図の要素（8.2.3.17）の HTML を作る。種類の画面の言葉と中身、テキストで見る・名前の変更・順序の線の追加・削除のボタンを出す。
@@ -417,7 +461,7 @@ const ALIGN_ACTS: Record<string, AlignMode> = { alLeft: "left", alTop: "top", al
  * inputValue("#renameIn") // → "Motor"
  * inputValue("#none")     // → ""（欄が無い）
  */
-const inputValue = (sel: string): string => document.querySelector<HTMLInputElement | HTMLSelectElement>(sel)?.value ?? "";
+const inputValue = (sel: string): string => document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(sel)?.value ?? "";
 
 /**
  * インスペクタ・右クリックメニューのボタンの操作を行う。整列・接続モード・名前の変更・テキストへの移動・削除（2 回押しで確定）・
@@ -444,6 +488,24 @@ export function act(a: string): void {
     case "renameCancel":
       S.renaming = false;
       renderInspector();
+      return;
+    case "docEdit":
+      S.docEdit = true;
+      renderInspector();
+      document.querySelector<HTMLTextAreaElement>("#docIn")?.focus();
+      return;
+    case "docCancel":
+      S.docEdit = false;
+      renderInspector();
+      return;
+    case "docOk":
+      if (n) {
+        void OPS.setDoc(n, inputValue("#docIn")).then((ok) => {
+          if (!ok) return;
+          S.docEdit = false;
+          renderInspector();
+        });
+      }
       return;
     case "renameOk":
       if (n) {
