@@ -47,7 +47,7 @@ describe("decideMessage（形と権限、F-PLUG-7）", () => {
     expect(got).toEqual({ kind: "drop", notice: "宣言していない権限（edits:propose）が要るメッセージ（proposeEdits）のため、使いませんでした" });
   });
 
-  it("頼んでいない取り込みの結果は、捨てて知らせる", () => {
+  it("頼んでいないインポートの結果は、捨てて知らせる", () => {
     // Arrange・Act
     const got = decideMessage(at({ message: { type: "imported", requestId: 1, fileName: "a.sysml", text: "" } }), new Map());
     // Assert
@@ -117,34 +117,34 @@ describe("decideMessage（コマンド・診断・知らせ）", () => {
   });
 });
 
-describe("decideMessage（取り込みと書き出し、F-PLUG-4）", () => {
+describe("decideMessage（インポートとエクスポート、F-PLUG-4）", () => {
   const importing = new Map<number, PendingRequest>([[2, { kind: "import", title: "ReqIF" }]]);
   const exporting = new Map<number, PendingRequest>([[3, { kind: "export", title: "表（CSV）", extension: ".csv" }]]);
-  /** 書き出しの答え。 */
+  /** エクスポートの答え。 */
   const exported = (base64: string, fileName = "要求一覧", mediaType = "text/csv"): CheckedPluginMessage => ({ message: { type: "exported", requestId: 3, fileName, mediaType, base64 } });
 
-  it("頼んだ取り込みの結果は、新しい文書として開く（正常系）", () => {
+  it("頼んだインポートの結果は、新しい文書として開く（正常系）", () => {
     // Arrange・Act
     const got = decideMessage(at({ message: { type: "imported", requestId: 2, fileName: "a.reqif", text: "package A;" } }), importing);
     // Assert
     expect(got).toEqual({ kind: "imported", requestId: 2, title: "ReqIF", fileName: "a.reqif", text: "package A;" });
   });
 
-  it("書き出しの依頼の番号に届いた取り込みの結果は、捨てて知らせる（異常系: 種類の食い違い）", () => {
+  it("エクスポートの依頼の番号に届いたインポートの結果は、捨てて知らせる（異常系: 種類の食い違い）", () => {
     // Arrange・Act
     const got = decideMessage(at({ message: { type: "imported", requestId: 3, fileName: "a.reqif", text: "" } }), exporting);
     // Assert
     expect(got).toEqual({ kind: "drop", notice: "依頼していない結果（imported）が届いたため、使いませんでした" });
   });
 
-  it("上限より大きい取り込みの結果は、開かずに知らせる（境界値: 上限 + 1 バイト）", () => {
+  it("上限より大きいインポートの結果は、開かずに知らせる（境界値: 上限 + 1 バイト）", () => {
     // Arrange・Act
     const got = decideMessage(at({ message: { type: "imported", requestId: 2, fileName: "a.reqif", text: "a".repeat(MAX_TRANSFER_BYTES + 1) } }), importing);
     // Assert
-    expect(got).toEqual({ kind: "requestFailed", requestId: 2, notice: "読み込み「ReqIF」を実行できませんでした：読み込んだテキストが大きすぎます（上限 20 MB）" });
+    expect(got).toEqual({ kind: "requestFailed", requestId: 2, notice: "インポート「ReqIF」を実行できませんでした：インポートしたテキストが大きすぎます（上限 20 MB）" });
   });
 
-  it("頼んだ書き出しの結果は、ファイル名に拡張子を補ってダウンロードさせる（正常系）", () => {
+  it("頼んだエクスポートの結果は、ファイル名に拡張子を補ってダウンロードさせる（正常系）", () => {
     // Arrange・Act
     const got = decideMessage(at(exported("YWJj")), exporting);
     // Assert
@@ -158,17 +158,17 @@ describe("decideMessage（取り込みと書き出し、F-PLUG-4）", () => {
     expect(got).toMatchObject({ kind: "exported", mediaType: "application/octet-stream" });
   });
 
-  it("base64 でない書き出しの結果は、書き出しができなかったと知らせる（異常系）", () => {
+  it("base64 でないエクスポートの結果は、エクスポートできなかったと知らせる（異常系）", () => {
     // Arrange・Act
     const got = decideMessage(at(exported("YWJ")), exporting);
     // Assert
-    expect(got).toEqual({ kind: "requestFailed", requestId: 3, notice: "書き出し「表（CSV）」を実行できませんでした：書き出されたファイルの中身が正しくありません（base64 ではありません）" });
+    expect(got).toEqual({ kind: "requestFailed", requestId: 3, notice: "エクスポート「表（CSV）」を実行できませんでした：エクスポートされたファイルの中身が正しくありません（base64 ではありません）" });
   });
 
   it.each([
     ["上限ちょうど", MAX_TRANSFER_BYTES, "exported"],
     ["上限 + 3 バイト", MAX_TRANSFER_BYTES + 3, "requestFailed"],
-  ])("%s の書き出しの結果（境界値）", (_, bytes, kind) => {
+  ])("%s のエクスポートの結果（境界値）", (_, bytes, kind) => {
     // Arrange（3 バイトごとに 4 文字の base64。余りは = で詰める）
     const base64 = "A".repeat(Math.floor(bytes / 3) * 4) + ["", "AA==", "AAA="][bytes % 3];
     // Act
@@ -177,21 +177,21 @@ describe("decideMessage（取り込みと書き出し、F-PLUG-4）", () => {
     expect(got.kind).toBe(kind);
   });
 
-  it("頼んでいない書き出しの結果は、捨てて知らせる（異常系）", () => {
+  it("頼んでいないエクスポートの結果は、捨てて知らせる（異常系）", () => {
     // Arrange・Act
     const got = decideMessage(at(exported("YWJj")), importing);
     // Assert
     expect(got).toEqual({ kind: "drop", notice: "依頼していない結果（exported）が届いたため、使いませんでした" });
   });
 
-  it("取り込みの失敗は、何の失敗かを添えて知らせる", () => {
+  it("インポートの失敗は、何の失敗かを添えて知らせる", () => {
     // Arrange・Act
     const got = decideMessage(at({ message: { type: "failed", requestId: 2, message: "ReqIF の形式ではありません" } }), importing);
     // Assert
-    expect(got).toEqual({ kind: "requestFailed", requestId: 2, notice: "読み込み「ReqIF」を実行できませんでした：ReqIF の形式ではありません" });
+    expect(got).toEqual({ kind: "requestFailed", requestId: 2, notice: "インポート「ReqIF」を実行できませんでした：ReqIF の形式ではありません" });
   });
 
-  it("取り込みの依頼の番号に届いたコマンドの完了は、捨てて知らせる（異常系: 種類の食い違い）", () => {
+  it("インポートの依頼の番号に届いたコマンドの完了は、捨てて知らせる（異常系: 種類の食い違い）", () => {
     // Arrange・Act
     const got = decideMessage(at({ message: { type: "commandDone", requestId: 2 } }), importing);
     // Assert
@@ -200,11 +200,11 @@ describe("decideMessage（取り込みと書き出し、F-PLUG-4）", () => {
 });
 
 describe("failedNotice", () => {
-  it("書き出しの失敗の文", () => {
+  it("エクスポートの失敗の文", () => {
     // Arrange・Act
     const got = failedNotice({ kind: "export", title: "表（CSV）", extension: ".csv" }, "要素がありません");
     // Assert
-    expect(got).toBe("書き出し「表（CSV）」を実行できませんでした：要素がありません");
+    expect(got).toBe("エクスポート「表（CSV）」を実行できませんでした：要素がありません");
   });
 });
 

@@ -1,7 +1,6 @@
-// 書き出し（draw.io の XML・SVG）と、ファイルの読み込み・保存。
+// エクスポートの中身（draw.io の XML・SVG）と、ファイルのダウンロード。
 
 import { $, esc } from "./dom";
-import { openModal } from "./modal";
 import type { ModelNode, ModelSequenceEvent } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
@@ -10,7 +9,7 @@ import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn } from "./svg";
 import { curLayout, curView, viewContent } from "./views";
 
-/** 書き出し用の明るい配色（CSS 変数を使えない環境向け）。 */
+/** エクスポート用の明るい配色（CSS 変数を使えない環境向け）。 */
 const LIGHT: Record<string, string> = {
   panel: "#FFFFFF", paper: "#EDF0EF", ink: "#1D2733", ink2: "#5A6572", sel: "#1F6FEB",
   "k-req": "#95600F", "k-req-bg": "#FBF1DE", "k-part": "#2D5A87", "k-part-bg": "#E6EFF8", "k-con": "#146F66", "k-con-bg": "#DFF1EE",
@@ -18,7 +17,7 @@ const LIGHT: Record<string, string> = {
   "k-other": "#5A6572", "k-other-bg": "#F1F3F4",
 };
 /**
- * 書き出し用の明るい配色から、色の名前に当たる色を引く（F-EXP-1・F-EXP-2）。
+ * エクスポート用の明るい配色から、色の名前に当たる色を引く（F-EXP-1・F-EXP-2）。
  *
  * @param k 色の名前（CSS 変数の名前から -- を除いたもの。"ink"・"k-part-bg" など）
  * @returns 色（#RRGGBB）。知らない名前なら "#000000"
@@ -27,6 +26,23 @@ const LIGHT: Record<string, string> = {
  * LC("nope")   // → "#000000"（知らない名前）
  */
 const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
+
+/**
+ * draw.io の図形と線（mxCell）を、draw.io（app.diagrams.net）がそのまま開ける .drawio のファイルの形（圧縮しない mxfile）で包む。
+ * 根の 2 つのセル（id 0 と、図形の親になる id 1）を先に置く。
+ *
+ * @param name 図（ページ）の名前（XML の属性に書くので、& < > " ' を文字参照にする）
+ * @param cells 根の下に置く mxCell の XML（親は "1"）
+ * @returns mxfile の XML
+ * @example
+ * mxfileXml("ブロック定義図", "")
+ * // → '<mxfile host="app.diagrams.net"><diagram id="v" name="ブロック定義図"><mxGraphModel grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'
+ * mxfileXml(`A & 'B'`, "") // → '…<diagram id="v" name="A &amp; &#39;B&#39;">…'（名前の記号は文字参照にする）
+ */
+export function mxfileXml(name: string, cells: string): string {
+  const q = esc(name).replace(/'/g, "&#39;");
+  return `<mxfile host="app.diagrams.net"><diagram id="v" name="${q}"><mxGraphModel grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel></diagram></mxfile>`;
+}
 
 /**
  * 線の種類から、draw.io の線の形（矢印・破線）を決める。draw.io に無い再定義・参照の印は、特殊化と同じ白抜きの三角にする。
@@ -135,8 +151,6 @@ export function drawioXml(): string {
   const q = (s: string): string => esc(s).replace(/'/g, "&#39;");
   let id = 2, cells = "";
   const map = new Map<string, string>();
-  const wrapXml = (name: string): string =>
-    `<mxfile host="app.diagrams.net"><diagram id="v" name="${q(name)}"><mxGraphModel grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel></diagram></mxfile>`;
   if (cc.seq) {
     const Hh = seqGeom(cc).H;
     cc.nodes.forEach((l, i) => {
@@ -164,7 +178,7 @@ export function drawioXml(): string {
       if (e.kind !== "succession" || !src || !dst) continue;
       cells += `<mxCell id="e${id++}" value="${q(e.label)}" style="html=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
     }
-    return wrapXml("sd " + (cc.ctx ? cc.ctx.name : ""));
+    return mxfileXml("sd " + (cc.ctx ? cc.ctx.name : ""), cells);
   }
   const rects = boxesOf(nodes, L.pos);
   const rect = (n: ModelNode): Box => rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -253,7 +267,7 @@ export function drawioXml(): string {
     }
     cells += `<mxCell id="e${id++}" value="${q(e.label)}" style="html=1;rounded=1;edgeStyle=orthogonalEdgeStyle;${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
   }
-  return wrapXml(v.label);
+  return mxfileXml(v.label, cells);
 }
 
 /**
@@ -297,7 +311,7 @@ export function svgExport(): string {
  * 文字列やバイト列をファイルとしてダウンロードさせる（一時的な URL を作ってリンクを押し、すぐに URL を解放する）。
  *
  * @param filename 保存するファイル名（"model.svg" など）
- * @param data ファイルの中身（文字列は UTF-8 で書く。プラグインの書き出しはバイト列）
+ * @param data ファイルの中身（文字列は UTF-8 で書く。プラグインのエクスポートはバイト列）
  * @param type MIME タイプ（"image/svg+xml" など）
  */
 export function download(filename: string, data: string | Uint8Array<ArrayBuffer>, type: string): void {
@@ -307,52 +321,4 @@ export function download(filename: string, data: string | Uint8Array<ArrayBuffer
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-/** 開いている draw.io の書き出しダイアログを閉じる操作（閉じていれば null）。 */
-let closeDrawio: (() => void) | null = null;
-
-/** draw.io の書き出しダイアログを閉じ、開く前の要素へ入力を戻す（Q-8）。閉じていれば何もしない。 */
-function hideDrawio(): void {
-  closeDrawio?.();
-  closeDrawio = null;
-}
-
-/**
- * draw.io の書き出しダイアログのボタンに操作をつなぐ。起動時に 1 回呼ぶ。
- * 閉じるボタンと Esc でダイアログを閉じ、コピーのボタンで XML をクリップボードに写して、結果をボタンの文字で 2 秒示す。
- */
-export function initExport(): void {
-  $("#modalClose").onclick = hideDrawio;
-  $("#modal").addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") hideDrawio();
-  });
-  $("#modalCopy").onclick = async () => {
-    const ta = $<HTMLTextAreaElement>("#modalText");
-    const btn = $("#modalCopy");
-    ta.focus();
-    ta.select();
-    let ok = false;
-    try {
-      await navigator.clipboard.writeText(ta.value);
-      ok = true;
-    } catch {
-      ok = false;
-    }
-    btn.textContent = ok ? "コピーしました" : "選択済みです。手動でコピーしてください";
-    setTimeout(() => {
-      btn.textContent = "コピー";
-    }, 2000);
-  };
-}
-
-/**
- * 現在のビューの draw.io の XML を、書き出しダイアログの欄に入れて表示する（F-EXP-2）。
- * 開いている間は背景を操作できず、入力は「コピー」のボタンに置く（Q-8）。
- */
-export function showDrawio(): void {
-  // 開く前に入力を受け取っていた要素を覚えるため、XML を作る前に開く
-  closeDrawio = openModal($("#modal"));
-  $<HTMLTextAreaElement>("#modalText").value = drawioXml();
-  $<HTMLButtonElement>("#modalCopy").focus();
 }

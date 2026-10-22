@@ -24,6 +24,8 @@
           <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
           <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
           <div class="sep"></div>
+          <button id="btnExport" title="表示中の図を、SVG 画像や draw.io のファイルとしてダウンロードする">エクスポート…</button>
+          <div class="sep"></div>
           <button id="btnSample">サンプルを開く</button>
           <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
           <div class="note" id="fileNote"></div>
@@ -53,12 +55,9 @@
       <details class="menu" id="diagramMenu">
         <summary>図</summary>
         <div class="pop">
-          <button id="menuSaveView" title="この図を名前を付けて保存する。保存した図には、あとから要素を入れたり外したりできる">図を保存…</button>
+          <button id="menuSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成…</button>
           <button id="menuEdge" aria-pressed="false" title="線の描き方を、直角と曲線で切り替える">線を曲線で描く</button>
           <button id="menuLayout" title="この図を自動で並べ直す">整列</button>
-          <div class="sep"></div>
-          <button id="btnSaveSvg">図を SVG で保存</button>
-          <button id="btnDrawio">draw.io 形式で書き出す…</button>
         </div>
       </details>
       <details class="menu" id="pluginMenu">
@@ -119,7 +118,7 @@
         <div class="palette" id="palette" role="toolbar" aria-label="要素パレット"></div>
         <div class="spacer"></div>
         <div class="subbar" id="subbar"></div>
-        <button id="btnSaveView" title="この図を名前を付けて保存する。保存した図には、あとから要素を入れたり外したりできる">図を保存</button>
+        <button id="btnSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成</button>
         <button id="btnEdge" title="線の描き方を切り替える">線：直角</button>
         <button id="btnLayout" title="この図を自動で並べ直す">整列</button>
       </div>
@@ -183,13 +182,14 @@
     <div class="row" id="dialogButtons"></div>
   </div>
 </div>
-<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-  <div class="box">
-    <b id="modalTitle">draw.io 形式で書き出す</b>
-    <p>現在のビューを draw.io の XML にしました。draw.io で「その他 → 図を編集」を開き、この内容を貼り付けると読み込めます。</p>
-    <textarea id="modalText" readonly></textarea>
-    <div class="row"><button id="modalCopy" class="primary">コピー</button><button id="modalClose">閉じる</button></div>
-  </div>
+<div class="modal" id="exportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="exportTitle" aria-describedby="exportText">
+  <form class="box" id="exportForm">
+    <b id="exportTitle">エクスポート</b>
+    <p id="exportText">表示中の図を、ファイルとしてダウンロードします。draw.io のファイルは、draw.io でそのまま開けます。</p>
+    <label class="field"><span>ファイル名</span><input id="exportName" type="text" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>形式</span><select id="exportFormat"></select></label>
+    <div class="row"><button type="submit" id="exportOk" class="primary">エクスポート</button><button type="button" id="exportCancel">やめる</button></div>
+  </form>
 </div>
 <script type="module" src="/src/main.ts"></script>
 </body>

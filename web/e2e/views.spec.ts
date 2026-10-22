@@ -184,7 +184,7 @@ test.describe("トレーサビリティ", () => {
   });
 });
 
-test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005）", () => {
+test.describe("作成した図（テキストの view、F-VIEW-7、ADR-0005）", () => {
   const MODEL = `package P {
     part def Engine;
     part def Wheel;
@@ -210,7 +210,7 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     // Assert
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["Car", "Engine", "Wheel"]);
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/structure/);
-    await expect(page.locator("#subbar")).toContainText("保存された図「structure」：一般ビュー");
+    await expect(page.locator("#subbar")).toContainText("作成した図「structure」：一般ビュー");
   });
 
   test("F-VIEW-7: InterconnectionView は、expose した part def の内部ブロック図として描く", async ({ page }) => {
@@ -221,12 +221,12 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     await expect(page.locator("#subbar")).toContainText("（Car）");
   });
 
-  test("F-VIEW-7・Q-4: 保存された図のサブバーとタブのツールチップに、SysML v2 の標準ビューを添える", async ({ page }) => {
+  test("F-VIEW-7・Q-4: 作成した図のサブバーとタブのツールチップに、SysML v2 の標準ビューを添える", async ({ page }) => {
     // Arrange・Act
     await openView(page, "inside");
     // Assert
     await expect(page.locator("#subbar .vkind")).toHaveAttribute("title", "内部ブロック図（SysML v2 では InterconnectionView）");
-    await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", "保存された図「inside」\n内部ブロック図（SysML v2 では InterconnectionView）");
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", "作成した図「inside」\n内部ブロック図（SysML v2 では InterconnectionView）");
   });
 
   test("F-VIEW-7・Q-4: 型の無い view は、＋メニューのツールチップで一般ビュー（GeneralView）と示す", async ({ page }) => {
@@ -391,7 +391,7 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     // Act
     await page.locator("#ed").fill(MODEL.replace("view reqs { expose P::Speed; }", ""));
     // Assert
-    await expect(page.locator("#empty")).toContainText("保存された図「reqs」は、モデルから消えています");
+    await expect(page.locator("#empty")).toContainText("作成した図「reqs」は、モデルから消えています");
   });
 
   test("F-VIEW-9: package そのものを出すと、名前を書いた枠の中に中の要素を描く", async ({ page }) => {
@@ -413,13 +413,13 @@ test.describe("保存された図（テキストの view、F-VIEW-7、ADR-0005�
     }
   });
 
-  test("F-VIEW-7: 保存された図が無いときは、＋メニューでそう示す（境界値）", async ({ page }) => {
+  test("F-VIEW-7: 作成した図が無いときは、＋メニューでそう示す（境界値）", async ({ page }) => {
     // Arrange
     await openApp(page);
     // Act
     await page.locator(".tabadd summary").click();
     // Assert
-    await expect(page.locator(".tabadd .pnote")).toHaveText("保存された図はまだありません");
+    await expect(page.locator(".tabadd .pnote")).toHaveText("作成した図はまだありません。図のメニューの「新しい図を作成…」で作れます");
   });
 });
 
@@ -447,7 +447,7 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
     view boilFlow : ActionFlowView { expose Kettle::Boil; }
 }
 `;
-  /** モデルを書き、＋メニューの「保存された図」からアクティビティ図を開く。 */
+  /** モデルを書き、＋メニューの「作成した図」からアクティビティ図を開く。 */
   async function openFlow(page: import("@playwright/test").Page): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(FLOW);
@@ -472,7 +472,7 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
     await expect(guarded.locator("path.line")).not.toHaveAttribute("stroke-dasharray", /./);
     await expect(guarded.locator("text")).toHaveText("[temperature >= 100]");
     await expect(page.locator('[data-edge="successionFlow|a:fill|a:heat|Water#1"] path.line')).toHaveAttribute("stroke-dasharray", "6 4");
-    await expect(page.locator("#subbar")).toContainText("保存された図「boilFlow」：アクティビティ図（Boil）");
+    await expect(page.locator("#subbar")).toContainText("作成した図「boilFlow」：アクティビティ図（Boil）");
     await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
   });
 
@@ -562,7 +562,7 @@ test.describe("状態遷移図（StateTransitionView、F-VIEW-7、8.2.3.18）", 
     view lampStates : StateTransitionView { expose Lamp::LampStates; }
 }
 `;
-  /** モデルを書き、＋メニューの「保存された図」から状態遷移図を開く。 */
+  /** モデルを書き、＋メニューの「作成した図」から状態遷移図を開く。 */
   async function openStates(page: import("@playwright/test").Page): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(LAMP);
@@ -588,7 +588,7 @@ test.describe("状態遷移図（StateTransitionView、F-VIEW-7、8.2.3.18）", 
     await expect(labelled.locator("path.line")).toHaveAttribute("marker-end", "url(#mOpen)");
     await expect(labelled.locator("text")).toHaveText("PowerOff / beep");
     await expect(page.locator('[data-edge="transition|s:on.light.bright|s:on.light.dim|Dimmer [level > 1]#1"] text')).toHaveText("Dimmer [level > 1]");
-    await expect(page.locator("#subbar")).toContainText("保存された図「lampStates」：状態遷移図（LampStates）");
+    await expect(page.locator("#subbar")).toContainText("作成した図「lampStates」：状態遷移図（LampStates）");
     await expect(page.locator("#problems button.unsupported")).toHaveCount(0);
   });
 
@@ -657,7 +657,7 @@ test.describe("状態遷移図（StateTransitionView、F-VIEW-7、8.2.3.18）", 
     expect(await readFile(page, "a.sysml")).toBe(LAMP);
   });
 
-  test("F-VIEW-8: 「振る舞い」の図を保存すると、並べた要素のまま一般ビュー（GeneralView）として書く", async ({ page }) => {
+  test("F-VIEW-8: 「振る舞い」の図から新しい図を作成すると、並べた要素のまま一般ビュー（GeneralView）として書く", async ({ page }) => {
     // Arrange
     await openApp(page);
     await page.locator("#ed").fill(LAMP);
@@ -687,7 +687,7 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(["A", "B"]);
   }
 
-  /** 「図を保存」で、名前を付けて保存する。 */
+  /** 「新しい図を作成」で、名前を付けて図を作成する。 */
   async function saveView(page: import("@playwright/test").Page, name: string): Promise<void> {
     await page.locator("#btnSaveView").click();
     await page.locator("#dialogInput").fill(name);
@@ -700,7 +700,7 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     await page.locator(`#ctx button:has-text("${label}")`).click();
   }
 
-  test("F-VIEW-8: 図を保存すると、見えている要素のまま保存された図になり、そのタブが開く", async ({ page }) => {
+  test("F-VIEW-8: 新しい図を作成すると、見えている要素のまま作成した図になり、そのタブが開く", async ({ page }) => {
     // Arrange
     await openAll(page);
     // Act
@@ -713,7 +713,25 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     await expect(page.locator("#btnSaveView")).toBeHidden();
   });
 
-  test("F-VIEW-8: 日本語の名前でも保存できる（引用名で書く）", async ({ page }) => {
+  test("F-VIEW-8: 図のメニューの「新しい図を作成…」で作成した図は、＋メニューの「作成した図」に並び、自動で描く図と見分けられる", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    await page.locator("#diagramMenu > summary").click();
+    await expect(page.locator("#menuSaveView")).toHaveText("新しい図を作成…");
+    await page.locator("#menuSaveView").click();
+    await expect(page.locator("#dialogTitle")).toHaveText("新しい図を作成");
+    await page.locator("#dialogInput").fill("overview");
+    // Act
+    await page.locator('#dialogButtons [data-id="ok"]', { hasText: "作成" }).click();
+    // Assert
+    await expect(page.locator("#toast")).toHaveText("図「overview」を作成しました。＋メニューの「作成した図」からいつでも開けます");
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", /^作成した図「overview」/);
+    await page.locator(".tabadd summary").click();
+    await expect(page.locator(".tabadd .phead")).toHaveText(["自動で描く図", "作成した図"]);
+    await expect(page.locator('.tabadd [data-open-mv="overview"]')).toBeVisible();
+  });
+
+  test("F-VIEW-8: 日本語の名前でも作成できる（引用名で書く）", async ({ page }) => {
     // Arrange
     await openAll(page);
     // Act
@@ -723,7 +741,7 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     expect(await editorText(page)).toContain("view '全体の図' : GeneralView {");
   });
 
-  test("F-VIEW-8: 保存された図にパレットから置いた要素は、モデルに作られ、その図にも入る", async ({ page }) => {
+  test("F-VIEW-8: 作成した図にパレットから置いた要素は、モデルに作られ、その図にも入る", async ({ page }) => {
     // Arrange
     await openAll(page);
     await saveView(page, "v");
@@ -774,7 +792,7 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     expect(await editorText(page)).toBe(text);
   });
 
-  test("F-VIEW-8: 保存された図の右クリックでは「この図から外す」と「モデルから削除」を分けて示す", async ({ page }) => {
+  test("F-VIEW-8: 作成した図の右クリックでは「この図から外す」と「モデルから削除」を分けて示す", async ({ page }) => {
     // Arrange
     await openAll(page);
     await saveView(page, "v");
@@ -795,7 +813,7 @@ test.describe("シーケンス図のイベントと順序・ビューの式・3 
     "        succession lampFirst first panel.lampOn then heater.on;\n    }\n" +
     "    view boilSequence : SequenceView { expose Kettle::BoilWater; }\n}\n";
 
-  /** モデルを書き、保存された図を開く。 */
+  /** モデルを書き、作成した図を開く。 */
   async function openView(page: import("@playwright/test").Page, text: string, view: string): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(text);

@@ -14,7 +14,7 @@ import { $, isFormField, store } from "./app/dom";
 import { initEditor } from "./app/editor";
 import { initWordHelp } from "./app/word-help";
 import { initTextMode } from "./app/text-mode";
-import { download, initExport, showDrawio, svgExport } from "./app/export";
+import { initExportDialog, showExportDialog } from "./app/export-dialog";
 import { initFiles } from "./app/files";
 import { closeMenus, initMenuBar } from "./app/menubar";
 import { initHistory, redo, undo } from "./app/history";
@@ -53,18 +53,14 @@ function setEdgeStyle(s: "ortho" | "curve"): void {
 }
 
 /**
- * メニューを組み立てる。メニューバーの振る舞い（Q-9）をつなぎ、SVG の保存・draw.io への書き出しの項目をつなぎ、
+ * メニューを組み立てる。メニューバーの振る舞い（Q-9）をつなぎ、ファイルのメニューの「エクスポート…」をつなぎ、
  * 版・著作権・動いている版のソースとライセンスへのリンク（AGPL §13）を入れる。
  */
 function initMenus(): void {
   initMenuBar();
-  $("#btnSaveSvg").onclick = () => {
+  $("#btnExport").onclick = () => {
     closeMenus();
-    download(`modelith-${S.view}.svg`, svgExport(), "image/svg+xml");
-  };
-  $("#btnDrawio").onclick = () => {
-    closeMenus();
-    showDrawio();
+    showExportDialog();
   };
   $("#appVersion").textContent = __APP_VERSION__ + (__APP_COMMIT__ ? ` (${__APP_COMMIT__.slice(0, 7)})` : "");
   // 見出しの札と「ヘルプ」の開発段階は、版の名前（alpha・beta・rc）から決める。正式版では出さない
@@ -181,7 +177,7 @@ try {
   initWordHelp();
   initTextMode();
   initHistory();
-  initExport();
+  initExportDialog();
   initMenus();
   initToolbar();
   await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });

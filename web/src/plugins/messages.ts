@@ -9,7 +9,7 @@ import { base64Bytes, exportFileName, MAX_TRANSFER_BYTES, mediaTypeOf, sizeText 
 /** プラグインの変更案を、テキストが変わったために適用しなかったときの知らせ（ADR-0016 と同じ考え方）。 */
 export const STALE_PLUGIN_EDIT = "テキストが変わったため、プラグインの変更を適用しませんでした";
 
-/** ホストがプラグインに頼んで、まだ答えの無いこと（コマンドの実行・取り込み・書き出し）。 */
+/** ホストがプラグインに頼んで、まだ答えの無いこと（コマンドの実行・インポート・エクスポート）。 */
 export type PendingRequest =
   | { kind: "command"; title: string }
   | { kind: "import"; title: string }
@@ -43,7 +43,7 @@ export interface CheckResult {
 /**
  * コアが確かめたメッセージから、ホストが行うことを決める。
  * 変更案と診断は、プラグインが示した版が、確かめたテキストの版と同じで、その後もテキストが変わっていないときだけ使う。
- * コマンド・取り込み・書き出しの答えは、その種類で頼んで、まだ答えの無い依頼の番号のものだけを使う。
+ * コマンド・インポート・エクスポートの答えは、その種類で頼んで、まだ答えの無い依頼の番号のものだけを使う。
  * 保存場所の依頼（storageGet・storageSet）は、コアが storage の権限を確かめた後なので、そのままホストに任せる。
  * 診断は maxDiagnostics 件までを使い、超えた分は捨てて件数を添える（F-PLUG-7）。
  *
@@ -65,7 +65,7 @@ export interface CheckResult {
  * decideMessage({ …, checked: { message: { type: "imported", requestId: 2, fileName: "a.reqif", text: "package A;" } } }, new Map([[2, { kind: "import", title: "ReqIF" }]]))
  * // → { kind: "imported", requestId: 2, title: "ReqIF", fileName: "a.reqif", text: "package A;" }
  * decideMessage({ …, checked: { message: { type: "imported", requestId: 2, … } } }, new Map([[2, { kind: "export", … }]]))
- * // → { kind: "drop", notice: "依頼していない結果（imported）が届いたため、使いませんでした" }（書き出しの依頼に、取り込みの答え）
+ * // → { kind: "drop", notice: "依頼していない結果（imported）が届いたため、使いませんでした" }（エクスポートの依頼に、インポートの答え）
  */
 export function decideMessage(result: CheckResult, pending: ReadonlyMap<number, PendingRequest>, maxDiagnostics = MAX_DIAGNOSTICS): HostAction {
   const { version, stale, checked } = result;
@@ -89,7 +89,7 @@ export function decideMessage(result: CheckResult, pending: ReadonlyMap<number, 
     case "imported": {
       const request = pending.get(m.requestId);
       if (request?.kind !== "import") return unrequested(m.type);
-      if (utf8Bytes(m.text) > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, `読み込んだテキストが大きすぎます（上限 ${sizeText(MAX_TRANSFER_BYTES)}）`) };
+      if (utf8Bytes(m.text) > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, `インポートしたテキストが大きすぎます（上限 ${sizeText(MAX_TRANSFER_BYTES)}）`) };
       return { kind: "imported", requestId: m.requestId, title: request.title, fileName: m.fileName, text: m.text };
     }
     case "exported":
@@ -119,7 +119,7 @@ function cappedDiagnostics(version: number, items: PlacedDiagnostic[], max: numb
 }
 
 /**
- * 書き出しの答え（exported）の扱いを決める。中身が base64 でない・上限より大きいときは、書き出しができなかったものとして知らせる。
+ * エクスポートの答え（exported）の扱いを決める。中身が base64 でない・上限より大きいときは、エクスポートできなかったものとして知らせる。
  *
  * @param m 届いた答え
  * @param request その依頼の番号で頼んだこと（無ければ undefined）
@@ -127,14 +127,14 @@ function cappedDiagnostics(version: number, items: PlacedDiagnostic[], max: numb
  * @example
  * decideExported({ type: "exported", requestId: 1, fileName: "a", mediaType: "text/csv", base64: "YQ==" }, { kind: "export", title: "表", extension: ".csv" })
  * // → { kind: "exported", requestId: 1, title: "表", fileName: "a.csv", mediaType: "text/csv", base64: "YQ==" }
- * decideExported({ …, base64: "!" }, { kind: "export", … }) // → { kind: "requestFailed", notice: "書き出し「表」を実行できませんでした：書き出されたファイルの中身が正しくありません（base64 ではありません）" }
+ * decideExported({ …, base64: "!" }, { kind: "export", … }) // → { kind: "requestFailed", notice: "エクスポート「表」を実行できませんでした：エクスポートされたファイルの中身が正しくありません（base64 ではありません）" }
  * decideExported({ … }, undefined)                         // → { kind: "drop", notice: "依頼していない結果（exported）が届いたため、使いませんでした" }
  */
 function decideExported(m: Extract<PluginMessage, { type: "exported" }>, request: PendingRequest | undefined): HostAction {
   if (request?.kind !== "export") return unrequested(m.type);
   const bytes = base64Bytes(m.base64);
-  if (bytes === null) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, "書き出されたファイルの中身が正しくありません（base64 ではありません）") };
-  if (bytes > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, `書き出されたファイルが大きすぎます（${sizeText(bytes)}。上限 ${sizeText(MAX_TRANSFER_BYTES)}）`) };
+  if (bytes === null) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, "エクスポートされたファイルの中身が正しくありません（base64 ではありません）") };
+  if (bytes > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, `エクスポートされたファイルが大きすぎます（${sizeText(bytes)}。上限 ${sizeText(MAX_TRANSFER_BYTES)}）`) };
   return { kind: "exported", requestId: m.requestId, title: request.title, fileName: exportFileName(m.fileName, request.extension), mediaType: mediaTypeOf(m.mediaType), base64: m.base64 };
 }
 
@@ -146,11 +146,11 @@ function decideExported(m: Extract<PluginMessage, { type: "exported" }>, request
  * @returns 知らせの文
  * @example
  * failedNotice({ kind: "command", title: "ID を付ける" }, "要求がありません") // → "コマンド「ID を付ける」を実行できませんでした：要求がありません"
- * failedNotice({ kind: "import", title: "ReqIF" }, "形式が違います")        // → "読み込み「ReqIF」を実行できませんでした：形式が違います"
- * failedNotice({ kind: "export", title: "表", extension: ".csv" }, "x")     // → "書き出し「表」を実行できませんでした：x"
+ * failedNotice({ kind: "import", title: "ReqIF" }, "形式が違います")        // → "インポート「ReqIF」を実行できませんでした：形式が違います"
+ * failedNotice({ kind: "export", title: "表", extension: ".csv" }, "x")     // → "エクスポート「表」を実行できませんでした：x"
  */
 export function failedNotice(request: PendingRequest, message: string): string {
-  const what = { command: "コマンド", import: "読み込み", export: "書き出し" }[request.kind];
+  const what = { command: "コマンド", import: "インポート", export: "エクスポート" }[request.kind];
   return `${what}「${request.title}」を実行できませんでした：${message}`;
 }
 

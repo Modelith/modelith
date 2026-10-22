@@ -1,4 +1,4 @@
-// 画面で図を作る操作（ADR-0005、F-VIEW-8）。利用者には「図を保存する・図に入れる・図から外す」と見せ、
+// 画面で図を作る操作（ADR-0005、F-VIEW-8）。利用者には「新しい図を作成する・図に入れる・図から外す」と見せ、
 // テキストには標準の view と expose を書く（ADR-0014）。
 
 import type { Entry, ModelNode, ViewKind } from "../core";
@@ -17,12 +17,12 @@ import { CC, curLayout, curView, modelView } from "./views";
 const KIND_OF: Record<string, ViewKind> = { ibd: "interconnection", seq: "sequence", stm: "stateTransition", afv: "actionFlow" };
 
 /**
- * 表示中のタブが、要素を 1 つずつ入れたり外したりできる保存された図かを判定する（F-VIEW-8）。
+ * 表示中のタブが、要素を 1 つずつ入れたり外したりできる作成した図かを判定する（F-VIEW-8）。
  * 内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は対象の中身で決まるので対象外。
  *
  * @returns 表示中がテキストに書かれた view で、描き方が内部ブロック図（ibd）・シーケンス図（seq）・アクションの流れの図（afv）・状態遷移の図（stm）でなければ true
  * @example
- * // 保存された図「概要の図」（一般の図）を表示中のとき
+ * // 作成した図「概要の図」（一般の図）を表示中のとき
  * editableView() // → true
  * // 自動の図（トレーサビリティなど）を表示中のとき
  * editableView() // → false
@@ -30,12 +30,12 @@ const KIND_OF: Record<string, ViewKind> = { ibd: "interconnection", seq: "sequen
 export const editableView = (): boolean => !!modelView() && !["ibd", "seq", "afv", "stm"].includes(S.view);
 
 /**
- * 要素を、表示中の保存された図に入れられるか（まだ入っていないか）を判定する（F-VIEW-8）。
+ * 要素を、表示中の作成した図に入れられるか（まだ入っていないか）を判定する（F-VIEW-8）。
  *
  * @param e 調べる要素（解析結果の項目）
- * @returns 表示中が編集できる保存された図で、e が図に出せる要素で、まだ入っていなければ true
+ * @returns 表示中が編集できる作成した図で、e が図に出せる要素で、まだ入っていなければ true
  * @example
- * // 保存された図に A だけが入っているとき
+ * // 作成した図に A だけが入っているとき
  * canAddToView(B) // → true
  * canAddToView(A) // → false（既に入っている）
  * // 自動の図を表示中のとき
@@ -52,7 +52,7 @@ export function canAddToView(e: Entry): boolean {
  * @param base 名前の元（`ブロック定義図` など）
  * @returns モデルの view（S.M.views）の名前と重ならない名前
  * @example
- * // 保存された図が無いとき
+ * // 作成した図が無いとき
  * suggestName("ブロック定義図") // → "ブロック定義図"
  * // 「ブロック定義図」と「ブロック定義図2」が既にあるとき
  * suggestName("ブロック定義図") // → "ブロック定義図3"
@@ -66,9 +66,9 @@ function suggestName(base: string): string {
 }
 
 /**
- * 表示中の自動の図を、名前を付けて保存する（F-VIEW-8）。名前をダイアログで尋ね、コアに意図 `saveView` を渡して
- * テキストに view と expose を書き（setText）、見えている配置を写して配置を確定し、保存した図のタブを開いてトーストで知らせる。
- * 既に保存された図を表示中なら何もしない。package か図の要素が無ければトーストで断る。ダイアログでやめた・コアが断ったときは何も変えない。
+ * 表示中の自動の図から、名前の付いた新しい図を作成する（図のメニューとツールバーの「新しい図を作成」。F-VIEW-8）。名前をダイアログで尋ね、コアに意図 `saveView` を渡して
+ * テキストに view と expose を書き（setText）、見えている配置を写して配置を確定し、作成した図のタブを開いてトーストで知らせる。
+ * 既に作成した図を表示中なら何もしない。package か図の要素が無ければトーストで断る。ダイアログでやめた・コアが断ったときは何も変えない。
  */
 export async function saveAsView(): Promise<void> {
   if (S.modelView) return;
@@ -77,12 +77,12 @@ export async function saveAsView(): Promise<void> {
   const c = CC();
   const targets = kind === "general" ? c.nodes.map((n) => n.key) : c.ctx ? [c.ctx.key] : [];
   if (!pkg || !targets.length) {
-    toast("図に要素が無いため、保存できません");
+    toast("図に要素が無いため、新しい図を作成できません");
     return;
   }
-  const r = await ask("図を保存", "名前を付けて保存します。保存した図は、＋メニューの「保存された図」からいつでも開けます。", [
+  const r = await ask("新しい図を作成", "今の図の要素と配置のまま、名前の付いた図を作成します。作成した図は、＋メニューの「作成した図」からいつでも開けます。", [
     { id: "cancel", label: "やめる" },
-    { id: "ok", label: "保存", kind: "primary" },
+    { id: "ok", label: "作成", kind: "primary" },
   ], { value: suggestName(diagramName(curView().label)), label: "図の名前" });
   if (r?.id !== "ok") return;
   const name = r.value.trim();
@@ -94,19 +94,19 @@ export async function saveAsView(): Promise<void> {
   commitLayout();
   await settled();
   openModelView(name);
-  toast(`図「${name}」を保存しました。＋メニューの「保存された図」からいつでも開けます`);
+  toast(`図「${name}」を作成しました。＋メニューの「作成した図」からいつでも開けます`);
 }
 
 /**
- * 表示中の保存された図に要素を入れる（F-VIEW-8）。コアに意図 `addToView` を渡して expose を足し（setText）、
+ * 表示中の作成した図に要素を入れる（F-VIEW-8）。コアに意図 `addToView` を渡して expose を足し（setText）、
  * pos があればそこに置いて配置を確定し、トーストで知らせる。
  *
  * @param e 入れる要素（解析結果の項目）
  * @param pos 置く位置（図の座標、左上）。省くと自動の配置に任せる
  * @param opts quiet が true なら、入れたとき・既にあるときのトーストを出さない（まとめて入れるとき）
- * @returns 入れたら true。編集できる保存された図でない・図に出せない要素・既に入っている・コアが断ったときは false
+ * @returns 入れたら true。編集できる作成した図でない・図に出せない要素・既に入っている・コアが断ったときは false
  * @example
- * // 保存された図（一般の図）を表示中で、B がまだ入っていないとき
+ * // 作成した図（一般の図）を表示中で、B がまだ入っていないとき
  * await addToView(B, [100, 80]) // → true（テキストに expose が足され、(100, 80) に置かれる）
  * await addToView(B)            // → false（既にこの図にある、とトースト）
  */
@@ -132,8 +132,8 @@ export async function addToView(e: Entry, pos?: [number, number], opts: { quiet?
 }
 
 /**
- * 表示中の保存された図から要素を外す（F-VIEW-8）。コアに意図 `removeFromView` を渡して、その要素だけを出している expose を消し（setText）、
- * 配置から座標を消し、選択を外してトーストで知らせる。モデルの要素は残す。編集できる保存された図でない・コアが断ったときは何もしない。
+ * 表示中の作成した図から要素を外す（F-VIEW-8）。コアに意図 `removeFromView` を渡して、その要素だけを出している expose を消し（setText）、
+ * 配置から座標を消し、選択を外してトーストで知らせる。モデルの要素は残す。編集できる作成した図でない・コアが断ったときは何もしない。
  *
  * @param n 外す要素（図の要素）
  */

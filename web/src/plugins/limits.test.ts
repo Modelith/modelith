@@ -172,8 +172,8 @@ describe("overdueRequests（答えの期限）", () => {
 describe("stuckNotice・droppedDiagnosticsNote（文）", () => {
   it.each([
     ["コマンド", { kind: "command" as const, title: "ID を付ける" }, "コマンド「ID を付ける」が 30 秒たっても終わりません。「停止」で止められます"],
-    ["読み込み", { kind: "import" as const, title: "ReqIF" }, "読み込み「ReqIF」が 30 秒たっても終わりません。「停止」で止められます"],
-    ["書き出し", { kind: "export" as const, title: "表", extension: ".csv" }, "書き出し「表」が 30 秒たっても終わりません。「停止」で止められます"],
+    ["インポート", { kind: "import" as const, title: "ReqIF" }, "インポート「ReqIF」が 30 秒たっても終わりません。「停止」で止められます"],
+    ["エクスポート", { kind: "export" as const, title: "表", extension: ".csv" }, "エクスポート「表」が 30 秒たっても終わりません。「停止」で止められます"],
   ])("%sが終わらないときの文", (_, request, expected) => {
     // Arrange・Act
     const got = stuckNotice(request, 30_000);

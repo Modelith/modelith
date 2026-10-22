@@ -7,7 +7,7 @@
 TypeScript では `@modelith/plugin-sdk`、JSON Schema では plugin-sdk の `schema/plugin-manifest.schema.json`・`host-message.schema.json`・`plugin-message.schema.json` を使う。
 `apiVersion` が `"0"` の間は互換を約束しない。
 
-この版で使えるのは、コマンド・モデルのチェック（診断）・テキストの変更・読み込み（取り込み）・書き出し・プラグイン用の保存場所（`storage`）。
+この版で使えるのは、コマンド・モデルのチェック（診断）・テキストの変更・インポート・エクスポート・プラグイン用の保存場所（`storage`）。
 
 ## 置き方
 
@@ -67,8 +67,8 @@ CLI（`modelith check`）は TypeScript のプラグインを動かさない（�
 | `main` | プログラムのファイル。プラグインのフォルダからの相対パスで、フォルダの外は指せない。無い・見つからないときはプラグインの一覧にエラーを出し、動かさない |
 | `permissions` | 使う権限（下の表）。宣言していない権限が要るメッセージは、ホストが使わずに一覧で知らせる |
 | `contributes.commands` | 「プラグイン」メニューの「プラグインのコマンド」に出すコマンド（`id` と、画面に出す `title`） |
-| `contributes.importers` | 「プラグイン」メニューの「プラグインで読み込む」に出す読み込み（`id`・画面に出す `label`・選べるファイルの拡張子 `extensions`） |
-| `contributes.exporters` | 「プラグイン」メニューの「プラグインで書き出す」に出す書き出し（`id`・画面に出す `label`・ファイルの拡張子 `extension`） |
+| `contributes.importers` | 「プラグイン」メニューの「プラグインでインポート」に出すインポート（`id`・画面に出す `label`・選べるファイルの拡張子 `extensions`） |
+| `contributes.exporters` | 「プラグイン」メニューの「プラグインでエクスポート」に出すエクスポート（`id`・画面に出す `label`・ファイルの拡張子 `extension`） |
 
 ### 権限
 
@@ -80,7 +80,7 @@ CLI（`modelith check`）は TypeScript のプラグインを動かさない（�
 | `network` | 外部と通信する（`fetch`・`XMLHttpRequest`・`WebSocket`） | インターネットなど外部と通信する |
 | `storage` | プラグイン用の保存場所（`storageGet`・`storageSet`。下の「保存場所」） | このブラウザに、プラグイン用のデータを保存する |
 
-読み込みと書き出しには、権限は要らない（利用者がメニューから選んだときだけ、選んだファイルの中身を渡し、結果を受け取る）。
+インポートとエクスポートには、権限は要らない（利用者がメニューから選んだときだけ、選んだファイルの中身を渡し、結果を受け取る）。
 
 ## プログラムは 1 つのファイルにまとめる
 
@@ -132,8 +132,8 @@ function check(model: ModelSnapshot) {
 | `activate { apiVersion, pluginId, settings? }` | 動かし始めたとき。プラグインは `ready` を返す |
 | `didChange { version, text, model? }` | `ready` の後と、テキストを解析し直すたび。`model` は `model:read` のときだけ |
 | `runCommand { requestId, command }` | 利用者がメニューからコマンドを選んだとき |
-| `import { requestId, importer, fileName, base64 }` | 利用者がメニューから読み込みを選び、ファイルを選んだとき（下の「読み込み」） |
-| `export { requestId, exporter, view? }` | 利用者がメニューから書き出しを選んだとき。`view` は表示中の保存された図の名前（自動の図なら省く） |
+| `import { requestId, importer, fileName, base64 }` | 利用者がメニューからインポートを選び、ファイルを選んだとき（下の「インポート」） |
+| `export { requestId, exporter, view? }` | 利用者がメニューからエクスポートを選んだとき。`view` は表示中の作成した図（テキストの view）の名前（自動の図なら省く） |
 | `storageResult { requestId, value? }` | `storageGet`・`storageSet` への答え（下の「保存場所」） |
 
 | プラグイン → ホスト | ホストの扱い |
@@ -142,14 +142,14 @@ function check(model: ModelSnapshot) {
 | `diagnostics { version, items }` | 問題一覧に、プラグインの名前（と `code`）を添えて出す。前に出した診断を置き換える。`version` が今のテキストの版でなければ使わない |
 | `proposeEdits { version, edits, label? }` | 確かめてから、1 回の「元に戻す」で取り消せる 1 つの変更として当てる（下の「テキストの変更」） |
 | `commandDone { requestId }` | コマンドが終わった |
-| `imported { requestId, fileName, text }` | 読み込みの結果。新しい無題のファイルとして開く |
-| `exported { requestId, fileName, mediaType, base64 }` | 書き出しの結果。ダウンロードさせる |
-| `failed { requestId, message }` | コマンド・読み込み・書き出しができなかった。理由をトーストとプラグインの一覧に出す |
+| `imported { requestId, fileName, text }` | インポートの結果。新しい無題のファイルとして開く |
+| `exported { requestId, fileName, mediaType, base64 }` | エクスポートの結果。ダウンロードさせる |
+| `failed { requestId, message }` | コマンド・インポート・エクスポートができなかった。理由をトーストとプラグインの一覧に出す |
 | `storageGet { requestId, key }`・`storageSet { requestId, key, value }` | 保存場所を読み書きして、`storageResult` で答える（`storage` のとき） |
 | `notify { level, message }` | トーストに出す。`warning`・`error` はプラグインの一覧にも残す |
 
 ホストは、届いたメッセージを plugin-sdk の型（Rust の `PluginMessage`）で読んでから使う。形の正しくないもの・宣言していない権限が要るもの・頼んでいない答えは使わず、プラグインの一覧に理由を出す。
-頼んでいない答えには、番号を知らないもののほか、種類の違う依頼の番号への答え（書き出しを頼んだ番号への `imported`、読み込みを頼んだ番号への `commandDone` など）も含む。
+頼んでいない答えには、番号を知らないもののほか、種類の違う依頼の番号への答え（エクスポートを頼んだ番号への `imported`、インポートを頼んだ番号への `commandDone` など）も含む。
 知らないフィールドは無視する（新しい版の相手が足したフィールドで壊れない）。
 
 ## テキストの変更
@@ -159,28 +159,28 @@ function check(model: ModelSnapshot) {
 - 範囲はテキストの中にあり、互いに重ならないこと。同じ位置から始まる変更を 2 つ出さない（1 つにまとめる）。どれかが外れたら、全部を当てない。
 - 当てた変更は、ふつうの編集と同じく保存の対象になり、1 回の「元に戻す」で取り消せる。
 
-## 読み込み（取り込み）
+## インポート
 
-1. 利用者が「プラグイン → プラグインで読み込む → <label>…」を選ぶと、`extensions` で絞ったファイルの選択画面を出す（`extensions` が空なら絞らない）。
+1. 利用者が「プラグイン → プラグインでインポート → <label>…」を選ぶと、`extensions` で絞ったファイルの選択画面を出す（`extensions` が空なら絞らない）。
 2. 選んだファイルの中身を base64 にして、`import { requestId, importer, fileName, base64 }` を送る。`fileName` は選んだファイルの名前。
 3. プラグインは SysML v2 のテキストを作り、`imported { requestId, fileName, text }` を返す（できなければ `failed`）。
 4. ホストは、`fileName` の拡張子を `.sysml` にした名前（開いている文書と重なれば `-2` などを付ける）の **新しい無題のファイル** として開く。
    開いているファイルやフォルダのファイルは書き換えない（ADR-0018 §4、C-6）。保存するまで、どこにも書き込まない。
 
-## 書き出し
+## エクスポート
 
-1. 利用者が「プラグイン → プラグインで書き出す → <label>」を選ぶと、`export { requestId, exporter, view? }` を送る。モデルは、最後の `didChange` で受け取ったものを使う。
+1. 利用者が「プラグイン → プラグインでエクスポート → <label>」を選ぶと、`export { requestId, exporter, view? }` を送る。モデルは、最後の `didChange` で受け取ったものを使う。
 2. プラグインは `exported { requestId, fileName, mediaType, base64 }` を返す（できなければ `failed`）。
 3. ホストはファイルを **ダウンロードさせる**（プロジェクトのフォルダには書かない）。`fileName` はパスを除き、使えない文字を `_` にし、拡張子が無ければマニフェストの `extension` を付ける。
-   `mediaType` の形が正しくなければ `application/octet-stream` にする。base64 として正しくないものは使わず、書き出しができなかったと知らせる。
+   `mediaType` の形が正しくなければ `application/octet-stream` にする。base64 として正しくないものは使わず、エクスポートできなかったと知らせる。
 
 ## 大きさの上限
 
 | 対象 | 上限 | 超えたとき |
 | --- | --- | --- |
-| 読み込むファイル | 20 MB | 送らずに「大きすぎるため読み込めません」と知らせる |
-| 読み込みの結果のテキスト（UTF-8） | 20 MB | 開かずに、読み込みができなかったと知らせる |
-| 書き出したファイル（base64 を戻した大きさ） | 20 MB | ダウンロードさせずに、書き出しができなかったと知らせる |
+| インポートするファイル | 20 MB | 送らずに「大きすぎるためインポートできません」と知らせる |
+| インポートの結果のテキスト（UTF-8） | 20 MB | 開かずに、インポートできなかったと知らせる |
+| エクスポートしたファイル（base64 を戻した大きさ） | 20 MB | ダウンロードさせずに、エクスポートできなかったと知らせる |
 | 保存場所（プラグインごと） | 1 MB | 保存せずに知らせる（下の「保存場所」） |
 
 ## 保存場所（`storage`）

@@ -1,8 +1,8 @@
-// draw.io への書き出しの線の形（F-EXP-2）。
+// draw.io へのエクスポートの線の形と図形、.drawio のファイルの包み方（F-EXP-2）。
 import { describe, expect, it } from "vitest";
 import { build, parse } from "../core";
 import { flowContentOf } from "./action-flow";
-import { drawioEdgeStyle, drawioFlowCell, drawioStateCell } from "./export";
+import { drawioEdgeStyle, drawioFlowCell, drawioStateCell, mxfileXml } from "./export";
 import { stateContentOf } from "./state-machine";
 
 describe("drawioEdgeStyle（F-EXP-2）", () => {
@@ -43,7 +43,7 @@ describe("drawioEdgeStyle（F-EXP-2）", () => {
   });
 });
 
-describe("アクションの流れの図の書き出し（F-EXP-2、8.2.3.17）", () => {
+describe("アクションの流れの図のエクスポート（F-EXP-2、8.2.3.17）", () => {
   it("順序は実線と開いた矢印、順序付きの流れは破線と開いた矢印にする", () => {
     // Act
     const [succession, flow] = [drawioEdgeStyle("succession"), drawioEdgeStyle("successionFlow")];
@@ -66,7 +66,7 @@ describe("アクションの流れの図の書き出し（F-EXP-2、8.2.3.17）"
   });
 });
 
-describe("状態遷移の図の書き出し（F-EXP-2、8.2.3.18）", () => {
+describe("状態遷移の図のエクスポート（F-EXP-2、8.2.3.18）", () => {
   it("遷移は実線と開いた矢印にする", () => {
     // Act
     const style = drawioEdgeStyle("transition");
@@ -85,5 +85,34 @@ describe("状態遷移の図の書き出し（F-EXP-2、8.2.3.18）", () => {
     expect(cells.map((c) => c.style.split(";")[0])).toEqual(["ellipse", "rounded=1", "ellipse"]);
     expect(cells[2]?.style).toContain("shape=endState;");
     expect(cells.map((c) => c.value)).toEqual(["", '<b>on</b><hr><div style="text-align:left;font-size:10px">entry / init</div>', ""]);
+  });
+});
+
+describe("mxfileXml（.drawio のファイルの包み方、F-EXP-2）", () => {
+  it("図形と線を、根の 2 つのセルの後ろに置き、mxfile と mxGraphModel で包む（正常系）", () => {
+    // Arrange
+    const cell = '<mxCell id="n2" value="A" vertex="1" parent="1"/>';
+    // Act
+    const xml = mxfileXml("ブロック定義図", cell);
+    // Assert
+    expect(xml).toBe(
+      '<mxfile host="app.diagrams.net"><diagram id="v" name="ブロック定義図"><mxGraphModel grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/>' +
+        cell +
+        "</root></mxGraphModel></diagram></mxfile>",
+    );
+  });
+
+  it("図形が無くても、根の 2 つのセルだけの開ける形にする（境界値: 0 個）", () => {
+    // Act
+    const xml = mxfileXml("すべて", "");
+    // Assert
+    expect(xml).toContain('<root><mxCell id="0"/><mxCell id="1" parent="0"/></root>');
+  });
+
+  it("図の名前の記号は文字参照にして、属性を壊さない（異常系）", () => {
+    // Act
+    const xml = mxfileXml(`A & "B" <'C'>`, "");
+    // Assert
+    expect(xml).toContain('<diagram id="v" name="A &amp; &quot;B&quot; &lt;&#39;C&#39;&gt;">');
   });
 });

@@ -164,6 +164,19 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("menu-narrow.png");
     });
 
+    test("F-EXP-1・F-EXP-2・Q-2: 幅 390px の画面の、エクスポートのダイアログ", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#menuToggle").click();
+      await page.locator("#fileMenu summary").click();
+      await page.locator("#btnExport").click();
+      await expect(page.locator("#exportName")).toBeFocused();
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("export-narrow.png");
+    });
+
     test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面の「＋」メニュー（SysML v2 の名前の行つき）", async ({ page }) => {
       // Arrange
       await openApp(page);
@@ -357,7 +370,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-VIEW-9: package を枠として描いた保存された図",
+    title: "F-VIEW-9: package を枠として描いた作成した図",
     shot: "package-frame",
     act: async (page) => {
       await page.locator("#ed").fill(
@@ -461,7 +474,26 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-VIEW-7・Q-4: 開いた「＋」メニュー（保存された図つき）",
+    title: "Q-9: 開いた「図」メニュー",
+    shot: "diagram-menu",
+    act: async (page) => {
+      await page.locator("#diagramMenu summary").click();
+      await page.locator("#menuLayout").hover();
+      return [page.locator("#diagramMenu .pop")];
+    },
+  },
+  {
+    title: "F-EXP-1・F-EXP-2: ファイルのメニューから開いたエクスポートのダイアログ",
+    shot: "export-dialog",
+    act: async (page) => {
+      await page.locator("#fileMenu summary").click();
+      await page.locator("#btnExport").click();
+      await expect(page.locator("#exportName")).toBeFocused();
+      return [page.locator("#exportDialog .box")];
+    },
+  },
+  {
+    title: "F-VIEW-7・Q-4: 開いた「＋」メニュー（作成した図つき）",
     shot: "tab-menu-views",
     act: async (page) => {
       await page.locator("#ed").fill("package P {\n    part def A;\n    view overview : GeneralView { expose P::*; }\n    view inside : InterconnectionView { expose P::A; }\n}\n");

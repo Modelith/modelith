@@ -150,7 +150,7 @@ describe("v2ViewNote・viewHint（SysML v2 の標準ビューの補足）", () =
   });
 });
 
-describe("savedViewHint（保存された図の種類のツールチップ）", () => {
+describe("savedViewHint（作成した図の種類のツールチップ）", () => {
   it("型のある view は、その標準ビューの名前で書く", () => {
     // Arrange
     const std = "InterconnectionView";

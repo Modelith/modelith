@@ -1,4 +1,4 @@
-// v1 のプラグインの取り込みと書き出しの判断（F-PLUG-4、ADR-0018 §3・§4）の単体テスト。
+// v1 のプラグインのインポートとエクスポートの判断（F-PLUG-4、ADR-0018 §3・§4）の単体テスト。
 import { describe, expect, it } from "vitest";
 import { acceptOf, base64Bytes, base64ToBytes, bytesToBase64, exportFileName, importedDocName, mediaTypeOf, sizeText } from "./transfer";
 
@@ -46,7 +46,7 @@ describe("bytesToBase64・base64ToBytes", () => {
   });
 });
 
-describe("importedDocName（取り込んだテキストの新しい文書の名前、C-6）", () => {
+describe("importedDocName（インポートしたテキストの新しい文書の名前、C-6）", () => {
   it.each([
     ["拡張子を .sysml にする", "要求一覧.reqif", [], "要求一覧.sysml"],
     ["開いている文書と重なれば番号を付ける", "要求一覧.reqif", ["要求一覧.sysml"], "要求一覧-2.sysml"],

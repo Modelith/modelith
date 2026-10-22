@@ -96,7 +96,7 @@ async function askPackageName(): Promise<string | null> {
 export const OPS = {
   /**
    * 定義を追加し、図の pos に置く（意図 `addNode`、F-EDIT-2）。package が無ければ、作るよう案内する（F-EDIT-7）。
-   * 追加した定義を選んで配置を確定し、保存された図を表示中ならその図にも入れ（F-VIEW-8）、トーストで知らせて名前の変更を始める。
+   * 追加した定義を選んで配置を確定し、作成した図を表示中ならその図にも入れ（F-VIEW-8）、トーストで知らせて名前の変更を始める。
    * シーケンス図でシナリオ（occurrence def）を追加したときは、それを対象にしてライフラインの追加を案内する。
    * 案内をやめた・コアが断ったときは何も変えない。
    *
@@ -124,7 +124,7 @@ export const OPS = {
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
     await settled();
-    // 保存された図に置いたときは、その図にも入れる（F-VIEW-8）
+    // 作成した図に置いたときは、その図にも入れる（F-VIEW-8）
     const added = S.P.entries.find((e) => e.kind === kind && e.name === name);
     if (added && editableView()) await addToView(added, undefined, { quiet: true });
     toast(`${kindLabel(kind)}「${name}」を追加しました`);

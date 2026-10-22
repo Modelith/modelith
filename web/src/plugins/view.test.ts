@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { commandItems, exportItems, importItems } from "./view";
 import type { RunState } from "./view";
 
-/** 取り込みと書き出しを持つプラグイン。 */
+/** インポートとエクスポートを持つプラグイン。 */
 const plugin = (state: RunState) => ({
   id: "jp.x",
   name: "要求の表",
@@ -14,29 +14,29 @@ const plugin = (state: RunState) => ({
 });
 
 describe("importItems・exportItems・commandItems", () => {
-  it("実行中のプラグインの取り込みは、拡張子で絞る項目にする（正常系）", () => {
+  it("実行中のプラグインのインポートは、拡張子で絞る項目にする（正常系）", () => {
     // Arrange・Act
     const got = importItems([plugin("running")]);
     // Assert
     expect(got).toEqual([
-      { plugin: "jp.x", command: "reqif", label: "ReqIF ファイル…", tooltip: "プラグイン「要求の表」で、ファイル（.reqif,.xml）を読み込んで新しいファイルとして開きます", accept: ".reqif,.xml" },
+      { plugin: "jp.x", command: "reqif", label: "ReqIF ファイル…", tooltip: "プラグイン「要求の表」で、ファイル（.reqif,.xml）をインポートして新しいファイルとして開きます", accept: ".reqif,.xml" },
     ]);
   });
 
-  it("拡張子を書いていない取り込みは、すべてのファイルを選べる（境界値: 0 個）", () => {
+  it("拡張子を書いていないインポートは、すべてのファイルを選べる（境界値: 0 個）", () => {
     // Arrange
     const p = { ...plugin("running"), importers: [{ id: "any", label: "何でも", extensions: [] }] };
     // Act
     const got = importItems([p]);
     // Assert
-    expect(got[0]).toMatchObject({ accept: "", tooltip: "プラグイン「要求の表」で、ファイル（すべて）を読み込んで新しいファイルとして開きます" });
+    expect(got[0]).toMatchObject({ accept: "", tooltip: "プラグイン「要求の表」で、ファイル（すべて）をインポートして新しいファイルとして開きます" });
   });
 
-  it("実行中のプラグインの書き出しは、ダウンロードする項目にする（正常系）", () => {
+  it("実行中のプラグインのエクスポートは、ダウンロードする項目にする（正常系）", () => {
     // Arrange・Act
     const got = exportItems([plugin("running")]);
     // Assert
-    expect(got).toEqual([{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「要求の表」で、モデル（表示中の保存された図）を .csv のファイルに書き出してダウンロードします" }]);
+    expect(got).toEqual([{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「要求の表」で、モデル（作成した図を表示中なら、その図）を .csv のファイルにエクスポートしてダウンロードします" }]);
   });
 
   it.each<RunState>(["starting", "stopped", "denied", "failed"])("実行中でない（%s）プラグインの項目は出さない（異常系）", (state) => {

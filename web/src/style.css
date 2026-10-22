@@ -33,7 +33,7 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 button,select,input{font:inherit;color:inherit}
 button{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:6px 11px;cursor:pointer;white-space:nowrap}
 button:hover{border-color:var(--ink2)}
-button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
 button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 button.danger{color:var(--err);border-color:currentColor}
 .app{display:grid;grid-template-rows:auto 1fr;height:100%}
@@ -52,6 +52,7 @@ header h1 .logo{flex:none;border-radius:6px}
 .menu .pop button{border:0;text-align:left;border-radius:4px}
 .menu .pop button:hover{background:var(--panel2)}
 .menu .pop .phead{margin:6px 6px 2px;padding-top:6px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink2)}
+.tabadd .pop > .phead:first-child{margin-top:0;border-top:0}
 .menu .pop .pnote{padding:2px 6px 4px;font-size:11px;color:var(--ink2);max-width:220px;white-space:normal}
 .menu .pop .note{font-size:11px;color:var(--ink2);padding:4px 11px}
 /* メニューバー（Q-9）：見出しは枠を付けずに並べ、開いている見出しだけ色を付ける。切り替えの項目は、押されているときに印を付ける */
@@ -194,7 +195,8 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal[hidden]{display:none}
 .modal .box{background:var(--panel);border-radius:10px;padding:14px;width:min(640px,100%);display:flex;flex-direction:column;gap:10px;max-height:90vh}
-.modal textarea{width:100%;height:260px;font-family:var(--mono);font-size:11px;background:var(--panel2);border:1px solid var(--rule);border-radius:6px;padding:8px;color:var(--ink)}
+.modal .field{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--ink2)}
+.modal .field input,.modal .field select{font-size:13px;font-weight:400;color:var(--ink);background:var(--panel2);border:1px solid var(--rule);border-radius:6px;padding:6px 8px;min-width:0}
 .modal p{margin:0;font-size:13px;color:var(--ink2);line-height:1.6}
 .modal .row{display:flex;gap:8px;justify-content:flex-end}
 .modal button:disabled{opacity:.4;cursor:default}

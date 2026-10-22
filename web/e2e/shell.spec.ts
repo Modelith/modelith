@@ -1,6 +1,7 @@
 // アプリ全体の約束（C-2・C-3・C-8・C-9・Q-2・F-EXP-*）
 import { readFileSync } from "node:fs";
 import { stageLabel } from "../src/app/stage";
+import type { Download, Page } from "@playwright/test";
 import { expect, openApp, test } from "./fixtures";
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
@@ -123,30 +124,65 @@ test.describe("狭い画面", () => {
   });
 });
 
-test("F-EXP-1: 表示中のビューを SVG ファイルとして保存できる", async ({ page }) => {
+/** ダウンロードしたファイルの中身を文字列で読む。 */
+async function downloaded(d: Download): Promise<string> {
+  return Buffer.concat(await (await d.createReadStream()).toArray()).toString();
+}
+
+/** ファイルのメニューの「エクスポート…」で、エクスポートのダイアログを開く。 */
+async function openExport(page: Page): Promise<void> {
+  await page.locator("#fileMenu summary").click();
+  await page.locator("#btnExport").click();
+  await expect(page.getByRole("dialog", { name: "エクスポート" })).toBeVisible();
+}
+
+test("F-EXP-1: ファイルのメニューの「エクスポート…」で、名前を付けて表示中の図を SVG のファイルとしてダウンロードできる", async ({ page }) => {
   // Arrange
   await openApp(page);
+  await openExport(page);
+  await expect(page.locator("#exportName")).toHaveValue("トレーサビリティ.svg"); // 既定は表示中の図の名前
+  await page.locator("#exportName").fill("給水システムの要求");
   const download = page.waitForEvent("download");
   // Act
-  await page.locator("#diagramMenu summary").click();
-  await page.locator("#btnSaveSvg").click();
+  await page.getByRole("button", { name: "エクスポート", exact: true }).click();
   // Assert
   const d = await download;
-  const svg = Buffer.concat(await (await d.createReadStream()).toArray()).toString();
-  expect(d.suggestedFilename()).toBe("modelith-trace.svg");
+  const svg = await downloaded(d);
+  expect(d.suggestedFilename()).toBe("給水システムの要求.svg");
   expect(svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
   expect(svg).toContain("BoilTimeReq");
   expect(svg).not.toContain("var(--"); // 単独で表示できるよう CSS 変数を使わない
+  await expect(page.locator("#exportDialog")).toBeHidden();
+  await expect(page.locator("#toast")).toHaveText("「給水システムの要求.svg」をダウンロードしました");
 });
 
-test("F-EXP-2: 表示中のビューを draw.io の形式で書き出せる", async ({ page }) => {
+test("F-EXP-2: 形式に draw.io を選ぶと、拡張子が .drawio に替わり、draw.io で開けるファイルとしてダウンロードできる", async ({ page }) => {
   // Arrange
   await openApp(page);
+  await openExport(page);
+  await page.locator("#exportFormat").selectOption({ label: "draw.io（.drawio）" });
+  await expect(page.locator("#exportName")).toHaveValue("トレーサビリティ.drawio");
+  const download = page.waitForEvent("download");
   // Act
-  await page.locator("#diagramMenu summary").click();
-  await page.locator("#btnDrawio").click();
+  await page.locator("#exportName").press("Enter");
   // Assert
-  const xml = await page.locator("#modalText").inputValue();
-  expect(xml).toMatch(/^<mxfile host="app\.diagrams\.net">/);
+  const d = await download;
+  const xml = await downloaded(d);
+  expect(d.suggestedFilename()).toBe("トレーサビリティ.drawio");
+  expect(xml).toMatch(/^<mxfile host="app\.diagrams\.net"><diagram id="v" name="トレーサビリティ"><mxGraphModel /);
   expect(xml).toContain("BoilTimeReq");
+  await expect(page.locator("#exportDialog")).toBeHidden();
+});
+
+test("F-EXP-1・F-EXP-2: 「やめる」で閉じると、何もダウンロードしない", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  await openExport(page);
+  // Act
+  await page.getByRole("button", { name: "やめる" }).click();
+  // Assert
+  await expect(page.locator("#exportDialog")).toBeHidden();
+  expect(downloads).toBe(0);
 });

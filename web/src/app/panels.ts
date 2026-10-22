@@ -163,7 +163,7 @@ let tabSeq = 1;
 const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
 
 /**
- * タブに出す名前を作る。保存された図はその名前、内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は対象の名前つき、
+ * タブに出す名前を作る。作成した図はその名前、内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は対象の名前つき、
  * 他のビューはビューの名前（工程で絞っていれば工程の名前つき）にする。
  *
  * @param t タブ
@@ -190,6 +190,21 @@ function tabLabel(t: Tab): string {
 }
 
 /**
+ * 表示中のタブの名前を返す（図のエクスポートのファイル名の既定にする。F-EXP-1・F-EXP-2）。
+ *
+ * @returns タブの名前。表示中のタブが無ければ ""
+ * @example
+ * // 表示中のタブがトレーサビリティ
+ * activeTabLabel() // → "トレーサビリティ"
+ * // 表示中のタブが作成した図 Overview
+ * activeTabLabel() // → "Overview"
+ */
+export function activeTabLabel(): string {
+  const t = curTab();
+  return t ? tabLabel(t) : "";
+}
+
+/**
  * タブのツールチップを作る。図の種類の名前に、当たる SysML v2 の標準ビューを補足として添える（ADR-0014）。
  *
  * @param t タブ
@@ -197,10 +212,10 @@ function tabLabel(t: Tab): string {
  * @example
  * tabHint({ id: 1, view: "all", ctx: null, phase: "" })                  // → "すべて（SysML v2 では GeneralView で描く図）"
  * tabHint({ id: 2, view: "ibd", ctx: "Vehicle", phase: "" })             // → "ibd Vehicle\n内部ブロック図（SysML v2 では InterconnectionView）"
- * tabHint({ id: 3, view: "all", ctx: null, phase: "", mv: "Overview" })  // → "保存された図「Overview」\n一般ビュー（SysML v2 では GeneralView）"（view Overview : GeneralView のとき）
+ * tabHint({ id: 3, view: "all", ctx: null, phase: "", mv: "Overview" })  // → "作成した図「Overview」\n一般ビュー（SysML v2 では GeneralView）"（view Overview : GeneralView のとき）
  */
 function tabHint(t: Tab): string {
-  if (t.mv) return tabTitle(`保存された図「${t.mv}」`, savedViewHint(S.M.views.find((v) => v.name === t.mv)?.std ?? null));
+  if (t.mv) return tabTitle(`作成した図「${t.mv}」`, savedViewHint(S.M.views.find((v) => v.name === t.mv)?.std ?? null));
   const v = VIEWS.find((x) => x.id === t.view);
   return v ? tabTitle(tabLabel(t), viewHint(v.label, v.std)) : tabLabel(t);
 }
@@ -242,7 +257,7 @@ export function saveTabs(): void {
 }
 
 /**
- * 図のタブバーを描き直す（F-VIEW-2）。タブが 2 つ以上なら閉じるボタンを付け、末尾に、ビューと保存された図を開く「＋」メニューを置く。
+ * 図のタブバーを描き直す（F-VIEW-2）。タブが 2 つ以上なら閉じるボタンを付け、末尾に、自動で描く図と作成した図を見出しで分けて開く「＋」メニューを置く。
  */
 export function renderTabs(): void {
   syncCurTab();
@@ -258,11 +273,12 @@ export function renderTabs(): void {
       })
       .join("") +
     `<details class="menu tabadd"><summary aria-label="図を開く" title="図を開く">＋</summary><div class="pop pop-left">` +
+    `<div class="phead">自動で描く図</div>` +
     VIEWS.filter((v) => !v.hidden).map((v) => viewMenuItem(`data-open="${v.id}"`, viewIcon(v.id), v.label, viewHint(v.label, v.std), v2ViewNote(v.label, v.std))).join("") +
-    `<div class="phead">保存された図</div>` +
+    `<div class="phead">作成した図</div>` +
     (S.M.views.length
       ? S.M.views.map((v) => viewMenuItem(`data-open-mv="${esc(v.name)}"`, viewIcon(baseViewOf(v)), v.name, savedViewHint(v.std), savedViewHint(v.std))).join("")
-      : `<div class="pnote">保存された図はまだありません</div>`) +
+      : `<div class="pnote">作成した図はまだありません。図のメニューの「新しい図を作成…」で作れます</div>`) +
     `</div></details>`;
 }
 
@@ -559,7 +575,7 @@ const toolUsage = (t: Tool | null): string | null => (t && "usage" in t ? t.usag
 
 /**
  * パレット（選択・移動と、ビューに置ける要素の道具）を描き直す。内部ブロック図・シーケンス図では部品定義を選ぶ欄を出し、
- * 編集できない保存された図では要素の道具を出さない。図を保存するボタンの表示と、配置中のカーソルも合わせる。
+ * 編集できない作成した図では要素の道具を出さない。「新しい図を作成」のボタンの表示と、配置中のカーソルも合わせる。
  */
 export function renderPalette(): void {
   let h =
@@ -572,7 +588,7 @@ export function renderPalette(): void {
     h += `<label class="tool toolsel" aria-pressed="${!!cur}">${kindIcon("part")}<select id="usageTool" aria-label="${label}"><option value="">${label}…</option>${pdefs.map((p) => `<option value="${esc(p.name)}" ${cur === p.name ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>`;
     if (S.view === "seq") h += `<button class="tool" data-tool="occurrence def" aria-pressed="false" title="新しいシナリオを作成">${kindIcon("occurrence def")}<span>シナリオ</span></button>`;
   } else if (!S.modelView || editableView()) {
-    // 保存された図では、置いた要素をその図にも入れる（OPS.addNode）
+    // 作成した図では、置いた要素をその図にも入れる（OPS.addNode）
     for (const [k, l] of PALETTE[S.view] ?? [])
       h += `<button class="tool" data-tool="${k}" aria-pressed="${toolKind(S.tool) === k}" title="${l}（${k}）：押してから図の上をクリックで置く">${kindIcon(k)}<span>${l}</span></button>`;
   }
@@ -734,7 +750,7 @@ const pathOf = (e: Entry): string => {
  * 要素をどのビューで開くかを決める。
  *
  * @param e 要素（無ければ null・undefined）
- * @returns 開くビューの ID・対象（ctx）・保存された図の名前（mv）・メニューの文言。開くビューが無ければ null
+ * @returns 開くビューの ID・対象（ctx）・作成した図の名前（mv）・メニューの文言。開くビューが無ければ null
  * @example
  * // 部品を持つ part def Vehicle
  * openTarget(Vehicle)   // → { view: "ibd", ctx: "Vehicle", label: "内部ブロック図で開く" }
@@ -749,7 +765,7 @@ const pathOf = (e: Entry): string => {
  */
 export function openTarget(e: Entry | null | undefined): { view: string; ctx?: string; mv?: string; label: string } | null {
   if (!e) return null;
-  if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: "保存された図を開く" };
+  if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: "作成した図を開く" };
   if (e.kind === "part def" && e.children.some((c) => c.kind === "part" && c.name)) return { view: "ibd", ctx: e.name, label: "内部ブロック図で開く" };
   if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: "シーケンス図で開く" };
   if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
@@ -961,7 +977,7 @@ const entryAt = (idx: string | undefined): Entry | undefined => (idx == null ? u
 /**
  * モデルツリーに操作をつなぐ（F-VIEW-5）。行のクリックで選択、開閉の印で開閉、ボタンで開く・図に入れる・テキストで見る、
  * ダブルクリックと Enter で開く、矢印キーで行を移る（入力を受け取った行が、次に Tab で入る行になる）、検索欄で絞り込む。マウスで行を図へドラッグすると、
- * 保存された図に入れるか、内部ブロック図・シーケンス図に部品として置く。
+ * 作成した図に入れるか、内部ブロック図・シーケンス図に部品として置く。
  */
 function initTree(): void {
   const tree = $("#tree");
@@ -1095,13 +1111,13 @@ function initTree(): void {
     const [lx, ly] = local(ev.clientX, ev.clientY);
     if (e && canAddToView(e)) addToView(e, dropPos(lx, ly));
     else if (e && droppable(e)) placeUsageAt(e.name, lx, ly);
-    else toast("ツリーからのドラッグは、保存された図に要素を入れるときと、内部ブロック図・シーケンス図に部品定義を置くときに使えます");
+    else toast("ツリーからのドラッグは、作成した図に要素を入れるときと、内部ブロック図・シーケンス図に部品定義を置くときに使えます");
   });
 }
 
 /* ---- サブバー（対象ブロック・フェーズ・トレースの抜け） ---- */
 /**
- * 図の上のサブバーを描き直す。保存された図ではその名前と種類、内部ブロック図・シーケンス図・アクションの流れの図では対象の選択欄、
+ * 図の上のサブバーを描き直す。作成した図ではその名前と種類、内部ブロック図・シーケンス図・アクションの流れの図では対象の選択欄、
  * 他のビューでは工程の絞り込み（工程が無ければ「フェーズ管理を始める」）を出し、工程があればトレースの抜けの件数を出す（F-TRACE-1・F-TRACE-2）。
  */
 export function renderSub(): void {
@@ -1111,11 +1127,11 @@ export function renderSub(): void {
   const phases = S.M.phases;
   const mv = modelView();
   if (S.modelView) {
-    // 保存された図（view）：中身と対象は expose で決まるので、選ばせない
+    // 作成した図（view）：中身と対象は expose で決まるので、選ばせない
     const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : S.view === "stm" ? S.stateCtx : null;
     const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
     parts.push(
-      `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、保存された図の設定で決まります"}（view の expose・filter）">保存された図「${esc(S.modelView)}」：<span class="vkind" title="${esc(savedViewHint(mv?.std ?? null))}">${esc(stdViewLabel(mv?.std ?? null))}</span>${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
+      `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、作成した図の設定で決まります"}（view の expose・filter）">作成した図「${esc(S.modelView)}」：<span class="vkind" title="${esc(savedViewHint(mv?.std ?? null))}">${esc(stdViewLabel(mv?.std ?? null))}</span>${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
     );
   } else if (S.view === "ibd") {
     CC();
