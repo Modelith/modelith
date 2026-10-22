@@ -154,6 +154,11 @@ package ModelithRequirements {
                    ＋メニューでは、自動で描く図と作成した図を見出しで分けて示し、タブのツールチップでも作成した図であることを示す。テキストには標準の view と expose として書き、利用者には view・expose という言葉を見せない（ADR-0005・ADR-0014）。
                    図から外しても、モデルの要素は消さない。モデルから削除するのは別の操作にする */
         }
+        requirement def <'F-VIEW-12'> RequirementDiagramReq {
+            doc /* 要求図（一般ビュー）で、要求の区画に前提（assume）と満たすべき制約（assert。否定は assert not）の式を、
+                   検証・解析の区画に目的（objective）の説明と式を書く（8.2.3.20〜22）。部品定義などにも満たすべき制約を書く。
+                   package の直下の検証・解析の使用も図の要素にし、型の無い使用の中の verify からも検証の線を引く（8.2.3.24） */
+        }
         requirement def <'F-VIEW-11'> ViewListReq {
             doc /* サイドバーの「図」に作成した図を並べ、選ぶと開く。一覧とツリーの右クリックから、作成した図の名前を変えたり、削除したりできる。
                    名前を変えても図の配置と開いているタブは保ち、削除しても図に出していたモデルの要素は残す（確認を取る）。テキストでは view の宣言の名前を変える・宣言を消す（ADR-0005） */
@@ -382,6 +387,7 @@ package ModelithRequirements {
         #derivation dependency from EditDetailsReq to EditBothWaysNeed;
         #derivation dependency from CreateViewReq to ViewsNeed;
         #derivation dependency from ViewListReq to ViewsNeed;
+        #derivation dependency from RequirementDiagramReq to ViewsNeed;
         #derivation dependency from PackageFrameReq to ViewsNeed;
         #derivation dependency from SequenceReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
@@ -524,6 +530,7 @@ package ModelithRequirements {
         satisfy StandardViewReq by DiagramUI;
         satisfy CreateViewReq by DiagramUI;
         satisfy ViewListReq by DiagramUI;
+        satisfy RequirementDiagramReq by DiagramUI;
         satisfy PackageFrameReq by DiagramUI;
         satisfy SequenceReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
@@ -608,8 +615,9 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel、then event occurrence の継起・ビューの filter の and・or・xor・not・括弧と istype・hastype・render の合成形と rendering の参照・シナリオの順序の見つからない相手と循環・3 段以上の特徴量の連鎖とその見つからない段、alpha.10 で直した誤った表示：true・false・not で始まる結果の式・本体付きの式（->collect{…}）・KerML の宣言・依存と別名の本体の注釈・メタデータの本体の再定義の形（:>> x = 1）・交差（=>・crosses）・キーワードの無い特性と ref r;・名前付きの流れるもの・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・共役のポートの定義の名前（Pt::'~Pt'）・メタクラスのライブラリの型、alpha.10 で読むようにした from を省いた flow・succession flow・message と connect を省いた interface・既にある要素を指す perform・exhibit・frame）。期待値は仕様から手で書く（ADR-0013）。Rust のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般ビューに、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクティビティ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/app/state-machine.test.ts：状態遷移図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクティビティ図・状態遷移図の draw.io の図形と線。web/src/app/sequence.test.ts：シーケンス図の中身（ライフライン・段の順のメッセージ・イベントとその札・イベントの間の順序の線・段の数）と記法（白抜きの丸・破線と開いた矢印・丸の縁までのメッセージ、8.2.3.9）、draw.io のイベントの図形。ibd.test.ts と geometry.test.ts：3 段以上の連鎖の端の部品と、入れ子の部品の高さと幅 */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel、then event occurrence の継起・ビューの filter の and・or・xor・not・括弧と istype・hastype・render の合成形と rendering の参照・シナリオの順序の見つからない相手と循環・3 段以上の特徴量の連鎖とその見つからない段、alpha.10 で直した誤った表示：true・false・not で始まる結果の式・本体付きの式（->collect{…}）・KerML の宣言・依存と別名の本体の注釈・メタデータの本体の再定義の形（:>> x = 1）・交差（=>・crosses）・キーワードの無い特性と ref r;・名前付きの流れるもの・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・共役のポートの定義の名前（Pt::'~Pt'）・メタクラスのライブラリの型、alpha.10 で読むようにした from を省いた flow・succession flow・message と connect を省いた interface・既にある要素を指す perform・exhibit・frame）。期待値は仕様から手で書く（ADR-0013）。Rust のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般ビューに、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクティビティ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/app/state-machine.test.ts：状態遷移図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクティビティ図・状態遷移図の draw.io の図形と線。web/src/app/sequence.test.ts：シーケンス図の中身（ライフライン・段の順のメッセージ・イベントとその札・イベントの間の順序の線・段の数）と記法（白抜きの丸・破線と開いた矢印・丸の縁までのメッセージ、8.2.3.9）、draw.io のイベントの図形。ibd.test.ts と geometry.test.ts：3 段以上の連鎖の端の部品と、入れ子の部品の高さと幅。0.2.0 で描くようにした要求図：検証・解析の使用の中の verify（型の無い使用からも線を引く）と、geometry.test.ts の要求の区画の前提と満たすべき制約（assert not）・部品定義の満たすべき制約・検証の目的の区画 */
             objective {
+                verify RequirementDiagramReq;
                 verify StandardViewReq;
                 verify PackageFrameReq;
                 verify SequenceReq;
@@ -619,6 +627,7 @@ package ModelithRequirements {
         verification def RustSyntaxTest {
             doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・依存の相手の並び・接続の端（2 項・n 項・bind・allocate）・種類のキーワードの無い individual・継起の端とガード・succession flow・アクションの節（制御の節・send・accept・assign・terminate・if・while・loop・for）とその引数と本体・遷移の元と先・トリガ・ガード・効果（本体を含む）と状態の中の省略形の遷移・parallel・then event の参照の形・render の合成形の名前・キーワードで始まる結果の式・本体付きの式・KerML の宣言を本体ごと 1 つのまだ扱えない文にすること・交差（=>・crosses）・流れるものの節・connect を省いた interface の端・ロスレス・途中で切った入力や深い入れ子でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置・接続・結び付け・割り当て・フローの宣言と関係・値の書き方（:=・default）・コメントの本文と注釈する相手・別の言語での表し方の言語と本文・individual・書いた語を種類にしたアクションの節・if と while の条件と本体（else の本体）・直前の要素から引く継起とガード・順序付きの流れ・遷移の名前・トリガ・via・ガード・効果と直前の状態から引く省略形の遷移・entry の直後の最初の遷移・状態の entry・do・exit と並行の状態・then event occurrence の継起と、状態の本体ではイベントを継起の元にしないこと・render の合成形の rendering と、view の表し方の相手・キーワードの無い特性と ref r; の参照の使用・メタデータの本体の再定義の形の値・依存と別名の本体を読まないこと・KerML の宣言のまだ扱えない文・宣言する形の satisfy・verify の要求・Pt::'~Pt' を共役の型にすること・from を省いたフロー・順序付きの流れ・メッセージの端・perform・exhibit・frame の参照の形）。web/src/core/rust.test.ts：コアが失敗しても例外を投げずに知らせる。ADR-0015 */
             objective {
+                verify RequirementDiagramReq;
                 verify NoSilentDropReq;
                 verify ProblemsReq;
                 verify RobustReq;
@@ -627,6 +636,7 @@ package ModelithRequirements {
         verification def RustModelTest {
             doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け（文の頭の要求の名前は短い名前の有無によらず 1 回）・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方・状態定義ごとの状態遷移の図の要素のキー（入れ子と開始・終了の記号）と線の ID とラベル・並行の状態・見つからない遷移の相手・シナリオごとのシーケンス図のライフライン・イベント（入れ子の部品と型の中のもの）・メッセージの段と順序に合わせた段の決め方・イベントの間の順序の線・見つからない順序の相手と循環する順序・filter の論理式の読み方と優先順位・render がたどる rendering・3 段以上の特徴量の連鎖と見つからない段・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・frame の参照の形・交差を書く部品の線の端・メタクラスのライブラリの型・from を省いたフロー・順序付きの流れ・メッセージと connect を省いた interface の線）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定と、alpha.9 で Rust だけが確かめる遷移の相手・特徴量の連鎖の段・シナリオの順序と、alpha.10 で Rust だけが見つかれば問題にしない接続・流れの端は比べない）。web/src/core/rust.test.ts：状態遷移の図とシーケンス図を宣言・関係の参照に戻す。ADR-0016 */
             objective {
+                verify RequirementDiagramReq;
                 verify ParseParityReq;
                 verify ProblemsReq;
                 verify PhaseReq;
