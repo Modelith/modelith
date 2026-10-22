@@ -10,6 +10,7 @@ import SAMPLE_LAYOUT from "./samples/electric-kettle.layout.json?raw";
 import { initCanvas, fit } from "./app/canvas";
 import { stageLabel } from "./app/stage";
 import { initCtxMenu } from "./app/ctxmenu";
+import { initDiagramList } from "./app/diagram-list";
 import { $, isFormField, store } from "./app/dom";
 import { initEditor } from "./app/editor";
 import { initWordHelp } from "./app/word-help";
@@ -20,7 +21,7 @@ import { closeMenus, initMenuBar } from "./app/menubar";
 import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
-import { saveAsView } from "./app/view-ops";
+import { createDiagram } from "./app/view-ops";
 import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
 import { loadingView, watchLoading } from "./app/loading";
 import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
@@ -123,7 +124,7 @@ function selectAll(): void {
  * キーボードの近道（Ctrl/⌘+A ですべて選ぶ、Ctrl/⌘+Z で元に戻す、Ctrl/⌘+Shift+Z・Ctrl/⌘+Y でやり直す）をつなぐ。
  */
 function initToolbar(): void {
-  $("#btnSaveView").onclick = $("#menuSaveView").onclick = () => void saveAsView();
+  $("#btnSaveView").onclick = $("#menuSaveView").onclick = () => void createDiagram();
   $("#btnEdge").onclick = toggleEdgeStyle;
   $("#menuEdgeOrtho").onclick = () => chooseEdgeStyle("ortho");
   $("#menuEdgeCurve").onclick = () => chooseEdgeStyle("curve");
@@ -186,6 +187,7 @@ try {
   initPanels();
   initCanvas();
   initCtxMenu();
+  initDiagramList();
   initEditor();
   initWordHelp();
   initTextMode();

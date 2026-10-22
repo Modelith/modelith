@@ -630,12 +630,13 @@ package ModelithRequirements {
             }
         }
         verification def RustEditTest {
-            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）、状態遷移の図の遷移の削除（transition の文・省略形の遷移・最初の遷移）・入れ子の状態の削除と名前の変更・図からの遷移の追加（同じ本体・本体をまたぐ名前の道のり・終了の記号へ）・状態遷移の図の保存（StateTransitionView）、シーケンス図のイベントの間の順序の線の削除、3 段以上の連鎖の端の部品（u:a.x.v）の線の削除と名前の変更も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
+            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存（空の一般の図を含む）と図への出し入れ・図の名前の変更と削除。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）、状態遷移の図の遷移の削除（transition の文・省略形の遷移・最初の遷移）・入れ子の状態の削除と名前の変更・図からの遷移の追加（同じ本体・本体をまたぐ名前の道のり・終了の記号へ）・状態遷移の図の保存（StateTransitionView）、シーケンス図のイベントの間の順序の線の削除、3 段以上の連鎖の端の部品（u:a.x.v）の線の削除と名前の変更も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
             objective {
                 verify DiagramToTextReq;
                 verify RenameReq;
                 verify NewPackageGuideReq;
                 verify CreateViewReq;
+                verify ViewListReq;
                 verify PhaseReq;
                 verify RobustReq;
             }
@@ -801,6 +802,21 @@ package ModelithRequirements {
                 verify AutoSaveReq;
                 verify NoSilentFailureReq;
                 verify PlainWordsReq;
+            }
+        }
+        verification def DiagramsE2E {
+            doc /* web/e2e/diagrams.spec.ts：「新しい図を作成…」で種類を選ぶ（空の一般の図・内部ブロック図のブロックを選ぶ・対象が無ければ新しく作る・やめると何も変えない）と、
+                   サイドバーの「図」（並べて開く・図が無いときの案内・名前の変更と配置の保持・既にある名前の拒否・削除の確認と要素の保持・ツリーの右クリックからの名前の変更）（Chromium で操作） */
+            objective {
+                verify CreateViewReq;
+                verify ViewListReq;
+            }
+        }
+        verification def DiagramKindsTest {
+            doc /* web/src/app/diagram-kinds.test.ts：作成できる図の種類と描く対象の定義の種類、対象の候補（種類の合う定義を名前の順に）、図の名前を変えたときの配置とタブの付け替え */
+            objective {
+                verify CreateViewReq;
+                verify ViewListReq;
             }
         }
         verification def ViewsE2E {

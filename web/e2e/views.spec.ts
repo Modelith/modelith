@@ -924,7 +924,7 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     // Act
     await page.locator('#dialogButtons [data-id="ok"]', { hasText: "作成" }).click();
     // Assert
-    await expect(page.locator("#toast")).toHaveText("図「overview」を作成しました。＋メニューの「作成した図」からいつでも開けます");
+    await expect(page.locator("#toast")).toHaveText("図「overview」を作成しました。サイドバーの「図」からいつでも開けます");
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", /^作成した図「overview」/);
     await page.locator(".tabadd summary").click();
     await expect(page.locator(".tabadd .phead")).toHaveText(["自動で描く図", "作成した図"]);

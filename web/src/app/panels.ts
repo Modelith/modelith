@@ -2,6 +2,7 @@
 
 import { stdViewLabel, type Entry } from "../core";
 import { fit, local, placeUsageAt, toCanvas } from "./canvas";
+import { renderDiagramList } from "./diagram-list";
 import { $, closest, esc, isFormField, store } from "./dom";
 import { W } from "./geometry";
 import { nextTabIndex, rovingStop } from "./keyboard";
@@ -259,6 +260,7 @@ export function saveTabs(): void {
 
 /**
  * 図のタブバーを描き直す（F-VIEW-2）。タブが 2 つ以上なら閉じるボタンを付け、末尾に、自動で描く図と作成した図を見出しで分けて開く「＋」メニューを置く。
+ * サイドバーの「図」も、表示中の図に合わせて描き直す（F-VIEW-11）。
  */
 export function renderTabs(): void {
   syncCurTab();
@@ -281,6 +283,7 @@ export function renderTabs(): void {
       ? S.M.views.map((v) => viewMenuItem(`data-open-mv="${esc(v.name)}"`, viewIcon(baseViewOf(v)), v.name, savedViewHint(v.std), savedViewHint(v.std))).join("")
       : `<div class="pnote">作成した図はまだありません。図のメニューの「新しい図を作成…」で作れます</div>`) +
     `</div></details>`;
+  renderDiagramList();
 }
 
 /**
@@ -377,6 +380,26 @@ function closeTab(id: number): void {
     renderTabs();
     saveTabs();
   }
+}
+
+/**
+ * 削除した作成した図のタブを閉じる（F-VIEW-11）。それが最後のタブなら、閉じずに自動の図「すべて」に切り替える。
+ *
+ * @param name 削除した図の名前
+ */
+export function closeViewTabs(name: string): void {
+  for (const t of S.tabs.filter((x) => x.mv === name)) {
+    if (S.tabs.length > 1) {
+      closeTab(t.id);
+      continue;
+    }
+    delete t.mv;
+    t.view = "all";
+    if (S.tabId === t.id) S.modelView = null;
+    activateTab(t.id, { fit: true });
+  }
+  renderTabs();
+  saveTabs();
 }
 
 /**
