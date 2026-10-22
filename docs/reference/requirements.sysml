@@ -1228,6 +1228,13 @@ package ModelithRequirements {
                 verify ProblemLevelReq;
             }
         }
+        verification def TabsPerFileTest {
+            doc /* web/src/app/doc-tabs.test.ts：記憶の名前（保存先のパス・無題の文書のキー）、初めて開くファイルのタブ、記憶の読み込み（戻せない記憶だけを捨てる・壊れていれば空）、記憶に入れる順と上限、このファイルの要素が無い図の案内を出すとき。
+                   web/e2e/tabs-per-file.spec.ts：初めて開くファイルは「すべて」から始め、ファイルを切り替えると最後に開いていたタブに戻ること、要素の無い図でも切り替えずに案内し「すべて」の図も開けること、読み込み直してもファイルごとのタブが戻ること */
+            objective {
+                verify TabsPerFileReq;
+            }
+        }
         verification def ProjectProblemsTest {
             doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
                    crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印。

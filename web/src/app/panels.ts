@@ -14,6 +14,7 @@ import { PINOPS, selPinInfo } from "./pins";
 import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type Tab, type Tool, type UiPrefs } from "./state";
 import { parseSavedTabs, type SavedTabs } from "./saved-tabs";
+import { firstTabs, parseDocTabs, rememberDocTabs } from "./doc-tabs";
 import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "./svg";
 import { ensureLayout, toast } from "./sync";
 import { defaultFlowContext, flowContexts } from "./action-flow";
@@ -27,6 +28,8 @@ import { goToGap } from "./gap-guide";
 export const UI_KEY = "modelith-ui-v1";
 /** 図のタブを置く localStorage のキー（起動に失敗したときに初期化する設定。Q-6）。 */
 export const TABS_KEY = "modelith-tabs-v1";
+/** ファイルごとの図のタブを置く localStorage のキー（F-VIEW-17。起動に失敗したときに初期化する設定。Q-6）。 */
+export const DOC_TABS_KEY = "modelith-doc-tabs-v1";
 
 /**
  * 保存したパネルの設定（表示・幅など）を localStorage から S.ui に読み込む。壊れていれば既定値のままにする。
@@ -250,12 +253,60 @@ function syncCurTab(): void {
   t.phase = S.phase || "";
 }
 
+/** ファイルごとの図のタブ（記憶の名前 → タブ。F-VIEW-17）。表示中のファイルのものは、切り替えるときに書き戻す。 */
+let docTabs = new Map<string, SavedTabs>();
+/** 表示中のファイルの記憶の名前。まだファイルを表示していなければ null。 */
+let shownDocId: string | null = null;
+/** 図のタブを用意し終えたか（initTabs の前に表示したファイルは、用意してからそのタブを戻す）。 */
+let tabsReady = false;
+
 /**
- * 開いているタブと表示中のタブを localStorage に保存する（F-VIEW-2）。
+ * タブを、記憶に書く形にする（表示位置は書かない）。
+ *
+ * @param tabs タブ
+ * @returns 記憶に書くタブ
+ * @example
+ * storedTabs([{ id: 1, view: "trace", ctx: null, phase: "", tf: { x: 0, y: 0, k: 1 } }]) // → [{ id: 1, view: "trace", ctx: null, phase: "" }]
+ */
+const storedTabs = (tabs: readonly Tab[]): Tab[] => tabs.map(({ id, view, ctx, phase, mv }) => ({ id, view, ctx, phase, ...(mv ? { mv } : {}) }));
+
+/**
+ * 開いているタブと表示中のタブを localStorage に保存する（F-VIEW-2）。表示中のファイルのタブとして、ファイルごとの記憶にも書く（F-VIEW-17）。
  */
 export function saveTabs(): void {
   syncCurTab();
-  store.set(TABS_KEY, JSON.stringify({ tabs: S.tabs.map(({ id, view, ctx, phase, mv }) => ({ id, view, ctx, phase, ...(mv ? { mv } : {}) })), active: S.tabId }));
+  store.set(TABS_KEY, JSON.stringify({ tabs: storedTabs(S.tabs), active: S.tabId }));
+  // 用意する前（記憶をまだ読んでいない）に書くと、ほかのファイルの記憶を消してしまう
+  if (shownDocId === null || !tabsReady) return;
+  rememberDocTabs(docTabs, shownDocId, { tabs: S.tabs.map((t) => ({ ...t })), active: S.tabId });
+  store.set(DOC_TABS_KEY, JSON.stringify(Object.fromEntries([...docTabs].map(([id, t]) => [id, { tabs: storedTabs(t.tabs), active: t.active }]))));
+}
+
+/**
+ * 表示するファイルのタブに切り替える（F-VIEW-17）。今のファイルのタブ（表示位置も）を記憶してから、切り替え先のファイルで最後に開いていたタブを戻す。
+ * 記憶の無いファイルは「すべて」の図から始める。ただし起動して最初に表示するファイルは、記憶が無ければ今のタブ（前回のタブ）をそのまま使う。
+ *
+ * @param id 表示するファイルの記憶の名前（docTabsId）。ファイルを表示しなくなったら null
+ */
+export function switchDocTabs(id: string | null): void {
+  if (id === shownDocId) return;
+  // タブを用意する前（起動の途中）は、どのファイルかだけを覚え、記憶を書き換えない
+  if (!tabsReady) {
+    shownDocId = id;
+    return;
+  }
+  if (shownDocId !== null) {
+    syncCurTab();
+    const cur = curTab();
+    if (cur) cur.tf = { ...S.tf };
+    saveTabs();
+  }
+  const first = shownDocId === null;
+  shownDocId = id;
+  if (id === null) return;
+  const saved = docTabs.get(id) ?? (first ? null : firstTabs());
+  if (saved) applySavedTabs({ tabs: saved.tabs.map((t) => ({ ...t })), active: saved.active });
+  saveTabs();
 }
 
 /**
@@ -450,7 +501,10 @@ let startTabs: SavedTabs | null = null;
  * @param saved 保存したタブと表示中のタブの id（形は readSavedTabs が確かめ済み。無ければ null）
  */
 function applySavedTabs(saved: SavedTabs | null): void {
-  if (saved) S.tabs = saved.tabs;
+  if (saved) {
+    S.tabs = saved.tabs;
+    S.tabId = null;
+  }
   if (!S.tabs.length) {
     S.tabs = [
       { id: 1, view: "trace", ctx: null, phase: "" },
@@ -482,6 +536,15 @@ export function initTabs(): void {
   // 戻すタブと、後で戻し直すためのタブは、別々に読む（戻した方は表示の途中で書き換わる）
   startTabs = readSavedTabs();
   applySavedTabs(readSavedTabs());
+  docTabs = parseDocTabs(store.get(DOC_TABS_KEY), VIEWS.map((v) => v.id));
+  tabsReady = true;
+  // 用意する前に表示したファイルに記憶があれば、そのタブにする（F-VIEW-17）
+  const own = shownDocId === null ? undefined : docTabs.get(shownDocId);
+  if (own) applySavedTabs({ tabs: own.tabs.map((t) => ({ ...t })), active: own.active });
+  // 表示中の図にこのファイルの要素が無いときの「すべて」の図を開くボタン（F-VIEW-17）
+  $("#empty").addEventListener("click", (ev) => {
+    if (closest(ev, "[data-open-all]")) openTab("all");
+  });
 
   const bar = $("#tabbar");
   // タブバーは横にスクロールするので、その中のメニューは枠で切れてしまう。開いたときに画面に対する位置で出す

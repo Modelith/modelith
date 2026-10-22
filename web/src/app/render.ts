@@ -3,6 +3,7 @@
 
 import { FILE_STRIDE, lineStart, type ModelNode } from "../core";
 import { $, esc } from "./dom";
+import { NOTHING_IN_FILE, nothingInFile } from "./doc-tabs";
 import { boxesOf, pinPoint, pinsOf, type Box } from "./geometry";
 import { relOptions } from "./relations";
 import { gapMarkTitles } from "./gap-guide";
@@ -20,8 +21,11 @@ import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes 
 export function render(): void {
   const content = viewContent(S.M, curView());
   const empty = $("#empty");
-  empty.hidden = !content.empty;
-  empty.textContent = content.empty ?? "";
+  // 図にこのファイルの要素が無くても、別の図に切り替えずに案内する（F-VIEW-17）
+  const nothing = nothingInFile(content, S.M.nodes.filter((n) => !n.file).length);
+  empty.hidden = !content.empty && !nothing;
+  if (nothing) empty.innerHTML = `<span>${esc(NOTHING_IN_FILE)}</span>${S.view === "all" ? "" : `<br><button type="button" data-open-all>「すべて」の図を開く</button>`}`;
+  else empty.textContent = content.empty ?? "";
   if (content.seq) {
     const sm = seqMarkup(CV, content, { interactive: true, sel: S.sel, selSet: S.selSet, selEdge: S.selEdge });
     $("#gEdges").innerHTML = "";

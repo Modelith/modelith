@@ -26,6 +26,8 @@ import { idbBrowserPlugins, idbPluginData } from "../plugins/browser-store";
 import { importedDocName } from "../plugins/transfer";
 import { projectNotice, projectTitle } from "./project";
 import { coreClient, loadLayout, onAnalyzedProject, onLayoutChange, onTextChange, renderProblems, setText, settled, toast, toastFailure } from "./sync";
+import { switchDocTabs } from "./panels";
+import { docTabsId } from "./doc-tabs";
 import { fileProblems, fileStatus, folderStatus, statusBadge, statusClass, type FileStatus } from "./project-problems";
 import { scrollEditorTo } from "./render";
 import { opsIdle } from "./intent";
@@ -144,6 +146,8 @@ function showDoc(key: string): void {
   const { layout, legacy } = layoutOf(doc);
   loadLayout(layout);
   setText(doc.text, { noHistory: true });
+  // 図のタブは、ファイルごとに最後に開いていたものに戻す（F-VIEW-17）
+  switchDocTabs(docTabsId(doc));
   recordHistory();
   // 図を画面に合わせるのは、その文書の解析結果が届いてから（ADR-0016）
   void settled().then(() => {
