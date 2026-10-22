@@ -139,9 +139,26 @@ pub struct ActionFlow {
     pub nodes: Vec<FlowNode>,
     /// アクション定義そのもののパラメータ（枠の上に描く。8.2.3.17 の parameter）。図のキーは `b:名前`。
     pub params: Vec<Port>,
+    /// 区画（8.2.3.17 の swimlane）。要素を受け持つ部品（`perform 使用.要素;` を書いた部品）ごとに、書いた順。無ければ空。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lanes: Vec<Lane>,
     /// 継起（種類 `succession`）・順序付きの流れ（種類 `successionFlow`）・流れ（種類 `flow`）の線。
     /// 端は `nodes` のキーか、アクション定義そのもののパラメータ（`b:名前`）。流れの端のパラメータは `fromPort`・`toPort`（`port:名前`）。
     pub edges: Vec<Edge>,
+}
+
+/// アクションの流れの図の区画 1 つ（8.2.3.17 の swimlane）。受け持つ部品と、その部品が受け持つ要素。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lane {
+    /// 区画のキー（`lane:部品の道のり`）。
+    pub key: String,
+    /// 受け持つ部品の道のり（`kettle.heater`。外の部品から）。
+    pub name: String,
+    /// 受け持つ部品の宣言（`ParseResult.entries` の番号）。
+    pub entry: usize,
+    /// 受け持つ要素のキー（`perform` を書いた順）。
+    pub nodes: Vec<String>,
 }
 
 /// 状態遷移の図（8.2.3.18）の要素 1 つ。状態と、本体ごとの開始（最初の遷移の元）・終了（`done`）の記号。

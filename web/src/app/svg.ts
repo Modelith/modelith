@@ -4,7 +4,7 @@ import type { Family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./dom";
 import {
-  boundaryBoxes, BOUNDARY, boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, STATE_HEAD, stateSize, stateTitle,
+  boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, STATE_HEAD, stateSize, stateTitle,
   textWidth, type Box, type NodeBox,
 } from "./geometry";
 import { isPseudoState } from "./state-machine";
@@ -183,14 +183,17 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
   );
   let es = "";
   for (const p of packageBoxes(content, (k) => box.get(k))) es += packageMarkup(C, p.name, p.r, F);
+  // 区画（8.2.3.17 の swimlane）は、要素の下・枠の上に描き、枠に含める
+  const lanes = laneRects(content.lanes ?? [], box);
   let frameRect: Box | null = null;
   if (content.frame && box.size) {
-    const bs = [...box.values()];
+    const bs = [...box.values(), ...lanes.map((l) => l.r)];
     const x0 = Math.min(...bs.map((b) => b.x)) - 60, y0 = Math.min(...bs.map((b) => b.y)) - 80;
     const x1 = Math.max(...bs.map((b) => b.x + b.w)) + 60, y1 = Math.max(...bs.map((b) => b.y + b.h)) + 50;
     frameRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     es += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${C("k-part-bg")}" fill-opacity=".35" stroke="${C("k-part")}" stroke-width="1.6"/>`;
     es += `<text x="${x0 + 12}" y="${y0 + 18}" font-size="10" fill="${C("ink2")}" font-family="${F}">«${esc(content.frame.kind)}»</text><text x="${x0 + 12}" y="${y0 + 36}" font-size="14" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(content.frame.title)}</text>`;
+    for (const l of lanes) es += laneMarkup(C, l.lane.name, l.r, F);
     // 対象そのもののポートを枠の上に置く（線の端になるよう、矩形を box に足す）
     for (const [key, r] of boundaryBoxes(frameRect, content.boundary ?? [])) {
       const n = (content.boundary ?? []).find((x) => x.key === key);
@@ -514,6 +517,27 @@ function boundaryMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): st
     `<g class="boundary" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})">` +
     `<rect class="body" width="${s}" height="${s}" fill="${C("panel")}" stroke="${isSel ? C("sel") : C("k-part")}" stroke-width="${isSel ? 2.4 : 1.4}"/>` +
     `<text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="10.5" fill="${C("ink")}" font-family="${F}">${esc(n.name)}</text></g>`
+  );
+}
+
+/**
+ * アクティビティ図の区画（8.2.3.17 の swimlane）を SVG の文字列にする。破線の四角に、見出し «performer» と受け持つ部品の道のりを書き、見出しの下を区切る。
+ *
+ * @param C 色の関数
+ * @param name 受け持つ部品の道のり
+ * @param r 区画の矩形
+ * @param F 文字のフォント
+ * @returns `<g class="lane" data-lane="部品の道のり">…</g>` の文字列
+ * @example
+ * laneMarkup(CV, "kettle.heater", { x: 84, y: 156, w: 200, h: 204 }, "inherit")
+ * // → '<g class="lane" data-lane="kettle.heater"><rect … stroke-dasharray="5 4"/><text …>«performer»</text><text …>kettle.heater</text><line …/></g>'
+ */
+function laneMarkup(C: ColorFn, name: string, r: Box, F: string): string {
+  return (
+    `<g class="lane" data-lane="${esc(name)}"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="none" stroke="${C("k-beh")}" stroke-width="1.2" stroke-dasharray="5 4"/>` +
+    `<text x="${r.x + r.w / 2}" y="${r.y + 16}" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">«performer»</text>` +
+    `<text x="${r.x + r.w / 2}" y="${r.y + 32}" text-anchor="middle" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(name)}</text>` +
+    `<line x1="${r.x}" x2="${r.x + r.w}" y1="${r.y + LANE_HEAD - 4}" y2="${r.y + LANE_HEAD - 4}" stroke="${C("k-beh")}" stroke-opacity=".45" stroke-dasharray="5 4"/></g>`
   );
 }
 

@@ -450,6 +450,18 @@ export interface ModelFlowNode {
   container?: string;
 }
 
+/** アクションの流れの図の区画 1 つ（8.2.3.17 の swimlane）。受け持つ部品と、その部品が受け持つ要素。 */
+export interface ModelLane {
+  /** 区画のキー（`lane:部品の道のり`）。 */
+  key: string;
+  /** 受け持つ部品の道のり（`kettle.heater`）。 */
+  name: string;
+  /** 受け持つ部品の宣言。 */
+  entry: Entry;
+  /** 受け持つ要素のキー。 */
+  nodes: string[];
+}
+
 /** アクション定義 1 つの、アクションの流れの図（8.2.3.17）。 */
 export interface ModelActionFlow {
   /** アクション定義の、図の要素のキー。 */
@@ -460,6 +472,8 @@ export interface ModelActionFlow {
   nodes: ModelFlowNode[];
   /** アクション定義そのもののパラメータ（枠の上に描く。キーは `b:名前`）。 */
   params: Port[];
+  /** 区画（8.2.3.17 の swimlane）。要素を受け持つ部品ごと。無ければ空。 */
+  lanes: ModelLane[];
   /** 継起（succession）・順序付きの流れ（successionFlow）・流れ（flow）の線。端は nodes のキーか `b:名前`。流れの端のパラメータは fromPort・toPort。 */
   edges: ModelEdge[];
 }

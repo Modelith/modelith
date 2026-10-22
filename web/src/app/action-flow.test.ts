@@ -17,6 +17,10 @@ const NESTED =
   "package P { action def A { first start then boil; action boil { first start then heat; action heat; then wait; action wait; } " +
   "first boil then c; action c; } }";
 
+const LANES =
+  "package P { action def MakeTea { first start then boil; action boil; then pour; action pour; then done; } " +
+  "action makeTea : MakeTea; part kettle { perform makeTea; part heater { perform makeTea.boil; } part ctrl { perform makeTea.pour; } } }";
+
 const TEXT =
   "package P { action def A { first start; then action a : Heat; then decide d; if x > 0 then s; else c; " +
   "action s send S() to b; action c; first s then done; first c then done; } action def Heat; action def Idle; }";
@@ -80,7 +84,7 @@ describe("flowContentOf（アクションの流れの図の中身）", () => {
     // Act
     const content = flowContentOf(M, c);
     // Assert
-    expect(content).toEqual({ nodes: [], edges: [], boundary: [] });
+    expect(content).toEqual({ nodes: [], edges: [], boundary: [], lanes: [] });
   });
 
   it("アクションのパラメータを接続点に、アクション定義そのもののパラメータを枠の上の要素に、パラメータの間の流れを線にする（8.2.3.17）", () => {
@@ -113,6 +117,18 @@ describe("flowContentOf（アクションの流れの図の中身）", () => {
       ["a:c", null],
     ]);
     expect(edges.map((e) => e.id)).toContain("succession|a:boil.heat|a:boil.wait|#1");
+  });
+
+  it("要素を受け持つ部品ごとの区画（swimlane）をそのまま使う（8.2.3.17）", () => {
+    // Arrange
+    const { M, c } = setup(LANES, "MakeTea");
+    // Act
+    const { lanes } = flowContentOf(M, c);
+    // Assert
+    expect(lanes.map((l) => [l.key, l.name, l.entry.name, l.nodes])).toEqual([
+      ["lane:kettle.heater", "kettle.heater", "heater", ["a:boil"]],
+      ["lane:kettle.ctrl", "kettle.ctrl", "ctrl", ["a:pour"]],
+    ]);
   });
 
   it("対象にできるのはアクション定義で、既定の対象は線の最も多いもの", () => {
@@ -311,6 +327,22 @@ describe("アクションの流れの図の記法（svg）", () => {
     expect(boil).toContain('fill-opacity=".55"');
     expect(boil).toContain('y1="40" y2="40"');
     expect(boil).toContain(">boil</text>");
+  });
+
+  it("区画は破線の四角に «performer» と部品の道のりを書き、枠の中に描く（8.2.3.17 の swimlane）", () => {
+    // Arrange
+    const { M, c } = setup(LANES, "MakeTea");
+    const content = { ...flowContentOf(M, c), frame: { kind: "action def", title: "MakeTea" } };
+    const L = emptyView();
+    content.nodes.forEach((n, i) => (L.pos[n.key] = [i * 200, i * 100]));
+    // Act
+    const { es } = svgMarkup(CV, content, L, { view: "afv" });
+    // Assert（区画は枠の後ろ、要素の下に描く）
+    const lane = es.slice(es.indexOf('<g class="lane" data-lane="kettle.heater">'));
+    expect(lane).toContain('stroke-dasharray="5 4"');
+    expect(lane).toContain(">«performer»</text>");
+    expect(lane).toContain(">kettle.heater</text>");
+    expect(es.indexOf("«action def»")).toBeLessThan(es.indexOf('class="lane"'));
   });
 
   it("パラメータは要素の縁の接続点に、アクション定義そのもののパラメータは枠の上の四角に描く", () => {
