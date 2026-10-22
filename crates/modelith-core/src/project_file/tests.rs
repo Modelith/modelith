@@ -416,3 +416,101 @@ fn plugin_change_reads_the_op_tag() {
         ]
     );
 }
+
+// --- 知らせの重さ（levels。F-EDIT-11） ---
+
+#[test]
+fn parse_reads_levels() {
+    // Arrange
+    let text =
+        r#"{ "levels": { "trace.verify": "error", "unsupported": "off", "jp.x/r1": "info" } }"#;
+    // Act
+    let project = project_of(text);
+    // Assert
+    assert_eq!(project.levels.get("trace.verify"), Some(&Level::Error));
+    assert_eq!(project.levels.get("unsupported"), Some(&Level::Off));
+    assert_eq!(project.levels.get("jp.x/r1"), Some(&Level::Info));
+    assert_eq!(problems_of(text), Vec::<String>::new());
+}
+
+#[test]
+fn parse_rejects_a_level_that_is_not_one_of_the_four() {
+    // Arrange（異常系: 知らない重さと、文字列でない重さ）
+    let text =
+        "{\n  \"levels\": {\n    \"trace.verify\": \"loud\",\n    \"unsupported\": 1\n  }\n}";
+    // Act
+    let parsed = parse(text);
+    // Assert
+    assert_eq!(parsed.project, None);
+    assert_eq!(
+        problems_of(text),
+        vec![
+            "Error 3:5 知らせ「trace.verify」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください",
+            "Error 4:5 知らせ「unsupported」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください",
+        ]
+    );
+}
+
+#[test]
+fn parse_rejects_levels_that_are_not_an_object() {
+    // Arrange（異常系）
+    let text = r#"{ "levels": [] }"#;
+    // Act
+    let problems = problems_of(text);
+    // Assert
+    assert_eq!(
+        problems,
+        vec!["Error 1:3 知らせの重さ（levels）は { } で囲んで書いてください"]
+    );
+}
+
+#[test]
+fn parse_keeps_an_unknown_level_kind_and_warns() {
+    // Arrange（種類の名前の打ち間違い）
+    let text = "{\n  \"levels\": { \"trace.verfy\": \"off\" }\n}";
+    // Act
+    let project = project_of(text);
+    // Assert
+    assert_eq!(project.levels.get("trace.verfy"), Some(&Level::Off));
+    assert_eq!(
+        problems_of(text),
+        vec![
+            "Warning 2:15 知らせの重さ（levels）に、不明な種類「trace.verfy」があります。削除せずに残します"
+        ]
+    );
+}
+
+#[test]
+fn update_level_writes_levels_after_plugins() {
+    // Act
+    let text = update_level("{}", "trace.verify", Some(Level::Error)).expect("書き換えられる");
+    // Assert
+    assert_eq!(
+        text,
+        "{\n  \"plugins\": {},\n  \"levels\": {\n    \"trace.verify\": \"error\"\n  }\n}\n"
+    );
+}
+
+#[test]
+fn update_level_none_returns_to_the_default_and_drops_an_empty_levels() {
+    // Arrange
+    let text = r#"{"levels":{"unsupported":"off"},"x":1}"#;
+    // Act
+    let updated = update_level(text, "unsupported", None).expect("書き換えられる");
+    // Assert（不明な項目 x は残す）
+    assert_eq!(updated, "{\n  \"plugins\": {},\n  \"x\": 1\n}\n");
+}
+
+#[test]
+fn update_level_refuses_a_broken_file_with_its_line() {
+    // Act
+    let r = update_level("{", "unsupported", Some(Level::Off));
+    // Assert（異常系）
+    let reason = r.expect_err("誤りのある設定は書き換えない");
+    assert!(
+        reason.starts_with(
+            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目："
+        ),
+        "{reason}"
+    );
+}

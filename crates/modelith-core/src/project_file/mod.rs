@@ -23,9 +23,26 @@ pub struct ProjectFile {
     /// プロジェクトが使うプラグイン（プラグインの ID ごと。ADR-0018）。
     #[serde(default)]
     pub plugins: BTreeMap<String, PluginUse>,
+    /// 知らせの種類ごとの重さ（F-EDIT-11、ADR-0019 §2）。書いていない種類は既定の重さ。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub levels: BTreeMap<String, Level>,
     /// 不明な項目。書き戻すときもそのまま残す。
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// 知らせの重さ（F-EDIT-11）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    /// エラー。
+    Error,
+    /// 警告。
+    Warning,
+    /// 情報。
+    Info,
+    /// 出さない。
+    Off,
 }
 
 /// プロジェクトが使うプラグイン 1 つの設定。
@@ -215,18 +232,7 @@ pub enum PluginChange {
 /// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目：…")
 /// ```
 pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, String> {
-    let parsed = parse(text);
-    let Some(mut project) = parsed.project else {
-        let reason = parsed
-            .problems
-            .iter()
-            .find(|p| p.severity == Severity::Error)
-            .map(|p| format!("{} 行目：{}", p.line, p.message))
-            .unwrap_or_default();
-        return Err(format!(
-            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}"
-        ));
-    };
+    let mut project = parsed_for_change(text)?;
     let missing =
         || format!("プロジェクトの設定（modelith.json）に、プラグイン「{id}」がありません");
     match change {
@@ -253,6 +259,67 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
     Ok(to_text(&project))
 }
 
+/// 設定ファイルのテキストの、知らせの重さを 1 つ書き換える（F-EDIT-11。不明な項目は残す）。
+///
+/// # 引数
+///
+/// - `text`：今の `modelith.json` のテキスト全体
+/// - `kind`：知らせの種類（`trace.verify`・`プラグインの ID/ルールの ID` など）
+/// - `level`：選んだ重さ。`None` なら既定の重さに戻す（項目を消す）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキスト（[`to_text`] の形）。設定ファイルに誤りがあるときは、画面に出す理由の文を `Err` で返す。
+///
+/// # 例
+///
+/// ```text
+/// update_level("{}", "trace.verify", Some(Level::Error)) → Ok("{\n  \"plugins\": {},\n  \"levels\": {\n    \"trace.verify\": \"error\"\n  }\n}\n")
+/// update_level(r#"{"levels":{"unsupported":"off"}}"#, "unsupported", None) → Ok("{\n  \"plugins\": {}\n}\n")
+/// update_level("{", "unsupported", None) → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目：…")
+/// ```
+pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<String, String> {
+    let mut project = parsed_for_change(text)?;
+    match level {
+        Some(level) => {
+            project.levels.insert(kind.to_owned(), level);
+        }
+        None => {
+            project.levels.remove(kind);
+        }
+    }
+    Ok(to_text(&project))
+}
+
+/// 書き換えるために設定ファイルを読む。誤りがあれば、画面に出す理由の文を返す。
+///
+/// # 引数
+///
+/// - `text`：今の `modelith.json` のテキスト全体
+///
+/// # 戻り値
+///
+/// 読み取れた設定。誤りがあれば `Err`（最初の誤りの行と文を添える）。
+///
+/// # 例
+///
+/// ```text
+/// parsed_for_change("{}") → Ok(ProjectFile::default())
+/// parsed_for_change("{")  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目：…")
+/// ```
+fn parsed_for_change(text: &str) -> Result<ProjectFile, String> {
+    let parsed = parse(text);
+    parsed.project.ok_or_else(|| {
+        let reason = parsed
+            .problems
+            .iter()
+            .find(|p| p.severity == Severity::Error)
+            .map(|p| format!("{} 行目：{}", p.line, p.message))
+            .unwrap_or_default();
+        format!("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}")
+    })
+}
+
 /// 設定をファイルのテキストにする（不明な項目も書く）。
 ///
 /// # 引数
@@ -261,7 +328,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
 ///
 /// # 戻り値
 ///
-/// 字下げ 2 つの空白・末尾に改行のある JSON のテキスト。項目は `name`・`plugins`、その後に不明な項目を名前順に書く。
+/// 字下げ 2 つの空白・末尾に改行のある JSON のテキスト。項目は `name`・`plugins`・`levels`（あれば）、その後に不明な項目を名前順に書く。
 ///
 /// # 例
 ///
@@ -395,6 +462,7 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
 /// type_problems(json!({"name": "A"}), …)  → []
 /// type_problems(json!([1]), …)            → [誤り 1:1「一番外側を { } で囲んでください…」]
 /// type_problems(json!({"plugins": 1}), …) → [誤り「プラグインの一覧（plugins）は…」]
+/// type_problems(json!({"levels": {"unsupported": "loud"}}), …) → [誤り「知らせ「unsupported」の重さは…」]
 /// ```
 fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     let Some(root) = value.as_object() else {
@@ -423,6 +491,23 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
         Some(_) => problems.push(error(
             locator.of_key(&["plugins"]),
             "プラグインの一覧（plugins）は { } で囲んで書いてください",
+        )),
+    }
+    match root.get("levels") {
+        None => {}
+        Some(Value::Object(levels)) => {
+            for (kind, level) in levels {
+                if !matches!(level.as_str(), Some("error" | "warning" | "info" | "off")) {
+                    problems.push(error(
+                        locator.of_key(&["levels", kind]),
+                        &format!("知らせ「{kind}」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください"),
+                    ));
+                }
+            }
+        }
+        Some(_) => problems.push(error(
+            locator.of_key(&["levels"]),
+            "知らせの重さ（levels）は { } で囲んで書いてください",
         )),
     }
     problems
@@ -484,7 +569,7 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
 ///
 /// # 戻り値
 ///
-/// 不明な項目ごとの注意（一番外側と、各プラグインの設定の中）。無ければ空。
+/// 不明な項目ごとの注意（一番外側と、各プラグインの設定の中と、知らせの重さの種類）。無ければ空。
 ///
 /// # 例
 ///
@@ -511,7 +596,20 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
             )
         })
     });
-    top.chain(in_plugins).collect()
+    let in_levels = project
+        .levels
+        .keys()
+        .filter(|kind| !crate::levels::is_known_kind(kind))
+        .map(|kind| {
+            problem(
+                Severity::Warning,
+                locator.of_key(&["levels", kind]),
+                &format!(
+                    "知らせの重さ（levels）に、不明な種類「{kind}」があります。削除せずに残します"
+                ),
+            )
+        });
+    top.chain(in_plugins).chain(in_levels).collect()
 }
 
 /// テキストの位置（バイト）と、JSON のキーの位置を、1 始まりの行・列にする。

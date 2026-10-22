@@ -4,6 +4,7 @@
 //! 図の操作を含むすべての変更はテキスト編集として表現する。
 
 pub mod edit;
+pub mod levels;
 mod line_index;
 pub mod model;
 pub mod plugin_host;

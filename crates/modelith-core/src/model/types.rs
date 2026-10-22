@@ -79,6 +79,12 @@ pub struct Problem {
     pub msg: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<&'static str>,
+    /// 知らせの種類（重さを選べる種類。F-EDIT-11）。`trace.derive`・`trace.satisfy`・`trace.verify`・`unsupported`。エラーは None。
+    #[serde(skip)]
+    pub code: Option<&'static str>,
+    /// プロジェクトの設定で選んだ重さ（`error`・`warning`・`info`）。既定の重さのままなら None（F-EDIT-11）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<&'static str>,
 }
 
 /// 図に出した package（package そのものを expose したもの）。枠として描き、中の要素を枠の中に示す（F-VIEW-9）。
