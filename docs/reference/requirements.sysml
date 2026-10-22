@@ -279,6 +279,18 @@ package ModelithRequirements {
             doc /* 「ファイル」メニューの「エクスポート…」で、ファイル名と形式（draw.io）を選び、表示中の図を draw.io で開ける .drawio のファイルとしてダウンロードできる。
                    ファイル名の決め方と、開いているファイルが無いときの扱いは F-EXP-1 と同じ */
         }
+        requirement def <'F-EXP-3'> RasterExportReq {
+            doc /* 「エクスポート…」で形式に PNG 画像・JPEG 画像を選ぶと、表示中の図を、倍率（1 倍・2 倍・3 倍）を選んで画像のファイルとしてダウンロードできる。
+                   ブラウザが扱える画像の大きさを超えるときは、倍率を下げて書き出し、そのことを知らせる。ファイル名の決め方と、開いているファイルが無いときの扱いは F-EXP-1 と同じ */
+        }
+        requirement def <'F-EXP-4'> ExportRangeReq {
+            doc /* 画像の形式（SVG・PNG・JPEG）では、範囲（図の全体・選んだ要素）と背景（白・透明。JPEG は白だけ）を選べる。
+                   選んだ要素の範囲は、選んだ要素とその中の要素、それらの間の線だけを描く。要素を選んでいないときと、シーケンス図では、図の全体だけを選べる */
+        }
+        requirement def <'F-EXP-5'> ImageCopyReq {
+            doc /* 「エクスポート…」の「画像をコピー」で、選んだ範囲・倍率・背景の図を PNG 画像としてクリップボードに入れ、ほかのアプリに貼り付けられる。
+                   ブラウザがコピーを許さないときは、そのことと、代わりにファイルとしてエクスポートできることを知らせる */
+        }
 
         // ---- プラグイン（ADR-0004・ADR-0018） -------------------------
         requirement def <'F-PLUG-1'> RuleCheckReq {
@@ -472,6 +484,9 @@ package ModelithRequirements {
         #derivation dependency from DocumentLinkReq to TraceNeed;
         #derivation dependency from LinkCheckReq to TraceNeed;
         #derivation dependency from DrawioExportReq to ExportNeed;
+        #derivation dependency from RasterExportReq to ExportNeed;
+        #derivation dependency from ExportRangeReq to ExportNeed;
+        #derivation dependency from ImageCopyReq to ExportNeed;
         #derivation dependency from ResponsiveReq to EditBothWaysNeed;
         #derivation dependency from NarrowScreenReq to AnywhereNeed;
         #derivation dependency from LookReq to AnywhereNeed;
@@ -627,6 +642,9 @@ package ModelithRequirements {
         satisfy DocumentLinkReq by DiagramUI;
         satisfy LinkCheckReq by RuleEngine;
         satisfy DrawioExportReq by Exporter;
+        satisfy RasterExportReq by Exporter;
+        satisfy ExportRangeReq by Exporter;
+        satisfy ImageCopyReq by Exporter;
         satisfy ResponsiveReq by Core;
         satisfy NarrowScreenReq by AppShell;
         satisfy LookReq by AppShell;
