@@ -122,6 +122,8 @@ export interface AppState {
   pluginDiagnostics: { plugin: string; version: number; items: PlacedDiagnostic[]; dropped: number }[];
   /** フォルダのほかのファイルの問題（ADR-0021 §6。フォルダを開いていなければ空）。 */
   fileProblems: FileProblems[];
+  /** 表示中のファイルの名前（フォルダの中ならフォルダからのパス。問題をコピーするときに使う。F-EDIT-13）。 */
+  docPath: string;
 }
 
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
@@ -181,6 +183,7 @@ export const S: AppState = {
   pluginNames: new Map(),
   pluginDiagnostics: [],
   fileProblems: [],
+  docPath: "",
 };
 
 /** 選択と一時的な操作状態をすべて外す。 */

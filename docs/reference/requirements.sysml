@@ -1201,6 +1201,13 @@ package ModelithRequirements {
                 verify MultiFileModelReq;
             }
         }
+        verification def ProblemCopyTest {
+            doc /* web/src/app/problem-copy.test.ts：「ファイル名:行: メッセージ」の形（行の無い問題・ファイルに属さない行・メッセージの中の改行）、1 行に 1 件のつなぎ方と空の一覧、件数の知らせ。
+                   web/e2e/problem-copy.spec.ts：行の右クリックでその行を、行を選んで Ctrl＋C でその行（ほかのファイルの行はそのファイル名）を、「すべてコピー」で表示中のファイルとほかのファイルの問題をコピーすること */
+            objective {
+                verify ProblemCopyReq;
+            }
+        }
         verification def ProjectProblemsTest {
             doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
                    crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印。
