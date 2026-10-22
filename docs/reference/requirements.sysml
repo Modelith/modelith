@@ -90,7 +90,8 @@ package ModelithRequirements {
         }
         requirement def <'F-EDIT-12'> EditDetailsReq {
             doc /* テキストを書かずに、インスペクタで要素の説明（要求なら要求の文章。テキストの doc）を書き換え・足し・消すことができる。
-                   文が 2 行以上でも、行の区切りを保ってテキストに書く（ADR-0001） */
+                   文が 2 行以上でも、行の区切りを保ってテキストに書く。定義の属性（名前・型・値）も、足す・書き換える・消すことができ、
+                   書き換えても constant などの修飾と値の書き方（:=・default）は保つ（ADR-0001） */
         }
         requirement def <'F-EDIT-4'> UndoReq {
             doc /* 元に戻す・やり直すができる。履歴はファイルごとに持ち、200 段階まで */
@@ -845,7 +846,7 @@ package ModelithRequirements {
             }
         }
         verification def EditingE2E {
-            doc /* web/e2e/editing.spec.ts：図からの追加と削除・要求をつなぐ関係の追加（要求 → 検証・検証 → 要求の «verify»、要求 → 部品の «satisfy»、要求どうしの導出の逆向き）・名前変更（日本語の名前は引用名で書く・「'」は断る）・説明（要求の文章）の書き換え・足す・消す・やめる・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・要求をつなぐ関係の追加（要求 → 検証・検証 → 要求の «verify»、要求 → 部品の «satisfy»、要求どうしの導出の逆向き）・名前変更（日本語の名前は引用名で書く・「'」は断る）・説明（要求の文章）の書き換え・足す・消す・やめる・属性の追加・値の書き換え・削除・「;」を含む値を断る・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
             objective {
                 verify EditDetailsReq;
                 verify DiagramToTextReq;
