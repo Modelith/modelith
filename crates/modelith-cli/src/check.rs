@@ -69,16 +69,27 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
     }
     let files =
         model_files(folder).map_err(|e| format!("フォルダの内容を読み込めません（{e}）"))?;
+    // フォルダのすべてのファイルを 1 つのモデルとし、ファイルごとにその要素を検査する（ADR-0021）
+    let mut texts: Vec<(String, String)> = Vec::new();
     for file in &files {
         let path = relative(folder, file);
         match read_text(file) {
-            Ok(text) => entries.extend(
-                rules::check_text(&text, &plugins)
-                    .iter()
-                    .map(|l| report::from_finding(&path, l)),
-            ),
+            Ok(text) => texts.push((path, text)),
             Err(e) => entries.push(unreadable_model(&path, &e)),
         }
+    }
+    for (k, (path, text)) in texts.iter().enumerate() {
+        let others: Vec<&str> = texts
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != k)
+            .map(|(_, (_, t))| t.as_str())
+            .collect();
+        entries.extend(
+            rules::check_text(text, &others, &plugins)
+                .iter()
+                .map(|l| report::from_finding(path, l)),
+        );
     }
     Ok(report::render(entries, files.len()))
 }
