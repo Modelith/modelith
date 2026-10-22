@@ -12,6 +12,7 @@ import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { droppedDiagnosticsNote, MAX_DIAGNOSTICS } from "../plugins/limits";
 import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
+import type { CopyRow } from "./problem-copy";
 import type { FileProblems } from "./project-problems";
 import { highlight, render } from "./render";
 import { S } from "./state";
@@ -375,12 +376,40 @@ export function updateSync(): void {
   $("#textInfo").textContent = `SysML v2 テキスト：要素 ${n}、関係 ${e}`;
 }
 
+/** 問題一覧の 1 行（画面の HTML と、コピーする内容）。own は表示中のファイルの行（ファイル名はコピーするときに決める）。 */
+interface ProblemRow {
+  html: (copy: number) => string;
+  own: boolean;
+  path: string | null;
+  line: number | null;
+  text: string;
+}
+
+/** 今の問題一覧の、コピーできる行（一覧に出す上限を超えた分も含む。F-EDIT-13）。 */
+let rows: ProblemRow[] = [];
+
+/**
+ * 問題一覧の行を、コピーする内容にする（F-EDIT-13）。表示中のファイルの行には、今のファイル名を付ける。
+ *
+ * @param which 行の番号（無ければすべて）
+ * @returns コピーする行（一覧の順。番号が範囲の外なら空）
+ * @example
+ * // 表示中の app.sysml の 3 行目に問題が 1 件
+ * problemCopyRows()  // → [{ path: "app.sysml", line: 3, text: "…" }]
+ * problemCopyRows(5) // → []（番号が範囲の外）
+ */
+export function problemCopyRows(which?: number): CopyRow[] {
+  const picked = which === undefined ? rows : rows.slice(which, which + 1);
+  return picked.map((r) => ({ path: r.own ? S.docPath : r.path, line: r.line, text: r.text }));
+}
+
 /**
  * 問題（構文エラー・参照切れ・チェックルールの結果・v1 のプラグインの診断・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
  * エラー → チェックルールの結果 → プラグインの診断（件数の上限を超えて捨てた分があれば、その知らせを先に）→ プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
  * テキストの中の位置があるもの（モデルの問題・チェックルールの結果・プラグインの診断）は行番号を付け、押すとその行に移る。
  * トレースの抜けの行には何件目の抜けか（data-gap）を付け、図が見えていれば図の要素へ移れるようにする。
  * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
+ * 一覧の上に「すべてコピー」を、各行にコピーする行の番号（data-copy）を付ける（F-EDIT-13）。
  */
 export function renderProblems(): void {
   // エラー → まだ扱えない構文 → トレースの抜け、の順に並べる
@@ -389,17 +418,26 @@ export function renderProblems(): void {
   const mark = { gap: "△", unsupported: "ℹ" } as const;
   // トレースの抜けの行には、何件目の抜けか（data-gap）を付ける。押したときに図の要素へ移るため（F-TRACE-2）
   const gapIndex = new Map(S.M.problems.filter((p) => p.kind === "gap").map((p, i) => [p, i]));
-  const model = (p: Problem): string =>
-    `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`;
-  const rule = (f: RuleFinding): string =>
-    `<button data-pos="${f.pos}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(findingText(f, S.pluginNames))}</button>`;
-  const notes = S.pluginNotes.map((n) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""}>⚠ ${esc(n.msg)}</button>`);
-  const diagnostic = ({ plugin, item }: { plugin: string; item: PlacedDiagnostic }): string =>
-    `<button data-pos="${item.pos}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${lineOf(S.text, item.pos)} 行目：${esc(diagnosticText(item, S.pluginNames.get(plugin) ?? plugin))}</button>`;
+  const own = (pos: number, text: string, html: (copy: number) => string): ProblemRow => ({ html, own: true, path: null, line: lineOf(S.text, pos), text });
+  const note = (text: string, html: (copy: number) => string): ProblemRow => ({ html, own: false, path: null, line: null, text });
+  const model = (p: Problem): ProblemRow =>
+    own(p.pos, p.msg, (c) => `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} data-copy="${c}" class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`);
+  const rule = (f: RuleFinding): ProblemRow => {
+    const text = findingText(f, S.pluginNames);
+    return own(f.pos, text, (c) => `<button data-pos="${f.pos}" data-copy="${c}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(text)}</button>`);
+  };
+  const notes = S.pluginNotes.map((n) => note(n.msg, (c) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""} data-copy="${c}">⚠ ${esc(n.msg)}</button>`));
+  const diagnostic = ({ plugin, item }: { plugin: string; item: PlacedDiagnostic }): ProblemRow => {
+    const text = diagnosticText(item, S.pluginNames.get(plugin) ?? plugin);
+    return own(item.pos, text, (c) => `<button data-pos="${item.pos}" data-copy="${c}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${lineOf(S.text, item.pos)} 行目：${esc(text)}</button>`);
+  };
   const dropped = S.pluginDiagnostics
     .filter((d) => d.version === applied && d.dropped > 0)
-    .map((d) => `<button class="plugin">⚠ ${esc(droppedDiagnosticsNote(S.pluginNames.get(d.plugin) ?? d.plugin, d.dropped, MAX_DIAGNOSTICS))}</button>`);
-  const items = [
+    .map((d) => {
+      const text = droppedDiagnosticsNote(S.pluginNames.get(d.plugin) ?? d.plugin, d.dropped, MAX_DIAGNOSTICS);
+      return note(text, (c) => `<button class="plugin" data-copy="${c}">⚠ ${esc(text)}</button>`);
+    });
+  const mine = [
     ...sorted.filter((p) => !p.kind).map(model),
     ...S.findings.map(rule),
     ...dropped,
@@ -407,7 +445,26 @@ export function renderProblems(): void {
     ...notes,
     ...sorted.filter((p) => p.kind).map(model),
   ];
-  $("#problems").innerHTML = items.slice(0, 40).join("") + S.fileProblems.map(otherFileHtml).join("");
+  const others = S.fileProblems.map((f) => f.rows.map((r): ProblemRow => ({
+    html: (c) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" data-copy="${c}" class="${r.cls}">${r.mark} ${r.line} 行目：${esc(r.text)}</button>`,
+    own: false,
+    path: f.path,
+    line: r.line,
+    text: r.text,
+  })));
+  rows = [...mine, ...others.flat()];
+  if (!rows.length) {
+    $("#problems").innerHTML = "";
+    return;
+  }
+  const head = `<div class="phead"><span>問題 ${rows.length} 件</span><button type="button" class="pcopy" data-copy-all title="一覧のすべての問題を「ファイル名:行: メッセージ」の形でコピーする">すべてコピー</button></div>`;
+  let at = mine.length;
+  const files = S.fileProblems.map((f, i) => {
+    const html = otherFileHtml(f, (others[i] ?? []).map((r, j) => r.html(at + j)));
+    at += f.rows.length;
+    return html;
+  });
+  $("#problems").innerHTML = head + mine.slice(0, 40).map((r, i) => r.html(i)).join("") + files.join("");
 }
 
 /** 問題一覧に出す、ほかのファイル 1 つの行の上限（多いファイルで一覧が埋まらないように）。 */
@@ -418,17 +475,17 @@ const MAX_FILE_ROWS = 20;
  * 行には data-path と data-at（そのファイルの中の位置）を付け、押すとそのファイルを開いてその行へ移る。問題の無いファイルは出さない。
  *
  * @param f ほかのファイルの問題
+ * @param rowsHtml 行の HTML（f.rows の順）
  * @returns まとまりの HTML。行が無ければ ""
  * @example
- * otherFileHtml({ path: "parts.sysml", status: { errors: 1, warnings: 0 }, rows: [{ pos: 33, line: 2, cls: "", mark: "⚠", text: "…" }] })
- * // → '<div class="pfile">parts.sysml<small>エラー 1・警告 0</small></div><button data-path="parts.sysml" data-at="33" class="">⚠ 2 行目：…</button>'
+ * otherFileHtml({ path: "parts.sysml", status: { errors: 1, warnings: 0 }, rows: [r] }, ['<button data-path="parts.sysml" …>⚠ 2 行目：…</button>'])
+ * // → '<div class="pfile">parts.sysml<small>エラー 1・警告 0</small></div><button data-path="parts.sysml" …>⚠ 2 行目：…</button>'
  */
-function otherFileHtml(f: FileProblems): string {
+function otherFileHtml(f: FileProblems, rowsHtml: readonly string[]): string {
   if (!f.rows.length) return "";
   const head = `<div class="pfile">${esc(f.path)}<small>エラー ${f.status.errors}・警告 ${f.status.warnings}</small></div>`;
-  const rows = f.rows.slice(0, MAX_FILE_ROWS).map((r) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" class="${r.cls}">${r.mark} ${r.line} 行目：${esc(r.text)}</button>`);
   const more = f.rows.length > MAX_FILE_ROWS ? [`<div class="pfile-more">ほか ${f.rows.length - MAX_FILE_ROWS} 件</div>`] : [];
-  return head + rows.join("") + more.join("");
+  return head + rowsHtml.slice(0, MAX_FILE_ROWS).join("") + more.join("");
 }
 
 /**

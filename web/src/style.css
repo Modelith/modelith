@@ -393,3 +393,6 @@ main[data-nodoc] .toast{z-index:30}
 .gapguide p{margin:0;font-size:13px;line-height:1.5}
 .gapguide .gapfix{font-size:12px;color:var(--ink2)}
 .gapguide .acts{margin-top:4px}
+.problems .phead{display:flex;align-items:center;gap:8px;padding:3px 8px 3px 12px;border-bottom:1px solid var(--rule);background:var(--panel2);color:var(--ink2);position:sticky;top:0}
+.problems .phead span{flex:1}
+.problems .phead button.pcopy{display:inline-block;width:auto;border:1px solid var(--rule);border-radius:6px;padding:2px 8px;color:var(--ink);background:var(--panel)}

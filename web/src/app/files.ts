@@ -627,7 +627,8 @@ function renderFiles(): void {
     h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">このブラウザではフォルダを開けません（Chrome・Edge で使えます）。「ファイルを開く」で読み込み、保存はダウンロードになります。図の配置ファイル（.layout.json）は、モデルと一緒に選ぶと読み込みます。</div>`;
   }
   $("#explorer").innerHTML = h;
-  // テキスト欄の見出しとタブの題名
+  // テキスト欄の見出しとタブの題名、問題をコピーするときのファイル名（F-EDIT-13）
+  S.docPath = active ? (ws.folderPath(active.key) ?? active.name) : "";
   if (active) {
     $("#docName").innerHTML = esc(active.name) + staleMark(active) + (ws.isDirty(active) ? " ●" : "") + layoutMark(active);
     document.title = `${ws.isDirty(active) ? "● " : ""}${active.name} — Modelith`;

@@ -1,11 +1,12 @@
-// テキストエディタ（入力の反映・カーソル位置と図の選択の同期・問題一覧）。
+// テキストエディタ（入力の反映・カーソル位置と図の選択の同期・問題一覧と、そのコピー）。
 
 import { $, closest } from "./dom";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { centerOn, highlight, render, scrollEditorTo, syncScroll } from "./render";
 import { cancelConnect, S } from "./state";
-import { reparse, notifyTextChange, setSync, toast } from "./sync";
+import { problemCopyRows, reparse, notifyTextChange, setSync, toast } from "./sync";
+import { copiedText, problemsText } from "./problem-copy";
 import { diagramName } from "./labels";
 import { goToGap } from "./gap-guide";
 import { isNarrow } from "./panels";
@@ -21,6 +22,24 @@ export function flushEdit(): void {
   timer = undefined;
   reparse(true);
   notifyTextChange();
+}
+
+/**
+ * 問題一覧の行をクリップボードに入れ、件数を知らせる（F-EDIT-13）。ブラウザが許さなければ、そのことを知らせる。
+ *
+ * @param which コピーする行の番号（無ければすべて）
+ */
+async function copyProblems(which?: number): Promise<void> {
+  const rows = problemCopyRows(which);
+  if (!rows.length) return;
+  try {
+    await navigator.clipboard.writeText(problemsText(rows));
+  } catch (e) {
+    console.error(e);
+    toast("コピーできませんでした。ブラウザがクリップボードへの書き込みを許していません");
+    return;
+  }
+  toast(copiedText(rows.length));
 }
 
 /** カーソル位置を含む要素を図で選択する。 */
@@ -71,6 +90,22 @@ export function initEditor(): void {
   ed.addEventListener("click", caretToNode);
   ed.addEventListener("keyup", (ev) => {
     if (/Arrow|Page|Home|End/.test(ev.key)) caretToNode();
+  });
+  // 問題のコピー：「すべてコピー」、行の右クリック、行を選んで Ctrl＋C（F-EDIT-13）
+  $("#problems").addEventListener("click", (ev) => {
+    if (closest(ev, "[data-copy-all]")) void copyProblems();
+  });
+  $("#problems").addEventListener("contextmenu", (ev) => {
+    const b = closest(ev, "[data-copy]");
+    if (!b) return;
+    ev.preventDefault();
+    void copyProblems(Number(b.dataset["copy"]));
+  });
+  $("#problems").addEventListener("keydown", (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-copy]");
+    if (!b || ev.key.toLowerCase() !== "c" || !(ev.ctrlKey || ev.metaKey)) return;
+    ev.preventDefault();
+    void copyProblems(Number(b.dataset["copy"]));
   });
   $("#problems").addEventListener("click", (ev) => {
     const b = closest(ev, "button");
