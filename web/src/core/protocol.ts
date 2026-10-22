@@ -8,6 +8,7 @@ export type CoreRequest =
   | { type: "init"; wasmUrl: string }
   | { type: "didChange"; version: number; text: string; path?: string | null }
   | { type: "projectFiles"; id: number; clear: boolean; set: ProjectFileText[]; remove: string[] }
+  | { type: "projectProblems"; version: number; id: number }
   | { type: "edit"; version: number; id: number; intent: Intent }
   | { type: "parseProject"; id: number; text: string }
   | { type: "createProject"; id: number; name: string }
@@ -37,7 +38,8 @@ export type CoreResponse =
   | ({ type: "pluginDescribed"; id: number; json: string } & Failure)
   | ({ type: "snapshotMade"; version: number; id: number; json: string } & Failure)
   | ({ type: "pluginMessageChecked"; version: number; id: number; json: string } & Failure)
-  | ({ type: "projectFilesSet"; id: number; json: string } & Failure);
+  | ({ type: "projectFilesSet"; id: number; json: string } & Failure)
+  | ({ type: "problemsCounted"; version: number; id: number; json: string } & Failure);
 
 /** プロジェクトのほかのファイル 1 つ（フォルダからのパスとテキスト。ADR-0021）。 */
 export interface ProjectFileText {
@@ -63,6 +65,8 @@ export interface LoadedRules {
   summary(): string;
   /** テキストを解析し、使うプラグインのルールを当てた `{ parse, model, findings }` の JSON。 */
   analyze(text: string): string;
+  /** 覚えたほかのファイルごとの問題に、使うプラグインのルールの結果を添えた JSON（ADR-0021 §6）。 */
+  projectProblems(text: string): string;
   /** wasm の中のメモリを返す。 */
   free(): void;
 }
@@ -89,6 +93,8 @@ export interface CoreFns {
   clearProjectFiles: () => void;
   /** 表示中のファイルのパスを決める（wasm の `setFocusFile`。フォルダの外のファイルなら undefined）。 */
   setFocusFile: (path?: string) => void;
+  /** 覚えたほかのファイルごとの問題の JSON（wasm の `projectProblems`。ADR-0021 §6）。 */
+  projectProblems: (text: string) => string;
 }
 
 /** コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）。 */
@@ -104,7 +110,7 @@ export interface CoreState {
  * `projectFiles` ならコアが覚えるプロジェクトのファイル（ADR-0021）を書き換える。
  *
  * @param state コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）
- * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`・`projectFiles`）
+ * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`・`projectFiles`・`projectProblems`）
  * @param fns コアの中身（wasm の関数。テストでは差し替える）
  * @returns 依頼への返事（`analyzed`・`edited` は依頼と同じ版、ほかは同じ id）。fns が例外を投げればそのまま投げる
  * @example
@@ -120,6 +126,8 @@ export interface CoreState {
  * // → { type: "pluginMessageChecked", version: 1, id: 10, json: fns.checkPluginMessage(state.text, '{"type":"ready"}', "[]") }
  * handle(state, { type: "projectFiles", id: 11, clear: false, set: [{ path: "b.sysml", text: "package B;" }], remove: [] }, fns)
  * // → { type: "projectFilesSet", id: 11, json: "{}" }（コアが b.sysml を覚える）
+ * handle(state, { type: "projectProblems", version: 1, id: 12 }, fns)
+ * // → { type: "problemsCounted", version: 1, id: 12, json: fns.projectProblems(state.text) }（プラグインがあれば state.plugins.projectProblems）
  */
 export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init" }>, fns: CoreFns): CoreResponse {
   switch (req.type) {
@@ -148,6 +156,8 @@ export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init
       for (const path of req.remove) fns.removeProjectFile(path);
       for (const f of req.set) fns.setProjectFile(f.path, f.text);
       return { type: "projectFilesSet", id: req.id, json: "{}" };
+    case "projectProblems":
+      return { type: "problemsCounted", version: req.version, id: req.id, json: state.plugins ? state.plugins.projectProblems(state.text) : fns.projectProblems(state.text) };
   }
 }
 
@@ -223,6 +233,8 @@ function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: s
       return { type: "pluginMessageChecked", version: req.version, id: req.id, json: JSON.stringify({ refused: `メッセージを確かめられませんでした（${message}）` }) };
     case "projectFiles":
       return { type: "projectFilesSet", id: req.id, json: JSON.stringify({ error: message }) };
+    case "projectProblems":
+      return { type: "problemsCounted", version: req.version, id: req.id, json: "[]" };
   }
 }
 

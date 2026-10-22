@@ -255,6 +255,11 @@ package ModelithRequirements {
                    ほかのファイルに書いた図・関係・問題は、表示中のファイルの図と問題に混ぜない。
                    ほかのファイルの要素を図から書き換えようとしたら、書き換えずに、どのファイルにあるかを知らせ、そのファイルを開けるようにする */
         }
+        requirement def <'F-FILE-16'> ProjectProblemsReq {
+            doc /* フォルダを開いているときは、問題一覧に、表示中のファイルの問題に続けて、フォルダの中のほかのファイルの問題をファイルごとに並べる（ADR-0021 §6）。
+                   ほかのファイルの問題も、そのファイルを中心にしたモデル（ほかのファイルとつないだもの）で数える。行を押すと、そのファイルを開いて該当の行へ移る。
+                   ファイルの一覧で、エラーのあるファイルの名前を赤く、警告だけのファイルの名前を黄色くし、件数を添える。エラーのあるファイルを中に持つフォルダにも印を付ける */
+        }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
         }
@@ -443,6 +448,7 @@ package ModelithRequirements {
         #derivation dependency from ResumeSessionReq to FilesNeed;
         #derivation dependency from NoOpenFileReq to FilesNeed;
         #derivation dependency from MultiFileModelReq to FilesNeed;
+        #derivation dependency from ProjectProblemsReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -595,6 +601,8 @@ package ModelithRequirements {
         satisfy NoOpenFileReq by Workspace;
         satisfy MultiFileModelReq by Core;
         satisfy MultiFileModelReq by Workspace;
+        satisfy ProjectProblemsReq by Core;
+        satisfy ProjectProblemsReq by AppShell;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
@@ -1146,6 +1154,16 @@ package ModelithRequirements {
                    ほかのファイルの編集が表示に戻ったときの図に入ること（ADR-0021） */
             objective {
                 verify MultiFileModelReq;
+            }
+        }
+        verification def ProjectProblemsTest {
+            doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
+                   crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印。
+                   web/src/core/client.test.ts：表示中のファイルの今のテキストをつないで数えること、数える間にテキストが変わったら捨てること。
+                   web/e2e/project-problems.spec.ts：ほかのファイルの問題をファイルごとに出し、ファイルの一覧でそのファイルとフォルダを赤くして件数を添えること、行を押すとそのファイルのその行へ移ること、
+                   表示中のファイルで直すとほかのファイルの問題も消えること（ADR-0021 §6） */
+            objective {
+                verify ProjectProblemsReq;
             }
         }
         verification def CliCheckTest {

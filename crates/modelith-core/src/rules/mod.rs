@@ -39,7 +39,7 @@ mod load;
 #[cfg(test)]
 mod tests;
 
-pub use check::{check, check_text};
+pub use check::{FileReport, check, check_files, check_text};
 pub use load::{describe_manifest, load_plugin, load_plugin_files};
 pub use modelith_plugin_protocol::{
     Command, DiagnosticSeverity, Exporter, Importer, Permission, Runtime,

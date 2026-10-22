@@ -293,6 +293,50 @@ pub fn set_focus_file(path: Option<String>) {
     FOCUS.with(|f| *f.borrow_mut() = path);
 }
 
+/// 表示中のファイルの今のテキストをつないで、覚えたほかのファイルごとの問題とチェックルールの結果を JSON で返す（ADR-0021 §6）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト
+///
+/// # 戻り値
+///
+/// `[{ "path", "problems": [{ pos, msg, kind? }], "findings": [...] }]`（パスの順。位置はそのファイルの UTF-16）。
+///
+/// # 例
+///
+/// ```text
+/// projectProblems("package App;") → r#"[{"path":"parts.sysml","problems":[{"pos":33,"msg":"型「Wheel」が見つかりません（w）"}],"findings":[]}]"#
+/// ```
+#[wasm_bindgen(js_name = projectProblems)]
+pub fn project_problems(text: &str) -> String {
+    project_problems_json(text, &[])
+}
+
+/// `projectProblems` の本体。覚えたファイルと表示中のファイルのパスを読み、ファイルごとに数える。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト
+/// - `plugins`：当てるプラグイン
+///
+/// # 戻り値
+///
+/// ファイルごとの問題と結果の JSON（`project_problems` と同じ形）。覚えたファイルが無ければ `[]`。
+///
+/// # 例
+///
+/// ```text
+/// project_problems_json("package App;", &[]) → "[]"   // 覚えたファイルが無い
+/// ```
+fn project_problems_json(text: &str, plugins: &[LoadedPlugin]) -> String {
+    let focus = FOCUS.with(|f| f.borrow().clone());
+    let now = modelith_core::project::merge::parse_file(text);
+    let open = focus.as_deref().zip(now.as_ref());
+    let reports = FILES.with(|f| rules::check_files(&f.borrow(), open, plugins));
+    serde_json::to_string(&reports).unwrap_or_else(|_| "[]".to_owned())
+}
+
 /// 表示中のファイルを除いた、覚えたほかのファイルのパスと解析結果（`Files::others`）。
 ///
 /// # 戻り値
@@ -373,6 +417,26 @@ impl RulePlugins {
     /// ```
     pub fn analyze(&self, text: &str) -> String {
         analysis_json(text, &self.set.active)
+    }
+
+    /// 覚えたほかのファイルごとの問題に、使う（有効な）プラグインのルールの結果を添えて JSON で返す（`projectProblems` と同じ形。ADR-0021 §6）。
+    ///
+    /// # 引数
+    ///
+    /// - `text`：表示中のファイルの今のテキスト
+    ///
+    /// # 戻り値
+    ///
+    /// `[{ "path", "problems", "findings" }]` の JSON。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// plugins.projectProblems("package App;") → r#"[{"path":"parts.sysml","problems":[],"findings":[{"plugin":"jp.x",…}]}]"#
+    /// ```
+    #[wasm_bindgen(js_name = projectProblems)]
+    pub fn project_problems(&self, text: &str) -> String {
+        project_problems_json(text, &self.set.active)
     }
 }
 
@@ -1077,5 +1141,30 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(v["file"], "parts.sysml");
         assert_eq!(v["refused"], modelith_core::edit::IN_OTHER_FILE);
+    }
+
+    #[test]
+    fn project_problems_are_counted_for_each_remembered_file() {
+        // Arrange（parts.sysml は表示中の app.sysml の Wheel を import している）
+        clear_project_files();
+        set_project_file(
+            "parts.sysml",
+            "package Parts { import App::*; part def Car { part w : Wheel; part x : Nope; } }",
+        );
+        set_focus_file(Some("app.sysml".to_owned()));
+        // Act
+        let json = project_problems("package App { part def Wheel; }");
+        // Assert
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v[0]["path"], "parts.sysml");
+        let msgs: Vec<&str> = v[0]["problems"]
+            .as_array()
+            .expect("problems")
+            .iter()
+            .filter_map(|p| p["msg"].as_str())
+            .collect();
+        assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
+        clear_project_files();
+        set_focus_file(None);
     }
 }

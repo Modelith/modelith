@@ -468,3 +468,57 @@ fn elements_of_other_files_are_not_checked() {
     let names: Vec<&str> = got.iter().map(|l| l.finding.element.as_str()).collect();
     assert_eq!(names, ["A"]);
 }
+
+#[test]
+fn every_other_file_is_checked_as_the_center() {
+    // Arrange（parts.sysml に見つからない型、notes.sysml は問題なし、app.sysml は表示中）
+    let mut files = crate::project::merge::Files::default();
+    files.set(
+        "parts.sysml",
+        "package Parts {\n  part def Car { part w : Wheel; }\n}",
+    );
+    files.set("notes.sysml", "package Notes { part def N; }");
+    files.set("app.sysml", "package Old;");
+    let app = crate::project::merge::parse_file("package App { part def Wheel; }").expect("短い");
+    let plugin = rule("kind: part def", "not: {}");
+    // Act
+    let got = super::super::check_files(&files, Some(("app.sysml", &app)), &[plugin]);
+    // Assert（表示中のファイルは数えない。parts.sysml は表示中の今の中身の Wheel を見つけられない＝import していない）
+    let paths: Vec<&str> = got.iter().map(|r| r.path.as_str()).collect();
+    assert_eq!(paths, ["notes.sysml", "parts.sysml"]);
+    let parts = &got[1];
+    assert_eq!(
+        parts
+            .problems
+            .iter()
+            .map(|p| p.msg.as_str())
+            .collect::<Vec<_>>(),
+        ["型「Wheel」が見つかりません（w）"]
+    );
+    assert_eq!(parts.problems[0].pos, 33); // そのファイルの中の位置（part w の始まり）
+    assert_eq!(
+        parts
+            .findings
+            .iter()
+            .map(|f| f.element.as_str())
+            .collect::<Vec<_>>(),
+        ["Car"]
+    );
+}
+
+#[test]
+fn other_file_sees_the_open_file_as_it_is_now() {
+    // Arrange（表示中のファイルの、保存していない今の中身に Wheel がある）
+    let mut files = crate::project::merge::Files::default();
+    files.set(
+        "parts.sysml",
+        "package Parts { import App::*; part def Car { part w : Wheel; } }",
+    );
+    files.set("app.sysml", "package App;");
+    let app = crate::project::merge::parse_file("package App { part def Wheel; }").expect("短い");
+    // Act
+    let got = super::super::check_files(&files, Some(("app.sysml", &app)), &[]);
+    // Assert
+    assert_eq!(got.len(), 1);
+    assert!(got[0].problems.is_empty(), "{:?}", got[0].problems);
+}

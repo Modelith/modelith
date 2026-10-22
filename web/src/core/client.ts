@@ -4,7 +4,7 @@
 import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type CoreResponse, type ProjectFileText } from "./protocol";
 import type { Permission } from "../plugins/generated/protocol";
 import {
-  fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
+  fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type FileReport, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
   type Refused, type RuleFinding, type VersionedSnapshot,
 } from "./rust";
 import type { Model, ParseResult } from "./types";
@@ -195,6 +195,36 @@ export class CoreClient {
     const pending = this.request((id) => ({ type: "projectFiles", id, clear: change.clear ?? false, set: change.set, remove: change.remove }));
     if (this.sent !== null) this.send(this.sent);
     await pending;
+  }
+
+  /**
+   * コアにプロジェクトのファイルを覚えさせているか（フォルダを開いているか）。
+   *
+   * @returns 1 つでも覚えさせていれば true
+   * @example
+   * c.hasFiles // → false（フォルダを開いていない）
+   */
+  get hasFiles(): boolean {
+    return this.files.size > 0;
+  }
+
+  /**
+   * 覚えさせたほかのファイルごとの問題とチェックルールの結果を、今の版のテキストをつないでコアに数えてもらう（ADR-0021 §6）。
+   *
+   * @returns ファイルごとの問題と、数えたテキストの版。返事が来るまでにテキストが変わった・コアの返事が読めなければ null。例外は投げない
+   * @example
+   * await c.projectProblems() // → { version: 3, reports: [{ path: "parts.sysml", problems: [{ pos: 33, msg: "型「Wheel」が見つかりません（w）" }], findings: [] }] }
+   */
+  async projectProblems(): Promise<{ version: number; reports: FileReport[] } | null> {
+    const version = this.version;
+    const res = await this.requestForText((id) => ({ type: "projectProblems", version, id }));
+    if (res.stale) return null;
+    try {
+      const reports = JSON.parse(res.json) as unknown;
+      return Array.isArray(reports) ? { version, reports: reports as FileReport[] } : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -484,7 +514,7 @@ export class CoreClient {
       const resolve = this.waiting.get(res.id);
       this.waiting.delete(res.id);
       resolve?.(res.version === this.version ? parseEdited(res.json) : { refused: STALE_EDIT });
-    } else if (res.type === "snapshotMade" || res.type === "pluginMessageChecked") {
+    } else if (res.type === "snapshotMade" || res.type === "pluginMessageChecked" || res.type === "problemsCounted") {
       const resolve = this.textWaiting.get(res.id);
       this.textWaiting.delete(res.id);
       resolve?.({ json: res.json, stale: res.version !== this.version });

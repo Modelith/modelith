@@ -409,6 +409,14 @@ export interface CreatedProjectFile {
 /** チェックルールの結果の重さ（plugin-sdk の DiagnosticSeverity）。 */
 export type RuleSeverity = "error" | "warning" | "information" | "hint";
 
+/** プロジェクトのほかのファイル 1 つの問題とチェックルールの結果（ADR-0021 §6）。位置はそのファイルの UTF-16。 */
+export interface FileReport {
+  /** フォルダからのパス。 */
+  path: string;
+  problems: Problem[];
+  findings: RuleFinding[];
+}
+
 /** チェックルールの結果 1 件（ADR-0018 §2）。pos は要素の宣言の始まり（UTF-16）。 */
 export interface RuleFinding {
   /** プラグインの ID。 */
