@@ -1283,3 +1283,191 @@ pub(super) fn set_doc(d: &Doc<'_>, f: &Found, text: &str) -> Result<Change, Refu
         }
     }
 }
+
+// ---- 属性の編集（F-EDIT-12） ----
+
+/// 属性の型と値に書けない文字（文や本体の区切りになるもの）。
+const ATTR_STOP: &[char] = &[';', '{', '}', '\n', '\r'];
+
+/// 属性の宣言の 1 行を作る。名前は必要なら引用名にし、型・値が空ならその部分を書かない。
+///
+/// # 引数
+///
+/// - `head`：名前の前に書く語（`attribute`・`constant attribute` など）
+/// - `name`：属性の名前
+/// - `ty`：型（空なら書かない）
+/// - `op`：値の書き方（`=`・`:=`・`default` など）
+/// - `value`：値（空なら書かない）
+///
+/// # 戻り値
+///
+/// `attribute 名前 : 型 = 値;` の形の 1 行。
+///
+/// # 例
+///
+/// ```text
+/// attribute_line("attribute", "mass", "Real", "=", "1500") → "attribute mass : Real = 1500;"
+/// attribute_line("attribute", "重さ", "", "=", "")         → "attribute '重さ';"
+/// attribute_line("attribute", "t", "Real", ":=", "0")      → "attribute t : Real := 0;"
+/// ```
+fn attribute_line(head: &str, name: &str, ty: &str, op: &str, value: &str) -> String {
+    let ty = if ty.is_empty() {
+        String::new()
+    } else {
+        format!(" : {ty}")
+    };
+    let value = if value.is_empty() {
+        String::new()
+    } else {
+        format!(" {op} {value}")
+    };
+    format!("{head} {}{ty}{value};", sysml_name(name))
+}
+
+/// 属性を足すか、書き換える（インスペクタの「属性」。F-EDIT-12）。`attr` が無ければ足し、あればその名前の属性を書き換える。
+/// 書き換えるときは、`constant` などの修飾と値の書き方（`:=`・`default`）を保つ。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：属性を持つ定義
+/// - `attr`：書き換える属性の今の名前（足すときは None）
+/// - `name`・`ty`・`value`：新しい名前・型・値（前後の空白は除く。型と値は空なら書かない）
+///
+/// # 戻り値
+///
+/// 書いた後のテキストと、光らせる範囲（書いた属性の宣言）。名前が空・使えない文字を含む・同じ名前の属性が既にある・
+/// 書き換える属性が見つからない・属性に本体（`{ … }`）があるときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// set_attribute(Doc("package P { part def A; }"), A, None, "mass", "Real", "1500")
+///   → Ok(text に "attribute mass : Real = 1500;")
+/// set_attribute(Doc("package P { part def A { attribute m : Real := 1; } }"), A, Some("m"), "m", "Real", "2")
+///   → Ok(text = "package P { part def A { attribute m : Real := 2; } }")
+/// set_attribute(Doc("package P { part def A { attribute m; attribute n; } }"), A, Some("m"), "n", "", "")
+///   → Err("「n」という属性は既にあります")
+/// ```
+pub(super) fn set_attribute(
+    d: &Doc<'_>,
+    f: &Found,
+    attr: Option<&str>,
+    name: &str,
+    ty: &str,
+    value: &str,
+) -> Result<Change, Refusal> {
+    let (name, ty, value) = (name.trim(), ty.trim(), value.trim());
+    if name.is_empty() {
+        return Err("属性の名前を入力してください".to_owned());
+    }
+    if name
+        .chars()
+        .any(|c| c == '\'' || c == '\\' || c.is_control())
+    {
+        return Err(super::ops::BAD_RENAME.to_owned());
+    }
+    if ty.contains(ATTR_STOP) || value.contains(ATTR_STOP) || ty.contains('=') {
+        return Err(
+            "型と値には「;」「{」「}」や改行は書けません（型には「=」も書けません）".to_owned(),
+        );
+    }
+    let owner = d.e(f.entry);
+    let attrs: Vec<usize> = owner
+        .children
+        .iter()
+        .copied()
+        .filter(|&c| d.e(c).kind == "attribute")
+        .collect();
+    let current = match attr {
+        Some(a) => Some(
+            attrs
+                .iter()
+                .copied()
+                .find(|&c| d.e(c).name == a)
+                .ok_or_else(|| {
+                    format!("属性「{a}」が見つかりません。テキストが先に変わった可能性があります")
+                })?,
+        ),
+        None => None,
+    };
+    if attrs
+        .iter()
+        .any(|&c| Some(c) != current && d.e(c).name == name)
+    {
+        return Err(format!("「{name}」という属性は既にあります"));
+    }
+    match current {
+        Some(c) => {
+            let e = d.e(c);
+            if e.close.is_some() {
+                return Err("この属性には中身があるため、テキストで直してください".to_owned());
+            }
+            let head = match e.mods.as_deref() {
+                Some(m) if !m.is_empty() => format!("{m} attribute"),
+                _ => "attribute".to_owned(),
+            };
+            let head = match e.dir.as_deref() {
+                Some(dir) if !dir.is_empty() => format!("{dir} {head}"),
+                _ => head,
+            };
+            let op = e.value_op.as_deref().unwrap_or("=");
+            let line = attribute_line(&head, name, ty, op, value);
+            let (s, end) = (d.b(e.start), d.b(e.end));
+            let mut text = d.text.to_owned();
+            text.replace_range(s..end, &line);
+            Ok(Change {
+                text,
+                select: None,
+                flash: Some((s, s + line.len())),
+            })
+        }
+        None => {
+            let line = attribute_line("attribute", name, ty, "=", value);
+            let (text, s, end) = insert_into(d.text, d.target(f.entry), &line);
+            Ok(Change {
+                text,
+                select: None,
+                flash: Some((s, end)),
+            })
+        }
+    }
+}
+
+/// 属性を消す（F-EDIT-12）。行全体を占めるなら行ごと消す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：属性を持つ定義
+/// - `attr`：消す属性の名前
+///
+/// # 戻り値
+///
+/// 消した後のテキストと、光らせる範囲（消した位置の 1 バイト）。属性が見つからないときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// remove_attribute(Doc("package P {\n    part def A {\n        attribute m;\n    }\n}"), A, "m")
+///   → Ok(text = "package P {\n    part def A {\n    }\n}")
+/// remove_attribute(Doc("package P { part def A; }"), A, "m") → Err("属性「m」が見つかりません。…")
+/// ```
+pub(super) fn remove_attribute(d: &Doc<'_>, f: &Found, attr: &str) -> Result<Change, Refusal> {
+    let c = d
+        .e(f.entry)
+        .children
+        .iter()
+        .copied()
+        .find(|&c| d.e(c).kind == "attribute" && d.e(c).name == attr)
+        .ok_or_else(|| {
+            format!("属性「{attr}」が見つかりません。テキストが先に変わった可能性があります")
+        })?;
+    let e = d.e(c);
+    let (text, at) = remove_range(d.text, d.b(e.start), d.b(e.end));
+    Ok(Change {
+        text,
+        select: None,
+        flash: Some((at, at + 1)),
+    })
+}

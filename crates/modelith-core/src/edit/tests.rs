@@ -1397,3 +1397,115 @@ fn set_doc_with_empty_text_removes_the_doc() {
     assert_eq!(same, text);
     assert!(out.edits.is_empty());
 }
+
+// ---- 属性の編集（F-EDIT-12） ----
+
+#[test]
+fn set_attribute_adds_a_new_attribute() {
+    // Arrange（同値分割：型と値あり・日本語の名前で型と値なし・; で終わる定義）
+    let text =
+        "package P {\n    part def A {\n        attribute m : Real;\n    }\n    part def B;\n}\n";
+    // Act
+    let (full, out) = run(
+        text,
+        r#"{"op":"setAttribute","key":"A","name":"mass","type":"Real","value":"1500 [kg]"}"#,
+    );
+    let (bare, _) = run(text, r#"{"op":"setAttribute","key":"B","name":"重さ"}"#);
+    // Assert
+    assert!(
+        full.contains(
+            "        attribute m : Real;\n        attribute mass : Real = 1500 [kg];\n    }"
+        ),
+        "{full}"
+    );
+    assert_eq!(
+        flashed(&full, &out).trim(),
+        "attribute mass : Real = 1500 [kg];"
+    );
+    assert!(
+        bare.contains("    part def B {\n        attribute '重さ';\n    }"),
+        "{bare}"
+    );
+}
+
+#[test]
+fn set_attribute_rewrites_name_type_and_value_keeping_modifiers() {
+    // Arrange（constant と := を保つ。値を空にすると値を書かない）
+    let text = "package P {\n    part def A {\n        constant attribute m : Real := 1;\n        attribute n : Integer = 3;\n    }\n}\n";
+    // Act
+    let (renamed, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"A","attr":"m","name":"mass","type":"Real","value":"2"}"#,
+    );
+    let (cleared, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"A","attr":"n","name":"n","type":"","value":""}"#,
+    );
+    // Assert
+    assert!(
+        renamed.contains(
+            "        constant attribute mass : Real := 2;\n        attribute n : Integer = 3;"
+        ),
+        "{renamed}"
+    );
+    assert!(cleared.contains("        attribute n;\n    }"), "{cleared}");
+}
+
+#[test]
+fn set_attribute_is_refused_for_bad_or_used_names_and_stray_characters() {
+    // 同値分割：空の名前・既にある名前・型や値に ; { } 改行・見つからない属性・本体のある属性
+    let text = "package P { part def A { attribute m; attribute n; attribute b { } } }";
+    assert!(refused(text, r#"{"op":"setAttribute","key":"A","name":" "}"#).contains("名前を入力"));
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","attr":"m","name":"n"}"#
+        )
+        .contains("既にあります")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","name":"x","value":"1; part q"}"#
+        )
+        .contains("書けません")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","name":"x","type":"T = 1"}"#
+        )
+        .contains("書けません")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","attr":"gone","name":"x"}"#
+        )
+        .contains("見つかりません")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","attr":"b","name":"b2"}"#
+        )
+        .contains("テキストで直して")
+    );
+}
+
+#[test]
+fn remove_attribute_removes_the_line() {
+    // Arrange
+    let text = "package P {\n    part def A {\n        attribute m : Real;\n        attribute n;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"removeAttribute","key":"A","attr":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def A {\n        attribute n;\n    }\n}\n"
+    );
+    assert!(
+        refused(text, r#"{"op":"removeAttribute","key":"A","attr":"gone"}"#)
+            .contains("見つかりません")
+    );
+}
