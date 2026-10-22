@@ -37,3 +37,26 @@ describe("withNotes（一般の図のメモ）", () => {
     expect(c).toBe(content);
   });
 });
+
+describe("withNotes（別の言語での表し方、8.2.3.4 の textual-representation-node）", () => {
+  it("図に出した要素の rep を «rep» のメモとして足し、持ち主へ線を引く（正常系）", () => {
+    // Arrange
+    const M = build(parse('package P { part def A { rep inOCL language "OCL" /* self.m > 0 */ } part def B; }'));
+    const shown = { nodes: M.nodes, edges: [] };
+    // Act
+    const c = withNotes([], shown);
+    // Assert
+    const rep = c.nodes.find((n) => n.key === "rep:A#1");
+    expect(rep?.kind).toBe("rep");
+    expect([rep?.name, rep?.entry.type, rep?.entry.body]).toEqual(["inOCL", "OCL", "self.m > 0"]);
+    expect(c.edges.map((e) => e.id)).toEqual(["annotate|rep:A#1|A"]);
+  });
+
+  it("rep の無い要素だけなら、内容をそのまま返す（境界値）", () => {
+    // Arrange
+    const M = build(parse("package P { part def B; }"));
+    const shown = { nodes: M.nodes, edges: [] };
+    // Act / Assert
+    expect(withNotes([], shown)).toBe(shown);
+  });
+});
