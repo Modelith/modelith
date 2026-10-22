@@ -1,0 +1,716 @@
+// UI テスト（見た目の回帰）。画面を撮って基準画像（visual.spec.ts-snapshots/）と比べる。
+// 差があれば HTML レポートに「基準・今回・差分」の 3 枚が並ぶ。意図した変更なら基準を更新する（docs/development/testing.md）。
+import { editorText, expect, needPermission, nodeKeys, openApp, openReadOnlyText, pickDirNext, putBrowserPlugin, putFiles, replaceText, test, typeAtEnd, wordCenter } from "./fixtures";
+import type { Locator, Page } from "@playwright/test";
+
+// 画素はフォントや描画の設定で変わるので、基準のブラウザ（scripts/e2e.sh が Docker で起動する）でだけ比べる
+test.skip(!process.env.PW_REFERENCE_WS, "UI テストは基準のブラウザでだけ比べる（scripts/e2e.sh）");
+
+/** 画面が落ち着くまで待つ（トーストが消え、フォントが読み込まれる）。 */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(() => document.fonts.ready);
+  await expect(page.locator("#toast")).not.toHaveClass(/on/);
+}
+
+async function openView(page: Page, view: string): Promise<void> {
+  await page.locator(".tabadd summary").click();
+  await page.locator(`[data-open="${view}"]`).click();
+  await settle(page);
+}
+
+test.describe("UI: 図", () => {
+  const views: [string, string][] = [
+    ["trace", "トレーサビリティ"],
+    ["structure", "ブロック定義図"],
+    ["control", "制御ループ"],
+    ["ibd", "内部ブロック図"],
+    ["behavior", "振る舞い"],
+    ["seq", "シーケンス図"],
+    ["afv", "アクティビティ図"],
+    ["all", "すべて"],
+  ];
+  for (const [view, label] of views) {
+    test(`F-VIEW-1: 「${label}」の見た目`, async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await openView(page, view);
+      // Assert
+      await expect(page.locator("#wrap")).toHaveScreenshot(`view-${view}.png`);
+    });
+  }
+});
+
+test.describe("UI: 画面全体", () => {
+  test("Q-2: 起動直後の画面（明るい配色）", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await settle(page);
+    // Assert
+    await expect(page).toHaveScreenshot("app-light.png");
+  });
+
+  test.describe("暗い配色", () => {
+    test.use({ colorScheme: "dark" });
+    test("Q-2: 起動直後の画面（暗い配色）", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("app-dark.png");
+    });
+  });
+
+  test.describe("狭い画面", () => {
+    test.use({ viewport: { width: 390, height: 800 } });
+    test("Q-2: 幅 390px の画面", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("app-narrow.png");
+    });
+
+    test("F-FILE-14・Q-2: 幅 390px の画面で、開いているファイルが無いとき", async ({ page }) => {
+      // Arrange（狭い画面では、エクスプローラーはツリーのタブにある）
+      await openApp(page);
+      await page.locator("#tabTree").click();
+      await page.locator("#explorer [data-close]").click();
+      await page.locator('#dialogButtons [data-id="discard"]').click();
+      // Act
+      await page.locator("#tabDiagram").click();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("no-open-files-narrow.png");
+    });
+
+    test("F-FILE-13・Q-2: 幅 390px の画面で、フォルダの許可が要るときの「前回の続きを開く」", async ({ page }) => {
+      // Arrange（狭い画面では、エクスプローラーはツリーのタブにある）
+      await openApp(page);
+      await putFiles(page, { "a.sysml": "package A;\n" });
+      await page.locator("#tabTree").click();
+      await page.locator('[data-cmd="openFolder"]').click();
+      await page.locator('#explorer [data-file][title="a.sysml"]').click();
+      await needPermission(page);
+      // Act
+      await page.reload();
+      await expect(page.locator("#noDoc")).toBeVisible();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("resume-narrow.png");
+    });
+
+    test("F-VIEW-7・Q-2: 幅 390px の画面の状態遷移図", async ({ page }) => {
+      // Arrange（狭い画面では、テキストと図はタブで切り替え、テキストは「編集」を押してから書き換える）
+      await openApp(page);
+      await page.locator("#tabText").click();
+      await page.locator("#btnEditText").click();
+      await page.locator("#ed").fill(LAMP_STATES);
+      await page.waitForTimeout(400);
+      await page.locator("#tabDiagram").click();
+      // Act
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="lampStates"]').click();
+      await expect(page.locator('#canvas [data-key="s:off"]')).toBeVisible();
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("state-transition-narrow.png");
+    });
+
+    test("F-VIEW-10・Q-2: 幅 390px の画面のシーケンス図", async ({ page }) => {
+      // Arrange（狭い画面では、テキストと図はタブで切り替え、テキストは「編集」を押してから書き換える）
+      await openApp(page);
+      await page.locator("#tabText").click();
+      await page.locator("#btnEditText").click();
+      await page.locator("#ed").fill(BOIL_SEQUENCE);
+      await page.waitForTimeout(400);
+      await page.locator("#tabDiagram").click();
+      // Act
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="boilSequence"]').click();
+      await expect(page.locator('#canvas .event[data-key="e:heater.off"]')).toBeAttached();
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("sequence-narrow.png");
+    });
+
+    test("F-PLUG-8・Q-2: 幅 390px の画面のプラグインの一覧", async ({ page }) => {
+      // Arrange（狭い画面ではエクスプローラーとメニューが畳まれるので、広い画面で開いてから狭める）
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await openApp(page);
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true }, "jp.example.ports": { version: "1.0.0", enabled: true } }, installedPlugin());
+      await openPluginList(page);
+      // Act
+      await page.setViewportSize({ width: 390, height: 800 });
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("plugin-list-narrow.png");
+    });
+
+    test("Q-9・Q-2: 幅 390px の画面で、☰ のメニューを開いてファイルのメニューを開いたところ", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#menuToggle").click();
+      await page.locator("#fileMenu summary").click();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("menu-narrow.png");
+    });
+
+    test("Q-9・Q-2: 幅 390px の画面で、☰ のメニューを開いて表示のメニュー（線の形つき）を開いたところ", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#menuToggle").click();
+      await page.locator("#viewMenu summary").click();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("view-menu-narrow.png");
+    });
+
+    test("F-EXP-1・F-EXP-2・Q-2: 幅 390px の画面の、エクスポートのダイアログ", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#menuToggle").click();
+      await page.locator("#fileMenu summary").click();
+      await page.locator("#btnExport").click();
+      await expect(page.locator("#exportName")).toBeFocused();
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("export-narrow.png");
+    });
+
+    test("F-TRACE-2・Q-2: 幅 390px の画面で、トレースの抜けの案内を出した図", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#btnGaps").click();
+      await expect(page.locator("#insp .gapguide")).toContainText("この要求を確かめる検証がありません");
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("trace-gap-guide-narrow.png");
+    });
+
+    test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面の「＋」メニュー（SysML v2 の名前の行つき）", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator(".tabadd summary").click();
+      await settle(page);
+      // Assert
+      await expect(page.locator(".tabadd .pop")).toHaveScreenshot("tab-menu-narrow.png");
+    });
+
+    for (const scheme of ["light", "dark"] as const) {
+      test.describe(`語の説明（${scheme === "light" ? "明るい" : "暗い"}配色）`, () => {
+        test.use({ colorScheme: scheme, hasTouch: true });
+        test(`F-EDIT-9・F-EDIT-10・Q-2: 幅 390px の読み取り専用のテキストで、ダブルタップした語の説明（${scheme === "light" ? "明るい" : "暗い"}配色）`, async ({ page }) => {
+          // Arrange
+          await openReadOnlyText(page, WORDS_MODEL);
+          const p = await wordCenter(page, "satisfy", 3, 1);
+          // Act
+          await page.touchscreen.tap(p.x, p.y);
+          await page.touchscreen.tap(p.x, p.y);
+          await expect(page.locator("#wordLine b")).toHaveText("満たす（satisfy）");
+          await settle(page);
+          // Assert
+          await expect(page).toHaveScreenshot(`words-narrow${scheme === "dark" ? "-dark" : ""}.png`);
+        });
+      });
+    }
+  });
+});
+
+/** 語の説明の UI テストに使うモデル。 */
+const WORDS_MODEL =
+  "package WaterSupply {\n    port def WaterPort;\n    part def Pump {\n        attribute flowRate : Real;\n        port outlet : WaterPort;\n    }\n" +
+  "    requirement def <'R-1'> SupplyReq {\n        doc /* 毎分 20 L の水を送る */\n    }\n    part pump : Pump;\n    satisfy SupplyReq by pump;\n}\n";
+
+/** 部品の見た目の場面。操作して、撮る範囲を返す。 */
+interface Scene {
+  title: string;
+  shot: string;
+  act: (page: Page) => Promise<Locator[]>;
+}
+
+async function openSampleFolder(page: Page, text: string): Promise<void> {
+  await putFiles(page, { "a.sysml": text, "models/b.sysml": "package B;\n" });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+}
+
+// プラグイン（ADR-0018）の場面で使う、チェックルールのプラグインとプロジェクト
+const PLUGIN_ID = "jp.example.trace";
+const PLUGIN_DIR = `.modelith/plugins/${PLUGIN_ID}`;
+const PLUGIN_MANIFEST = JSON.stringify(
+  { id: PLUGIN_ID, name: "トレーサビリティのチェック", version: "0.1.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
+  null,
+  2,
+);
+const PLUGIN_RULES =
+  'rules:\n  - id: req-has-satisfier\n    severity: warning\n    message: "要求「{name}」を満たす要素がありません"\n    match: { kind: requirement def }\n    require: { incoming: satisfy }\n';
+const PLUGIN_MODEL = "package P {\n    requirement def R;\n}\n";
+
+/**
+ * project フォルダにプロジェクトを置いてフォルダを開き、a.sysml を開く。
+ *
+ * @param page 画面
+ * @param plugins modelith.json の plugins に書く中身
+ * @param files ほかに置くファイル（パス → テキスト）
+ */
+async function openPluginProject(page: Page, plugins: Record<string, unknown>, files: Record<string, string> = {}): Promise<void> {
+  await putFiles(page, { "a.sysml": PLUGIN_MODEL, "modelith.json": JSON.stringify({ name: "給水システム", plugins }, null, 2) + "\n", ...files });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  await expect.poll(() => editorText(page)).toBe(PLUGIN_MODEL);
+}
+
+/** 入っているチェックルールのプラグインのファイル。 */
+const installedPlugin = (): Record<string, string> => ({ [`${PLUGIN_DIR}/modelith-plugin.json`]: PLUGIN_MANIFEST, [`${PLUGIN_DIR}/rules.yaml`]: PLUGIN_RULES });
+
+/**
+ * プラグインのメニューから、プラグインの一覧を開く。
+ *
+ * @param page 画面
+ */
+async function openPluginList(page: Page): Promise<void> {
+  await page.locator("#pluginMenu summary").click();
+  await page.locator("#btnPlugins").click();
+  await expect(page.locator("#plugins")).toBeVisible();
+}
+
+/** 画面に機能を追加するプラグイン（TypeScript）のマニフェスト。プログラムは、準備ができたと答えるだけ。 */
+const SCRIPT_ID = "jp.example.sync";
+const SCRIPT_MANIFEST = JSON.stringify(
+  {
+    id: SCRIPT_ID, name: "要求の同期", version: "1.2.0", apiVersion: "0", runtime: "browser", author: "山田 花子", license: "MIT", main: "main.js",
+    permissions: ["model:read", "edits:propose", "network"], contributes: { commands: [{ id: "pull", title: "要求を取り込む" }] },
+  },
+  null,
+  2,
+);
+const SCRIPT_CODE = 'self.addEventListener("message", (e) => { if (e.data && e.data.type === "activate") self.postMessage({ type: "ready" }); });\n';
+/** 入っている TypeScript のプラグインのファイル。 */
+const installedScript = (): Record<string, string> => ({ [`.modelith/plugins/${SCRIPT_ID}/modelith-plugin.json`]: SCRIPT_MANIFEST, [`.modelith/plugins/${SCRIPT_ID}/main.js`]: SCRIPT_CODE });
+
+/**
+ * project フォルダにプロジェクトを置いてフォルダを開く（TypeScript のプラグインは、初めてなので実行の許可を尋ねる）。
+ *
+ * @param page 画面
+ * @param plugins modelith.json の plugins に書く中身
+ * @param files ほかに置くファイル（パス → テキスト）
+ */
+async function openScriptProject(page: Page, plugins: Record<string, unknown>, files: Record<string, string>): Promise<void> {
+  await putFiles(page, { "a.sysml": PLUGIN_MODEL, "modelith.json": JSON.stringify({ name: "給水システム", plugins }, null, 2) + "\n", ...files });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await expect(page.locator("#dialogTitle")).toHaveText("プラグインの実行の許可");
+}
+
+/** 状態遷移図の場面のモデル（入れ子の状態・並行の領域・最初の遷移・終了・ガードと効果のある遷移）。 */
+const LAMP_STATES =
+  "package Lamp {\n    state def LampStates {\n        entry; then off;\n        state off;\n        accept PowerOn then on;\n" +
+  "        state on parallel {\n            state light {\n                entry; then dim;\n                state dim { entry action fadeIn; }\n" +
+  "                accept Brighter then bright;\n                state bright { do glow; exit action fadeOut; }\n" +
+  "                accept Dimmer if level > 1 then dim;\n            }\n            state fan;\n        }\n" +
+  "        transition switchOff first on accept PowerOff do beep then off;\n        transition first off accept Unplug then done;\n    }\n" +
+  "    view lampStates : StateTransitionView { expose Lamp::LampStates; }\n}\n";
+
+/** シーケンス図の場面のモデル（ライフラインの上のイベント・入れ子の部品のイベント・イベントの間の順序・then のイベント）。 */
+const BOIL_SEQUENCE =
+  "package Kettle {\n    part def User;\n    part def Panel;\n    part def Controller;\n    part def Heater;\n    item def Mode;\n    item def PowerCmd;\n" +
+  "    occurrence def BoilWater {\n        part user : User { event occurrence press; }\n" +
+  "        part panel : Panel {\n            event occurrence pressed;\n            then event occurrence lampOn;\n        }\n" +
+  "        part controller : Controller {\n            event occurrence started;\n            part timer { event occurrence expired; }\n        }\n" +
+  "        part heater : Heater {\n            event occurrence on;\n            event occurrence off;\n        }\n" +
+  "        message pressStart of Mode from user.press to panel.pressed;\n        message selectMode of Mode from panel to controller.started;\n" +
+  "        message heatOn of PowerCmd from controller to heater.on;\n        message heatOff of PowerCmd from controller.timer.expired to heater.off;\n" +
+  "        succession lampFirst first panel.lampOn then heater.on;\n    }\n" +
+  "    view boilSequence : SequenceView { expose Kettle::BoilWater; }\n}\n";
+
+const scenes: Scene[] = [
+  {
+    title: "F-EDIT-9: テキストの語にマウスを乗せたときのツールチップ",
+    shot: "word-tooltip",
+    act: async (page) => {
+      await replaceText(page, WORDS_MODEL);
+      const p = await wordCenter(page, "part def", 1, 1);
+      await page.mouse.move(p.x, p.y);
+      await expect(page.locator("#wordTip")).toBeVisible();
+      return [page.locator(".textpane")];
+    },
+  },
+  {
+    title: "F-VIEW-7: アクティビティ図（ActionFlowView、8.2.3.17 の記号）",
+    shot: "action-flow",
+    act: async (page) => {
+      await page.locator("#ed").fill(
+        "package Kettle {\n    item def Water;\n    action def Boil {\n        first start;\n        then action fill;\n        then fork split;\n" +
+          "        then heat;\n        then warmCup;\n        action heat;\n        action warmCup;\n        first heat then ready;\n" +
+          "        first warmCup then ready;\n        join ready;\n        then decide check;\n        if temperature >= 100 then notify;\n" +
+          "        else heat;\n        action notify send Done() to user;\n        then accept ack : Water;\n        then done;\n" +
+          "        succession flow of Water from fill to heat;\n    }\n    view boilFlow : ActionFlowView { expose Kettle::Boil; }\n}\n",
+      );
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="boilFlow"]').click();
+      await expect(page.locator('#canvas [data-key="a:done"]')).toBeVisible();
+      return [page.locator("#wrap")];
+    },
+  },
+  {
+    title: "F-VIEW-7: 状態遷移図（StateTransitionView、8.2.3.18 の記号）",
+    shot: "state-transition",
+    act: async (page) => {
+      await page.locator("#ed").fill(LAMP_STATES);
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="lampStates"]').click();
+      // 開いたときは文字が読める大きさで左上から見せるので、「全体」で図全体を撮る
+      await page.locator("#zFit").click();
+      await expect(page.locator('#canvas [data-key="s:#done"]')).toBeVisible();
+      return [page.locator("#wrap")];
+    },
+  },
+  {
+    title: "F-VIEW-10: シーケンス図（SequenceView、8.2.3.9 のイベントと順序）",
+    shot: "sequence",
+    act: async (page) => {
+      await page.locator("#ed").fill(BOIL_SEQUENCE);
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="boilSequence"]').click();
+      await expect(page.locator('#canvas .event[data-key="e:controller.timer.expired"]')).toBeAttached();
+      return [page.locator("#wrap")];
+    },
+  },
+  {
+    title: "F-VIEW-9: package を枠として描いた作成した図",
+    shot: "package-frame",
+    act: async (page) => {
+      await page.locator("#ed").fill(
+        "package P {\n    package Drive {\n        part def Motor;\n        part def Gear;\n        package Sensors { part def Encoder; }\n    }\n    view drive { expose P::Drive; expose P::Drive::Sensors; }\n}\n",
+      );
+      await page.waitForTimeout(400);
+      await page.locator(".tabadd summary").click();
+      await page.locator('[data-open-mv="drive"]').click();
+      await expect(page.locator('#canvas .pkg[data-pkg="Sensors"]')).toBeVisible();
+      return [page.locator("#wrap")];
+    },
+  },
+  {
+    title: "F-VIEW-4: 要素を選んだときのインスペクタ",
+    shot: "inspector-node",
+    act: async (page) => {
+      await page.locator('#gNodes .node[data-key="BoilTimeReq"]').click();
+      return [page.locator("#insp")];
+    },
+  },
+  {
+    title: "F-VIEW-4: 図の右クリックメニュー",
+    shot: "context-menu",
+    act: async (page) => {
+      await page.locator('#gNodes .node[data-key="BoilTimeReq"]').click({ button: "right" });
+      return [page.locator("#ctx")];
+    },
+  },
+  {
+    title: "F-FILE-1: フォルダを開いたエクスプローラー（未保存の印つき）",
+    shot: "explorer",
+    act: async (page) => {
+      await openSampleFolder(page, "package A;\n");
+      await typeAtEnd(page, "// edited\n");
+      // 未保存の印は、入力の反映の後に付く。開いているファイルとフォルダの一覧の両方に付いてから撮る
+      await expect(page.locator(".treepane .dot")).toHaveCount(2);
+      return [page.locator(".treepane")];
+    },
+  },
+  {
+    title: "F-FILE-14: 開いているファイルが無いときの画面",
+    shot: "no-open-files",
+    act: async (page) => {
+      await page.locator("#explorer [data-close]").click();
+      await page.locator('#dialogButtons [data-id="discard"]').click();
+      await expect(page.locator("#noDoc")).toBeVisible();
+      await page.mouse.move(0, 0); // 案内のボタンにマウスが乗っていない状態で撮る
+      return [page.locator("#main")];
+    },
+  },
+  {
+    title: "F-FILE-13: フォルダの許可が要るときの「前回の続きを開く」",
+    shot: "resume",
+    act: async (page) => {
+      await openSampleFolder(page, "package A;\n");
+      await needPermission(page);
+      await page.reload();
+      await expect(page.locator("#noDoc")).toBeVisible();
+      await page.mouse.move(0, 0); // 案内のボタンにマウスが乗っていない状態で撮る
+      return [page.locator("#main")];
+    },
+  },
+  {
+    title: "F-FILE-7: 競合したときのダイアログ",
+    shot: "dialog-conflict",
+    act: async (page) => {
+      await openSampleFolder(page, "package A;\n");
+      await typeAtEnd(page, "// mine\n");
+      await putFiles(page, { "a.sysml": "package Theirs;\n" });
+      await page.keyboard.press("Control+s");
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-EDIT-7・Q-4: パッケージ（package）を作る案内",
+    shot: "dialog-new-package",
+    act: async (page) => {
+      await page.locator('[data-cmd="new"]').click();
+      await page.locator('#palette [data-tool="concern def"]').click();
+      const box = (await page.locator("#wrap").boundingBox())!;
+      await page.mouse.click(box.x + 200, box.y + 200);
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-FILE-2: 開いた「ファイル」メニュー（項目にマウスを乗せた状態）",
+    shot: "file-menu",
+    act: async (page) => {
+      await page.locator("#fileMenu summary").click();
+      await page.locator("#btnSave").hover();
+      return [page.locator("#fileMenu .pop")];
+    },
+  },
+  {
+    title: "Q-9: 開いた「表示」メニュー（押されている切り替えの印と、線の形つき）",
+    shot: "view-menu",
+    act: async (page) => {
+      await page.locator("#viewMenu summary").click();
+      await page.locator("#menuZoomIn").hover();
+      return [page.locator("#viewMenu .pop")];
+    },
+  },
+  {
+    title: "Q-9: 開いた「図」メニュー",
+    shot: "diagram-menu",
+    act: async (page) => {
+      await page.locator("#diagramMenu summary").click();
+      await page.locator("#menuLayout").hover();
+      return [page.locator("#diagramMenu .pop")];
+    },
+  },
+  {
+    title: "F-EXP-1・F-EXP-2: ファイルのメニューから開いたエクスポートのダイアログ",
+    shot: "export-dialog",
+    act: async (page) => {
+      await page.locator("#fileMenu summary").click();
+      await page.locator("#btnExport").click();
+      await expect(page.locator("#exportName")).toBeFocused();
+      return [page.locator("#exportDialog .box")];
+    },
+  },
+  {
+    title: "F-VIEW-7・Q-4: 開いた「＋」メニュー（作成した図つき）",
+    shot: "tab-menu-views",
+    act: async (page) => {
+      await page.locator("#ed").fill("package P {\n    part def A;\n    view overview : GeneralView { expose P::*; }\n    view inside : InterconnectionView { expose P::A; }\n}\n");
+      await page.waitForTimeout(400); // 入力の反映でタブのメニューが描き直されるので、反映を待ってから開く
+      await page.locator(".tabadd summary").click();
+      return [page.locator(".tabadd .pop")];
+    },
+  },
+  {
+    title: "C-3: 開いたヘルプ",
+    shot: "help-menu",
+    act: async (page) => {
+      await page.locator("#helpMenu summary").click();
+      // 版とコミットはビルドごとに変わり、文字の幅で折り返しも変わる。塗りつぶすだけでは高さがずれるので、決まった文字列に置き換えて比べる
+      await page.locator("#appVersion").evaluate((e) => (e.textContent = "0.0.0 (0000000)"));
+      return [page.locator("#helpMenu .pop")];
+    },
+  },
+  {
+    title: "F-EDIT-5: 構文エラーを示す問題一覧",
+    shot: "problems",
+    act: async (page) => {
+      await page.locator("#ed").fill("package P {\n    part def A;\n    part b : Missing;\n}\n");
+      await expect(page.locator('#problems button:has-text("Missing")')).toBeVisible();
+      return [page.locator(".textpane")];
+    },
+  },
+  {
+    title: "F-TRACE-1: フェーズで絞り込んだトレーサビリティの図",
+    shot: "trace-phase",
+    act: async (page) => {
+      const before = (await nodeKeys(page)).length;
+      await page.locator("#phaseFilter").selectOption("SystemRequirements");
+      // 絞り込むと、フェーズの外の要素は消えるか薄くなる。描き直しを要素の数で待つ
+      await expect.poll(async () => (await nodeKeys(page)).length).toBeLessThan(before);
+      return [page.locator("#wrap")];
+    },
+  },
+  {
+    title: "F-TRACE-2: トレースの抜けを押して、図の要素に足りない関係の案内を出したところ",
+    shot: "trace-gap-guide",
+    act: async (page) => {
+      await page.locator("#btnGaps").click();
+      await expect(page.locator("#insp .gapguide")).toContainText("この要求を確かめる検証がありません");
+      return [page.locator(".diagrampane")];
+    },
+  },
+  {
+    title: "Q-3: マウスを乗せたボタンと、キーボードで選んだボタン",
+    shot: "toolbar-hover-focus",
+    act: async (page) => {
+      // 「整列」はキーボード（Tab）で選び、「線：直角」にはマウスを乗せる
+      await page.locator("#btnEdge").focus();
+      await page.keyboard.press("Tab");
+      await expect(page.locator("#btnLayout")).toBeFocused();
+      await page.locator("#btnEdge").hover();
+      return [page.locator(".diagrampane .toolbar")];
+    },
+  },
+  {
+    title: "F-PLUG-1: チェックルールの結果を示す問題一覧",
+    shot: "plugin-findings",
+    act: async (page) => {
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } }, installedPlugin());
+      await expect(page.locator("#problems button.rule")).toHaveCount(1);
+      return [page.locator(".textpane")];
+    },
+  },
+  {
+    title: "F-PLUG-8・F-PLUG-9: プラグインの一覧（有効・未追加・無効）",
+    shot: "plugin-list",
+    act: async (page) => {
+      await openPluginProject(
+        page,
+        { [PLUGIN_ID]: { version: "0.1.0", enabled: true }, "jp.example.ports": { version: "1.0.0", enabled: true }, "jp.example.names": { version: "0.3.0", enabled: false } },
+        {
+          ...installedPlugin(),
+          ".modelith/plugins/jp.example.names/modelith-plugin.json": JSON.stringify(
+            { id: "jp.example.names", name: "命名規則のチェック", version: "0.3.0", apiVersion: "0", runtime: "rules", license: "MIT", contributes: { rules: ["rules.yaml"] } },
+            null,
+            2,
+          ),
+          ".modelith/plugins/jp.example.names/rules.yaml": "rules: []\n",
+        },
+      );
+      await openPluginList(page);
+      await expect(page.locator("#plugins .plug")).toHaveCount(3);
+      return [page.locator("#plugins .box")];
+    },
+  },
+  {
+    title: "F-PLUG-9: 追加されていないプラグインの案内（エクスプローラーと問題一覧）",
+    shot: "plugin-missing",
+    act: async (page) => {
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } });
+      await expect(page.locator("#explorer .plugnote")).toBeVisible();
+      return [page.locator(".treepane"), page.locator("#problems")];
+    },
+  },
+  {
+    title: "F-PLUG-8: プラグインを追加する前の確認",
+    shot: "plugin-add",
+    act: async (page) => {
+      await openPluginProject(page, {});
+      await putFiles(page, { "modelith-plugin.json": PLUGIN_MANIFEST, "rules.yaml": PLUGIN_RULES }, "trace-rules");
+      await pickDirNext(page, "trace-rules");
+      await openPluginList(page);
+      await page.locator("#pluginsAdd").click();
+      await expect(page.locator("#dialogText")).toContainText("を追加します");
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-PLUG-8: フォルダを開いていないときに、画面に機能を追加するプラグインを追加する前の確認（このブラウザだけを選べる）",
+    shot: "plugin-add-browser",
+    act: async (page) => {
+      await putFiles(page, { "modelith-plugin.json": SCRIPT_MANIFEST, "main.js": SCRIPT_CODE }, "sync-plugin");
+      await pickDirNext(page, "sync-plugin");
+      await openPluginList(page);
+      await page.locator("#pluginsAdd").click();
+      await expect(page.locator('#dialogPick input[value="browser"]')).toBeChecked();
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-PLUG-6: プラグインの実行の許可（外部と通信できるプラグイン）",
+    shot: "plugin-trust",
+    act: async (page) => {
+      await openScriptProject(page, { [SCRIPT_ID]: { version: "1.2.0", enabled: true } }, installedScript());
+      return [page.locator("#dialog .box")];
+    },
+  },
+  {
+    title: "F-PLUG-6・F-PLUG-8: 実行中の TypeScript のプラグインと、チェックルールのプラグインの一覧",
+    shot: "plugin-list-script",
+    act: async (page) => {
+      await openScriptProject(page, { [SCRIPT_ID]: { version: "1.2.0", enabled: true }, [PLUGIN_ID]: { version: "0.1.0", enabled: true } }, { ...installedScript(), ...installedPlugin() });
+      await page.locator('#dialogButtons [data-id="allow"]').click();
+      await openPluginList(page);
+      await expect(page.locator(`#plugins .plug[data-plugin="${SCRIPT_ID}"] .pst`)).toHaveText("実行中");
+      return [page.locator("#plugins .box")];
+    },
+  },
+  {
+    title: "F-PLUG-8: このブラウザに追加したプラグイン（実行中と、プロジェクトのものを優先しているもの）の一覧",
+    shot: "plugin-list-browser",
+    act: async (page) => {
+      await putBrowserPlugin(page, {
+        id: SCRIPT_ID,
+        enabled: true,
+        info: { id: SCRIPT_ID, name: "要求の同期", version: "1.2.0", runtime: "browser", main: "main.js", permissions: ["model:read", "edits:propose", "network"] },
+        files: { "modelith-plugin.json": SCRIPT_MANIFEST, "main.js": SCRIPT_CODE },
+      });
+      await putBrowserPlugin(page, {
+        id: PLUGIN_ID,
+        enabled: true,
+        info: { id: PLUGIN_ID, name: "トレーサビリティのチェック", version: "0.0.9", runtime: "rules" },
+        files: { "modelith-plugin.json": PLUGIN_MANIFEST.replace('"0.1.0"', '"0.0.9"'), "rules.yaml": PLUGIN_RULES },
+      });
+      await page.reload();
+      await page.locator('#dialogButtons [data-id="allow"]').click();
+      await openPluginProject(page, { [PLUGIN_ID]: { version: "0.1.0", enabled: true } }, installedPlugin());
+      await openPluginList(page);
+      await expect(page.locator(`#plugins .plug[data-plugin="${SCRIPT_ID}"] .pst`)).toHaveText("実行中");
+      await expect(page.locator("#plugins .plug")).toHaveCount(3);
+      return [page.locator("#plugins .box")];
+    },
+  },
+  {
+    title: "F-PLUG-8: フォルダを開いていないときのプラグインの一覧",
+    shot: "plugin-no-project",
+    act: async (page) => {
+      await openPluginList(page);
+      return [page.locator("#plugins .box")];
+    },
+  },
+];
+
+for (const scheme of ["light", "dark"] as const) {
+  test.describe(`UI: 部品（${scheme === "light" ? "明るい" : "暗い"}配色）`, () => {
+    test.use({ colorScheme: scheme });
+    for (const scene of scenes) {
+      test(scene.title, async ({ page }) => {
+        // Arrange
+        await openApp(page);
+        // Act
+        const targets = await scene.act(page);
+        await settle(page);
+        // Assert
+        for (const [i, target] of targets.entries()) {
+          const name = `${scene.shot}${i ? `-${i + 1}` : ""}${scheme === "dark" ? "-dark" : ""}.png`;
+          await expect(target).toHaveScreenshot(name);
+        }
+      });
+    }
+  });
+}

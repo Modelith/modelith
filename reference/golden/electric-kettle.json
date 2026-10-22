@@ -1,0 +1,4411 @@
+{
+  "case": "electric-kettle",
+  "entries": [
+    {
+      "idx": 0,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "ElectricKettle",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        85,
+        10598
+      ],
+      "close": 10597,
+      "parent": null,
+      "children": [
+        1,
+        3,
+        4,
+        15,
+        31,
+        66,
+        92,
+        104,
+        123,
+        130,
+        132
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 1,
+      "kind": "metadata def",
+      "isDef": true,
+      "short": "",
+      "name": "Phase",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        263,
+        314
+      ],
+      "close": 313,
+      "parent": 0,
+      "children": [
+        2
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 2,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "stage",
+      "type": "PhaseKind",
+      "conj": false,
+      "mods": "",
+      "span": [
+        284,
+        312
+      ],
+      "close": null,
+      "parent": 1,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 3,
+      "kind": "enum def",
+      "isDef": true,
+      "short": "",
+      "name": "PhaseKind",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "enumValues": [
+        "StakeholderNeeds",
+        "SystemRequirements",
+        "Architecture",
+        "Verification"
+      ],
+      "span": [
+        319,
+        427
+      ],
+      "close": 426,
+      "parent": 0,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 4,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Users",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        593,
+        1302
+      ],
+      "close": 1301,
+      "parent": 0,
+      "children": [
+        5,
+        6,
+        7,
+        9,
+        12,
+        13,
+        14
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "StakeholderNeeds"
+        }
+      }
+    },
+    {
+      "idx": 5,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "User",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        673,
+        687
+      ],
+      "close": null,
+      "parent": 4,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 6,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "Regulator",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        696,
+        715
+      ],
+      "close": null,
+      "parent": 4,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 7,
+      "kind": "concern def",
+      "isDef": true,
+      "short": "",
+      "name": "Convenience",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "少ない待ち時間で、飲みたい温度のお湯が手に入ること",
+      "span": [
+        725,
+        845
+      ],
+      "close": 844,
+      "parent": 4,
+      "children": [
+        8
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 8,
+      "kind": "stakeholder",
+      "isDef": false,
+      "short": "",
+      "name": "user",
+      "type": "User",
+      "conj": false,
+      "mods": "",
+      "span": [
+        811,
+        835
+      ],
+      "close": null,
+      "parent": 7,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 9,
+      "kind": "concern def",
+      "isDef": true,
+      "short": "",
+      "name": "Safety",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "空だき・転倒・やけどの危険がないこと",
+      "span": [
+        854,
+        1009
+      ],
+      "close": 1008,
+      "parent": 4,
+      "children": [
+        10,
+        11
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 10,
+      "kind": "stakeholder",
+      "isDef": false,
+      "short": "",
+      "name": "user",
+      "type": "User",
+      "conj": false,
+      "mods": "",
+      "span": [
+        928,
+        952
+      ],
+      "close": null,
+      "parent": 9,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 11,
+      "kind": "stakeholder",
+      "isDef": false,
+      "short": "",
+      "name": "regulator",
+      "type": "Regulator",
+      "conj": false,
+      "mods": "",
+      "span": [
+        965,
+        999
+      ],
+      "close": null,
+      "parent": 9,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 12,
+      "kind": "requirement def",
+      "isDef": true,
+      "short": "N1",
+      "name": "QuickBoilNeed",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "朝の支度の間にお湯が沸くこと",
+      "span": [
+        1019,
+        1104
+      ],
+      "close": 1103,
+      "parent": 4,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 13,
+      "kind": "requirement def",
+      "isDef": true,
+      "short": "N2",
+      "name": "KeepWarmNeed",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "選んだ温度のお湯をしばらく保てること",
+      "span": [
+        1113,
+        1201
+      ],
+      "close": 1200,
+      "parent": 4,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 14,
+      "kind": "requirement def",
+      "isDef": true,
+      "short": "N3",
+      "name": "SafeUseNeed",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "うっかり空だきしても危なくないこと",
+      "span": [
+        1210,
+        1296
+      ],
+      "close": 1295,
+      "parent": 4,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 15,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Requirements",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        1467,
+        2973
+      ],
+      "close": 2972,
+      "parent": 0,
+      "children": [
+        16,
+        20,
+        23,
+        26
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "SystemRequirements"
+        }
+      }
+    },
+    {
+      "idx": 16,
+      "kind": "requirement def",
+      "isDef": true,
+      "short": "K1",
+      "name": "BoilTimeReq",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "水 1.0 L を 20 ℃ から 100 ℃ まで 5 分以内に沸かすこと",
+      "span": [
+        1627,
+        1931
+      ],
+      "close": 1930,
+      "parent": 15,
+      "children": [
+        17,
+        18,
+        19
+      ],
+      "exprs": [
+        {
+          "text": "boilTime <= maxBoilTime",
+          "via": "require"
+        }
+      ]
+    },
+    {
+      "idx": 17,
+      "kind": "subject",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        1737,
+        1761
+      ],
+      "close": null,
+      "parent": 16,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 18,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "boilTime",
+      "type": "TimeValue",
+      "conj": false,
+      "mods": "",
+      "span": [
+        1774,
+        1805
+      ],
+      "close": null,
+      "parent": 16,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 19,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "maxBoilTime",
+      "type": "TimeValue",
+      "conj": false,
+      "mods": "",
+      "value": "300 [s]",
+      "span": [
+        1818,
+        1862
+      ],
+      "close": null,
+      "parent": 16,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 20,
+      "kind": "requirement def",
+      "isDef": true,
+      "short": "K2",
+      "name": "KeepWarmAccuracyReq",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "保温中の水温を設定温度の ±3 ℃ 以内に保つこと",
+      "span": [
+        1940,
+        2185
+      ],
+      "close": 2184,
+      "parent": 15,
+      "children": [
+        21,
+        22
+      ],
+      "exprs": [
+        {
+          "text": "tempError <= 3 [K]",
+          "via": "require"
+        }
+      ]
+    },
+    {
+      "idx": 21,
+      "kind": "subject",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2045,
+        2069
+      ],
+      "close": null,
+      "parent": 20,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 22,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "tempError",
+      "type": "TemperatureValue",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2082,
+        2121
+      ],
+      "close": null,
+      "parent": 20,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 23,
+      "kind": "requirement def",
+      "isDef": true,
+      "short": "K3",
+      "name": "DryBoilCutoffReq",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "空だきを検知したら 10 s 以内にヒーターを切ること",
+      "span": [
+        2194,
+        2434
+      ],
+      "close": 2433,
+      "parent": 15,
+      "children": [
+        24,
+        25
+      ],
+      "exprs": [
+        {
+          "text": "cutoffTime <= 10 [s]",
+          "via": "require"
+        }
+      ]
+    },
+    {
+      "idx": 24,
+      "kind": "subject",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2298,
+        2322
+      ],
+      "close": null,
+      "parent": 23,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 25,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "cutoffTime",
+      "type": "TimeValue",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2335,
+        2368
+      ],
+      "close": null,
+      "parent": 23,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 26,
+      "kind": "requirement",
+      "isDef": false,
+      "short": "",
+      "name": "kettleRequirements",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2444,
+        2758
+      ],
+      "close": 2757,
+      "parent": 15,
+      "children": [
+        27,
+        28,
+        29,
+        30
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 27,
+      "kind": "subject",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2489,
+        2513
+      ],
+      "close": null,
+      "parent": 26,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 28,
+      "kind": "requirement",
+      "isDef": false,
+      "short": "",
+      "name": "k1",
+      "type": "BoilTimeReq",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2622,
+        2651
+      ],
+      "close": null,
+      "parent": 26,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 29,
+      "kind": "requirement",
+      "isDef": false,
+      "short": "",
+      "name": "k2",
+      "type": "KeepWarmAccuracyReq",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2664,
+        2701
+      ],
+      "close": null,
+      "parent": 26,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 30,
+      "kind": "requirement",
+      "isDef": false,
+      "short": "",
+      "name": "k3",
+      "type": "DryBoilCutoffReq",
+      "conj": false,
+      "mods": "",
+      "span": [
+        2714,
+        2748
+      ],
+      "close": null,
+      "parent": 26,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 31,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Structure",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3134,
+        5066
+      ],
+      "close": 5065,
+      "parent": 0,
+      "children": [
+        32,
+        36,
+        46,
+        48,
+        51,
+        59,
+        62
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "Architecture"
+        }
+      }
+    },
+    {
+      "idx": 32,
+      "kind": "attribute def",
+      "isDef": true,
+      "short": "",
+      "name": "KettleParams",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3285,
+        3499
+      ],
+      "close": 3498,
+      "parent": 31,
+      "children": [
+        33,
+        34,
+        35
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 33,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "capacity",
+      "type": "VolumeValue",
+      "conj": false,
+      "mods": "",
+      "value": "1.0 [L]",
+      "span": [
+        3326,
+        3369
+      ],
+      "close": null,
+      "parent": 32,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 34,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "heaterPower",
+      "type": "PowerValue",
+      "conj": false,
+      "mods": "",
+      "value": "1250 [W]",
+      "span": [
+        3382,
+        3428
+      ],
+      "close": null,
+      "parent": 32,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 35,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "hysteresis",
+      "type": "TemperatureValue",
+      "conj": false,
+      "mods": "",
+      "value": "2 [K]",
+      "span": [
+        3441,
+        3489
+      ],
+      "close": null,
+      "parent": 32,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 36,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "Kettle",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3509,
+        4183
+      ],
+      "close": 4182,
+      "parent": 31,
+      "children": [
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 37,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "params",
+      "type": "KettleParams",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3539,
+        3571
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 38,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "panel",
+      "type": "ControlPanel",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3584,
+        3610
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 39,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "sensor",
+      "type": "TempSensor",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3623,
+        3648
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 40,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "controller",
+      "type": "HeaterController",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3661,
+        3696
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 41,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "heater",
+      "type": "Heater",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3709,
+        3730
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 42,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "water",
+      "type": "WaterVessel",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3743,
+        3768
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 43,
+      "kind": "interface",
+      "isDef": false,
+      "short": "",
+      "name": "modeIf",
+      "type": "ModeInterface",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3782,
+        3858
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 44,
+      "kind": "interface",
+      "isDef": false,
+      "short": "",
+      "name": "tempIf",
+      "type": "TempInterface",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3871,
+        3948
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 45,
+      "kind": "interface",
+      "isDef": false,
+      "short": "",
+      "name": "powerIf",
+      "type": "PowerInterface",
+      "conj": false,
+      "mods": "",
+      "span": [
+        3961,
+        4042
+      ],
+      "close": null,
+      "parent": 36,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 46,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "ControlPanel",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4193,
+        4263
+      ],
+      "close": 4262,
+      "parent": 31,
+      "children": [
+        47
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 47,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "modeOut",
+      "type": "ModePort",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4229,
+        4253
+      ],
+      "close": null,
+      "parent": 46,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 48,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "TempSensor",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4272,
+        4377
+      ],
+      "close": 4376,
+      "parent": 31,
+      "children": [
+        49,
+        50
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 49,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "tempIn",
+      "type": "TempPort",
+      "conj": true,
+      "mods": "",
+      "span": [
+        4306,
+        4330
+      ],
+      "close": null,
+      "parent": 48,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 50,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "tempOut",
+      "type": "TempPort",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4343,
+        4367
+      ],
+      "close": null,
+      "parent": 48,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 51,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "HeaterController",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4386,
+        4755
+      ],
+      "close": 4754,
+      "parent": 31,
+      "children": [
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 52,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "target",
+      "type": "TemperatureValue",
+      "conj": false,
+      "mods": "",
+      "value": "100 [degC]",
+      "span": [
+        4426,
+        4475
+      ],
+      "close": null,
+      "parent": 51,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 53,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "modeIn",
+      "type": "ModePort",
+      "conj": true,
+      "mods": "",
+      "span": [
+        4488,
+        4512
+      ],
+      "close": null,
+      "parent": 51,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 54,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "tempIn",
+      "type": "TempPort",
+      "conj": true,
+      "mods": "",
+      "span": [
+        4525,
+        4549
+      ],
+      "close": null,
+      "parent": 51,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 55,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "powerOut",
+      "type": "PowerPort",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4562,
+        4588
+      ],
+      "close": null,
+      "parent": 51,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 56,
+      "kind": "exhibit state",
+      "isDef": false,
+      "short": "",
+      "name": "modes",
+      "type": "KettleStates",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4601,
+        4646
+      ],
+      "close": null,
+      "parent": 51,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 57,
+      "kind": "perform action",
+      "isDef": false,
+      "short": "",
+      "name": "control",
+      "type": "ControlStep",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4659,
+        4706
+      ],
+      "close": null,
+      "parent": 51,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 58,
+      "kind": "constraint",
+      "isDef": false,
+      "short": "",
+      "name": "law",
+      "type": "OnOffLaw",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4719,
+        4745
+      ],
+      "close": null,
+      "parent": 51,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 59,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "Heater",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4764,
+        4867
+      ],
+      "close": 4866,
+      "parent": 31,
+      "children": [
+        60,
+        61
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 60,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "powerIn",
+      "type": "PowerPort",
+      "conj": true,
+      "mods": "",
+      "span": [
+        4794,
+        4820
+      ],
+      "close": null,
+      "parent": 59,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 61,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "heatOut",
+      "type": "HeatPort",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4833,
+        4857
+      ],
+      "close": null,
+      "parent": 59,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 62,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "WaterVessel",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "制御対象：水の温度",
+      "span": [
+        4876,
+        5060
+      ],
+      "close": 5059,
+      "parent": 31,
+      "children": [
+        63,
+        64,
+        65
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 63,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "heatIn",
+      "type": "HeatPort",
+      "conj": true,
+      "mods": "",
+      "span": [
+        4943,
+        4967
+      ],
+      "close": null,
+      "parent": 62,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 64,
+      "kind": "port",
+      "isDef": false,
+      "short": "",
+      "name": "tempOut",
+      "type": "TempPort",
+      "conj": false,
+      "mods": "",
+      "span": [
+        4980,
+        5004
+      ],
+      "close": null,
+      "parent": 62,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 65,
+      "kind": "constraint",
+      "isDef": false,
+      "short": "",
+      "name": "balance",
+      "type": "HeatBalance",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5017,
+        5050
+      ],
+      "close": null,
+      "parent": 62,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 66,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Signals",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5235,
+        6043
+      ],
+      "close": 6042,
+      "parent": 0,
+      "children": [
+        67,
+        69,
+        71,
+        73,
+        75,
+        77,
+        79,
+        81,
+        83,
+        86,
+        89
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "Architecture"
+        }
+      }
+    },
+    {
+      "idx": 67,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "Mode",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5313,
+        5374
+      ],
+      "close": 5373,
+      "parent": 66,
+      "children": [
+        68
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 68,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "target",
+      "type": "TemperatureValue",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5336,
+        5372
+      ],
+      "close": null,
+      "parent": 67,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 69,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "Temperature",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5383,
+        5443
+      ],
+      "close": 5442,
+      "parent": 66,
+      "children": [
+        70
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 70,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "value",
+      "type": "TemperatureValue",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5406,
+        5441
+      ],
+      "close": null,
+      "parent": 69,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 71,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "PowerCmd",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5452,
+        5500
+      ],
+      "close": 5499,
+      "parent": 66,
+      "children": [
+        72
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 72,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "on",
+      "type": "Boolean",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5475,
+        5498
+      ],
+      "close": null,
+      "parent": 71,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 73,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "Heat",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5509,
+        5563
+      ],
+      "close": 5562,
+      "parent": 66,
+      "children": [
+        74
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 74,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "power",
+      "type": "PowerValue",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5532,
+        5561
+      ],
+      "close": null,
+      "parent": 73,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 75,
+      "kind": "port def",
+      "isDef": true,
+      "short": "",
+      "name": "ModePort",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5573,
+        5617
+      ],
+      "close": 5616,
+      "parent": 66,
+      "children": [
+        76
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 76,
+      "kind": "item",
+      "isDef": false,
+      "short": "",
+      "name": "mode",
+      "type": "Mode",
+      "conj": false,
+      "mods": "out",
+      "span": [
+        5594,
+        5615
+      ],
+      "close": null,
+      "parent": 75,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 77,
+      "kind": "port def",
+      "isDef": true,
+      "short": "",
+      "name": "TempPort",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5626,
+        5677
+      ],
+      "close": 5676,
+      "parent": 66,
+      "children": [
+        78
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 78,
+      "kind": "item",
+      "isDef": false,
+      "short": "",
+      "name": "temp",
+      "type": "Temperature",
+      "conj": false,
+      "mods": "out",
+      "span": [
+        5647,
+        5675
+      ],
+      "close": null,
+      "parent": 77,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 79,
+      "kind": "port def",
+      "isDef": true,
+      "short": "",
+      "name": "PowerPort",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5686,
+        5733
+      ],
+      "close": 5732,
+      "parent": 66,
+      "children": [
+        80
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 80,
+      "kind": "item",
+      "isDef": false,
+      "short": "",
+      "name": "cmd",
+      "type": "PowerCmd",
+      "conj": false,
+      "mods": "out",
+      "span": [
+        5707,
+        5731
+      ],
+      "close": null,
+      "parent": 79,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 81,
+      "kind": "port def",
+      "isDef": true,
+      "short": "",
+      "name": "HeatPort",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5742,
+        5786
+      ],
+      "close": 5785,
+      "parent": 66,
+      "children": [
+        82
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 82,
+      "kind": "item",
+      "isDef": false,
+      "short": "",
+      "name": "heat",
+      "type": "Heat",
+      "conj": false,
+      "mods": "out",
+      "span": [
+        5763,
+        5784
+      ],
+      "close": null,
+      "parent": 81,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 83,
+      "kind": "interface def",
+      "isDef": true,
+      "short": "",
+      "name": "ModeInterface",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5796,
+        5870
+      ],
+      "close": 5869,
+      "parent": 66,
+      "children": [
+        84,
+        85
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 84,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "src",
+      "type": "ModePort",
+      "dir": "end",
+      "span": [
+        5827,
+        5846
+      ],
+      "close": null,
+      "parent": 83,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 85,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "dst",
+      "type": "ModePort",
+      "dir": "end",
+      "span": [
+        5848,
+        5868
+      ],
+      "close": null,
+      "parent": 83,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 86,
+      "kind": "interface def",
+      "isDef": true,
+      "short": "",
+      "name": "TempInterface",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5879,
+        5953
+      ],
+      "close": 5952,
+      "parent": 66,
+      "children": [
+        87,
+        88
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 87,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "src",
+      "type": "TempPort",
+      "dir": "end",
+      "span": [
+        5910,
+        5929
+      ],
+      "close": null,
+      "parent": 86,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 88,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "dst",
+      "type": "TempPort",
+      "dir": "end",
+      "span": [
+        5931,
+        5951
+      ],
+      "close": null,
+      "parent": 86,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 89,
+      "kind": "interface def",
+      "isDef": true,
+      "short": "",
+      "name": "PowerInterface",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        5962,
+        6037
+      ],
+      "close": 6036,
+      "parent": 66,
+      "children": [
+        90,
+        91
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 90,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "src",
+      "type": "PowerPort",
+      "dir": "end",
+      "span": [
+        5993,
+        6013
+      ],
+      "close": null,
+      "parent": 89,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 91,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "dst",
+      "type": "PowerPort",
+      "dir": "end",
+      "span": [
+        6014,
+        6035
+      ],
+      "close": null,
+      "parent": 89,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 92,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Physics",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        6213,
+        6808
+      ],
+      "close": 6807,
+      "parent": 0,
+      "children": [
+        93,
+        99
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "Architecture"
+        }
+      }
+    },
+    {
+      "idx": 93,
+      "kind": "constraint def",
+      "isDef": true,
+      "short": "",
+      "name": "HeatBalance",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "水の熱容量 × 温度変化 = 加熱 − 放熱",
+      "span": [
+        6291,
+        6529
+      ],
+      "close": 6528,
+      "parent": 92,
+      "children": [
+        94,
+        95,
+        96,
+        97,
+        98
+      ],
+      "exprs": [
+        {
+          "text": "c * mass * dTdt == P - loss",
+          "via": ""
+        }
+      ]
+    },
+    {
+      "idx": 94,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "c",
+      "type": "Real",
+      "dir": "in",
+      "span": [
+        6377,
+        6389
+      ],
+      "close": null,
+      "parent": 93,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 95,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "mass",
+      "type": "MassValue",
+      "dir": "in",
+      "span": [
+        6390,
+        6410
+      ],
+      "close": null,
+      "parent": 93,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 96,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "dTdt",
+      "type": "Real",
+      "dir": "in",
+      "span": [
+        6411,
+        6426
+      ],
+      "close": null,
+      "parent": 93,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 97,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "P",
+      "type": "PowerValue",
+      "dir": "in",
+      "span": [
+        6439,
+        6457
+      ],
+      "close": null,
+      "parent": 93,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 98,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "loss",
+      "type": "PowerValue",
+      "dir": "in",
+      "span": [
+        6458,
+        6479
+      ],
+      "close": null,
+      "parent": 93,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 99,
+      "kind": "constraint def",
+      "isDef": true,
+      "short": "",
+      "name": "OnOffLaw",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "設定温度から hysteresis だけ下がったら加熱を再開する",
+      "span": [
+        6538,
+        6802
+      ],
+      "close": 6801,
+      "parent": 92,
+      "children": [
+        100,
+        101,
+        102,
+        103
+      ],
+      "exprs": [
+        {
+          "text": "on == (T < target - hysteresis)",
+          "via": ""
+        }
+      ]
+    },
+    {
+      "idx": 100,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "T",
+      "type": "TemperatureValue",
+      "dir": "in",
+      "span": [
+        6631,
+        6655
+      ],
+      "close": null,
+      "parent": 99,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 101,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "target",
+      "type": "TemperatureValue",
+      "dir": "in",
+      "span": [
+        6656,
+        6685
+      ],
+      "close": null,
+      "parent": 99,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 102,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "hysteresis",
+      "type": "TemperatureValue",
+      "dir": "in",
+      "span": [
+        6698,
+        6731
+      ],
+      "close": null,
+      "parent": 99,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 103,
+      "kind": "param",
+      "isDef": false,
+      "short": "",
+      "name": "on",
+      "type": "Boolean",
+      "dir": "in",
+      "span": [
+        6732,
+        6748
+      ],
+      "close": null,
+      "parent": 99,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 104,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Behavior",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        6971,
+        8134
+      ],
+      "close": 8133,
+      "parent": 0,
+      "children": [
+        105,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "Architecture"
+        }
+      }
+    },
+    {
+      "idx": 105,
+      "kind": "state def",
+      "isDef": true,
+      "short": "",
+      "name": "KettleStates",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7086,
+        7675
+      ],
+      "close": 7674,
+      "parent": 104,
+      "children": [
+        106,
+        107,
+        108,
+        109
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 106,
+      "kind": "state",
+      "isDef": false,
+      "short": "",
+      "name": "idle",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7153,
+        7164
+      ],
+      "close": null,
+      "parent": 105,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 107,
+      "kind": "state",
+      "isDef": false,
+      "short": "",
+      "name": "heating",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7177,
+        7191
+      ],
+      "close": null,
+      "parent": 105,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 108,
+      "kind": "state",
+      "isDef": false,
+      "short": "",
+      "name": "keepWarm",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7204,
+        7219
+      ],
+      "close": null,
+      "parent": 105,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 109,
+      "kind": "state",
+      "isDef": false,
+      "short": "",
+      "name": "fault",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7232,
+        7244
+      ],
+      "close": null,
+      "parent": 105,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 110,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "StartPressed",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7684,
+        7706
+      ],
+      "close": null,
+      "parent": 104,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 111,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "TargetReached",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7707,
+        7730
+      ],
+      "close": null,
+      "parent": 104,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 112,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "TooCool",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7731,
+        7748
+      ],
+      "close": null,
+      "parent": 104,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 113,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "DryDetected",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7757,
+        7778
+      ],
+      "close": null,
+      "parent": 104,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 114,
+      "kind": "item def",
+      "isDef": true,
+      "short": "",
+      "name": "Lifted",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7780,
+        7796
+      ],
+      "close": null,
+      "parent": 104,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 115,
+      "kind": "action def",
+      "isDef": true,
+      "short": "",
+      "name": "ControlStep",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "0.5 s ごとに実行する制御の 1 ステップ",
+      "span": [
+        7806,
+        8128
+      ],
+      "close": 8127,
+      "parent": 104,
+      "children": [
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 116,
+      "kind": "item",
+      "isDef": false,
+      "short": "",
+      "name": "temp",
+      "type": "Temperature",
+      "conj": false,
+      "mods": "in",
+      "span": [
+        7889,
+        7916
+      ],
+      "close": null,
+      "parent": 115,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 117,
+      "kind": "item",
+      "isDef": false,
+      "short": "",
+      "name": "mode",
+      "type": "Mode",
+      "conj": false,
+      "mods": "in",
+      "span": [
+        7917,
+        7937
+      ],
+      "close": null,
+      "parent": 115,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 118,
+      "kind": "item",
+      "isDef": false,
+      "short": "",
+      "name": "cmd",
+      "type": "PowerCmd",
+      "conj": false,
+      "mods": "out",
+      "span": [
+        7950,
+        7974
+      ],
+      "close": null,
+      "parent": 115,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 119,
+      "kind": "action",
+      "isDef": false,
+      "short": "",
+      "name": "readSensor",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        7987,
+        8005
+      ],
+      "close": null,
+      "parent": 115,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 120,
+      "kind": "action",
+      "isDef": false,
+      "short": "",
+      "name": "checkDryBoil",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8018,
+        8043
+      ],
+      "close": null,
+      "parent": 115,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 121,
+      "kind": "action",
+      "isDef": false,
+      "short": "",
+      "name": "decideHeater",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8056,
+        8081
+      ],
+      "close": null,
+      "parent": 115,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 122,
+      "kind": "action",
+      "isDef": false,
+      "short": "",
+      "name": "writeOutput",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8094,
+        8118
+      ],
+      "close": null,
+      "parent": 115,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 123,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Scenarios",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8297,
+        9086
+      ],
+      "close": 9085,
+      "parent": 0,
+      "children": [
+        124
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "Architecture"
+        }
+      }
+    },
+    {
+      "idx": 124,
+      "kind": "occurrence def",
+      "isDef": true,
+      "short": "",
+      "name": "BoilAndKeepWarm",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "湯沸かしを始め、沸いたら保温に切り替わるまで",
+      "span": [
+        8450,
+        9080
+      ],
+      "close": 9079,
+      "parent": 123,
+      "children": [
+        125,
+        126,
+        127,
+        128,
+        129
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 125,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "user",
+      "type": "User",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8540,
+        8564
+      ],
+      "close": null,
+      "parent": 124,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 126,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "panel",
+      "type": "ControlPanel",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8577,
+        8603
+      ],
+      "close": null,
+      "parent": 124,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 127,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "controller",
+      "type": "HeaterController",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8616,
+        8651
+      ],
+      "close": null,
+      "parent": 124,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 128,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "heater",
+      "type": "Heater",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8664,
+        8685
+      ],
+      "close": null,
+      "parent": 124,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 129,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "sensor",
+      "type": "TempSensor",
+      "conj": false,
+      "mods": "",
+      "span": [
+        8698,
+        8723
+      ],
+      "close": null,
+      "parent": 124,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 130,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Allocation",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        9250,
+        9612
+      ],
+      "close": 9611,
+      "parent": 0,
+      "children": [
+        131
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "Architecture"
+        }
+      }
+    },
+    {
+      "idx": 131,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        9408,
+        9429
+      ],
+      "close": null,
+      "parent": 130,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 132,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Verification",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        9776,
+        10596
+      ],
+      "close": 10595,
+      "parent": 0,
+      "children": [
+        133,
+        137,
+        140
+      ],
+      "exprs": [],
+      "meta": {
+        "Phase": {
+          "stage": "Verification"
+        }
+      }
+    },
+    {
+      "idx": 133,
+      "kind": "analysis def",
+      "isDef": true,
+      "short": "",
+      "name": "BoilTimeAnalysis",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "doc": "定格電力と熱損失から沸騰までの時間を求める",
+      "span": [
+        9937,
+        10177
+      ],
+      "close": 10176,
+      "parent": 132,
+      "children": [
+        134,
+        135,
+        136
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 134,
+      "kind": "subject",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        10025,
+        10049
+      ],
+      "close": null,
+      "parent": 133,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 135,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "startTemp",
+      "type": "TemperatureValue",
+      "conj": false,
+      "mods": "in",
+      "value": "20 [degC]",
+      "span": [
+        10062,
+        10116
+      ],
+      "close": null,
+      "parent": 133,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 136,
+      "kind": "attribute",
+      "isDef": false,
+      "short": "",
+      "name": "boilTime",
+      "type": "TimeValue",
+      "conj": false,
+      "mods": "",
+      "span": [
+        10129,
+        10167
+      ],
+      "close": null,
+      "parent": 133,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 137,
+      "kind": "verification def",
+      "isDef": true,
+      "short": "",
+      "name": "BoilTest",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        10187,
+        10405
+      ],
+      "close": 10404,
+      "parent": 132,
+      "children": [
+        138,
+        139
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 138,
+      "kind": "subject",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        10227,
+        10251
+      ],
+      "close": null,
+      "parent": 137,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 139,
+      "kind": "analysis",
+      "isDef": false,
+      "short": "",
+      "name": "boil",
+      "type": "BoilTimeAnalysis",
+      "conj": false,
+      "mods": "",
+      "span": [
+        10320,
+        10353
+      ],
+      "close": null,
+      "parent": 137,
+      "children": [],
+      "exprs": []
+    },
+    {
+      "idx": 140,
+      "kind": "verification def",
+      "isDef": true,
+      "short": "",
+      "name": "KeepWarmTest",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        10414,
+        10590
+      ],
+      "close": 10589,
+      "parent": 132,
+      "children": [
+        141
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 141,
+      "kind": "subject",
+      "isDef": false,
+      "short": "",
+      "name": "kettle",
+      "type": "Kettle",
+      "conj": false,
+      "mods": "",
+      "span": [
+        10458,
+        10482
+      ],
+      "close": null,
+      "parent": 140,
+      "children": [],
+      "exprs": []
+    }
+  ],
+  "rels": [
+    {
+      "rel": "frame",
+      "name": "convenience",
+      "type": "Convenience",
+      "start": 2526,
+      "end": 2565,
+      "parent": 26,
+      "usage": null
+    },
+    {
+      "rel": "frame",
+      "name": "safety",
+      "type": "Safety",
+      "start": 2579,
+      "end": 2608,
+      "parent": 26,
+      "usage": null
+    },
+    {
+      "rel": "derive",
+      "a": "BoilTimeReq",
+      "b": "QuickBoilNeed",
+      "start": 2768,
+      "end": 2824,
+      "parent": 15,
+      "usage": null
+    },
+    {
+      "rel": "derive",
+      "a": "KeepWarmAccuracyReq",
+      "b": "KeepWarmNeed",
+      "start": 2834,
+      "end": 2897,
+      "parent": 15,
+      "usage": null
+    },
+    {
+      "rel": "derive",
+      "a": "DryBoilCutoffReq",
+      "b": "SafeUseNeed",
+      "start": 2907,
+      "end": 2966,
+      "parent": 15,
+      "usage": null
+    },
+    {
+      "rel": "connect",
+      "a": "panel.modeOut",
+      "b": "controller.modeIn",
+      "item": "ModeInterface",
+      "start": 3782,
+      "end": 3857,
+      "parent": 36,
+      "usage": 43
+    },
+    {
+      "rel": "connect",
+      "a": "sensor.tempOut",
+      "b": "controller.tempIn",
+      "item": "TempInterface",
+      "start": 3871,
+      "end": 3947,
+      "parent": 36,
+      "usage": 44
+    },
+    {
+      "rel": "connect",
+      "a": "controller.powerOut",
+      "b": "heater.powerIn",
+      "item": "PowerInterface",
+      "start": 3961,
+      "end": 4041,
+      "parent": 36,
+      "usage": 45
+    },
+    {
+      "rel": "flow",
+      "item": "Heat",
+      "a": "heater.heatOut",
+      "b": "water.heatIn",
+      "start": 4055,
+      "end": 4103,
+      "parent": 36,
+      "usage": null
+    },
+    {
+      "rel": "flow",
+      "item": "Temperature",
+      "a": "water.tempOut",
+      "b": "sensor.tempIn",
+      "start": 4117,
+      "end": 4172,
+      "parent": 36,
+      "usage": null
+    },
+    {
+      "rel": "transition",
+      "from": "idle",
+      "ev": "StartPressed",
+      "to": "heating",
+      "start": 7258,
+      "end": 7331,
+      "parent": 105,
+      "usage": null
+    },
+    {
+      "rel": "transition",
+      "from": "heating",
+      "ev": "TargetReached",
+      "to": "keepWarm",
+      "start": 7345,
+      "end": 7420,
+      "parent": 105,
+      "usage": null
+    },
+    {
+      "rel": "transition",
+      "from": "keepWarm",
+      "ev": "TooCool",
+      "to": "heating",
+      "start": 7434,
+      "end": 7502,
+      "parent": 105,
+      "usage": null
+    },
+    {
+      "rel": "transition",
+      "from": "heating",
+      "ev": "DryDetected",
+      "to": "fault",
+      "start": 7516,
+      "end": 7586,
+      "parent": 105,
+      "usage": null
+    },
+    {
+      "rel": "transition",
+      "from": "fault",
+      "ev": "Lifted",
+      "to": "idle",
+      "start": 7600,
+      "end": 7664,
+      "parent": 105,
+      "usage": null
+    },
+    {
+      "rel": "message",
+      "name": "pressStart",
+      "item": "Mode",
+      "a": "user",
+      "b": "panel",
+      "start": 8736,
+      "end": 8781,
+      "parent": 124,
+      "usage": null
+    },
+    {
+      "rel": "message",
+      "name": "selectMode",
+      "item": "Mode",
+      "a": "panel",
+      "b": "controller",
+      "start": 8795,
+      "end": 8851,
+      "parent": 124,
+      "usage": null
+    },
+    {
+      "rel": "message",
+      "name": "heatOn",
+      "item": "PowerCmd",
+      "a": "controller",
+      "b": "heater",
+      "start": 8865,
+      "end": 8922,
+      "parent": 124,
+      "usage": null
+    },
+    {
+      "rel": "message",
+      "name": "reached",
+      "item": "Temperature",
+      "a": "sensor",
+      "b": "controller",
+      "start": 8936,
+      "end": 8997,
+      "parent": 124,
+      "usage": null
+    },
+    {
+      "rel": "message",
+      "name": "heatOff",
+      "item": "PowerCmd",
+      "a": "controller",
+      "b": "heater",
+      "start": 9011,
+      "end": 9069,
+      "parent": 124,
+      "usage": null
+    },
+    {
+      "rel": "satisfy",
+      "req": "kettleRequirements.k1",
+      "by": "kettle.heater",
+      "start": 9439,
+      "end": 9485,
+      "parent": 130,
+      "usage": null
+    },
+    {
+      "rel": "satisfy",
+      "req": "kettleRequirements.k2",
+      "by": "kettle.controller",
+      "start": 9495,
+      "end": 9545,
+      "parent": 130,
+      "usage": null
+    },
+    {
+      "rel": "satisfy",
+      "req": "kettleRequirements.k3",
+      "by": "kettle.controller",
+      "start": 9555,
+      "end": 9605,
+      "parent": 130,
+      "usage": null
+    },
+    {
+      "rel": "verify",
+      "req": "kettleRequirements.k1",
+      "start": 10276,
+      "end": 10304,
+      "parent": 137,
+      "usage": null
+    },
+    {
+      "rel": "verify",
+      "req": "kettleRequirements.k2",
+      "start": 10507,
+      "end": 10535,
+      "parent": 140,
+      "usage": null
+    }
+  ],
+  "errors": [],
+  "layout": {},
+  "model": {
+    "nodes": [
+      {
+        "key": "PhaseKind",
+        "name": "PhaseKind",
+        "short": "",
+        "kind": "enum def",
+        "isDef": true,
+        "entry": 3,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      },
+      {
+        "key": "User",
+        "name": "User",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 5,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": "StakeholderNeeds",
+        "phaseOwn": false
+      },
+      {
+        "key": "Regulator",
+        "name": "Regulator",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 6,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": "StakeholderNeeds",
+        "phaseOwn": false
+      },
+      {
+        "key": "Convenience",
+        "name": "Convenience",
+        "short": "",
+        "kind": "concern def",
+        "isDef": true,
+        "entry": 7,
+        "fam": "concern",
+        "trans": [],
+        "ports": [],
+        "phase": "StakeholderNeeds",
+        "phaseOwn": false
+      },
+      {
+        "key": "Safety",
+        "name": "Safety",
+        "short": "",
+        "kind": "concern def",
+        "isDef": true,
+        "entry": 9,
+        "fam": "concern",
+        "trans": [],
+        "ports": [],
+        "phase": "StakeholderNeeds",
+        "phaseOwn": false
+      },
+      {
+        "key": "QuickBoilNeed",
+        "name": "QuickBoilNeed",
+        "short": "N1",
+        "kind": "requirement def",
+        "isDef": true,
+        "entry": 12,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": "StakeholderNeeds",
+        "phaseOwn": false
+      },
+      {
+        "key": "KeepWarmNeed",
+        "name": "KeepWarmNeed",
+        "short": "N2",
+        "kind": "requirement def",
+        "isDef": true,
+        "entry": 13,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": "StakeholderNeeds",
+        "phaseOwn": false
+      },
+      {
+        "key": "SafeUseNeed",
+        "name": "SafeUseNeed",
+        "short": "N3",
+        "kind": "requirement def",
+        "isDef": true,
+        "entry": 14,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": "StakeholderNeeds",
+        "phaseOwn": false
+      },
+      {
+        "key": "BoilTimeReq",
+        "name": "BoilTimeReq",
+        "short": "K1",
+        "kind": "requirement def",
+        "isDef": true,
+        "entry": 16,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": "SystemRequirements",
+        "phaseOwn": false
+      },
+      {
+        "key": "KeepWarmAccuracyReq",
+        "name": "KeepWarmAccuracyReq",
+        "short": "K2",
+        "kind": "requirement def",
+        "isDef": true,
+        "entry": 20,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": "SystemRequirements",
+        "phaseOwn": false
+      },
+      {
+        "key": "DryBoilCutoffReq",
+        "name": "DryBoilCutoffReq",
+        "short": "K3",
+        "kind": "requirement def",
+        "isDef": true,
+        "entry": 23,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": "SystemRequirements",
+        "phaseOwn": false
+      },
+      {
+        "key": "kettleRequirements",
+        "name": "kettleRequirements",
+        "short": "",
+        "kind": "requirement",
+        "isDef": false,
+        "entry": 26,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": "SystemRequirements",
+        "phaseOwn": false
+      },
+      {
+        "key": "KettleParams",
+        "name": "KettleParams",
+        "short": "",
+        "kind": "attribute def",
+        "isDef": true,
+        "entry": 32,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "Kettle",
+        "name": "Kettle",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 36,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "ControlPanel",
+        "name": "ControlPanel",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 46,
+        "fam": "part",
+        "trans": [],
+        "ports": [
+          {
+            "name": "modeOut",
+            "type": "ModePort",
+            "conj": false,
+            "dir": "out",
+            "entry": {
+              "$entry": 47
+            }
+          }
+        ],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "TempSensor",
+        "name": "TempSensor",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 48,
+        "fam": "part",
+        "trans": [],
+        "ports": [
+          {
+            "name": "tempIn",
+            "type": "TempPort",
+            "conj": true,
+            "dir": "in",
+            "entry": {
+              "$entry": 49
+            }
+          },
+          {
+            "name": "tempOut",
+            "type": "TempPort",
+            "conj": false,
+            "dir": "out",
+            "entry": {
+              "$entry": 50
+            }
+          }
+        ],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "HeaterController",
+        "name": "HeaterController",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 51,
+        "fam": "part",
+        "trans": [],
+        "ports": [
+          {
+            "name": "modeIn",
+            "type": "ModePort",
+            "conj": true,
+            "dir": "in",
+            "entry": {
+              "$entry": 53
+            }
+          },
+          {
+            "name": "tempIn",
+            "type": "TempPort",
+            "conj": true,
+            "dir": "in",
+            "entry": {
+              "$entry": 54
+            }
+          },
+          {
+            "name": "powerOut",
+            "type": "PowerPort",
+            "conj": false,
+            "dir": "out",
+            "entry": {
+              "$entry": 55
+            }
+          }
+        ],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "Heater",
+        "name": "Heater",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 59,
+        "fam": "part",
+        "trans": [],
+        "ports": [
+          {
+            "name": "powerIn",
+            "type": "PowerPort",
+            "conj": true,
+            "dir": "in",
+            "entry": {
+              "$entry": 60
+            }
+          },
+          {
+            "name": "heatOut",
+            "type": "HeatPort",
+            "conj": false,
+            "dir": "out",
+            "entry": {
+              "$entry": 61
+            }
+          }
+        ],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "WaterVessel",
+        "name": "WaterVessel",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 62,
+        "fam": "part",
+        "trans": [],
+        "ports": [
+          {
+            "name": "heatIn",
+            "type": "HeatPort",
+            "conj": true,
+            "dir": "in",
+            "entry": {
+              "$entry": 63
+            }
+          },
+          {
+            "name": "tempOut",
+            "type": "TempPort",
+            "conj": false,
+            "dir": "out",
+            "entry": {
+              "$entry": 64
+            }
+          }
+        ],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "Mode",
+        "name": "Mode",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 67,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "Temperature",
+        "name": "Temperature",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 69,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "PowerCmd",
+        "name": "PowerCmd",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 71,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "Heat",
+        "name": "Heat",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 73,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "ModePort",
+        "name": "ModePort",
+        "short": "",
+        "kind": "port def",
+        "isDef": true,
+        "entry": 75,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "TempPort",
+        "name": "TempPort",
+        "short": "",
+        "kind": "port def",
+        "isDef": true,
+        "entry": 77,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "PowerPort",
+        "name": "PowerPort",
+        "short": "",
+        "kind": "port def",
+        "isDef": true,
+        "entry": 79,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "HeatPort",
+        "name": "HeatPort",
+        "short": "",
+        "kind": "port def",
+        "isDef": true,
+        "entry": 81,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "ModeInterface",
+        "name": "ModeInterface",
+        "short": "",
+        "kind": "interface def",
+        "isDef": true,
+        "entry": 83,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "TempInterface",
+        "name": "TempInterface",
+        "short": "",
+        "kind": "interface def",
+        "isDef": true,
+        "entry": 86,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "PowerInterface",
+        "name": "PowerInterface",
+        "short": "",
+        "kind": "interface def",
+        "isDef": true,
+        "entry": 89,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "HeatBalance",
+        "name": "HeatBalance",
+        "short": "",
+        "kind": "constraint def",
+        "isDef": true,
+        "entry": 93,
+        "fam": "con",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "OnOffLaw",
+        "name": "OnOffLaw",
+        "short": "",
+        "kind": "constraint def",
+        "isDef": true,
+        "entry": 99,
+        "fam": "con",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "KettleStates",
+        "name": "KettleStates",
+        "short": "",
+        "kind": "state def",
+        "isDef": true,
+        "entry": 105,
+        "fam": "beh",
+        "trans": [
+          "idle → heating  [StartPressed]",
+          "heating → keepWarm  [TargetReached]",
+          "keepWarm → heating  [TooCool]",
+          "heating → fault  [DryDetected]",
+          "fault → idle  [Lifted]"
+        ],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "StartPressed",
+        "name": "StartPressed",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 110,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "TargetReached",
+        "name": "TargetReached",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 111,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "TooCool",
+        "name": "TooCool",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 112,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "DryDetected",
+        "name": "DryDetected",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 113,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "Lifted",
+        "name": "Lifted",
+        "short": "",
+        "kind": "item def",
+        "isDef": true,
+        "entry": 114,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "ControlStep",
+        "name": "ControlStep",
+        "short": "",
+        "kind": "action def",
+        "isDef": true,
+        "entry": 115,
+        "fam": "beh",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "BoilAndKeepWarm",
+        "name": "BoilAndKeepWarm",
+        "short": "",
+        "kind": "occurrence def",
+        "isDef": true,
+        "entry": 124,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "kettle",
+        "name": "kettle",
+        "short": "",
+        "kind": "part",
+        "isDef": false,
+        "entry": 131,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": "Architecture",
+        "phaseOwn": false
+      },
+      {
+        "key": "BoilTimeAnalysis",
+        "name": "BoilTimeAnalysis",
+        "short": "",
+        "kind": "analysis def",
+        "isDef": true,
+        "entry": 133,
+        "fam": "ver",
+        "trans": [],
+        "ports": [],
+        "phase": "Verification",
+        "phaseOwn": false
+      },
+      {
+        "key": "BoilTest",
+        "name": "BoilTest",
+        "short": "",
+        "kind": "verification def",
+        "isDef": true,
+        "entry": 137,
+        "fam": "ver",
+        "trans": [],
+        "ports": [],
+        "phase": "Verification",
+        "phaseOwn": false
+      },
+      {
+        "key": "KeepWarmTest",
+        "name": "KeepWarmTest",
+        "short": "",
+        "kind": "verification def",
+        "isDef": true,
+        "entry": 140,
+        "fam": "ver",
+        "trans": [],
+        "ports": [],
+        "phase": "Verification",
+        "phaseOwn": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "comp|kettleRequirements|BoilTimeReq|k1#1",
+        "kind": "comp",
+        "from": "kettleRequirements",
+        "to": "BoilTimeReq",
+        "label": "k1",
+        "src": {
+          "start": 2622,
+          "end": 2651
+        }
+      },
+      {
+        "id": "comp|kettleRequirements|KeepWarmAccuracyReq|k2#1",
+        "kind": "comp",
+        "from": "kettleRequirements",
+        "to": "KeepWarmAccuracyReq",
+        "label": "k2",
+        "src": {
+          "start": 2664,
+          "end": 2701
+        }
+      },
+      {
+        "id": "comp|kettleRequirements|DryBoilCutoffReq|k3#1",
+        "kind": "comp",
+        "from": "kettleRequirements",
+        "to": "DryBoilCutoffReq",
+        "label": "k3",
+        "src": {
+          "start": 2714,
+          "end": 2748
+        }
+      },
+      {
+        "id": "comp|Kettle|KettleParams|params#1",
+        "kind": "comp",
+        "from": "Kettle",
+        "to": "KettleParams",
+        "label": "params",
+        "src": {
+          "start": 3539,
+          "end": 3571
+        }
+      },
+      {
+        "id": "comp|Kettle|ControlPanel|panel#1",
+        "kind": "comp",
+        "from": "Kettle",
+        "to": "ControlPanel",
+        "label": "panel",
+        "src": {
+          "start": 3584,
+          "end": 3610
+        }
+      },
+      {
+        "id": "comp|Kettle|TempSensor|sensor#1",
+        "kind": "comp",
+        "from": "Kettle",
+        "to": "TempSensor",
+        "label": "sensor",
+        "src": {
+          "start": 3623,
+          "end": 3648
+        }
+      },
+      {
+        "id": "comp|Kettle|HeaterController|controller#1",
+        "kind": "comp",
+        "from": "Kettle",
+        "to": "HeaterController",
+        "label": "controller",
+        "src": {
+          "start": 3661,
+          "end": 3696
+        }
+      },
+      {
+        "id": "comp|Kettle|Heater|heater#1",
+        "kind": "comp",
+        "from": "Kettle",
+        "to": "Heater",
+        "label": "heater",
+        "src": {
+          "start": 3709,
+          "end": 3730
+        }
+      },
+      {
+        "id": "comp|Kettle|WaterVessel|water#1",
+        "kind": "comp",
+        "from": "Kettle",
+        "to": "WaterVessel",
+        "label": "water",
+        "src": {
+          "start": 3743,
+          "end": 3768
+        }
+      },
+      {
+        "id": "comp|ControlPanel|ModePort|modeOut#1",
+        "kind": "comp",
+        "from": "ControlPanel",
+        "to": "ModePort",
+        "label": "modeOut",
+        "src": {
+          "start": 4229,
+          "end": 4253
+        }
+      },
+      {
+        "id": "comp|TempSensor|TempPort|tempIn#1",
+        "kind": "comp",
+        "from": "TempSensor",
+        "to": "TempPort",
+        "label": "tempIn",
+        "src": {
+          "start": 4306,
+          "end": 4330
+        }
+      },
+      {
+        "id": "comp|TempSensor|TempPort|tempOut#1",
+        "kind": "comp",
+        "from": "TempSensor",
+        "to": "TempPort",
+        "label": "tempOut",
+        "src": {
+          "start": 4343,
+          "end": 4367
+        }
+      },
+      {
+        "id": "comp|HeaterController|ModePort|modeIn#1",
+        "kind": "comp",
+        "from": "HeaterController",
+        "to": "ModePort",
+        "label": "modeIn",
+        "src": {
+          "start": 4488,
+          "end": 4512
+        }
+      },
+      {
+        "id": "comp|HeaterController|TempPort|tempIn#1",
+        "kind": "comp",
+        "from": "HeaterController",
+        "to": "TempPort",
+        "label": "tempIn",
+        "src": {
+          "start": 4525,
+          "end": 4549
+        }
+      },
+      {
+        "id": "comp|HeaterController|PowerPort|powerOut#1",
+        "kind": "comp",
+        "from": "HeaterController",
+        "to": "PowerPort",
+        "label": "powerOut",
+        "src": {
+          "start": 4562,
+          "end": 4588
+        }
+      },
+      {
+        "id": "comp|HeaterController|KettleStates|modes#1",
+        "kind": "comp",
+        "from": "HeaterController",
+        "to": "KettleStates",
+        "label": "modes",
+        "src": {
+          "start": 4601,
+          "end": 4646
+        }
+      },
+      {
+        "id": "comp|HeaterController|ControlStep|control#1",
+        "kind": "comp",
+        "from": "HeaterController",
+        "to": "ControlStep",
+        "label": "control",
+        "src": {
+          "start": 4659,
+          "end": 4706
+        }
+      },
+      {
+        "id": "comp|HeaterController|OnOffLaw|law#1",
+        "kind": "comp",
+        "from": "HeaterController",
+        "to": "OnOffLaw",
+        "label": "law",
+        "src": {
+          "start": 4719,
+          "end": 4745
+        }
+      },
+      {
+        "id": "comp|Heater|PowerPort|powerIn#1",
+        "kind": "comp",
+        "from": "Heater",
+        "to": "PowerPort",
+        "label": "powerIn",
+        "src": {
+          "start": 4794,
+          "end": 4820
+        }
+      },
+      {
+        "id": "comp|Heater|HeatPort|heatOut#1",
+        "kind": "comp",
+        "from": "Heater",
+        "to": "HeatPort",
+        "label": "heatOut",
+        "src": {
+          "start": 4833,
+          "end": 4857
+        }
+      },
+      {
+        "id": "comp|WaterVessel|HeatPort|heatIn#1",
+        "kind": "comp",
+        "from": "WaterVessel",
+        "to": "HeatPort",
+        "label": "heatIn",
+        "src": {
+          "start": 4943,
+          "end": 4967
+        }
+      },
+      {
+        "id": "comp|WaterVessel|TempPort|tempOut#1",
+        "kind": "comp",
+        "from": "WaterVessel",
+        "to": "TempPort",
+        "label": "tempOut",
+        "src": {
+          "start": 4980,
+          "end": 5004
+        }
+      },
+      {
+        "id": "comp|WaterVessel|HeatBalance|balance#1",
+        "kind": "comp",
+        "from": "WaterVessel",
+        "to": "HeatBalance",
+        "label": "balance",
+        "src": {
+          "start": 5017,
+          "end": 5050
+        }
+      },
+      {
+        "id": "comp|ModePort|Mode|mode#1",
+        "kind": "comp",
+        "from": "ModePort",
+        "to": "Mode",
+        "label": "mode",
+        "src": {
+          "start": 5594,
+          "end": 5615
+        }
+      },
+      {
+        "id": "comp|TempPort|Temperature|temp#1",
+        "kind": "comp",
+        "from": "TempPort",
+        "to": "Temperature",
+        "label": "temp",
+        "src": {
+          "start": 5647,
+          "end": 5675
+        }
+      },
+      {
+        "id": "comp|PowerPort|PowerCmd|cmd#1",
+        "kind": "comp",
+        "from": "PowerPort",
+        "to": "PowerCmd",
+        "label": "cmd",
+        "src": {
+          "start": 5707,
+          "end": 5731
+        }
+      },
+      {
+        "id": "comp|HeatPort|Heat|heat#1",
+        "kind": "comp",
+        "from": "HeatPort",
+        "to": "Heat",
+        "label": "heat",
+        "src": {
+          "start": 5763,
+          "end": 5784
+        }
+      },
+      {
+        "id": "comp|ControlStep|Temperature|temp#1",
+        "kind": "comp",
+        "from": "ControlStep",
+        "to": "Temperature",
+        "label": "temp",
+        "src": {
+          "start": 7889,
+          "end": 7916
+        }
+      },
+      {
+        "id": "comp|ControlStep|Mode|mode#1",
+        "kind": "comp",
+        "from": "ControlStep",
+        "to": "Mode",
+        "label": "mode",
+        "src": {
+          "start": 7917,
+          "end": 7937
+        }
+      },
+      {
+        "id": "comp|ControlStep|PowerCmd|cmd#1",
+        "kind": "comp",
+        "from": "ControlStep",
+        "to": "PowerCmd",
+        "label": "cmd",
+        "src": {
+          "start": 7950,
+          "end": 7974
+        }
+      },
+      {
+        "id": "comp|BoilAndKeepWarm|User|user#1",
+        "kind": "comp",
+        "from": "BoilAndKeepWarm",
+        "to": "User",
+        "label": "user",
+        "src": {
+          "start": 8540,
+          "end": 8564
+        }
+      },
+      {
+        "id": "comp|BoilAndKeepWarm|ControlPanel|panel#1",
+        "kind": "comp",
+        "from": "BoilAndKeepWarm",
+        "to": "ControlPanel",
+        "label": "panel",
+        "src": {
+          "start": 8577,
+          "end": 8603
+        }
+      },
+      {
+        "id": "comp|BoilAndKeepWarm|HeaterController|controller#1",
+        "kind": "comp",
+        "from": "BoilAndKeepWarm",
+        "to": "HeaterController",
+        "label": "controller",
+        "src": {
+          "start": 8616,
+          "end": 8651
+        }
+      },
+      {
+        "id": "comp|BoilAndKeepWarm|Heater|heater#1",
+        "kind": "comp",
+        "from": "BoilAndKeepWarm",
+        "to": "Heater",
+        "label": "heater",
+        "src": {
+          "start": 8664,
+          "end": 8685
+        }
+      },
+      {
+        "id": "comp|BoilAndKeepWarm|TempSensor|sensor#1",
+        "kind": "comp",
+        "from": "BoilAndKeepWarm",
+        "to": "TempSensor",
+        "label": "sensor",
+        "src": {
+          "start": 8698,
+          "end": 8723
+        }
+      },
+      {
+        "id": "defined|kettle|Kettle|#1",
+        "kind": "defined",
+        "from": "kettle",
+        "to": "Kettle",
+        "label": "",
+        "src": {
+          "start": 9408,
+          "end": 9429
+        }
+      },
+      {
+        "id": "comp|BoilTest|BoilTimeAnalysis|boil#1",
+        "kind": "comp",
+        "from": "BoilTest",
+        "to": "BoilTimeAnalysis",
+        "label": "boil",
+        "src": {
+          "start": 10320,
+          "end": 10353
+        }
+      },
+      {
+        "id": "frame|kettleRequirements|Convenience|«frame»#1",
+        "kind": "frame",
+        "from": "kettleRequirements",
+        "to": "Convenience",
+        "label": "«frame»",
+        "src": {
+          "start": 2526,
+          "end": 2566
+        }
+      },
+      {
+        "id": "frame|kettleRequirements|Safety|«frame»#1",
+        "kind": "frame",
+        "from": "kettleRequirements",
+        "to": "Safety",
+        "label": "«frame»",
+        "src": {
+          "start": 2579,
+          "end": 2609
+        }
+      },
+      {
+        "id": "derive|BoilTimeReq|QuickBoilNeed|«derive»#1",
+        "kind": "derive",
+        "from": "BoilTimeReq",
+        "to": "QuickBoilNeed",
+        "label": "«derive»",
+        "src": {
+          "start": 2768,
+          "end": 2825
+        }
+      },
+      {
+        "id": "derive|KeepWarmAccuracyReq|KeepWarmNeed|«derive»#1",
+        "kind": "derive",
+        "from": "KeepWarmAccuracyReq",
+        "to": "KeepWarmNeed",
+        "label": "«derive»",
+        "src": {
+          "start": 2834,
+          "end": 2898
+        }
+      },
+      {
+        "id": "derive|DryBoilCutoffReq|SafeUseNeed|«derive»#1",
+        "kind": "derive",
+        "from": "DryBoilCutoffReq",
+        "to": "SafeUseNeed",
+        "label": "«derive»",
+        "src": {
+          "start": 2907,
+          "end": 2967
+        }
+      },
+      {
+        "id": "flow|ControlPanel|HeaterController|ModeInterface#1",
+        "kind": "flow",
+        "from": "ControlPanel",
+        "to": "HeaterController",
+        "label": "ModeInterface",
+        "src": {
+          "start": 3782,
+          "end": 3858
+        },
+        "rel": {
+          "rel": "connect",
+          "a": "panel.modeOut",
+          "b": "controller.modeIn",
+          "item": "ModeInterface",
+          "pe": {
+            "$entry": 36
+          },
+          "start": 3782,
+          "end": 3857,
+          "usage": {
+            "$entry": 43
+          }
+        },
+        "fromPort": "port:modeOut",
+        "toPort": "port:modeIn"
+      },
+      {
+        "id": "flow|TempSensor|HeaterController|TempInterface#1",
+        "kind": "flow",
+        "from": "TempSensor",
+        "to": "HeaterController",
+        "label": "TempInterface",
+        "src": {
+          "start": 3871,
+          "end": 3948
+        },
+        "rel": {
+          "rel": "connect",
+          "a": "sensor.tempOut",
+          "b": "controller.tempIn",
+          "item": "TempInterface",
+          "pe": {
+            "$entry": 36
+          },
+          "start": 3871,
+          "end": 3947,
+          "usage": {
+            "$entry": 44
+          }
+        },
+        "fromPort": "port:tempOut",
+        "toPort": "port:tempIn"
+      },
+      {
+        "id": "flow|HeaterController|Heater|PowerInterface#1",
+        "kind": "flow",
+        "from": "HeaterController",
+        "to": "Heater",
+        "label": "PowerInterface",
+        "src": {
+          "start": 3961,
+          "end": 4042
+        },
+        "rel": {
+          "rel": "connect",
+          "a": "controller.powerOut",
+          "b": "heater.powerIn",
+          "item": "PowerInterface",
+          "pe": {
+            "$entry": 36
+          },
+          "start": 3961,
+          "end": 4041,
+          "usage": {
+            "$entry": 45
+          }
+        },
+        "fromPort": "port:powerOut",
+        "toPort": "port:powerIn"
+      },
+      {
+        "id": "flow|Heater|WaterVessel|Heat#1",
+        "kind": "flow",
+        "from": "Heater",
+        "to": "WaterVessel",
+        "label": "Heat",
+        "src": {
+          "start": 4055,
+          "end": 4104
+        },
+        "rel": {
+          "rel": "flow",
+          "item": "Heat",
+          "a": "heater.heatOut",
+          "b": "water.heatIn",
+          "pe": {
+            "$entry": 36
+          },
+          "start": 4055,
+          "end": 4103
+        },
+        "fromPort": "port:heatOut",
+        "toPort": "port:heatIn"
+      },
+      {
+        "id": "flow|WaterVessel|TempSensor|Temperature#1",
+        "kind": "flow",
+        "from": "WaterVessel",
+        "to": "TempSensor",
+        "label": "Temperature",
+        "src": {
+          "start": 4117,
+          "end": 4173
+        },
+        "rel": {
+          "rel": "flow",
+          "item": "Temperature",
+          "a": "water.tempOut",
+          "b": "sensor.tempIn",
+          "pe": {
+            "$entry": 36
+          },
+          "start": 4117,
+          "end": 4172
+        },
+        "fromPort": "port:tempOut",
+        "toPort": "port:tempIn"
+      },
+      {
+        "id": "satisfy|Heater|BoilTimeReq|«satisfy»#1",
+        "kind": "satisfy",
+        "from": "Heater",
+        "to": "BoilTimeReq",
+        "label": "«satisfy»",
+        "src": {
+          "start": 9439,
+          "end": 9486
+        }
+      },
+      {
+        "id": "satisfy|HeaterController|KeepWarmAccuracyReq|«satisfy»#1",
+        "kind": "satisfy",
+        "from": "HeaterController",
+        "to": "KeepWarmAccuracyReq",
+        "label": "«satisfy»",
+        "src": {
+          "start": 9495,
+          "end": 9546
+        }
+      },
+      {
+        "id": "satisfy|HeaterController|DryBoilCutoffReq|«satisfy»#1",
+        "kind": "satisfy",
+        "from": "HeaterController",
+        "to": "DryBoilCutoffReq",
+        "label": "«satisfy»",
+        "src": {
+          "start": 9555,
+          "end": 9606
+        }
+      },
+      {
+        "id": "verify|BoilTest|BoilTimeReq|«verify»#1",
+        "kind": "verify",
+        "from": "BoilTest",
+        "to": "BoilTimeReq",
+        "label": "«verify»",
+        "src": {
+          "start": 10276,
+          "end": 10305
+        }
+      },
+      {
+        "id": "verify|KeepWarmTest|KeepWarmAccuracyReq|«verify»#1",
+        "kind": "verify",
+        "from": "KeepWarmTest",
+        "to": "KeepWarmAccuracyReq",
+        "label": "«verify»",
+        "src": {
+          "start": 10507,
+          "end": 10536
+        }
+      }
+    ],
+    "problems": [
+      {
+        "pos": 2194,
+        "kind": "gap",
+        "msg": "<'K3'> DryBoilCutoffReq：検証ケース（verify）がありません"
+      }
+    ],
+    "phases": [
+      "StakeholderNeeds",
+      "SystemRequirements",
+      "Architecture",
+      "Verification"
+    ]
+  }
+}

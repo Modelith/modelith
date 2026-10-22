@@ -1,0 +1,47 @@
+name: UI baselines
+
+# UI テストの基準画像を作り直す（docs/development/testing.md）。手元に Docker があれば scripts/e2e.sh で同じものを作れる。
+# トピックブランチへのコミットのメッセージに [ui-baselines] を含めたときだけ動く。
+# 作った画像は成果物 ui-baselines に置く。成果物を取れない環境（エージェントなど）向けに、ログにも base64 で出す。
+on:
+  push:
+    branches-ignore: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  baselines:
+    if: contains(github.event.head_commit.message, '[ui-baselines]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GitHub の実行環境の rustup は古いことがある。古い rustup はツールチェーンを取るときの TLS の確かめが甘い
+      # （RUSTSEC-2026-0382）ので、ツールチェーンを入れる前に rustup 自身を更新し、1.29.2 以上であることを確かめる
+      - name: Update rustup itself
+        run: |
+          rustup self update
+          scripts/check-rustup.sh
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (2026-10)
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true  # 毎回その時点の最新の 22.x を使う（セキュリティリリースをすぐ取り込む）
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - name: Generate baselines
+        run: scripts/e2e.sh e2e/visual.spec.ts --update-snapshots=all
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ui-baselines
+          path: web/e2e/visual.spec.ts-snapshots/
+      - name: Print baselines (tar.gz, base64)
+        run: |
+          echo "=====BEGIN UI BASELINES====="
+          tar czf - -C web/e2e visual.spec.ts-snapshots | base64 -w 20000
+          echo "=====END UI BASELINES====="

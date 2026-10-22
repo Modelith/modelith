@@ -1,0 +1,100 @@
+{
+  "case": "syntax-errors",
+  "entries": [
+    {
+      "idx": 0,
+      "kind": "package",
+      "isDef": false,
+      "short": "",
+      "name": "Broken",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        0,
+        60
+      ],
+      "close": 59,
+      "parent": null,
+      "children": [
+        1
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 1,
+      "kind": "part def",
+      "isDef": true,
+      "short": "",
+      "name": "A",
+      "type": "",
+      "conj": false,
+      "mods": "",
+      "span": [
+        21,
+        58
+      ],
+      "close": 57,
+      "parent": 0,
+      "children": [
+        2
+      ],
+      "exprs": []
+    },
+    {
+      "idx": 2,
+      "kind": "part",
+      "isDef": false,
+      "short": "",
+      "name": "b",
+      "type": "B",
+      "conj": false,
+      "mods": "",
+      "span": [
+        42,
+        58
+      ],
+      "close": null,
+      "parent": 1,
+      "children": [],
+      "exprs": []
+    }
+  ],
+  "rels": [],
+  "errors": [
+    {
+      "pos": 61,
+      "msg": "対応する「{」がない「}」があります"
+    }
+  ],
+  "layout": {},
+  "model": {
+    "nodes": [
+      {
+        "key": "A",
+        "name": "A",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 1,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      }
+    ],
+    "edges": [],
+    "problems": [
+      {
+        "pos": 42,
+        "msg": "型「B」が見つかりません（b）"
+      },
+      {
+        "pos": 61,
+        "msg": "対応する「{」がない「}」があります"
+      }
+    ],
+    "phases": null
+  }
+}

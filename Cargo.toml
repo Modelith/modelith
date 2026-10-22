@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0-rc.1"
+edition = "2024"
+license = "AGPL-3.0-only WITH LicenseRef-Modelith-Plugin-Exception"
+repository = "https://github.com/modelith/modelith"
+rust-version = "1.85"
+
+[workspace.dependencies]
+modelith-core = { path = "crates/modelith-core" }
+# プラグインとの契約（ADR-0004・ADR-0018）。版は plugin-sdk のコミットで固定する
+modelith-plugin-protocol = { git = "https://github.com/modelith/plugin-sdk", rev = "89d1f326bb692ccbdf7f89c42497e5a838c460ae" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+
+# ブラウザに配る wasm。速度を優先する（"s" より 3 のほうが小さく、速かった。ADR-0015）
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

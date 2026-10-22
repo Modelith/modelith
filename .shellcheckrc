@@ -1,0 +1,5 @@
+# ShellCheck 設定: source の相対パスをスクリプトの位置から解決する
+source-path=SCRIPTDIR
+external-sources=true
+# harness_load の引数（読み込むアダプタ）は省略可能なため、引数なし呼び出しの指摘は不要
+disable=SC2119

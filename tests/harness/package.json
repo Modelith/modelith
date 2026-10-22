@@ -1,0 +1,14 @@
+{
+  "name": "@modelith/harness-tests",
+  "private": true,
+  "description": "Tests for the agent harness (scripts/, .claude/hooks/)",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "unit": "bats unit",
+    "integration": "bats integration",
+    "system": "bats system"
+  },
+  "devDependencies": {
+    "bats": "^1.13.0"
+  }
+}

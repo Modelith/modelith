@@ -1,0 +1,44 @@
+name: 不具合の報告
+description: 期待どおりに動かない・表示が崩れる・エラーになる
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。**モデルに社外秘の情報が含まれる場合は、貼り付ける前に名前などを置き換えてください。**
+  - type: input
+    id: version
+    attributes:
+      label: バージョン
+      description: 画面右上の「ヘルプ」に表示されるバージョン
+      placeholder: 0.1.0-alpha.1
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      description: 期待した動きと、実際の動き
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. 「制御ループ」タブを開く
+        2. HeaterController をドラッグする
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: model
+    attributes:
+      label: 再現するモデル（任意）
+      description: 問題が起きる最小限の SysML テキスト
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: ブラウザと OS
+      placeholder: Chrome 140 / Windows 11

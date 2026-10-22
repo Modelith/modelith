@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]  # edited: タイトル・向け先の変更でも再検証
+  push:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  conventions:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: PR base (feature branches target dev)
+        run: scripts/check-pr-base.sh "$BASE_REF" "$HEAD_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+      - name: PR title (Conventional Commits)
+        run: scripts/check-pr-title.sh "$PR_TITLE"
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+
+  # 依存の既知の脆弱性（RustSec・npm advisories。本番に入る依存だけを見る）と、npm の配布物の署名・来歴（provenance）
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GitHub の実行環境の rustup は古いことがある。古い rustup はツールチェーンを取るときの TLS の確かめが甘い
+      # （RUSTSEC-2026-0382）ので、ツールチェーンを入れる前に rustup 自身を更新し、1.29.2 以上であることを確かめる
+      - name: Update rustup itself
+        run: |
+          rustup self update
+          scripts/check-rustup.sh
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true  # 毎回その時点の最新の 22.x を使う（セキュリティリリースをすぐ取り込む）
+      # 署名の確かめには、入れた依存が要る（インストール時スクリプトは動かさない）
+      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
+      - run: npm audit signatures --prefix web
+      - run: npm audit signatures --prefix tests/harness
+      - run: npm audit --prefix web --omit=dev --audit-level=moderate
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GitHub の実行環境の rustup は古いことがある。古い rustup はツールチェーンを取るときの TLS の確かめが甘い
+      # （RUSTSEC-2026-0382）ので、ツールチェーンを入れる前に rustup 自身を更新し、1.29.2 以上であることを確かめる
+      - name: Update rustup itself
+        run: |
+          rustup self update
+          scripts/check-rustup.sh
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (2026-10)
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true  # 毎回その時点の最新の 22.x を使う（セキュリティリリースをすぐ取り込む）
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            tests/harness/package-lock.json
+      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
+      - name: Harness check（静的検査 → 単体 → 結合 → 統合）
+        run: scripts/check.sh
+      # 人が読むテストレポート（要求別の表・Playwright の HTML・UI の差分）。失敗したときほど要るので必ず残す
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports
+          path: web/reports/
+          if-no-files-found: ignore

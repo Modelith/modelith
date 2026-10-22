@@ -1,0 +1,11 @@
+# 方針・ライセンス・ハーネスの変更は必ずメンテナがレビューする
+/LICENSE                @engineer-fumi
+/PLUGIN-EXCEPTION.md    @engineer-fumi
+/CONTRIBUTING.md        @engineer-fumi
+/docs/adr/              @engineer-fumi
+/.github/               @engineer-fumi
+/.claude/               @engineer-fumi
+/scripts/               @engineer-fumi
+/CLAUDE.md              @engineer-fumi
+# プラグインのホスト側（plugin-sdk との契約に関わる）
+/crates/modelith-core/src/plugin/  @engineer-fumi

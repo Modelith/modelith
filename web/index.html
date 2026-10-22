@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>Modelith — SysML v2 双方向エディタ</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='30' fill='%2316293F'/%3E%3Cpath d='M34 92 L34 42 L64 72' fill='none' stroke='%23FFFFFF' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M64 72 L94 42 L94 92' fill='none' stroke='%232ED3B7' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="loading" role="status" aria-live="polite">読み込み中…</div>
+<div class="app">
+  <header>
+    <h1><svg class="logo" viewBox="0 0 128 128" width="26" height="26" aria-hidden="true"><rect width="128" height="128" rx="30" fill="#16293F"></rect><path d="M34 92 L34 42 L64 72" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path><path d="M64 72 L94 42 L94 92" fill="none" stroke="#2ED3B7" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="name">Modelith</span></h1>
+    <button class="menutoggle" id="menuToggle" aria-label="メニュー" aria-expanded="false" aria-controls="menubar" title="メニュー">☰</button>
+    <nav class="menubar" id="menubar" aria-label="メニュー">
+      <details class="menu" id="fileMenu">
+        <summary>ファイル</summary>
+        <div class="pop">
+          <button id="btnNew">新しいファイル</button>
+          <button id="btnOpen">ファイルを開く…<span class="kbd">Ctrl+O</span></button>
+          <button id="btnOpenFolder">フォルダを開く…</button>
+          <div class="sep"></div>
+          <button id="btnSave">保存<span class="kbd">Ctrl+S</span></button>
+          <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
+          <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
+          <div class="sep"></div>
+          <button id="btnExport" title="表示中の図を、SVG 画像や draw.io のファイルとしてダウンロードする">エクスポート…</button>
+          <div class="sep"></div>
+          <button id="btnSample">サンプルを開く</button>
+          <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
+          <div class="note" id="fileNote"></div>
+        </div>
+      </details>
+      <details class="menu" id="editMenu">
+        <summary>編集</summary>
+        <div class="pop">
+          <button id="menuUndo" disabled>元に戻す<span class="kbd">Ctrl+Z</span></button>
+          <button id="menuRedo" disabled>やり直す<span class="kbd">Ctrl+Shift+Z</span></button>
+          <div class="sep"></div>
+          <button id="menuSelectAll" title="図の要素をすべて選択する">すべて選択<span class="kbd">Ctrl+A</span></button>
+        </div>
+      </details>
+      <details class="menu" id="viewMenu">
+        <summary>表示</summary>
+        <div class="pop">
+          <button id="togTree" class="hide-narrow" aria-pressed="true" title="モデルツリーの表示を切り替える">ツリー</button>
+          <button id="togText" class="hide-narrow" aria-pressed="true" title="テキストの表示を切り替える">テキスト</button>
+          <div class="sep hide-narrow"></div>
+          <button id="menuZoomIn">拡大</button>
+          <button id="menuZoomOut">縮小</button>
+          <button id="menuFit">全体を表示</button>
+          <button id="menuMini" aria-pressed="true" title="全体図（アウトライン）の表示を切り替える">全体図</button>
+          <div class="phead">線の形</div>
+          <button id="menuEdgeOrtho" aria-pressed="true" title="図の線を、直角に折れる線で描く">直角</button>
+          <button id="menuEdgeCurve" aria-pressed="false" title="図の線を、曲線で描く">曲線</button>
+        </div>
+      </details>
+      <details class="menu" id="diagramMenu">
+        <summary>図</summary>
+        <div class="pop">
+          <button id="menuSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成…</button>
+          <button id="menuLayout" title="この図を自動で並べ直す">整列</button>
+        </div>
+      </details>
+      <details class="menu" id="pluginMenu">
+        <summary>プラグイン</summary>
+        <div class="pop">
+          <button id="btnPlugins">プラグインの一覧…</button>
+          <div id="pluginCommands" hidden></div>
+        </div>
+      </details>
+      <details class="menu" id="helpMenu">
+        <summary>ヘルプ</summary>
+        <div class="pop">
+          <a href="https://github.com/modelith/modelith/issues/new/choose" target="_blank" rel="noopener">不具合・要望を送る（GitHub）</a>
+          <a href="reports/requirements.html" target="_blank" rel="noopener">このバージョンのテスト結果</a>
+          <a id="sourceLink" href="https://github.com/modelith/modelith" target="_blank" rel="noopener">ソースコード</a>
+          <a id="licenseLink" href="https://github.com/modelith/modelith#license" target="_blank" rel="noopener">ライセンス（AGPL-3.0＋プラグイン例外）</a>
+          <a id="noticesLink" href="licenses.txt" target="_blank" rel="noopener">同梱ソフトウェアのライセンス</a>
+          <div class="about" id="legal"><span id="appCopyright"></span><br><b>無保証</b>です。上のライセンスの条件で再配布・改変できます。</div>
+          <div class="about" id="trademarks">SysML®・OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です。Modelith は OMG と関係がなく、その認定・推奨も受けていません。</div>
+          <div class="about">Modelith <span id="appVersion"></span><span id="stageNote">（開発中の alpha 版）</span><br>保存形式や操作は予告なく変わります。保存先の無い文書は、このブラウザの下書きにだけ残ります。手元に残すには「ファイル → 名前を付けて保存」。</div>
+        </div>
+      </details>
+    </nav>
+    <div class="undo" role="group" aria-label="履歴">
+      <button id="btnUndo" title="元に戻す（Ctrl+Z）" aria-label="元に戻す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+      <button id="btnRedo" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    </div>
+    <div class="spacer"></div>
+    <div class="sync" id="sync" title="テキストと図の同期状態"><i></i><span id="syncText">同期済み</span></div>
+    <span class="badge" id="stageBadge" title="開発中の alpha 版です。保存形式や操作は予告なく変わります">alpha</span>
+    <div class="tabs" role="group" aria-label="表示の切り替え">
+      <button id="tabTree" aria-pressed="false">ツリー</button>
+      <button id="tabDiagram" aria-pressed="true">図</button>
+      <button id="tabText" aria-pressed="false">テキスト</button>
+    </div>
+    <input type="file" id="fileInput" accept=".sysml,.kerml,.txt,.json,text/plain,application/json" multiple hidden>
+    <input type="file" id="pluginFileInput" hidden>
+    <input type="file" id="pluginDirInput" webkitdirectory hidden>
+  </header>
+  <main id="main" data-tab="diagram">
+    <aside class="pane treepane" aria-label="サイドバー">
+      <div class="sidetabs" role="tablist" aria-label="サイドバーの切り替え">
+        <button id="sideFiles" role="tab" aria-selected="true">エクスプローラー</button>
+        <button id="sideModel" role="tab" aria-selected="false">モデル</button>
+      </div>
+      <div class="side" id="filesSide">
+        <div class="explorer" id="explorer" role="tree" aria-label="ファイル"></div>
+      </div>
+      <div class="side" id="modelSide" hidden>
+        <div class="panehead"><input id="treeSearch" type="search" placeholder="要素を名前で絞り込み" aria-label="モデル要素を名前で絞り込む"></div>
+        <div class="tree" id="tree" role="tree" aria-label="モデルツリー"></div>
+      </div>
+    </aside>
+    <div class="split" id="splitTree" role="separator" aria-orientation="vertical" aria-label="ツリーの幅を変更"></div>
+    <section class="pane diagrampane" aria-label="図">
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="図のタブ"></div>
+      <div class="toolbar">
+        <div class="palette" id="palette" role="toolbar" aria-label="要素パレット"></div>
+        <div class="spacer"></div>
+        <div class="subbar" id="subbar"></div>
+        <button id="btnSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成</button>
+        <button id="btnEdge" title="線の描き方を切り替える">線：直角</button>
+        <button id="btnLayout" title="この図を自動で並べ直す">整列</button>
+      </div>
+      <div class="canvaswrap" id="wrap">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+          <defs id="defs"></defs>
+          <g id="vp"><g id="gEdges"></g><g id="gNodes"></g><g id="gOver"></g></g>
+        </svg>
+        <div class="zoom">
+          <button id="zIn" aria-label="拡大">+</button>
+          <button id="zOut" aria-label="縮小">−</button>
+          <button id="zFit" aria-label="全体を表示" style="font-size:12px">全体</button>
+          <button id="zMini" aria-label="全体図の表示" title="全体図（アウトライン）の表示" aria-pressed="true" style="font-size:11px">全体図</button>
+        </div>
+        <div class="toast" id="toast"></div>
+        <div class="band" id="band" hidden></div>
+        <div class="empty" id="empty" hidden></div>
+        <div class="minimap" id="mini" hidden><div class="mhead"><span>全体図</span><button id="miniHide" aria-label="全体図を閉じる" title="閉じる">×</button></div><div class="mbody"><svg id="miniSvg" xmlns="http://www.w3.org/2000/svg"></svg><div class="mvp" id="miniVp" hidden></div></div></div>
+        <div class="inspector" id="insp" hidden></div>
+      </div>
+    </section>
+    <div class="split" id="splitText" role="separator" aria-orientation="vertical" aria-label="テキストの幅を変更"></div>
+    <section class="pane textpane" aria-label="SysML v2 テキスト">
+      <div class="panehead"><span id="docName" class="docname"></span><span id="textInfo">SysML v2 テキスト</span><button id="btnEditText" class="editbtn" aria-pressed="false" title="テキストを編集できるようにする。もう一度押すと読み取り専用に戻す">編集</button></div>
+      <div class="editor">
+        <pre id="hl" aria-hidden="true"></pre>
+        <textarea id="ed" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="SysML v2 テキスト"></textarea>
+      </div>
+      <div class="wordline" id="wordLine" aria-live="polite"></div>
+      <div class="problems" id="problems"></div>
+    </section>
+    <section class="nodoc" id="noDoc" hidden aria-labelledby="noDocTitle">
+      <b id="noDocTitle">開いているファイルはありません</b>
+      <p id="noDocText">新しいファイルを作成するか、ファイルを開いてください。<br>サンプルで操作を試すこともできます。</p>
+      <p id="noDocResume" hidden></p>
+      <div class="acts">
+        <button data-nodoc="resume" class="primary" hidden>前回の続きを開く</button>
+        <button data-nodoc="new" class="primary">新しいファイル</button>
+        <button data-nodoc="open">ファイルを開く</button>
+        <button data-nodoc="openFolder" hidden>フォルダを開く</button>
+        <button data-nodoc="sample">サンプルを開く</button>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="ctx" id="ctx" role="menu" hidden></div>
+<div class="wordtip" id="wordTip" role="tooltip" hidden></div>
+<div class="modal" id="plugins" hidden role="dialog" aria-modal="true" aria-labelledby="pluginsTitle">
+  <div class="box">
+    <b id="pluginsTitle">プラグイン</b>
+    <div class="plugins" id="pluginsBody"></div>
+    <div class="row"><button id="pluginsAdd" class="primary">追加…</button><button id="pluginsClose">閉じる</button></div>
+  </div>
+</div>
+<div class="modal" id="dialog" hidden role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle">
+  <div class="box">
+    <b id="dialogTitle"></b>
+    <p id="dialogText"></p>
+    <div class="ddetail" id="dialogDetail" hidden></div>
+    <div class="dpick" id="dialogPick" hidden></div>
+    <div class="row" id="dialogButtons"></div>
+  </div>
+</div>
+<div class="modal" id="exportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="exportTitle" aria-describedby="exportText">
+  <form class="box" id="exportForm">
+    <b id="exportTitle">エクスポート</b>
+    <p id="exportText">表示中の図を、ファイルとしてダウンロードします。draw.io のファイルは、draw.io でそのまま開けます。</p>
+    <label class="field"><span>ファイル名</span><input id="exportName" type="text" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>形式</span><select id="exportFormat"></select></label>
+    <div class="row"><button type="submit" id="exportOk" class="primary">エクスポート</button><button type="button" id="exportCancel">やめる</button></div>
+  </form>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+name: Pages
+
+# GitHub のリリースを公開すると、そのタグの Web アプリを GitHub Pages に公開する（docs/development/releasing.md）。
+# リリースの下書きは release-draft.yml が作り、公開（Publish）はメンテナが画面で行う。公開したときにタグも作られる。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GitHub の実行環境の rustup は古いことがある。古い rustup はツールチェーンを取るときの TLS の確かめが甘い
+      # （RUSTSEC-2026-0382）ので、ツールチェーンを入れる前に rustup 自身を更新し、1.29.2 以上であることを確かめる
+      - name: Update rustup itself
+        run: |
+          rustup self update
+          scripts/check-rustup.sh
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (2026-10)
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true  # 毎回その時点の最新の 22.x を使う（セキュリティリリースをすぐ取り込む）
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      # 公開する版で e2e・UI テストを流し、そのレポートも一緒に公開する（失敗したら公開しない）
+      # ブラウザは Playwright の公式イメージ（Docker）の中で動かす（scripts/e2e.sh）
+      - name: e2e and UI tests
+        run: scripts/e2e.sh
+      - name: Build
+        run: npm run build --prefix web
+        env:
+          MODELITH_BASE: /${{ github.event.repository.name }}/
+      - name: Add test reports
+        run: cp -r web/reports web/dist/reports
+      # reports/e2e/ の画面は Playwright（Apache-2.0）の配布物なので、LICENSE と NOTICE を添える（C-5）
+      - name: Add licenses of the test report viewer
+        run: cp web/node_modules/playwright-core/{LICENSE,NOTICE,ThirdPartyNotices.txt} web/dist/reports/e2e/
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: web/dist
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

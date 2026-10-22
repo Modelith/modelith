@@ -1,0 +1,19 @@
+[package]
+name = "modelith-cli"
+description = "Modelith command line interface (check / export / MCP)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "modelith"
+path = "src/main.rs"
+
+[dependencies]
+modelith-core.workspace = true
+
+[lints]
+workspace = true

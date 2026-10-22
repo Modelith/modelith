@@ -1,0 +1,32 @@
+{
+  "modelith": "layout",
+  "format": 1,
+  "views": {
+    "control": {
+      "@pins": {
+        "HeaterController": {"port:modeIn":["l",0.5],"port:powerOut":["r",0.5],"port:tempIn":["b",0.75]},
+        "TempSensor": {"port:tempIn":["r",0.5],"port:tempOut":["l",0.5]},
+        "WaterVessel": {"port:heatIn":["l",0.5],"port:tempOut":["b",0.5]}
+      },
+      "ControlPanel": [0,40],
+      "HeatBalance": [940,440],
+      "Heater": [620,40],
+      "HeaterController": [300,40],
+      "OnOffLaw": [300,440],
+      "TempSensor": [620,260],
+      "WaterVessel": [940,40]
+    },
+    "ibd:Kettle": {
+      "@pins": {
+        "u:controller": {"port:modeIn":["l",0.5],"port:powerOut":["r",0.5],"port:tempIn":["b",0.75]},
+        "u:sensor": {"port:tempIn":["r",0.5],"port:tempOut":["l",0.5]},
+        "u:water": {"port:heatIn":["l",0.5],"port:tempOut":["b",0.5]}
+      },
+      "u:controller": [300,0],
+      "u:heater": [620,0],
+      "u:panel": [0,0],
+      "u:sensor": [620,200],
+      "u:water": [940,0]
+    }
+  }
+}
