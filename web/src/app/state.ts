@@ -93,6 +93,8 @@ export interface AppState {
   renaming: boolean;
   /** インスペクタで説明（要求の文章など）を編集しているとき（F-EDIT-12）。 */
   docEdit: boolean;
+  /** インスペクタで編集している属性（F-EDIT-12）。null：編集していない・"" ：新しい属性を足す・名前：その属性を書き換える。 */
+  attrEdit: string | null;
   msgEdit: boolean;
   phase: string;
   ibdCtx: string | null;
@@ -156,6 +158,7 @@ export const S: AppState = {
   confirmDel: false,
   renaming: false,
   docEdit: false,
+  attrEdit: null,
   msgEdit: false,
   phase: "",
   ibdCtx: null,
@@ -190,6 +193,7 @@ export function clearSel(): void {
   S.portForm = false;
   S.renaming = false;
   S.docEdit = false;
+  S.attrEdit = null;
   S.confirmDel = false;
 }
 

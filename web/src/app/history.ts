@@ -117,6 +117,7 @@ function goHistory(step: -1 | 1): void {
   S.wire = null;
   S.renaming = false;
   S.docEdit = false;
+  S.attrEdit = null;
   S.portForm = false;
   S.confirmDel = false;
   loadLayout(parseLayoutFile(after.layout).layout);

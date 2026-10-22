@@ -191,6 +191,10 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .inspector .note pre{font-family:var(--mono)}
 .inspector textarea{border:1px solid var(--rule);border-radius:6px;padding:6px 8px;background:var(--panel2);width:100%;font:inherit;font-size:12px;resize:vertical}
 .inspector .note .muted{color:var(--ink2)}
+.inspector .attr{display:flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)}
+.inspector .attr span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inspector .attr button{padding:0 6px;font-size:11px;line-height:20px}
+.inspector .attrform{display:flex;flex-wrap:wrap;gap:6px}
 .toast{position:absolute;left:50%;transform:translateX(-50%);top:10px;z-index:8;background:var(--ink);color:var(--panel);padding:6px 12px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .toast.on{opacity:1}
 .empty{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);max-width:340px;text-align:center;color:var(--ink2);font-size:13px;line-height:1.7;pointer-events:none}

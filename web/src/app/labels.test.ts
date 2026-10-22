@@ -1,7 +1,7 @@
 // 画面に出す名前（ADR-0014、docs/development/ui-writing.md）。
 import { describe, expect, it } from "vitest";
 import { standardViewName, stdViewLabel } from "../core";
-import { diagramName, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
+import { attrText, diagramName, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
 import { VIEWS } from "./views";
 
 describe("diagramName（ビューの名前を「〜の図」と呼べる形にする）", () => {
@@ -196,5 +196,23 @@ describe("tabTitle（タブのツールチップ）", () => {
     const title = tabTitle("すべ", hint);
     // Assert
     expect(title).toBe(`すべ\n${hint}`);
+  });
+});
+
+describe("attrText（属性の表示）", () => {
+  it("名前・型・値を「名前 : 型 = 値」の形にする（正常系）", () => {
+    // Act / Assert
+    expect(attrText({ name: "mass", type: "Real", value: "1500 [kg]" })).toBe("mass : Real = 1500 [kg]");
+  });
+
+  it("値の書き方（:=・default）はそのまま書く", () => {
+    // Act / Assert
+    expect(attrText({ name: "t", type: "Real", value: "0", valueOp: ":=" })).toBe("t : Real := 0");
+    expect(attrText({ name: "d", type: "", value: "2", valueOp: "default" })).toBe("d default 2");
+  });
+
+  it("型も値も無ければ名前だけ（境界値）", () => {
+    // Act / Assert
+    expect(attrText({ name: "重さ", type: "" })).toBe("重さ");
   });
 });
