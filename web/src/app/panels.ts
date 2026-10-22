@@ -1,6 +1,6 @@
 // パネル（ツリー｜図｜テキスト）の配置、図のタブ、パレット、モデルツリー、ビューのサブバー。
 
-import { stdViewLabel, type Entry } from "../core";
+import { inOpenFile, stdViewLabel, type Entry } from "../core";
 import { fit, local, placeUsageAt, toCanvas } from "./canvas";
 import { renderDiagramList } from "./diagram-list";
 import { $, closest, esc, isFormField, store } from "./dom";
@@ -933,7 +933,8 @@ export function renderTree(): void {
       );
     });
   };
-  for (const e of S.P.entries) if (!e.pe) walk(e, 0);
+  // ツリーには表示中のファイルの要素だけを出す（ほかのファイルの宣言もつないで持っている。ADR-0021）
+  for (const e of S.P.entries) if (!e.pe && inOpenFile(e)) walk(e, 0);
   el.innerHTML = rows.join("") || `<div class="tree-empty">${q ? "一致する要素がありません" : "要素を追加すると、ここにモデルの構造が表示されます"}</div>`;
   // Tab で入る行は 1 つだけにする。描き直す前に行に入力があれば、同じ行へ入力を戻す（行が消えたら選んでいる行か先頭の行）
   const again = focusedKey ? el.querySelector<HTMLElement>(focusedKey) : null;

@@ -9,7 +9,7 @@ import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } fr
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
 import { filesChange } from "../workspace/project-files";
-import { afterRestore, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
+import { afterRestore, findFile, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
@@ -27,6 +27,7 @@ import { importedDocName } from "../plugins/transfer";
 import { projectNotice, projectTitle } from "./project";
 import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast, toastFailure } from "./sync";
 import { opsIdle } from "./intent";
+import { onOpenProjectFile } from "./other-file";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
@@ -398,6 +399,22 @@ async function closeDoc(key: string): Promise<void> {
   ws.close(key);
   dropHistory(key);
   if (wasActive) showCurrent();
+}
+
+/**
+ * 開いているフォルダのファイルをパスで開いて表示する（ほかのファイルの要素の案内から。ADR-0021 §5）。
+ * 見つからない・開けないときは、トーストで知らせる。
+ *
+ * @param path フォルダからのパス
+ */
+function openInFolder(path: string): void {
+  const f = ws.folder();
+  const ref = f ? findFile(f.entries, path) : null;
+  if (!ref) return toast(`「${path}」が見つかりません。フォルダの一覧を更新してください`);
+  void ws.openRef(ref).then(
+    (d) => showDoc(d.key),
+    (err: unknown) => toastFailure("開けませんでした", err),
+  );
 }
 
 /** コアに渡したプロジェクトのファイル（パス → テキスト。ADR-0021）と、そのフォルダの id（フォルダを開いていなければ null）。 */
@@ -1042,6 +1059,7 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
     onEdited(shownKey);
   });
   // 設定ファイルの読み取りの状態を先に変えてから描く
+  onOpenProjectFile(openInFolder);
   ws.subscribe(syncProject);
   ws.subscribe(syncProjectFiles);
   ws.subscribe(renderFiles);

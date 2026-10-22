@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { build, parse } from "../core/rust";
 import { emptyView } from "./layout";
 import { withNotes } from "./notes";
-import { CV, edgeStroke, kindIcon, svgMarkup } from "./svg";
+import { CV, edgeStroke, fileBadge, kindIcon, svgMarkup } from "./svg";
 
 describe("edgeStroke（8.2.3 の線の記法）", () => {
   it.each([
@@ -104,5 +104,23 @@ describe("kindIcon の色（種類の系統）", () => {
     const icon = kindIcon(kind);
     // Assert
     expect(icon).toContain(`fill="var(--k-${fam}-bg)"`);
+  });
+});
+
+describe("fileBadge（ほかのファイルの要素の札、ADR-0021 §4）", () => {
+  it("札にはファイルの名前だけを書き、パスはツールチップに出す", () => {
+    // Act
+    const svg = fileBadge(CV, "lib/parts.sysml", "inherit");
+    // Assert
+    expect(svg).toContain("<title>lib/parts.sysml</title>");
+    expect(svg).toContain(">parts.sysml</text>");
+    expect(svg).toMatch(/^<g class="filebadge" transform="translate\(0,-17\)">/);
+  });
+
+  it("名前は逃がして書く（異常系：< や & を含む名前）", () => {
+    // Act
+    const svg = fileBadge(CV, "a<b>&c.sysml", "inherit");
+    // Assert
+    expect(svg).toContain(">a&lt;b&gt;&amp;c.sysml</text>");
   });
 });

@@ -1,7 +1,7 @@
 // 図・テキスト・ミニマップの描画。状態（S）を読んで DOM を書き換えるだけで、状態は変えない
 // （ビューの対象ブロックの補正と、描画済みの強調の消去を除く）。
 
-import { lineStart, type ModelNode } from "../core";
+import { FILE_STRIDE, lineStart, type ModelNode } from "../core";
 import { $, esc } from "./dom";
 import { boxesOf, pinPoint, pinsOf, type Box } from "./geometry";
 import { relOptions } from "./relations";
@@ -228,10 +228,13 @@ export function syncScroll(): void {
 
 /**
  * テキストの位置がある行が、テキスト欄の上の方（3 行ほど下げた所）に見えるようにスクロールする。
+ * ほかのファイルの位置（ADR-0021）なら何もしない。
  *
  * @param pos テキストの位置（UTF-16 の位置）
  */
 export function scrollEditorTo(pos: number): void {
+  // ほかのファイルの要素（ADR-0021）は、表示中のテキストに無いので動かさない
+  if (pos >= FILE_STRIDE) return;
   const ed = $<HTMLTextAreaElement>("#ed");
   const line = S.text.slice(0, pos).split("\n").length - 1;
   ed.scrollTop = Math.max(0, line * 19 - 60);

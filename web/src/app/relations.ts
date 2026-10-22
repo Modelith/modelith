@@ -1,6 +1,6 @@
 // 2 つの要素の間に追加できる関係を決める。
 
-import type { Entry, ModelNode } from "../core";
+import { inOpenFile, type Entry, type ModelNode } from "../core";
 import { canSucceed } from "./action-flow";
 import { canTransition } from "./state-machine";
 import { kindLabel } from "./labels";
@@ -36,7 +36,8 @@ export const KW_FOR: Record<string, string> = {
  */
 export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: Entry; ub: Entry } | null {
   for (const e of S.P.entries) {
-    if (!e.isDef) continue;
+    // ほかのファイルの定義には書き足せない（ADR-0021 §5）
+    if (!e.isDef || !inOpenFile(e)) continue;
     const ua = e.children.find((c) => c.kind === "part" && c.type === a.name);
     const ub = e.children.find((c) => c.kind === "part" && c.type === b.name);
     if (ua && ub) return { parent: e, ua, ub };
