@@ -368,6 +368,10 @@ package ModelithRequirements {
         requirement def <'C-8'> StageNoticeReq {
             doc /* 正式版の前（alpha・beta・rc）は、見出しと「ヘルプ」に、動いている版の開発段階を示す。段階は版の名前から決め、正式版では示さない */
         }
+        requirement def <'C-10'> ReleaseChannelReq {
+            doc /* 安定版（最新の正式版、無ければ最新の rc）とプレリリース版（最も新しい版）を、別の URL で同時に公開する。プレリリース版を公開しても、安定版の URL の画面は変えない。
+                   2 つの版のブラウザの保存（前回の続き・下書き・設定・プラグインの許可・フォルダの許可）は分け、新しい版が書いた形式を古い版に読ませない（ADR-0020） */
+        }
         requirement def <'C-9'> ContentPolicyReq {
             doc /* 配信する画面に Content-Security-Policy を付け、配信元以外との通信・外から読み込むスクリプト・インラインのスクリプトを、
                    ブラウザの仕組みで止める。エスケープの漏れが 1 つあっても、それだけでは任意のスクリプトが動かないようにする（C-2 の機械的な裏付け） */
@@ -453,6 +457,7 @@ package ModelithRequirements {
         #derivation dependency from StaticHostingReq to AnywhereNeed;
         #derivation dependency from LegalNoticeReq to OpenSourceNeed;
         #derivation dependency from StageNoticeReq to SafetyNeed;
+        #derivation dependency from ReleaseChannelReq to SafetyNeed;
         #derivation dependency from ContentPolicyReq to SafetyNeed;
         #derivation dependency from StaticHostingReq to OpenSourceNeed;
     }
@@ -602,6 +607,7 @@ package ModelithRequirements {
         satisfy StaticHostingReq by AppShell;
         satisfy LegalNoticeReq by AppShell;
         satisfy StageNoticeReq by AppShell;
+        satisfy ReleaseChannelReq by AppShell;
         satisfy ContentPolicyReq by AppShell;
     }
 
@@ -728,6 +734,13 @@ package ModelithRequirements {
             doc /* web/tools/csp.test.ts：Content-Security-Policy の中身（既定は配信元だけ・eval を許さない・wasm と Worker と同梱フォントは許す）と、ビルドした HTML への差し込み */
             objective {
                 verify ContentPolicyReq;
+            }
+        }
+        verification def ReleaseChannelTest {
+            doc /* web/tools/channels.test.ts：公開済みのリリースから、安定版（最新の正式版、無ければ最新の rc）とプレリリース版（最も新しい版）を選ぶ（番号は数として比べる・下書きと版でないタグは選ばない・正式版も rc も無い・リリースが無い）。
+                   web/src/channel.test.ts：保存の名前を系列ごとに分ける（安定版はそのまま・プレリリース版は @preview・系列の無いビルドは安定版と同じ） */
+            objective {
+                verify ReleaseChannelReq;
             }
         }
         verification def StageTest {
