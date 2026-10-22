@@ -24,7 +24,8 @@ description: Modelith の版（alpha・beta・rc）を出す手順と、リリ�
 6. マージで「Release draft」ワークフローが動き、下書きができる。実行の結果（`actions_list` / `get_job_logs`）から、下書きのページのリンクを取る。
 7. 下書きのリンクをメンテナに渡し、「Publish release」を押してもらう。下書きの `releases/tag/untagged-…` のリンクは直接開けないことがあるので、
    リリースの一覧（`https://github.com/modelith/modelith/releases`）と、編集画面（`releases/edit/untagged-…`）のリンクを渡す。
-8. 公開されたら、Pages のワークフローが成功したことと、画面右上の「ヘルプ」に出る版を確かめる。リリース計画（release-plan.md）のその行に「（公開済み）」を足す PR を出す。
+8. 公開されたら、Pages のワークフローが成功したことと、画面右上の「ヘルプ」に出る版を確かめる。
+   alpha・beta は `/modelith/preview/` に、正式版（無ければ最新の rc）は `/modelith/` に出る（ADR-0020）。公開した版が出るはずの URL で確かめる。リリース計画（release-plan.md）のその行に「（公開済み）」を足す PR を出す。
 
 下書きが作られなかったときは、ワークフローのログの理由（ノートが無い・版が違う・ブランチが違う）を直す。
 手で作り直すときは、ワークフロー `release-draft.yml` を `ref: dev`、inputs `version`・`branch: dev` で起動する（`actions_run_trigger`）。

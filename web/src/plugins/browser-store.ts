@@ -3,6 +3,7 @@
 // 読み書きでき、1 回の操作をトランザクションで行えるため（OPFS は、ブラウザによって画面のスレッドから書けない）。
 // ここは読み書きだけを行い、判断（上限・優先・行の作り方）は storage.ts と app/plugins.ts の純粋関数に任せる。
 
+import { channelName } from "../channel";
 import type { PluginInfo } from "../core";
 
 /** このブラウザに追加したプラグイン 1 つ。 */
@@ -33,12 +34,13 @@ export interface PluginDataStore {
   write(id: string, json: string | null): Promise<void>;
 }
 
-const DB = "modelith-plugins";
+/** データベースの名前（公開の系列ごとに分ける。ADR-0020）。 */
+const DB = channelName("modelith-plugins");
 const INSTALLED = "installed";
 const DATA = "data";
 
 /**
- * IndexedDB のデータベース（modelith-plugins）を開く。初めてなら、追加したプラグイン（installed）と保存場所（data）の入れ物を作る。
+ * IndexedDB のデータベース（modelith-plugins。プレリリース版は modelith-plugins@preview）を開く。初めてなら、追加したプラグイン（installed）と保存場所（data）の入れ物を作る。
  *
  * @returns 開いたデータベース。開けなければ（プライベートモード・使えないブラウザ）Error で拒否する
  * @example

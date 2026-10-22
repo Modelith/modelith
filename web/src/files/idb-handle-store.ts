@@ -1,13 +1,15 @@
 // フォルダのハンドルを IndexedDB に保存する（HandleStore のブラウザ実装）。
 // ハンドルは構造化複製できるが localStorage には入らないため IndexedDB を使う。
 
+import { channelName } from "../channel";
 import type { DirHandleLike, HandleStore } from "./local-folder";
 
-const DB = "modelith";
+/** データベースの名前（公開の系列ごとに分ける。ADR-0020）。 */
+const DB = channelName("modelith");
 const STORE = "handles";
 
 /**
- * IndexedDB のデータベース（modelith）を開く。初めてならハンドルを入れる場所（handles）を作る。
+ * IndexedDB のデータベース（modelith。プレリリース版は modelith@preview）を開く。初めてならハンドルを入れる場所（handles）を作る。
  *
  * @returns 開いたデータベース。開けなければ（プライベートモードなど）Error で拒否する
  * @example

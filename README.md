@@ -48,6 +48,9 @@
 
 **<https://modelith.github.io/modelith/>** をブラウザで開くと、サンプルのモデル（電気ケトル）が表示されます。使い方は [ユーザーマニュアル](https://modelith.github.io/) をご覧ください。
 
+開発中の新しい機能を試したい方は、プレリリース版（alpha・beta）の **<https://modelith.github.io/modelith/preview/>** をお使いください。
+プレリリース版の前回の続き・下書き・設定は、上の安定版とは別に保存されます。
+
 | 環境 | できること |
 | --- | --- |
 | Chrome・Edge | フォルダを開いて、ファイルを直接編集・上書き保存 |
