@@ -111,6 +111,11 @@ package ModelithRequirements {
             doc /* 狭い画面（幅 760px 以下）は、モデルを見る・確かめる画面とする。テキストは初めは読み取り専用で（触ってもキーボードが出ない）、
                    「編集」ボタンで編集できるようにし、もう一度押すと読み取り専用に戻す。語をダブルタップすると、その語を選び、意味を示す（F-EDIT-9） */
         }
+        requirement def <'F-EDIT-11'> ProblemLevelReq {
+            doc /* 保留：0.2.0 以降。問題一覧と図の印に出す知らせ（トレースの抜けの種類ごと・まだ扱えない構文・チェックルールの結果など）の重さを、
+                   利用者が種類ごとに「エラー」「警告」「情報」「出さない」から選べる（lint の規則の重さを変えるのと同じ）。構文エラーは出さないにできない。
+                   設定はプロジェクト（modelith.json）とこのブラウザの両方に置け、どちらが効くかは F-PROJ-2 の決まりに従う */
+        }
 
         // ---- ビュー ------------------------------------------------
         requirement def <'F-VIEW-1'> BuiltInViewsReq {
@@ -356,6 +361,7 @@ package ModelithRequirements {
         #derivation dependency from RenameReq to EditBothWaysNeed;
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
+        #derivation dependency from ProblemLevelReq to EditBothWaysNeed;
         #derivation dependency from ParseParityReq to EditBothWaysNeed;
         #derivation dependency from BuiltInViewsReq to ViewsNeed;
         #derivation dependency from ViewTabsReq to ViewsNeed;
@@ -495,6 +501,7 @@ package ModelithRequirements {
         satisfy RenameReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
+        satisfy ProblemLevelReq by AppShell;
         satisfy ParseParityReq by Core;
         satisfy BuiltInViewsReq by DiagramUI;
         satisfy ViewTabsReq by DiagramUI;
