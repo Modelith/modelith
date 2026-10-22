@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use serde::Serialize;
+
 use super::{CheckRule, Condition, Finding, LoadedPlugin, Located, Target, load::byte_place};
 use crate::edit::text::Utf16;
 use crate::model::{Edge, Model, Node};
@@ -272,4 +274,55 @@ pub(super) fn fill_message(template: &str, node: &Node) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// プロジェクトのほかのファイル 1 つの問題と検査の結果（ADR-0021 §6）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FileReport {
+    /// フォルダからのパス。
+    pub path: String,
+    /// モデルの問題（構文エラー・見つからない型・トレースの抜けなど。位置はそのファイルの UTF-16）。
+    pub problems: Vec<crate::model::Problem>,
+    /// チェックルールの結果（位置はそのファイルの UTF-16）。
+    pub findings: Vec<Finding>,
+}
+
+/// 覚えたファイルごとに、そのファイルを中心にしたモデル（ほかのファイルとつないだもの）で問題を数え、ルールを当てる（ADR-0021 §6）。
+/// 表示中のファイルは、今の解析結果をつなぐだけで数えない（その問題は表示中の解析で数える）。
+///
+/// # 引数
+///
+/// - `files`：覚えたプロジェクトのファイル
+/// - `open`：表示中のファイルのパスと今の解析結果（フォルダの外のファイルなら None）
+/// - `plugins`：当てるプラグイン
+///
+/// # 戻り値
+///
+/// ファイルごとの問題と結果（パスの順。表示中のファイルは入らない）。
+///
+/// # 例
+///
+/// ```text
+/// // parts.sysml「package Parts { part x : Nope; }」、app.sysml（表示中）
+/// check_files(&files, Some(("app.sysml", &app)), &[]) → [FileReport { path: "parts.sysml", problems: [型「Nope」が見つかりません（x）], findings: [] }]
+/// ```
+pub fn check_files(
+    files: &crate::project::merge::Files,
+    open: Option<(&str, &ParseResult)>,
+    plugins: &[LoadedPlugin],
+) -> Vec<FileReport> {
+    files
+        .each_centered(open)
+        .into_iter()
+        .map(|(path, parse)| {
+            let whole = crate::model::build_whole(&parse);
+            let findings = check(plugins, &parse, &whole);
+            let problems = crate::model::narrow(whole, &parse).problems;
+            FileReport {
+                path,
+                problems,
+                findings,
+            }
+        })
+        .collect()
 }

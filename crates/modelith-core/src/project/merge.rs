@@ -184,6 +184,44 @@ impl Files {
             .map(|(path, p)| (path.clone(), p.clone()))
             .unzip()
     }
+
+    /// 覚えたファイルを 1 つずつ中心にして、ほかのファイルをつないだ解析結果（ファイルごとの問題を数えるため。ADR-0021 §6）。
+    /// 表示中のファイルは、覚えたものの代わりに今の解析結果をつなぎ、中心にはしない（その問題は表示中の解析で数える）。
+    ///
+    /// # 引数
+    ///
+    /// - `open`：表示中のファイルのパスと今の解析結果（フォルダの外のファイルなら None）
+    ///
+    /// # 戻り値
+    ///
+    /// （中心にしたファイルのパス、つないだ解析結果）の並び（パスの順）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // a.sysml・b.sysml・c.sysml を覚え、表示中が b.sysml のとき
+    /// each_centered(Some(("b.sysml", &b_now))) → [("a.sysml", a + [b_now, c]), ("c.sysml", c + [a, b_now])]
+    /// ```
+    pub fn each_centered(&self, open: Option<(&str, &ParseResult)>) -> Vec<(String, ParseResult)> {
+        let open_path = open.map(|(path, _)| path);
+        self.parsed
+            .iter()
+            .filter(|(path, _)| Some(path.as_str()) != open_path)
+            .map(|(path, center)| {
+                let mut others: Vec<ParseResult> = self
+                    .parsed
+                    .iter()
+                    .filter(|(q, _)| *q != path && Some(q.as_str()) != open_path)
+                    .map(|(_, p)| p.clone())
+                    .collect();
+                if let Some((_, now)) = open {
+                    others.push(now.clone());
+                }
+                others.truncate(MAX_OTHERS);
+                (path.clone(), merge(center.clone(), others))
+            })
+            .collect()
+    }
 }
 
 /// 表示中のファイルの解析結果の後ろに、ほかのファイルの解析結果をつなぐ。宣言・ブロック・関係・別名・`import` を足し、
