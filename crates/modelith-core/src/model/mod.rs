@@ -35,7 +35,7 @@ pub(crate) const UNDRAWN_DEF_KINDS: &[&str] = &[
 ];
 
 /// package の直下にあるときだけ図に描く要素になる、使用の種類。
-pub(crate) const TOP_USAGE_KINDS: &[&str] = &["part", "requirement"];
+pub(crate) const TOP_USAGE_KINDS: &[&str] = &["part", "requirement", "verification", "analysis"];
 
 /// 部品として持つ（comp の線を引く）使用の種類。
 const COMP_KINDS: &[&str] = &[

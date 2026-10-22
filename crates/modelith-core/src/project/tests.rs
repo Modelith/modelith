@@ -71,7 +71,8 @@ fn anonymous_block_owns_its_members_and_names_expressions() {
         entry(&r, "R").exprs,
         vec![Expr {
             text: "a <= b".to_owned(),
-            via: "require".to_owned()
+            via: "require".to_owned(),
+            neg: false,
         }]
     );
 }
@@ -1170,7 +1171,16 @@ fn named_constraint_without_body_is_kept_as_an_owner_expression() {
     );
     assert_eq!(
         texts("H"),
-        pairs(&[("c4 : CD", "assert"), ("not c5 : CD", "assert")])
+        pairs(&[("c4 : CD", "assert"), ("c5 : CD", "assert")])
+    );
+    // 否定（not）は式の文字列から外し、neg として持つ（8.2.2.20）
+    assert_eq!(
+        entry(&r, "H")
+            .exprs
+            .iter()
+            .map(|x| x.neg)
+            .collect::<Vec<_>>(),
+        [false, true]
     );
 }
 
@@ -2027,4 +2037,34 @@ fn parallel_states_are_marked() {
         parallel,
         [("S", true), ("a", true), ("x", false), ("b", false)]
     );
+}
+
+#[test]
+fn assert_not_with_a_body_records_negation() {
+    // Arrange（AssertConstraintUsage の本体のある形。否定は neg として持つ、8.2.2.20）
+    let text = "part def H { assert constraint d { x < 0 } assert not constraint e { y > 1 } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(String, bool)> = entry(&r, "H")
+        .exprs
+        .iter()
+        .map(|x| (x.text.clone(), x.neg))
+        .collect();
+    assert_eq!(
+        got,
+        [("x < 0".to_owned(), false), ("y > 1".to_owned(), true)]
+    );
+}
+
+#[test]
+fn objective_doc_is_kept_apart_from_the_owner_doc() {
+    // Arrange（ObjectiveMember、8.2.2.21。目的の説明は持ち主の説明を上書きしない）
+    let text = "verification def V { doc /* 検証の説明 */ objective { doc /* 沸く時間を確かめる */ verify R; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let v = entry(&r, "V");
+    assert_eq!(v.doc.as_deref(), Some("検証の説明"));
+    assert_eq!(v.objective.as_deref(), Some("沸く時間を確かめる"));
 }

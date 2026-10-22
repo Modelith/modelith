@@ -10,6 +10,8 @@ export interface Span {
 export interface Expr {
   text: string;
   via: string;
+  /** 否定した制約（`assert not constraint …`、8.2.2.20）。否定していなければ無い。Rust のコアだけが作る。 */
+  neg?: boolean;
 }
 
 /** 名前を持たないブロック（`objective { … }`、`@Phase { … }` など）。 */
@@ -54,6 +56,8 @@ export interface Entry {
    */
   valueOp?: string;
   doc?: string;
+  /** ケース・解析・検証の目的（`objective { doc /* … *\/ }`、8.2.2.21）の説明。Rust のコアだけが作る。 */
+  objective?: string;
   meta?: Record<string, Record<string, string>>;
   phaseVal?: Span;
   phaseBlock?: Scope;

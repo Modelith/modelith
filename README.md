@@ -76,7 +76,7 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 | 要求と検証 | `requirement`・`subject`・`stakeholder`・`actor`・`concern`・`case`・`analysis`・`verification`・`use case`・`#derivation dependency` | 対応 | | |
 | | `satisfy`（`by` の無い形・宣言する形を含む）・`frame` | 対応 | | |
 | | `verify` | 一部対応 | 型の無い検証の使用の中では線を引かない | — |
-| | `objective`・`assert constraint`・`assert not` | 一部対応 | 中身を親の要素に入れる | 0.2.0 |
+| | `objective`・`assert constraint`・`assert not` | 対応 | 目的は検証・解析の区画に、制約は持ち主の区画に書く。式は計算しない | — |
 | 図（ビュー） | `view`・`view def`・`expose`・`filter`（`and`・`or`・`not` などの式）・`render` | 一部対応 | メタデータの値を比べる `filter`、表や文字の形の `render` は使えない | 0.3.0 以降 |
 | 注釈 | `doc`・`comment … about`（メモ）・`rep`・`metadata def`・`#M`・`metadata … about`・自分で決めたキーワード | 対応 | 関係（`dependency`・`alias`）の本体の `doc` は記録しない | — |
 | 式 | 式・単位 `1500 [kg]`・`->collect{ … }` | 一部対応 | 文字列として持つだけで、計算しない | 0.3.0 以降 |

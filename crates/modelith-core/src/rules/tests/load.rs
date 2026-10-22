@@ -121,6 +121,8 @@ fn element_kinds_are_the_kinds_drawn_as_elements() {
         "enum def",
         "part",
         "requirement",
+        "verification",
+        "analysis",
     ];
     // Act
     let kinds = element_kinds();

@@ -121,6 +121,8 @@ rules:
 | `part` | 部品（package の直下にあるものだけ。部品の中の部品は要素にならない） |
 | `requirement def` | 要求 |
 | `requirement` | 要求（package の直下にあるものだけ） |
+| `verification` | 検証（package の直下にあるものだけ） |
+| `analysis` | 解析（package の直下にあるものだけ） |
 | `concern def` | 関心事 |
 | `verification def` | 検証 |
 | `occurrence def` | シナリオ |
