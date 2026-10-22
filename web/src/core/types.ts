@@ -228,6 +228,8 @@ export interface ModelNode {
   lifeline?: boolean;
   /** 内部ブロック図の n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。`entry` は接続の使用。 */
   junction?: boolean;
+  /** 内部ブロック図の対象そのもののポート（枠の上に描く、8.2.3.13）の向き。`entry` はポートの宣言。 */
+  boundary?: PortDir;
   /** 一般の図のメモ（8.2.3.4 の comment）。`entry` はコメントの宣言。 */
   note?: boolean;
   /**

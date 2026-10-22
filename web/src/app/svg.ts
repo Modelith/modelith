@@ -4,7 +4,7 @@ import type { Family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./dom";
 import {
-  boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, STATE_HEAD, stateSize, stateTitle,
+  boundaryBoxes, BOUNDARY, boxesOf, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, STATE_HEAD, stateSize, stateTitle,
   textWidth, type Box, type NodeBox,
 } from "./geometry";
 import { isPseudoState } from "./state-machine";
@@ -191,6 +191,11 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
     frameRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     es += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${C("k-part-bg")}" fill-opacity=".35" stroke="${C("k-part")}" stroke-width="1.6"/>`;
     es += `<text x="${x0 + 12}" y="${y0 + 18}" font-size="10" fill="${C("ink2")}" font-family="${F}">«${esc(content.frame.kind)}»</text><text x="${x0 + 12}" y="${y0 + 36}" font-size="14" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(content.frame.title)}</text>`;
+    // 対象そのもののポートを枠の上に置く（線の端になるよう、矩形を box に足す）
+    for (const [key, r] of boundaryBoxes(frameRect, content.boundary ?? [])) {
+      const n = (content.boundary ?? []).find((x) => x.key === key);
+      if (n) box.set(key, { ...r, n, pins: [] });
+    }
   }
   // 中に部品・状態を描く要素は線の下に描く（中の要素へ入る線が隠れないように）
   for (const [, b] of box) if (b.holds) es += nodeMarkup(C, b, opts, F, MONO);
@@ -258,6 +263,7 @@ function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, tex
  */
 function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
   if (b.n.junction) return junctionMarkup(C, b, opts, F);
+  if (b.n.boundary) return boundaryMarkup(C, b, opts, F);
   if (b.n.note) return noteMarkup(C, b, opts, F);
   if (b.n.flow) return flowNodeMarkup(C, b, opts, F, MONO);
   if (b.n.state) return stateNodeMarkup(C, b, opts, F, MONO);
@@ -456,6 +462,31 @@ function noteMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): string
     s += `<text x="12" y="${top + 11 + k * LH}" font-size="11" fill="${C("ink")}" font-family="${F}">${esc(ln.t)}</text>`;
   });
   return s + "</g>";
+}
+
+/**
+ * 内部ブロック図の対象そのもののポート（8.2.3.13 の枠の上のポート）を SVG の文字列にする。枠の辺の上の小さな四角と、枠の外側に名前を書く。
+ *
+ * @param C 色の関数
+ * @param b ポートの矩形（BOUNDARY 四方）と、その要素（`boundary` は向き）
+ * @param opts 描き方（選択）
+ * @param F 文字のフォント
+ * @returns `<g class="boundary" data-key="b:名前" transform="translate(x,y)">…</g>` の文字列
+ * @example
+ * // 左の辺の (−7, 93) にある入力のポート pwr
+ * boundaryMarkup(CV, b, { view: "ibd" }, "inherit") // → '<g class="boundary" data-key="b:pwr" …><rect …/><text …>pwr</text></g>'
+ */
+function boundaryMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): string {
+  const n = b.n, s = BOUNDARY;
+  const isSel = opts.sel === n.key;
+  const left = n.boundary === "in", right = n.boundary === "out";
+  const tx = left ? -6 : right ? s + 6 : s / 2, ty = left || right ? s / 2 + 4 : s + 14;
+  const anchor = left ? "end" : right ? "start" : "middle";
+  return (
+    `<g class="boundary" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})">` +
+    `<rect class="body" width="${s}" height="${s}" fill="${C("panel")}" stroke="${isSel ? C("sel") : C("k-part")}" stroke-width="${isSel ? 2.4 : 1.4}"/>` +
+    `<text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="10.5" fill="${C("ink")}" font-family="${F}">${esc(n.name)}</text></g>`
+  );
 }
 
 /**

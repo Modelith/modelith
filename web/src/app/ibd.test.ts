@@ -1,7 +1,7 @@
 // 内部ブロック図の中身（InterconnectionView）。要素のキーと線の ID が、Rust のコアの図の操作と同じであることも確かめる（ADR-0016）。
 import { describe, expect, it } from "vitest";
-import { build, edit, parse, type Model, type ModelNode } from "../core";
-import { ibdContentOf } from "./ibd";
+import { applyTextEdits, build, edit, parse, type Model, type ModelNode } from "../core";
+import { ibdContentOf, ownPorts } from "./ibd";
 
 /**
  * テキストからモデルと、内部ブロック図の対象を作る。
@@ -130,6 +130,42 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
     expect(edges).toEqual([]);
   });
 
+  it("対象そのもののポートへの線は、枠の上のポート b:名前 に引き、向きを持たせる（8.2.3.13）", () => {
+    // Arrange（継いだポート q と、どの線の端でもないポート idle は描かない）
+    const text = "package P { part def E { port p; } part def B { port q; } part def C :> B { in port pwr; out port res; port idle; part a : E; connect pwr to a.p; flow from a.p to res; connect q to a.p; } }";
+    const { M, c } = setup(text, "C");
+    // Act
+    const { boundary, edges, nodes } = ibdContentOf(M, c);
+    // Assert
+    expect(boundary.map((b) => [b.key, b.boundary])).toEqual([["b:pwr", "in"], ["b:res", "out"]]);
+    expect(edges.map((e) => e.id)).toEqual(["flow|b:pwr|u:a|#1", "flow|u:a|b:res|#1"]);
+    expect(nodes.some((n) => n.key.startsWith("b:"))).toBe(false);
+  });
+
+  it("枠の上のポートの線の ID で、Rust のコアが同じ線を消せる（結合）", () => {
+    // Arrange
+    const text = "package P { part def E { port p; } part def C { in port pwr; part a : E; connect pwr to a.p; } }";
+    const { M, c } = setup(text, "C");
+    const [edge] = ibdContentOf(M, c).edges;
+    // Act
+    const r = edit(text, { op: "deleteEdge", id: edge?.id ?? "", ctx: "C" });
+    // Assert
+    if ("refused" in r) throw new Error(r.refused);
+    expect(applyTextEdits(text, r.edits)).not.toContain("connect pwr");
+  });
+
+  it("型の無い部品は、本体に書いたポートを描く（向きは修飾から、無ければ双方向）", () => {
+    // Arrange
+    const text = "package P { part def C { part engine { out port o; in port i; port x; } part b { in port i; } flow from engine.o to b.i; } }";
+    const { M, c } = setup(text, "C");
+    // Act
+    const { nodes, edges } = ibdContentOf(M, c);
+    const engine = nodes.find((n) => n.key === "u:engine");
+    // Assert
+    expect(engine?.ports.map((p) => [p.name, p.dir])).toEqual([["o", "out"], ["i", "in"], ["x", "inout"]]);
+    expect(edges.map((e) => [e.id, e.fromPort, e.toPort])).toEqual([["flow|u:engine|u:b|#1", "port:o", "port:i"]]);
+  });
+
   it("線の ID で、Rust のコアが同じ線を消せる（結合）", () => {
     // Arrange（2 項・名前付きのフロー・結び付け・n 項、入れ子の部品と型の中の線）
     const text = "package P { part def E { port o; port i; part n : E2; connect o to n.p; } part def E2 { port p; } flow def FD; part def C { part a : E; part b : E; flow from a.o to b.i; connect a.o to b.i; flow f : FD from a.o to b.i; bind a.o = b.i; connect (a, b, a.o); connect a.n.p to b.i; } }";
@@ -139,5 +175,18 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
     // Assert
     expect(results.length).toBeGreaterThan(0);
     expect(results.every((r) => !("refused" in r))).toBe(true);
+  });
+});
+
+describe("ownPorts（型の無い部品の本体のポート）", () => {
+  it("本体にポートが無ければ空（境界値）", () => {
+    // Arrange
+    const M = build(parse("package P { part engine; }"));
+    const u = M.nodes.find((n) => n.name === "engine")?.entry;
+    if (!u) throw new Error("engine がありません");
+    // Act
+    const ports = ownPorts(u);
+    // Assert
+    expect(ports).toEqual([]);
   });
 });

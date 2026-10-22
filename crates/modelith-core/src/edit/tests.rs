@@ -407,6 +407,25 @@ fn internal_block_diagram_ids_reach_parts_one_level_deeper() {
 }
 
 #[test]
+fn ibd_ids_put_the_context_own_ports_on_the_frame() {
+    // Arrange（対象そのもののポート pwr・out への線は、枠の上のポート `b:` の線（8.2.3.13））
+    let text = "package P { part def E { port p; } part def C { in port pwr; out port res; part a : E; \
+                connect pwr to a.p; flow from a.p to res; connect zz to a.p; } }";
+    // Act
+    let ids = ibd_ids(text, "C");
+    let (deleted, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"flow|b:pwr|u:a|#1","ctx":"C"}"#,
+    );
+    // Assert（ポートでも部品でもない端 zz の線は除く）
+    assert_eq!(ids, ["flow|b:pwr|u:a|#1", "flow|u:a|b:res|#1"]);
+    assert!(
+        !deleted.contains("connect pwr to a.p;") && deleted.contains("flow from a.p to res;"),
+        "{deleted}"
+    );
+}
+
+#[test]
 fn delete_edge_removes_a_binding_and_a_whole_nary_connection() {
     // Arrange
     let text = "package P { part def E { port p; } part def C { part a : E; part b : E; part e : E; \
@@ -896,6 +915,27 @@ fn make_port_adds_declaration_and_rewires_flows() {
     );
     assert!(after.contains("flow from a to b.i;"), "{after}");
     assert_eq!(flashed(&after, &out).trim(), "in port i : Sig;");
+}
+
+#[test]
+fn make_port_on_a_nested_part_keeps_the_whole_path() {
+    // Arrange（入れ子の部品 `u:a.x` に、線の行き先の接続点からポートを作る。端は a.x.i にし、a.i にしない）
+    let text = "package P { part def X; part def A { part x : X; } part def B { port o; } \
+                part def C { part a : A; part b : B; flow from b.o to a.x; } }";
+    let id = ibd_ids(text, "C")
+        .into_iter()
+        .find(|i| i.starts_with("flow|"))
+        .expect("流れの線");
+    // Act
+    let (after, _) = run(
+        text,
+        &format!(
+            r#"{{"op":"makePort","key":"u:a.x","ctx":"C","name":"i","dir":"in","type":"","flows":[{{"id":"{id}","to":true}}]}}"#
+        ),
+    );
+    // Assert
+    assert!(after.contains("part def X {\n    in port i;\n}"), "{after}");
+    assert!(after.contains("flow from b.o to a.x.i;"), "{after}");
 }
 
 #[test]

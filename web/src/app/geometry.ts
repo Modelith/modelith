@@ -1360,3 +1360,33 @@ export function packageRects(frames: readonly { keys: readonly string[]; inner: 
   };
   return frames.map((_, i) => rect(i, new Set()));
 }
+
+/** 内部ブロック図の枠の上のポートの四角の一辺。 */
+export const BOUNDARY = 14;
+
+/**
+ * 内部ブロック図の対象そのもののポートを、枠の辺の上に並べる（8.2.3.13）。入力は左の辺、出力は右の辺、両向きは下の辺に、
+ * それぞれ等しい間隔で並べ、四角の中心を辺に載せる。
+ *
+ * @param frame 枠の矩形
+ * @param ports 枠の上のポート（`boundary` は向き）
+ * @returns ポートのキーから四角の矩形への対応
+ * @example
+ * // 枠 (0, 0, 400, 300) に、入力 a・出力 b
+ * boundaryBoxes({ x: 0, y: 0, w: 400, h: 300 }, [a, b])
+ * // → Map { "b:a" → { x: -7, y: 143, w: 14, h: 14 }, "b:b" → { x: 393, y: 143, w: 14, h: 14 } }
+ * boundaryBoxes(frame, []) // → Map {}
+ */
+export function boundaryBoxes(frame: Box, ports: readonly ModelNode[]): Map<string, Box> {
+  const out = new Map<string, Box>();
+  const h = BOUNDARY / 2;
+  for (const dir of ["in", "out", "inout"] as const) {
+    const ps = ports.filter((p) => (p.boundary ?? "inout") === dir);
+    ps.forEach((p, k) => {
+      const t = (k + 1) / (ps.length + 1);
+      const [cx, cy] = dir === "in" ? [frame.x, frame.y + frame.h * t] : dir === "out" ? [frame.x + frame.w, frame.y + frame.h * t] : [frame.x + frame.w * t, frame.y + frame.h];
+      out.set(p.key, { x: Math.round(cx - h), y: Math.round(cy - h), w: BOUNDARY, h: BOUNDARY });
+    });
+  }
+  return out;
+}

@@ -1,12 +1,14 @@
 // 内部ブロック図（InterconnectionView）の中身を、モデルから作る。
 // 要素のキーと線の ID は、Rust のコアの図の操作（crates/modelith-core/src/edit/ibd.rs）と同じ決め方にする（ADR-0016）。
 
-import type { Entry, Model, ModelEdge, ModelNode } from "../core";
+import type { Entry, Model, ModelEdge, ModelNode, Port, PortDir } from "../core";
 
 /** 内部ブロック図に描く要素と線。 */
 export interface IbdContent {
   nodes: ModelNode[];
   edges: ModelEdge[];
+  /** 対象そのもののポート（枠の上に描く、8.2.3.13）。キーは `b:名前`。並べる位置は枠で決まるので、nodes には入れない。 */
+  boundary: ModelNode[];
 }
 
 /**
@@ -72,6 +74,25 @@ export function innerParts(M: Model, u: Entry): Entry[] {
 }
 
 /**
+ * 型の無い部品の本体に書いたポート。向きは修飾（in・out・inout）から決め、無ければ inout にする（ポートの型からは決めない）。
+ *
+ * @param u 型の無い部品の宣言
+ * @returns 本体の、名前のあるポート
+ * @example
+ * ownPorts(part engine { out port p; port q; }) // → [{ name: "p", dir: "out", … }, { name: "q", dir: "inout", … }]
+ * ownPorts(part engine;)                         // → []
+ */
+export function ownPorts(u: Entry): Port[] {
+  return u.children
+    .filter((c) => c.kind === "port" && c.name)
+    .map((c) => {
+      const m = ` ${c.mods ?? ""} `;
+      const dir: PortDir = m.includes(" inout ") ? "inout" : m.includes(" out ") ? "out" : m.includes(" in ") ? "in" : "inout";
+      return { name: c.name, type: c.type, conj: !!c.conj, dir, entry: c };
+    });
+}
+
+/**
  * 内部ブロック図の内容を作る。対象の部品を `u:部品名` のノードにし、対象の中の flow・connect・bind を、
  * 部品の間の線（ポートが分かれば接続点つき）にする。名前付きのフローのラベルは名前と型（`flowLabel`）、
  * 結び付けは種類 `bind` でラベル `=`（8.2.3.13 の binding-connection）。
@@ -105,7 +126,7 @@ export function ibdContentOf(M: Model, ctx: ModelNode): IbdContent {
     const tn = typeNode(u.type);
     return {
       key, name: u.name, short: "", kind: "part", isDef: false, fam: "part", entry: u, trans: [],
-      ports: tn ? tn.ports : [], portHost: tn ? tn.entry : u, typeKey: tn ? tn.key : null, usage: true, phase: null, phaseOwn: false,
+      ports: tn ? tn.ports : ownPorts(u), portHost: tn ? tn.entry : u, typeKey: tn ? tn.key : null, usage: true, phase: null, phaseOwn: false,
       ...(container ? { container } : {}),
     };
   };
@@ -150,12 +171,27 @@ export function ibdContentOf(M: Model, ctx: ModelNode): IbdContent {
     }
     return [node, i];
   };
+  /** 対象そのもののポート（枠の上のポート）。線の端になったものだけを描く。継いだポートは描かない（Rust の boundary_port と同じ、対象の直下の宣言だけ）。 */
+  const boundary = new Map<string, ModelNode>();
+  const boundaryNode = (name: string): ModelNode | null => {
+    const p = ctx.ports.find((x) => x.name === name && ctx.entry.children.includes(x.entry));
+    if (!p) return null;
+    const key = "b:" + name;
+    const hit = boundary.get(key);
+    if (hit) return hit;
+    const made: ModelNode = { key, name, short: "", kind: "port", isDef: false, fam: "part", entry: p.entry, trans: [], ports: [], boundary: p.dir, phase: null, phaseOwn: false };
+    boundary.set(key, made);
+    return made;
+  };
   /** 線の端の参照を、図の要素とポートにする。part は、関係を書いた部品の本体（対象そのものなら null）。 */
   const endOf = (path: string, part: Entry | null): End | null => {
     const segs = path.split(".");
     if (!part) {
       const top = outer.get(segs[0] ?? "");
-      if (!top) return null;
+      if (!top) {
+        const b = segs.length === 1 ? boundaryNode(segs[0] ?? "") : null;
+        return b ? { node: b } : null;
+      }
       const [node, i] = walk(top, segs.slice(1));
       return at(node, segs[i + 1]);
     }
@@ -211,5 +247,5 @@ export function ibdContentOf(M: Model, ctx: ModelNode): IbdContent {
   // 外の部品の直後に、その中の部品を（外の部品の枠の上に重ねて描くため。中の中の部品も同じ）
   const withInner = (n: ModelNode): ModelNode[] => [n, ...[...inner.values()].filter((c) => c.container === n.key).flatMap(withInner)];
   const nodes = [...outer.values()].flatMap(withInner);
-  return { nodes: [...nodes, ...junctions], edges };
+  return { nodes: [...nodes, ...junctions], edges, boundary: [...boundary.values()] };
 }
