@@ -8,6 +8,8 @@ import { kindLabel } from "./labels";
 export interface FlowContent {
   nodes: ModelNode[];
   edges: ModelEdge[];
+  /** アクション定義そのもののパラメータ（枠の上に描く、8.2.3.17 の parameter）。キーは `b:名前`。 */
+  boundary: ModelNode[];
 }
 
 /** 要素の形（8.2.3.17 の記号）。start は塗った丸、done は丸の中の塗った丸、bar は太い棒（fork・join）、diamond はひし形（decide・merge）、
@@ -57,25 +59,33 @@ export function defaultFlowContext(M: Model): ModelNode | null {
 
 /**
  * アクションの流れの図の中身を作る。モデルのアクションの流れの要素を、種類 `flow` の図の要素にし（開始・終了の宣言は対象のアクション定義）、
- * 線（継起・順序付きの流れ）はそのまま使う。
+ * 要素のパラメータを接続点（ポート）にする。アクション定義そのもののパラメータは、枠の上に描く要素（`b:名前`）にする。
+ * 線（継起・順序付きの流れ・流れ）はそのまま使う。
  *
  * @param M モデル
  * @param ctx 図の対象（アクション定義のノード）
- * @returns 要素と線。対象のアクションの流れが無ければ空
+ * @returns 要素と線と枠の上のパラメータ。対象のアクションの流れが無ければ空
  * @example
- * // action def A { first start; then action a; } のとき
- * flowContentOf(M, A) // → { nodes: [a:start, a:a], edges: [{ id: "succession|a:start|a:a|#1", kind: "succession", … }] }
+ * // action def A { in item x; first start; then action a { in item y; } flow x to a.y; } のとき
+ * flowContentOf(M, A)
+ * // → { nodes: [a:start, a:a（ポート y）], edges: [{ id: "succession|a:start|a:a|#1", … }, { id: "flow|b:x|a:a|#1", toPort: "port:y", … }], boundary: [b:x] }
  */
 export function flowContentOf(M: Model, ctx: ModelNode): FlowContent {
   const f = M.actionFlows?.find((x) => x.key === ctx.key);
-  if (!f) return { nodes: [], edges: [] };
+  if (!f) return { nodes: [], edges: [], boundary: [] };
   const nodes = f.nodes.map(
     (n): ModelNode => ({
-      key: n.key, name: n.name, short: "", kind: n.kind, isDef: false, entry: n.entry ?? ctx.entry, fam: "beh", trans: [], ports: [],
+      key: n.key, name: n.name, short: "", kind: n.kind, isDef: false, entry: n.entry ?? ctx.entry, fam: "beh", trans: [], ports: n.ports,
       flow: true, phase: null, phaseOwn: false,
     }),
   );
-  return { nodes, edges: f.edges };
+  const boundary = f.params.map(
+    (p): ModelNode => ({
+      key: "b:" + p.name, name: p.name, short: "", kind: "param", isDef: false, entry: p.entry, fam: "beh", trans: [], ports: [],
+      boundary: p.dir, phase: null, phaseOwn: false,
+    }),
+  );
+  return { nodes, edges: f.edges, boundary };
 }
 
 /**
@@ -119,9 +129,9 @@ export function flowBodyLines(e: Entry): string[] {
 }
 
 /**
- * アクションの流れの図で、要素を上から並べる段を決める（自動の配置に使う）。継起の線（`succession`）だけを見て、
+ * アクションの流れの図で、要素を上から並べる段を決める（自動の配置に使う）。継起の線（`succession`）とパラメータの間の流れ（`flow`）を見て、
  * 元から先へ最も長い道のりの段にする（同じ分岐から出た要素は同じ段になる）。繰り返しの戻りの線（深さ優先でたどったときに戻る線）は数えない。
- * 順序付きの流れ（`successionFlow`）は段を決めない。
+ * 順序付きの流れ（`successionFlow`）と、枠の上のパラメータ（図の要素でない端）への流れは段を決めない。
  *
  * @param list 並べる要素
  * @param edges 図の線
@@ -132,7 +142,7 @@ export function flowBodyLines(e: Entry): string[] {
  */
 export function flowLayers(list: readonly ModelNode[], edges: readonly ModelEdge[]): Map<string, number> {
   const keys = new Set(list.map((n) => n.key));
-  const lines = edges.filter((e) => e.kind === "succession" && e.from !== e.to && keys.has(e.from) && keys.has(e.to));
+  const lines = edges.filter((e) => (e.kind === "succession" || e.kind === "flow") && e.from !== e.to && keys.has(e.from) && keys.has(e.to));
   const outOf = (k: string): ModelEdge[] => lines.filter((e) => e.from === k);
   // 深さ優先でたどり、たどっている途中の要素へ戻る線を、繰り返しの戻りの線とみなす
   const state = new Map<string, "open" | "done">();

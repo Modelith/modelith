@@ -730,6 +730,51 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
     await expect.poll(() => nodeKeys(page)).toContain("a:notify");
   });
 
+  test("F-VIEW-15: アクティビティ図に、パラメータとその間の流れを描き、流れを図から削除できる", async ({ page }) => {
+    // Arrange
+    const text = `package T {
+    item def Water;
+    action def MakeTea {
+        in item cold : Water;
+        out item tea : Water;
+        action boil { in item w : Water; out item hot : Water; }
+        action brew { in item water : Water; out item t : Water; }
+        flow cold to boil.w;
+        flow of Water from boil.hot to brew.water;
+        flow brew.t to tea;
+    }
+    view teaFlow : ActionFlowView { expose T::MakeTea; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="teaFlow"]').click();
+    // Assert（パラメータは縁の接続点、アクション定義そのもののパラメータは枠の上の四角、流れは実線と矢印）
+    await expect(page.locator('.pin[data-node="a:boil"][data-pin="port:hot"]')).toHaveCount(1);
+    await expect(page.locator('.boundary[data-key="b:cold"]')).toHaveText("cold");
+    await expect(page.locator('.boundary[data-key="b:tea"]')).toHaveText("tea");
+    const water = page.locator('[data-edge="flow|a:boil|a:brew|Water#1"]');
+    await expect(water.locator("path.line")).not.toHaveAttribute("stroke-dasharray", /./);
+    await expect(water.locator("text")).toHaveText("Water");
+    // Act（流れの上の点を押して選び、2 回押しで削除）
+    const at = await water.locator("path.hit").evaluate((el) => {
+      const path = el as SVGPathElement;
+      const p = path.getPointAtLength(path.getTotalLength() * 0.5);
+      const m = path.getScreenCTM();
+      return m ? { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f } : null;
+    });
+    if (!at) throw new Error("線の位置が分かりません");
+    await page.mouse.click(at.x, at.y);
+    await page.locator('#insp [data-act="delEdge"]').click();
+    await page.locator('#insp [data-act="delEdge"]').click();
+    // Assert
+    await expect(page.locator("#ed")).not.toHaveValue(/flow of Water from boil\.hot to brew\.water;/);
+    await expect(page.locator("#ed")).toHaveValue(/flow cold to boil\.w;/);
+    await expect(water).toHaveCount(0);
+  });
+
   test("F-VIEW-7: 順序の線を図から削除すると、テキストからその文だけが消える", async ({ page }) => {
     // Arrange
     await openFlow(page);
