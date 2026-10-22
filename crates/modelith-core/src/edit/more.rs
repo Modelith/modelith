@@ -1,10 +1,10 @@
 //! メッセージ・フェーズ・ポート・保存された図の操作（暫定コアの `ops.ts`・`pins.ts`・`view-ops.ts`・`view-text.ts` と同じ書き方）。
 
-use super::ops::{BAD_NAME, Found, append_package, messages};
+use super::ops::{BAD_NAME, Found, append_package, messages, tokens};
 use super::text::{Splice, indent_at, insert_into, insert_splice, remove_range};
 use super::{Change, Doc, Refusal};
 use crate::project::{Expose, RelKind, Scope, text::is_basic_name};
-use crate::syntax::is_keyword;
+use crate::syntax::{SyntaxKind, is_keyword};
 
 // ---- メッセージ（シーケンス図） ----
 
@@ -929,15 +929,18 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///
 /// # 戻り値
 ///
-/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
+/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある名前・知らない描き方・package が無い・
+/// 一般の図でないのに対象が無いときは理由の文（`Err`）。一般の図は、要素の無い空の図も作れる（F-VIEW-8）。
 ///
 /// # 例
 ///
 /// ```text
 /// save_view(Doc("package P {\n    part def A;\n    part def '電気 ケトル';\n}\n"), "全体", "general", [A, 電気 ケトル])
 ///   → Ok(text に "    view '全体' : GeneralView {\n        expose P::A;\n        expose P::'電気 ケトル';\n    }\n}")
+/// save_view(Doc("package P { part def A; }"), "w", "general", [])         → Ok(text に "view w : GeneralView {\n    }")
 /// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err("「v」という図は既にあります。別の名前にしてください")
-/// save_view(Doc("package P { part def A; view v; }"), "w", "general", [])  → Err("図に要素が無いため、保存できません")
+/// save_view(Doc("package P { part def A; }"), "w", "actionFlow", [])      → Err("図の対象を選んでください")
+/// save_view(Doc("part def A;"), "w", "general", [])                       → Err("図を置くパッケージがありません。先にパッケージを作ってください")
 /// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
@@ -955,10 +958,12 @@ pub(super) fn save_view(
         ));
     }
     let std = std_view_for(kind).ok_or_else(|| format!("図の描き方「{kind}」は扱えません"))?;
-    let pkg = d
-        .first_package()
-        .filter(|_| !targets.is_empty())
-        .ok_or_else(|| "図に要素が無いため、保存できません".to_owned())?;
+    if targets.is_empty() && kind != "general" {
+        return Err("図の対象を選んでください".to_owned());
+    }
+    let pkg = d.first_package().ok_or_else(|| {
+        "図を置くパッケージがありません。先にパッケージを作ってください".to_owned()
+    })?;
     let indent = format!("{}    ", indent_at(d.text, d.b(d.e(pkg).start)));
     let ts: Vec<usize> = targets.iter().map(|f| f.entry).collect();
     let (text, s, e) = insert_into(
@@ -1054,6 +1059,96 @@ pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Cha
     for &(s, e) in xs.iter().rev() {
         (text, at) = remove_range(&text, s, e);
     }
+    Ok(Change {
+        text,
+        select: None,
+        flash: Some((at, at + 1)),
+    })
+}
+
+/// 作成した図の名前を変える（view の宣言の名前だけを書き換える。view は名前で参照されないので、ほかは変えない）。名前の前後の空白は除く。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `view`：今の図の名前
+/// - `name`：新しい図の名前（基本名でなければ引用名で書く）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（view の宣言の頭）。同じ名前ならテキストを変えずに返す。
+/// 図が無い・名前が空・既にある図の名前のときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// rename_view(Doc("package P { view v : GeneralView { } }"), "v", "全体") → Ok(text = "package P { view '全体' : GeneralView { } }")
+/// rename_view(Doc("package P { view v; view w; }"), "v", "w")             → Err("「w」という図は既にあります。別の名前にしてください")
+/// rename_view(Doc("package P { view v; }"), "v", " ")                     → Err("図の名前を入力してください")
+/// ```
+pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change, Refusal> {
+    let v = d.view_named(view)?;
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("図の名前を入力してください".to_owned());
+    }
+    let e = d.e(v);
+    if name == view {
+        return Ok(Change {
+            text: d.text.to_owned(),
+            select: Some(name.to_owned()),
+            flash: None,
+        });
+    }
+    if d.m.views.iter().any(|x| x.name == name) {
+        return Err(format!(
+            "「{name}」という図は既にあります。別の名前にしてください"
+        ));
+    }
+    let (hs, he) = (d.b(e.start), d.b(e.head_end));
+    let unquote = |t: &str| t.trim_matches('\'').replace("\\'", "'");
+    let at = tokens(d.text)
+        .into_iter()
+        .filter(|t| (hs..he).contains(&t.1))
+        .skip_while(|t| t.2 != "view")
+        .find(|t| {
+            (t.0 == SyntaxKind::IDENT && t.2 == view)
+                || (t.0 == SyntaxKind::QUOTED_NAME && unquote(t.2) == view)
+        })
+        .map(|t| (t.1, t.2.len()))
+        .ok_or_else(|| format!("図「{view}」の名前が見つかりません"))?;
+    let nn = sysml_name(name);
+    let mut text = d.text.to_owned();
+    text.replace_range(at.0..at.0 + at.1, &nn);
+    let grow = nn.len() as isize - at.1 as isize;
+    Ok(Change {
+        text,
+        select: Some(name.to_owned()),
+        flash: Some((hs, (he as isize + grow) as usize)),
+    })
+}
+
+/// 作成した図を削除する（view の宣言を消す）。図に出していたモデルの要素は残す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `view`：図の名前
+///
+/// # 戻り値
+///
+/// 消した後のテキストと、光らせる範囲（消した位置の 1 バイト）。図が無いときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// delete_view(Doc("package P {\n    part def A;\n    view v {\n        expose P::A;\n    }\n}\n"), "v")
+///   → Ok(text = "package P {\n    part def A;\n}\n")
+/// delete_view(Doc("package P { }"), "gone") → Err("図「gone」が見つかりません。…")
+/// ```
+pub(super) fn delete_view(d: &Doc<'_>, view: &str) -> Result<Change, Refusal> {
+    let e = d.e(d.view_named(view)?);
+    let (text, at) = remove_range(d.text, d.b(e.start), d.b(e.end));
     Ok(Change {
         text,
         select: None,

@@ -970,10 +970,84 @@ fn save_view_is_refused_without_name_targets_or_with_used_name() {
     assert!(
         refused(
             text,
+            r#"{"op":"saveView","name":"w","kind":"actionFlow","targets":[]}"#
+        )
+        .contains("対象を選んで")
+    );
+    assert!(
+        refused(
+            "part def A;",
             r#"{"op":"saveView","name":"w","kind":"general","targets":[]}"#
         )
-        .contains("要素が無い")
+        .contains("パッケージがありません")
     );
+}
+
+#[test]
+fn save_view_makes_an_empty_general_view() {
+    // Arrange：一般の図は、要素の無い空の図も作れる（F-VIEW-8）
+    let text = "package P {\n    part def A;\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"saveView","name":"新しい図","kind":"general","targets":[]}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("    view '新しい図' : GeneralView {\n    }\n}"),
+        "{after}"
+    );
+    let m = Doc::new(&after).m;
+    assert_eq!(m.views[0].name, "新しい図");
+    assert!(m.views[0].node_keys.is_empty());
+}
+
+#[test]
+fn rename_view_rewrites_only_the_view_name() {
+    // Arrange：基本名から引用名へ・引用名から基本名へ（同値分割）
+    let text = "package P {\n    part def v;\n    view v : GeneralView {\n        expose P::v;\n    }\n    view 'その他' { }\n}\n";
+    // Act
+    let (to_quoted, _) = run(text, r#"{"op":"renameView","view":"v","name":"全体"}"#);
+    let (to_basic, _) = run(
+        text,
+        r#"{"op":"renameView","view":"その他","name":" Other "}"#,
+    );
+    let (same, out) = run(text, r#"{"op":"renameView","view":"v","name":"v"}"#);
+    // Assert：同じ名前の部品定義 v と expose の P::v は変えない
+    assert!(
+        to_quoted
+            .contains("    part def v;\n    view '全体' : GeneralView {\n        expose P::v;"),
+        "{to_quoted}"
+    );
+    assert!(to_basic.contains("    view Other { }"), "{to_basic}");
+    assert_eq!(same, text);
+    assert!(out.edits.is_empty());
+    let names: Vec<String> = Doc::new(&to_quoted)
+        .m
+        .views
+        .iter()
+        .map(|v| v.name.clone())
+        .collect();
+    assert_eq!(names, ["全体", "その他"]);
+}
+
+#[test]
+fn rename_view_is_refused_for_empty_used_or_missing_names() {
+    let text = "package P { view v; view w; }";
+    assert!(refused(text, r#"{"op":"renameView","view":"v","name":"w"}"#).contains("既にあります"));
+    assert!(refused(text, r#"{"op":"renameView","view":"v","name":" "}"#).contains("名前を入力"));
+    assert!(refused(text, r#"{"op":"renameView","view":"gone","name":"x"}"#).contains("gone"));
+}
+
+#[test]
+fn delete_view_keeps_the_exposed_elements() {
+    // Arrange
+    let text = "package P {\n    part def A;\n    view v {\n        expose P::A;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"deleteView","view":"v"}"#);
+    // Assert
+    assert_eq!(after, "package P {\n    part def A;\n}\n");
+    assert!(refused(text, r#"{"op":"deleteView","view":"gone"}"#).contains("gone"));
 }
 
 #[test]

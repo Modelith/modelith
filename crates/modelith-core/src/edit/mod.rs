@@ -126,7 +126,7 @@ pub enum Intent {
         #[serde(default)]
         ctx: Option<String>,
     },
-    /// 表示中の図を、名前を付けて保存する。`kind` は描き方（general など）、`targets` は図に出す要素のキー。
+    /// 名前を付けて図を作成する。`kind` は描き方（general など）、`targets` は図に出す要素のキー（一般の図なら空でもよい）。
     SaveView {
         name: String,
         kind: String,
@@ -136,6 +136,10 @@ pub enum Intent {
     AddToView { view: String, key: String },
     /// 保存された図から要素を外す（モデルの要素は残す）。
     RemoveFromView { view: String, key: String },
+    /// 作成した図の名前を変える。
+    RenameView { view: String, name: String },
+    /// 作成した図を削除する（図に出していたモデルの要素は残す）。
+    DeleteView { view: String },
 }
 
 /// テキストの編集 1 つ（UTF-16 の位置。古いテキストの [start, end) を text に置き換える）。
