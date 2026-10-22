@@ -2145,3 +2145,33 @@ fn file_longer_than_the_stride_is_not_joined() {
     assert_eq!(names, ["X", "Y"]);
     assert_eq!(merge::file_of(p.entries[1].start), 1);
 }
+
+#[test]
+fn files_keep_other_files_in_path_order_without_the_open_one() {
+    // Arrange
+    let mut files = merge::Files::default();
+    files.set("c.sysml", "part def C;");
+    files.set("a.sysml", "part def A;");
+    files.set("b.sysml", "part def B;");
+    // Act
+    files.set("c.sysml", "part def C2;");
+    files.remove("a.sysml");
+    let (paths, parsed) = files.others(Some("b.sysml"));
+    // Assert（置き換えたファイルは新しい中身、消したファイルと表示中のファイルは入らない）
+    assert_eq!(paths, ["c.sysml"]);
+    assert_eq!(parsed[0].entries[0].name, "C2");
+}
+
+#[test]
+fn files_forget_a_file_that_grows_too_long() {
+    // Arrange（境界値：区切りの長さになったファイルは、前の中身も忘れる）
+    let mut files = merge::Files::default();
+    files.set("a.sysml", "part def A;");
+    // Act
+    files.set("a.sysml", &" ".repeat(merge::FILE_STRIDE));
+    // Assert
+    assert_eq!(files.others(None).0, Vec::<String>::new());
+    files.set("b.sysml", "part def B;");
+    files.clear();
+    assert_eq!(files.others(None).0, Vec::<String>::new());
+}

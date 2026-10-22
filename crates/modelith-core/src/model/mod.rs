@@ -290,7 +290,28 @@ fn has_word(mods: &str, w: &str) -> bool {
 ///   → problems に「型「Nope」が見つかりません（y）」が 1 件（kind は None）
 /// ```
 pub fn build(p: &ParseResult) -> Model {
-    focus::keep_focus(build_whole(p), p.entries.as_slice())
+    narrow(build_whole(p), p)
+}
+
+/// `build_whole` で作ったモデルを、表示中のファイルの要素と、それが参照するほかのファイルの要素だけに絞る（ADR-0021）。
+/// 検査（`build_whole` が要る）と図（絞ったモデル）を、モデルを 2 回作らずに得るために使う。
+///
+/// # 引数
+///
+/// - `whole`：`build_whole(p)` の結果
+/// - `p`：モデルを作った解析結果
+///
+/// # 戻り値
+///
+/// `build(p)` と同じモデル。
+///
+/// # 例
+///
+/// ```text
+/// narrow(build_whole(&p), &p) == build(&p)
+/// ```
+pub fn narrow(whole: Model, p: &ParseResult) -> Model {
+    focus::keep_focus(whole, p.entries.as_slice())
 }
 
 /// 解析結果から、ほかのファイルの要素も絞らずにモデルを作る（ADR-0021）。ファイルをまたぐ関係を数える検査（チェックルール）に使う。

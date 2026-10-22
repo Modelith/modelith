@@ -4,6 +4,8 @@
 //! ファイルごとの区切り（`FILE_STRIDE` の倍数）を足す。表示中のファイルの位置は変えないので、エディタと編集はそのまま動く。
 //! 位置から、どのファイルのものかが分かる（`file_of`）。ほかのファイルの構文エラー・まだ扱えない文は、表示中のファイルの問題に混ぜない。
 
+use std::collections::BTreeMap;
+
 use super::{Block, ParseResult, Rel, RelKind, Scope, project};
 use crate::syntax::parse;
 
@@ -53,18 +55,135 @@ pub fn file_of(pos: usize) -> usize {
 /// project_files("part def X;", &[])                                                     → project("part def X;", …) と同じ
 /// ```
 pub fn project_files(focus: &str, others: &[&str]) -> ParseResult {
-    let one = |t: &str| project(t, &parse(t));
-    let fits = |t: &&&str| t.len() < FILE_STRIDE;
-    if !fits(&&focus) {
-        return one(focus);
+    join(focus, others.iter().filter_map(|t| parse_file(t)).collect())
+}
+
+/// 表示中のファイルのテキストを解析し、解析済みのほかのファイルをつなぐ。
+///
+/// # 引数
+///
+/// - `focus`：表示中のファイルのテキスト
+/// - `others`：ほかのファイルの解析結果（`parse_file` で作ったもの。この順に 1 から番号を付ける）
+///
+/// # 戻り値
+///
+/// つないだ解析結果。表示中のファイルが区切りより長ければ、ほかのファイルをつながない。`MAX_OTHERS` を超えた分はつながない。
+///
+/// # 例
+///
+/// ```text
+/// join("package A;", vec![parse_file("package B;")?]).entries → [A, B]
+/// join("package A;", vec![])                                  → project("package A;", …) と同じ
+/// ```
+pub fn join(focus: &str, mut others: Vec<ParseResult>) -> ParseResult {
+    let own = project(focus, &parse(focus));
+    if focus.len() >= FILE_STRIDE {
+        return own;
     }
-    let rest = others
-        .iter()
-        .filter(fits)
-        .take(MAX_OTHERS)
-        .map(|t| one(t))
-        .collect();
-    merge(one(focus), rest)
+    others.truncate(MAX_OTHERS);
+    merge(own, others)
+}
+
+/// ほかのファイルとしてつなぐために、ファイルのテキストを解析する。
+///
+/// # 引数
+///
+/// - `text`：ファイルのテキスト
+///
+/// # 戻り値
+///
+/// 解析結果。区切り（`FILE_STRIDE`）より長いファイルはつながないので None。
+///
+/// # 例
+///
+/// ```text
+/// parse_file("part def Y;")                  → Some(entries は [Y])
+/// parse_file(&" ".repeat(FILE_STRIDE))       → None
+/// ```
+pub fn parse_file(text: &str) -> Option<ParseResult> {
+    (text.len() < FILE_STRIDE).then(|| project(text, &parse(text)))
+}
+
+/// プロジェクトのファイルごとの解析結果（ADR-0021 §3）。変わったファイルだけを解析し直すために覚えておく。
+#[derive(Debug, Default)]
+pub struct Files {
+    parsed: BTreeMap<String, ParseResult>,
+}
+
+impl Files {
+    /// ファイルを覚える（同じパスなら解析し直して置き換える）。区切りより長いファイルは覚えない（前のものも忘れる）。
+    ///
+    /// # 引数
+    ///
+    /// - `path`：プロジェクトのフォルダからのパス
+    /// - `text`：ファイルのテキスト
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// files.set("b.sysml", "package B;") → files.others(None).0 は ["b.sysml"]
+    /// ```
+    pub fn set(&mut self, path: &str, text: &str) {
+        match parse_file(text) {
+            Some(p) => {
+                self.parsed.insert(path.to_owned(), p);
+            }
+            None => {
+                self.parsed.remove(path);
+            }
+        }
+    }
+
+    /// ファイルを忘れる。
+    ///
+    /// # 引数
+    ///
+    /// - `path`：プロジェクトのフォルダからのパス（覚えていなければ何もしない）
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// files.remove("b.sysml") → files.others(None).0 から b.sysml が消える
+    /// ```
+    pub fn remove(&mut self, path: &str) {
+        self.parsed.remove(path);
+    }
+
+    /// すべてのファイルを忘れる（フォルダを閉じた・別のフォルダを開いたとき）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// files.clear() → files.others(None) は ([], [])
+    /// ```
+    pub fn clear(&mut self) {
+        self.parsed.clear();
+    }
+
+    /// 表示中のファイルを除いた、ほかのファイルのパスと解析結果（パスの順。`MAX_OTHERS` まで）。
+    ///
+    /// # 引数
+    ///
+    /// - `focus`：表示中のファイルのパス（フォルダの外のファイルなら None）
+    ///
+    /// # 戻り値
+    ///
+    /// （パスの並び、解析結果の並び）。`merge` に渡すと、i 番目のパスのファイルは番号 i + 1 になる。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // a.sysml・b.sysml・c.sysml を覚えているとき
+    /// others(Some("b.sysml")) → (["a.sysml", "c.sysml"], [a の解析結果, c の解析結果])
+    /// ```
+    pub fn others(&self, focus: Option<&str>) -> (Vec<String>, Vec<ParseResult>) {
+        self.parsed
+            .iter()
+            .filter(|(path, _)| Some(path.as_str()) != focus)
+            .take(MAX_OTHERS)
+            .map(|(path, p)| (path.clone(), p.clone()))
+            .unzip()
+    }
 }
 
 /// 表示中のファイルの解析結果の後ろに、ほかのファイルの解析結果をつなぐ。宣言・ブロック・関係・別名・`import` を足し、
