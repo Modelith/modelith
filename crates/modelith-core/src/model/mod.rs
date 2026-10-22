@@ -1393,8 +1393,9 @@ impl<'a> Builder<'a> {
         None
     }
 
-    /// フェーズに沿った要求のトレースの抜け（導出・充足・検証）を問題として加える。暫定コアの `addTraceGaps` と同じ。
+    /// フェーズに沿った要求のトレースの抜け（導出・充足・検証）を問題として加える。暫定コアの `addTraceGaps` にならう（短い名前の無い要求の名前を 2 回並べていた所は直した）。
     /// 最初のフェーズの要求定義は下位への展開（derive の終わりの端）が無いことを、それ以外のフェーズの要求定義は導出元・満たす要素・検証が無いことを、種類 `gap` の問題にする（モデルの `problems` を書き換える）。
+    /// 文の頭には要求を、短い名前があれば `<'K3'> 名前`、無ければ名前だけで書く。
     ///
     /// # 引数
     ///
@@ -1413,13 +1414,14 @@ impl<'a> Builder<'a> {
             let Some(i) = phases.iter().position(|p| p == phase) else {
                 continue;
             };
+            // 短い名前が無ければ名前だけにする（名前を 2 回並べない）
             let label = if n.short.is_empty() {
                 n.name.clone()
             } else {
-                format!("<'{}'>", n.short)
+                format!("<'{}'> {}", n.short, n.name)
             };
             let pos = self.e(n.entry).start;
-            let mut gap = |msg: &str| gaps.push((pos, format!("{label} {}：{msg}", n.name)));
+            let mut gap = |msg: &str| gaps.push((pos, format!("{label}：{msg}")));
             let edges = &self.model.edges;
             if i == 0 {
                 if !has(edges, "derive", false, &n.key) {

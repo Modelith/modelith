@@ -8,7 +8,7 @@ const NODES = [node("R", 10, 40), node("S", 20, 30), node("T", 50, 60)];
 
 const VERIFY = "K3 R：この要求を確かめる検証がありません（verify）";
 const SATISFY = "K3 R：この要求を満たす要素がありません（satisfy）";
-const SOURCE = "S S：導出元の上位の要求がありません（derivation）";
+const SOURCE = "S：導出元の上位の要求がありません（derivation）";
 const EXPAND = "N1 Need：どの下位の要求にも展開されていません（derivation）";
 
 describe("gapNodeAt（抜けの位置から図の要素を引く）", () => {
@@ -61,7 +61,7 @@ describe("gapKind（抜けの種類の判断）", () => {
 
   it("名前に「下位」が入っていても、導出元の抜けを展開と見誤らない（同値分割）", () => {
     // Arrange
-    const msg = "下位Req 下位Req：導出元の上位の要求がありません（derivation）";
+    const msg = "下位Req：導出元の上位の要求がありません（derivation）";
     // Act
     const kind = gapKind(msg);
     // Assert
