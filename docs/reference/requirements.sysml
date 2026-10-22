@@ -1243,6 +1243,13 @@ package ModelithRequirements {
                 verify TabsPerFileReq;
             }
         }
+        verification def PreviewOpenTest {
+            doc /* web/src/workspace/workspace.test.ts：仮に開いたファイルが次に仮に開くファイルと同じ場所で置き換わること、編集・開き直し・pin で開いたままになること、開いたままのものは仮に開き直しても仮にならないこと、読み込み中に同じファイルをもう一度開いても 1 つだけ開くこと。
+                   web/e2e/preview-open.spec.ts：フォルダの一覧で 1 回クリックしたファイルは仮に開き（名前は斜体）、次のファイルと置き換わること、ダブルクリック・編集したファイルは置き換わらないこと、開いているファイルの一覧でダブルクリックすると開いたままになること */
+            objective {
+                verify PreviewOpenReq;
+            }
+        }
         verification def ProjectProblemsTest {
             doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
                    crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印。

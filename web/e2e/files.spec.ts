@@ -320,8 +320,9 @@ const openDocs = (page: Page): Promise<string[]> => page.locator("#explorer [dat
 /** フォルダの a.sysml と models/b.sysml を開き、a.sysml を表示し、図のタブ「ブロック定義図」を開く。 */
 async function work(page: Page): Promise<void> {
   await openProject(page);
-  await page.locator('#explorer [data-file][title="a.sysml"]').click();
-  await page.locator('#explorer [data-file][title="models/b.sysml"]').click();
+  // ダブルクリックで開いたままにする（1 回クリックは仮に開き、次のファイルと置き換わる。F-FILE-17）
+  await page.locator('#explorer [data-file][title="a.sysml"]').dblclick();
+  await page.locator('#explorer [data-file][title="models/b.sysml"]').dblclick();
   await page.locator('#explorer [data-doc]:has-text("a.sysml")').click();
   await expect(page.locator("#docName")).toHaveText("a.sysml");
   await page.locator(".tabadd summary").click();
