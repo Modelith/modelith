@@ -1,4 +1,4 @@
-// エクスポートの中身（draw.io の XML・SVG）と、ファイルのダウンロード。
+// エクスポートの中身（draw.io の XML・SVG・PNG・JPEG）と、ファイルのダウンロード・画像のコピー。
 
 import { $, esc } from "./dom";
 import type { ModelNode, ModelSequenceEvent } from "../core";
@@ -7,6 +7,7 @@ import { boundaryBoxes, boxesOf, computeRoutes, keywordOf, laneRects, linesOf, p
 import { isPseudoState } from "./state-machine";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn } from "./svg";
+import { selectionContent } from "./export-range";
 import { curLayout, curView, viewContent } from "./views";
 
 /** エクスポート用の明るい配色（CSS 変数を使えない環境向け）。 */
@@ -291,23 +292,42 @@ export function drawioXml(): string {
   return mxfileXml(v.label, cells);
 }
 
+/** エクスポートする SVG の決め方（F-EXP-4）。 */
+export interface SvgOptions {
+  /** 選んだ要素のキー（この範囲だけを描く）。無ければ図の全体。 */
+  keys?: ReadonlySet<string> | null;
+  /** 背景を透明にするか（既定は白）。 */
+  transparent?: boolean;
+}
+
+/** エクスポートする SVG と、その大きさ（倍率 1 の点の数）。 */
+export interface DiagramImage {
+  svg: string;
+  width: number;
+  height: number;
+}
+
 /**
- * 現在のビューを単独の SVG にする（F-EXP-1）。明るい配色で、CSS 変数を使わない。
+ * 現在のビューを単独の SVG にする（F-EXP-1・F-EXP-4）。明るい配色で、CSS 変数を使わない。
  * 表示範囲は、要素と package の枠（F-VIEW-9）がすべて入るように余白 40（枠つきの図はさらに 60）をとる。
  *
- * @returns SVG の文字列（白い背景つき）
+ * @param opts 範囲（選んだ要素）と背景（既定は図の全体・白い背景）
+ * @returns SVG の文字列と大きさ
  * @example
  * // 図に要素が 1 つも無い
- * svgExport() // → '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs>…</defs><rect x="0" y="0" width="100" height="100" fill="#FFFFFF"/></svg>'
- * // 要素が (0, 0) に 1 つ（高さ 44）だけある自動の図
- * svgExport() // → '<svg … viewBox="-40 -40 304 124" width="304" height="124">…</svg>'
+ * svgExport() // → { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs>…</defs><rect … fill="#FFFFFF"/></svg>', width: 100, height: 100 }
+ * // 要素が (0, 0) に 1 つ（高さ 44）だけある自動の図を、透明な背景で
+ * svgExport({ transparent: true }) // → { svg: '<svg … viewBox="-40 -40 304 124" width="304" height="124"><defs>…</defs>…</svg>', width: 304, height: 124 }
  */
-export function svgExport(): string {
-  const content = viewContent(S.M, curView());
+export function svgExport(opts: SvgOptions = {}): DiagramImage {
+  const whole = viewContent(S.M, curView());
+  const content = opts.keys && !whole.seq ? selectionContent(whole, opts.keys) : whole;
   const L = curLayout();
   const defs = DEFS.replace(/var\(--ink2\)/g, LIGHT["ink2"] ?? "").replace(/var\(--k-con\)/g, LIGHT["k-con"] ?? "").replace(/var\(--ink\)/g, LIGHT["ink"] ?? "").replace(/var\(--paper\)/g, LIGHT["paper"] ?? "");
-  const svg = (x0: number, y0: number, w: number, h: number, body: string): string =>
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${w} ${h}" width="${w}" height="${h}"><defs>${defs}</defs><rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="#FFFFFF"/>${body}</svg>`;
+  const svg = (x0: number, y0: number, w: number, h: number, body: string): DiagramImage => {
+    const bg = opts.transparent ? "" : `<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="#FFFFFF"/>`;
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${w} ${h}" width="${w}" height="${h}"><defs>${defs}</defs>${bg}${body}</svg>`, width: w, height: h };
+  };
   const fonts = { font: "Noto Sans JP, sans-serif", mono: "monospace" };
   if (content.seq) {
     const { s, g } = seqMarkup(LC, content, fonts);
@@ -330,13 +350,52 @@ export function svgExport(): string {
 }
 
 /**
+ * SVG の図を、点の並びの画像（PNG・JPEG）にする（F-EXP-3）。SVG は data: の URL で読み込む（本体の CSP は img-src に blob: を許さない）。
+ *
+ * @param image SVG の図と大きさ
+ * @param scale 倍率（rasterScale で上限に収めたもの）
+ * @param type 画像の種類（"image/png"・"image/jpeg"）
+ * @param transparent 背景を透明にするか（JPEG は透明にできないので、白で塗る）
+ * @returns 画像のバイト列（作れなければ失敗する Promise）
+ * @example
+ * await rasterize(svgExport(), 2, "image/png", false) // → 幅・高さが 2 倍の PNG の Blob
+ */
+export async function rasterize(image: DiagramImage, scale: number, type: string, transparent: boolean): Promise<Blob> {
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(image.svg)}`;
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const g = canvas.getContext("2d");
+  if (!g) throw new Error("画像を作れませんでした");
+  if (!transparent || type === "image/jpeg") {
+    g.fillStyle = "#FFFFFF";
+    g.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  g.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("画像を作れませんでした"))), type, 0.92));
+}
+
+/**
+ * PNG の画像をクリップボードに入れる（F-EXP-5）。画像はまだできていなくてよい（Safari は、押した直後に書き込みを始めないと断るため、Promise のまま渡す）。
+ *
+ * @param png PNG の画像（できあがる Promise）
+ * @returns 書き込めたら解決し、ブラウザが許さなければ失敗する Promise
+ */
+export async function copyImage(png: Promise<Blob>): Promise<void> {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("このブラウザは画像のコピーに対応していません");
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+}
+
+/**
  * 文字列やバイト列をファイルとしてダウンロードさせる（一時的な URL を作ってリンクを押し、すぐに URL を解放する）。
  *
  * @param filename 保存するファイル名（"model.svg" など）
- * @param data ファイルの中身（文字列は UTF-8 で書く。プラグインのエクスポートはバイト列）
+ * @param data ファイルの中身（文字列は UTF-8 で書く。プラグインのエクスポートはバイト列、画像は Blob）
  * @param type MIME タイプ（"image/svg+xml" など）
  */
-export function download(filename: string, data: string | Uint8Array<ArrayBuffer>, type: string): void {
+export function download(filename: string, data: string | Uint8Array<ArrayBuffer> | Blob, type: string): void {
   const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement("a");
   a.href = url;

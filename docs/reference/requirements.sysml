@@ -279,6 +279,18 @@ package ModelithRequirements {
             doc /* 「ファイル」メニューの「エクスポート…」で、ファイル名と形式（draw.io）を選び、表示中の図を draw.io で開ける .drawio のファイルとしてダウンロードできる。
                    ファイル名の決め方と、開いているファイルが無いときの扱いは F-EXP-1 と同じ */
         }
+        requirement def <'F-EXP-3'> RasterExportReq {
+            doc /* 「エクスポート…」で形式に PNG 画像・JPEG 画像を選ぶと、表示中の図を、倍率（1 倍・2 倍・3 倍）を選んで画像のファイルとしてダウンロードできる。
+                   ブラウザが扱える画像の大きさを超えるときは、倍率を下げて書き出し、そのことを知らせる。ファイル名の決め方と、開いているファイルが無いときの扱いは F-EXP-1 と同じ */
+        }
+        requirement def <'F-EXP-4'> ExportRangeReq {
+            doc /* 画像の形式（SVG・PNG・JPEG）では、範囲（図の全体・選んだ要素）と背景（白・透明。JPEG は白だけ）を選べる。
+                   選んだ要素の範囲は、選んだ要素とその中の要素、それらの間の線だけを描く。要素を選んでいないときと、シーケンス図では、図の全体だけを選べる */
+        }
+        requirement def <'F-EXP-5'> ImageCopyReq {
+            doc /* 「エクスポート…」の「画像をコピー」で、選んだ範囲・倍率・背景の図を PNG 画像としてクリップボードに入れ、ほかのアプリに貼り付けられる。
+                   ブラウザがコピーを許さないときは、そのことと、代わりにファイルとしてエクスポートできることを知らせる */
+        }
 
         // ---- プラグイン（ADR-0004・ADR-0018） -------------------------
         requirement def <'F-PLUG-1'> RuleCheckReq {
@@ -472,6 +484,9 @@ package ModelithRequirements {
         #derivation dependency from DocumentLinkReq to TraceNeed;
         #derivation dependency from LinkCheckReq to TraceNeed;
         #derivation dependency from DrawioExportReq to ExportNeed;
+        #derivation dependency from RasterExportReq to ExportNeed;
+        #derivation dependency from ExportRangeReq to ExportNeed;
+        #derivation dependency from ImageCopyReq to ExportNeed;
         #derivation dependency from ResponsiveReq to EditBothWaysNeed;
         #derivation dependency from NarrowScreenReq to AnywhereNeed;
         #derivation dependency from LookReq to AnywhereNeed;
@@ -627,6 +642,9 @@ package ModelithRequirements {
         satisfy DocumentLinkReq by DiagramUI;
         satisfy LinkCheckReq by RuleEngine;
         satisfy DrawioExportReq by Exporter;
+        satisfy RasterExportReq by Exporter;
+        satisfy ExportRangeReq by Exporter;
+        satisfy ImageCopyReq by Exporter;
         satisfy ResponsiveReq by Core;
         satisfy NarrowScreenReq by AppShell;
         satisfy LookReq by AppShell;
@@ -982,11 +1000,23 @@ package ModelithRequirements {
             }
         }
         verification def ExportFileTest {
-            doc /* web/src/app/export-file.test.ts：エクスポートの形式の一覧（SVG 画像・draw.io の順、知らない ID は既定）と、ファイル名の決め方（拡張子なし・同じ拡張子・違う形式の拡張子の付け替え・大文字・形式の拡張子でない点・空・空白だけ・拡張子だけ・前後の空白・パス区切り・使えない文字・末尾の点・既定の名前も空）。
+            doc /* web/src/app/export-file.test.ts：エクスポートの形式の一覧（SVG・PNG・JPEG の画像・draw.io の順、知らない ID は既定、形式ごとに選べる範囲・倍率・背景）と、ファイル名の決め方（拡張子なし・同じ拡張子・違う形式の拡張子の付け替え・大文字・形式の拡張子でない点・空・空白だけ・拡張子だけ・前後の空白・パス区切り・使えない文字・末尾の点・既定の名前も空・画像の形式の拡張子の付け替え）、
+                   画像の倍率（上限に収まるときはそのまま・面積と 1 辺の上限で下げる・ちょうど上限・幅と高さが 0）。
                    web/src/app/export.test.ts：.drawio のファイルの包み方（根の 2 つのセル・図形が 0 個・図の名前の記号の文字参照） */
             objective {
                 verify SvgExportReq;
                 verify DrawioExportReq;
+                verify RasterExportReq;
+            }
+        }
+        verification def ExportImagesTest {
+            doc /* web/src/app/export-range.test.ts：選んだ要素の範囲（入れ子の要素を含める・図に無いキー・何も選んでいない・両端が範囲にある線だけ・元の中身を書き換えない・外枠とその上のポートを描かない・package の枠の絞り込みと番号の付け直し・区画の絞り込み）。
+                   web/e2e/export-images.spec.ts：PNG 画像を倍率を選んでダウンロードし 2 倍の幅が 1 倍の 2 倍になること、JPEG 画像では背景を選べず .jpg になること、draw.io では範囲・倍率・背景と「画像をコピー」を出さないこと、
+                   範囲を「選んだ要素」にすると選んだ要素だけを描き、背景を「透明」にすると白い背景を描かないこと、要素を選んでいなければ「選んだ要素」を選べないこと、「画像をコピー」で PNG 画像をクリップボードに入れること */
+            objective {
+                verify RasterExportReq;
+                verify ExportRangeReq;
+                verify ImageCopyReq;
             }
         }
         verification def ShellE2E {
