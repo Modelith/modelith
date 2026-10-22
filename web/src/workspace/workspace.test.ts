@@ -1224,3 +1224,88 @@ describe("Workspace: フォルダのファイルを 1 つのモデルにする�
     expect(s.ws.folderPath(doc.key)).toBeNull();
   });
 });
+
+describe("Workspace: 仮に開く（F-FILE-17）", () => {
+  /** a・b・c のフォルダを開く。 */
+  async function folder() {
+    const s = setup();
+    for (const n of ["a", "b", "c"]) s.root.put(`${n}.sysml`, `package ${n.toUpperCase()};`);
+    await s.ws.openFolder(s.local);
+    const ref = (n: string) => fileIn(s.ws.folder()!.entries, `${n}.sysml`);
+    return { ...s, ref };
+  }
+  const names = (s: { ws: Workspace }) => s.ws.list().map((d) => `${d.name}${d.preview ? "*" : ""}`);
+
+  it("仮に開いたファイルは、次に仮に開くファイルと同じ場所で置き換わる（正常系）", async () => {
+    // Arrange
+    const s = await folder();
+    await s.ws.openRef(s.ref("a"));
+    await s.ws.openRef(s.ref("b"), { preview: true });
+    // Act
+    const c = await s.ws.openRef(s.ref("c"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["a.sysml", "c.sysml*"]);
+    expect(s.ws.active()?.key).toBe(c.key);
+  });
+
+  it("編集した仮のファイルは開いたままになり、置き換わらない", async () => {
+    // Arrange
+    const s = await folder();
+    const b = await s.ws.openRef(s.ref("b"), { preview: true });
+    s.ws.setText(b.key, "package B2;");
+    // Act
+    await s.ws.openRef(s.ref("c"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["b.sysml", "c.sysml*"]);
+  });
+
+  it("仮でなく開き直す・pin すると開いたままになる", async () => {
+    // Arrange
+    const s = await folder();
+    await s.ws.openRef(s.ref("a"), { preview: true });
+    await s.ws.openRef(s.ref("a"));
+    const b = await s.ws.openRef(s.ref("b"), { preview: true });
+    s.ws.pin(b.key);
+    // Act
+    await s.ws.openRef(s.ref("c"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["a.sysml", "b.sysml", "c.sysml*"]);
+  });
+
+  it("開いているファイルを仮に開き直しても、開いたままのものは仮にならない（境界値）", async () => {
+    // Arrange
+    const s = await folder();
+    await s.ws.openRef(s.ref("a"));
+    // Act
+    await s.ws.openRef(s.ref("a"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["a.sysml"]);
+  });
+
+  it("pin は、仮でない文書や無い文書には何もしない（異常系）", async () => {
+    // Arrange
+    const s = await folder();
+    const a = await s.ws.openRef(s.ref("a"));
+    // Act
+    s.ws.pin(a.key);
+    s.ws.pin("doc:999");
+    // Assert
+    expect(names(s)).toEqual(["a.sysml"]);
+  });
+});
+
+describe("Workspace: 同じファイルを続けて開く（F-FILE-17）", () => {
+  it("読み込み中に同じファイルをもう一度開いても、文書は 1 つで、仮でなく開いた方が残る", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const ref = fileIn(s.ws.folder()!.entries, "a.sysml");
+    // Act（1 回目のクリックで仮に開き、読み終わる前にダブルクリックで開く）
+    const [first, second] = await Promise.all([s.ws.openRef(ref, { preview: true }), s.ws.openRef(ref)]);
+    // Assert
+    expect(second.key).toBe(first.key);
+    expect(s.ws.list()).toHaveLength(1);
+    expect(s.ws.list()[0]?.preview).toBeUndefined();
+  });
+});
