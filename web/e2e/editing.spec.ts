@@ -108,6 +108,40 @@ test("F-EDIT-3: 名前を変えると、参照もまとめて変わる", async (
   expect(await nodeKeys(page)).toContain("BoilingTimeReq");
 });
 
+test("F-EDIT-3: 日本語の名前に変えると、テキストには引用名で書き、参照もまとめて変わる", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  await page.locator("#ed").fill("package P {\n    part def Kettle;\n    part def Stand { part k : Kettle; }\n}\n");
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes .node[data-key="Kettle"]').click();
+  // Act
+  await page.locator('[data-act="rename"]').click();
+  await page.locator("#renameIn").fill("電気 ケトル");
+  await page.keyboard.press("Enter");
+  // Assert
+  await expect(page.locator('#gNodes .node[data-key="電気 ケトル"]')).toBeVisible();
+  expect(await editorText(page)).toBe("package P {\n    part def '電気 ケトル';\n    part def Stand { part k : '電気 ケトル'; }\n}\n");
+  await expect(page.locator("#insp .what b")).toHaveText("電気 ケトル");
+});
+
+test("F-EDIT-3: 名前に「'」は使えず、理由を伝える（異常系）", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  const text = "package P {\n    part def Kettle;\n}\n";
+  await page.locator("#ed").fill(text);
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes .node[data-key="Kettle"]').click();
+  // Act
+  await page.locator('[data-act="rename"]').click();
+  await page.locator("#renameIn").fill("it's");
+  await page.keyboard.press("Enter");
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("名前に「'」「\\」や改行は使えません");
+  expect(await editorText(page)).toBe(text);
+});
+
 /** 要素をドラッグして動かす。 */
 async function dragNode(page: Page, key: string, dx: number, dy: number): Promise<void> {
   const b = (await page.locator(`#gNodes .node[data-key="${key}"]`).boundingBox())!;

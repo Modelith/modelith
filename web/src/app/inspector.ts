@@ -229,11 +229,11 @@ function pinHtml(n: ModelNode, pin: Pin): string {
  * // S.text が "part def A;" で A を選んでいるとき
  * nodeHtml(A) // → '<div class="what"><small>«part def» テキスト 1 行目・縁の＋から線を引けます</small><b>A</b></div><div class="acts">…'
  * // 名前の変更中のとき
- * nodeHtml(A) // → '<div class="what"><small>新しい名前（参照もまとめて変更されます）</small></div><input id="renameIn" value="A" …>…'
+ * nodeHtml(A) // → '<div class="what"><small>新しい名前（日本語も使えます。参照もまとめて変更されます）</small></div><input id="renameIn" value="A" …>…'
  */
 function nodeHtml(n: ModelNode): string {
   if (S.renaming) {
-    return `<div class="what"><small>新しい名前（参照もまとめて変更されます）</small></div><input id="renameIn" value="${esc(n.name)}" aria-label="新しい名前"><div class="acts"><button class="primary" data-act="renameOk">変更する</button><button data-act="renameCancel">やめる</button></div>`;
+    return `<div class="what"><small>新しい名前（日本語も使えます。参照もまとめて変更されます）</small></div><input id="renameIn" value="${esc(n.name)}" aria-label="新しい名前"><div class="acts"><button class="primary" data-act="renameOk">変更する</button><button data-act="renameCancel">やめる</button></div>`;
   }
   const e = n.entry;
   const line = lineOf(S.text, e.start);
