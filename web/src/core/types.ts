@@ -442,6 +442,8 @@ export interface ModelFlowNode {
   kind: string;
   /** 宣言。開始・終了は宣言を持たないので null。 */
   entry: Entry | null;
+  /** パラメータ（8.2.3.17 の parameter）。本体に無く型があれば、型の定義のパラメータ。無ければ空。 */
+  ports: Port[];
 }
 
 /** アクション定義 1 つの、アクションの流れの図（8.2.3.17）。 */
@@ -452,7 +454,9 @@ export interface ModelActionFlow {
   entry: Entry;
   /** 要素（開始、書いた順の要素、終了の順）。 */
   nodes: ModelFlowNode[];
-  /** 継起（succession）と順序付きの流れ（successionFlow）の線。端は nodes のキー。 */
+  /** アクション定義そのもののパラメータ（枠の上に描く。キーは `b:名前`）。 */
+  params: Port[];
+  /** 継起（succession）・順序付きの流れ（successionFlow）・流れ（flow）の線。端は nodes のキーか `b:名前`。流れの端のパラメータは fromPort・toPort。 */
   edges: ModelEdge[];
 }
 
