@@ -1155,3 +1155,131 @@ pub(super) fn delete_view(d: &Doc<'_>, view: &str) -> Result<Change, Refusal> {
         flash: Some((at, at + 1)),
     })
 }
+
+// ---- 説明（doc）の編集 ----
+
+/// 宣言の本体の直下にある最初の説明（`doc /* … */`）の、`doc` の始まりとコメントの範囲（バイト）。入れ子の要素の説明は見ない。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `i`：宣言の番号
+///
+/// # 戻り値
+///
+/// （`doc` の始まり, コメントの始まり, コメントの終わり）。説明が無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "requirement def R { doc /* 文 */ part p { doc /* 中 */ } }" のとき
+/// doc_span(d, R) → Some((19, 23, 31))   // 「doc /* 文 */」
+/// // d.text = "requirement def R;" のとき
+/// doc_span(d, R) → None
+/// ```
+fn doc_span(d: &Doc<'_>, i: usize) -> Option<(usize, usize, usize)> {
+    let e = d.e(i);
+    let (from, to) = (d.b(e.start), d.b(e.end));
+    let ts = tokens(d.text);
+    let mut depth = 0;
+    let mut doc_at = None;
+    for &(kind, at, s) in ts.iter().filter(|t| (from..to).contains(&t.1)) {
+        match s {
+            "{" => depth += 1,
+            "}" => depth -= 1,
+            "doc" if depth == 1 && doc_at.is_none() => doc_at = Some(at),
+            _ if kind == SyntaxKind::REGULAR_COMMENT => {
+                if let Some(start) = doc_at {
+                    return Some((start, at, at + s.len()));
+                }
+            }
+            _ if doc_at.is_some() && !kind.is_trivia() && depth == 1 && s == ";" => doc_at = None,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// 説明の文をコメントの本文にする。`*/` は書けないので `* /` にし、2 行目からは字下げを揃える。
+///
+/// # 引数
+///
+/// - `text`：説明の文（改行を含んでよい。前後の空白は除く）
+/// - `indent`：`doc` の行の字下げ
+///
+/// # 戻り値
+///
+/// `/* … */` の形のコメント。
+///
+/// # 例
+///
+/// ```text
+/// doc_comment("お湯を沸かす", "    ")        → "/* お湯を沸かす */"
+/// doc_comment("1 行目\n2 行目", "    ")     → "/* 1 行目\n       2 行目 */"
+/// doc_comment("a */ b", "")                 → "/* a * / b */"
+/// ```
+fn doc_comment(text: &str, indent: &str) -> String {
+    let body = text.trim().replace("*/", "* /");
+    let lines: Vec<&str> = body.lines().map(str::trim_end).collect();
+    format!("/* {} */", lines.join(&format!("\n{indent}   ")))
+}
+
+/// 要素の説明（要求の文章など、`doc /* … */`）を書き換える。説明が無ければ本体の終わりに足し、文が空なら説明を消す（F-EDIT-12）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：説明を書き換える宣言
+/// - `text`：新しい説明の文（前後の空白は除く。空なら説明を消す）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、光らせる範囲（書いた説明。消したときは消した位置の 1 バイト）。説明が無く文も空なら、テキストを変えずに返す。
+///
+/// # 例
+///
+/// ```text
+/// set_doc(Doc("package P { requirement def R { doc /* 古い */ } }"), R, "新しい") → Ok(text = "package P { requirement def R { doc /* 新しい */ } }")
+/// set_doc(Doc("package P { requirement def R; }"), R, "沸かす")                 → Ok(text = "package P { requirement def R {\n    doc /* 沸かす */\n} }" の形)
+/// set_doc(Doc("package P {\n    requirement def R {\n        doc /* 古い */\n    }\n}"), R, "") → Ok(text = "package P {\n    requirement def R {\n    }\n}")
+/// ```
+pub(super) fn set_doc(d: &Doc<'_>, f: &Found, text: &str) -> Result<Change, Refusal> {
+    let text = text.trim();
+    let span = doc_span(d, f.entry);
+    match span {
+        Some((doc_at, _, c1)) if text.is_empty() => {
+            let (out, at) = remove_range(d.text, doc_at, c1);
+            Ok(Change {
+                text: out,
+                select: None,
+                flash: Some((at, at + 1)),
+            })
+        }
+        Some((doc_at, c0, c1)) => {
+            let comment = doc_comment(text, indent_at(d.text, doc_at));
+            let mut out = d.text.to_owned();
+            out.replace_range(c0..c1, &comment);
+            Ok(Change {
+                text: out,
+                select: None,
+                flash: Some((doc_at, c0 + comment.len())),
+            })
+        }
+        None if text.is_empty() => Ok(Change {
+            text: d.text.to_owned(),
+            select: None,
+            flash: None,
+        }),
+        None => {
+            let e = d.e(f.entry);
+            let indent = format!("{}    ", indent_at(d.text, d.b(e.start)));
+            let line = format!("doc {}", doc_comment(text, &indent));
+            let (out, s, end) = insert_into(d.text, d.target(f.entry), &line);
+            Ok(Change {
+                text: out,
+                select: None,
+                flash: Some((s, end)),
+            })
+        }
+    }
+}

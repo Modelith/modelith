@@ -147,6 +147,7 @@ pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
         }
         Intent::RenameView { view, name } => more::rename_view(d, view, name),
         Intent::DeleteView { view } => more::delete_view(d, view),
+        Intent::SetDoc { key, text, ctx } => more::set_doc(d, &d.find(key, ctx.as_deref())?, text),
         // 遷移は、状態遷移の図の要素のキー（終了の記号を含む）でつなぐ
         Intent::Connect {
             rel, from, to, ctx, ..

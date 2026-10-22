@@ -1330,3 +1330,70 @@ fn connect_transition_refuses_start_and_done_misuse_and_unnamed_states() {
     assert!(refused(text, other_done).contains("終了の記号へは"));
     assert!(refused(text, unnamed).contains("名前の無い状態"));
 }
+
+// ---- 説明（doc）の編集（F-EDIT-12） ----
+
+#[test]
+fn set_doc_replaces_the_first_doc_of_the_element_only() {
+    // Arrange（入れ子の要素の説明は変えない）
+    let text = "package P {\n    requirement def R {\n        doc /* 古い文 */\n        requirement def S { doc /* 中 */ }\n    }\n}\n";
+    // Act
+    let (after, out) = run(
+        text,
+        r#"{"op":"setDoc","key":"R","text":" 3 分以内に沸かす "}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    requirement def R {\n        doc /* 3 分以内に沸かす */\n        requirement def S { doc /* 中 */ }\n    }\n}\n"
+    );
+    assert_eq!(flashed(&after, &out), "doc /* 3 分以内に沸かす */");
+    assert_eq!(
+        Doc::new(&after)
+            .p
+            .entries
+            .iter()
+            .find(|e| e.name == "R")
+            .and_then(|e| e.doc.clone())
+            .as_deref(),
+        Some("3 分以内に沸かす")
+    );
+}
+
+#[test]
+fn set_doc_adds_a_doc_when_missing_and_keeps_line_breaks() {
+    // Arrange（同値分割：; で終わる宣言・本体のある宣言。2 行の文は字下げを揃える）
+    let semi = "package P {\n    requirement def R;\n}\n";
+    let body = "package P {\n    part def A {\n        attribute m : Real;\n    }\n}\n";
+    // Act
+    let (a, _) = run(semi, r#"{"op":"setDoc","key":"R","text":"沸かす"}"#);
+    let (b, _) = run(
+        body,
+        r#"{"op":"setDoc","key":"A","text":"1 行目\n2 行目 */ の後"}"#,
+    );
+    // Assert
+    assert_eq!(
+        a,
+        "package P {\n    requirement def R {\n        doc /* 沸かす */\n    }\n}\n"
+    );
+    assert_eq!(
+        b,
+        "package P {\n    part def A {\n        attribute m : Real;\n        doc /* 1 行目\n           2 行目 * / の後 */\n    }\n}\n"
+    );
+}
+
+#[test]
+fn set_doc_with_empty_text_removes_the_doc() {
+    // Arrange（境界値：空の文。説明が無ければ何も変えない）
+    let text = "package P {\n    requirement def R {\n        doc /* 古い */\n    }\n    requirement def S;\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"setDoc","key":"R","text":"  "}"#);
+    let (same, out) = run(text, r#"{"op":"setDoc","key":"S","text":""}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    requirement def R {\n    }\n    requirement def S;\n}\n"
+    );
+    assert_eq!(same, text);
+    assert!(out.edits.is_empty());
+}

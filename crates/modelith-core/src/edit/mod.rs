@@ -138,6 +138,13 @@ pub enum Intent {
     RemoveFromView { view: String, key: String },
     /// 作成した図の名前を変える。
     RenameView { view: String, name: String },
+    /// 要素の説明（要求の文章など、`doc`）を書き換える。空なら説明を消す。
+    SetDoc {
+        key: String,
+        text: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
     /// 作成した図を削除する（図に出していたモデルの要素は残す）。
     DeleteView { view: String },
 }
