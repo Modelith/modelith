@@ -2113,3 +2113,197 @@ fn package_level_action_item_and_state_usages_are_drawn() {
         edge_ids(&m)
     );
 }
+
+// ---- 複数のファイルにまたがるモデル（ADR-0021） ----
+
+/// 表示中のファイル `focus` に、ほかのファイル `others` をつないでモデルを作る。
+fn run_files(focus: &str, others: &[&str]) -> Model {
+    let parsed = |t: &str| project(t, &parse(t));
+    let p = crate::project::merge::merge(parsed(focus), others.iter().map(|t| parsed(t)).collect());
+    build(&p)
+}
+
+const VEHICLES: &str = "package Vehicles { part def Car; private part def Secret; }";
+
+#[test]
+fn import_brings_a_package_of_another_file_into_scope() {
+    // Arrange
+    let focus = "package App { import Vehicles::*; part c : Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn name_in_another_file_is_not_found_without_import() {
+    // Arrange（異常系：取り込んでいない）
+    let focus = "package App { part c : Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Car」が見つかりません（c）"]);
+}
+
+#[test]
+fn qualified_name_reaches_into_another_file() {
+    // Arrange
+    let focus = "package App { part c : Vehicles::Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn top_level_definition_of_another_file_is_visible_by_name() {
+    // Arrange（どのファイルの一番上の要素も、その名前で見える）
+    let focus = "package App { part c : Engine; }";
+    // Act
+    let m = run_files(focus, &["part def Engine;"]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn import_by_name_brings_only_that_element() {
+    // Arrange（境界値：1 つだけ取り込む）
+    let focus = "package App { import Parts::Wheel; part w : Wheel; part t : Tire; }";
+    // Act
+    let m = run_files(focus, &["package Parts { part def Wheel; part def Tire; }"]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Tire」が見つかりません（t）"]);
+}
+
+#[test]
+fn recursive_import_reaches_nested_packages() {
+    // Arrange
+    let focus = "package App { import Lib::**; part b : Bolt; }";
+    let other = "package Lib { package Fasteners { part def Bolt; } }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn private_element_is_not_imported() {
+    // Arrange（異常系：private の要素は取り込まれない）
+    let focus = "package App { import Vehicles::*; part s : Secret; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Secret」が見つかりません（s）"]);
+}
+
+#[test]
+fn public_import_is_passed_on_but_private_import_is_not() {
+    // Arrange（取り込みの取り込み：Fleet が Vehicles を取り込み直す）
+    let fleet = "package Fleet { public import Vehicles::*; private import Tools::*; }";
+    let tools = "package Tools { part def Jack; }";
+    let focus = "package App { import Fleet::*; part c : Car; part j : Jack; }";
+    // Act
+    let m = run_files(focus, &[fleet, VEHICLES, tools]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Jack」が見つかりません（j）"]);
+}
+
+#[test]
+fn single_file_still_finds_names_anywhere_in_the_file() {
+    // Arrange（同じファイルの中の割り切りは残す）
+    let focus = "package A { part def X; } package B { part y : X; }";
+    // Act
+    let m = run_files(focus, &[]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn same_file_definition_wins_over_another_file() {
+    // Arrange（同じ名前がほかのファイルの一番上にもある）
+    let focus = "package A { part def X; part y : X; }";
+    // Act
+    let m = run_files(focus, &["part def X;"]);
+    // Assert
+    assert!(
+        edge_ids(&m).iter().any(|id| id.starts_with("defined|y|X")),
+        "{:?}",
+        edge_ids(&m)
+    );
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn diagram_keeps_only_referenced_elements_of_other_files() {
+    // Arrange（Bus は取り込んだだけで参照していない）
+    let focus = "package App { import Fleet::*; part c : Car; }";
+    let other = "package Fleet { part def Car; part def Bus; part def Van :> Bus; }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    let keys: Vec<(&str, Option<usize>)> =
+        m.nodes.iter().map(|n| (n.key.as_str(), n.file)).collect();
+    assert_eq!(keys, [("c", None), ("Car", Some(1))]);
+    assert!(
+        edge_ids(&m).iter().all(|id| !id.contains("Van")),
+        "{:?}",
+        edge_ids(&m)
+    );
+}
+
+#[test]
+fn problems_of_other_files_are_left_out() {
+    // Arrange（異常系：ほかのファイルにだけ見つからない型がある）
+    let focus = "package App { part def A; }";
+    // Act
+    let m = run_files(focus, &["package B { part x : Nope; }"]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn same_name_in_another_file_keeps_the_key_of_the_focus_element() {
+    // Arrange（境界値：同じ名前がほかのファイルにもある。図の配置はキーで覚えるので変えない）
+    let focus = "package App { part def Car; part c : Fleet::Car; }";
+    // Act
+    let m = run_files(focus, &["package Fleet { part def Car; }"]);
+    // Assert
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["Car", "c", "Car@Fleet"]);
+}
+
+#[test]
+fn view_of_the_focus_file_can_show_elements_of_other_files() {
+    // Arrange
+    let focus = "package App { view v { expose Fleet::*; } }";
+    // Act
+    let m = run_files(focus, &["package Fleet { part def Car; }"]);
+    // Assert
+    assert_eq!(m.views.len(), 1);
+    assert_eq!(m.views[0].node_keys, ["Car"]);
+    assert!(m.nodes.iter().any(|n| n.key == "Car"));
+}
+
+#[test]
+fn diagrams_written_in_other_files_are_left_out() {
+    // Arrange
+    let focus = "package App { part def A; }";
+    let other = "package B { action def Run { action a; action b; first a then b; } state def S { state s; } view w { expose B::*; } }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    assert!(m.action_flows.is_empty() && m.state_machines.is_empty() && m.views.is_empty());
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["A"]);
+}
+
+#[test]
+fn imported_package_can_start_a_qualified_name() {
+    // Arrange
+    let focus = "package App { import Lib::*; part b : Fasteners::Bolt; }";
+    let other = "package Lib { package Fasteners { part def Bolt; } }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}

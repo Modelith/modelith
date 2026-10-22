@@ -111,7 +111,7 @@ impl Builder<'_> {
     ///
     /// # 戻り値
     ///
-    /// 見つかった宣言の番号（別名なら指す先）。外側のどこにも無ければ None（全体からは探さない）。
+    /// 見つかった宣言の番号（別名なら指す先）。外側のどこにも無ければ、`import` で取り込んだ宣言から探す。それも無ければ None（全体からは探さない）。
     ///
     /// # 例
     ///
@@ -133,7 +133,12 @@ impl Builder<'_> {
         }
         self.by_name
             .get(nm)
-            .and_then(|l| l.iter().copied().find(|&i| self.e(i).pe.is_none()))
+            .and_then(|l| {
+                l.iter()
+                    .copied()
+                    .find(|&i| self.e(i).pe.is_none())
+                    .or_else(|| l.iter().copied().find(|&i| self.imported_into(i, ctx)))
+            })
             .or_else(|| self.alias_named(None, nm, depth))
     }
 
@@ -266,7 +271,7 @@ impl Builder<'_> {
     /// ```
     pub(crate) fn def_of(&self, path: &str, ctx: Option<usize>) -> Option<usize> {
         if !path.contains("::") {
-            return self.def_named(path);
+            return self.def_named(path, ctx);
         }
         self.lookup(path, ctx).filter(|&i| self.e(i).is_def)
     }
