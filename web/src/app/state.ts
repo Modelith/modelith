@@ -3,6 +3,7 @@
 import type { Model, ParseResult, PlacedDiagnostic, PortDir, RuleFinding } from "../core";
 import type { Layout, Side } from "./layout";
 import type { PluginNote } from "./plugins";
+import type { FileProblems } from "./project-problems";
 import type { GapFocus, GapKind } from "./trace-gap";
 
 /** 図の縁上の位置（接続点があればその ID）。 */
@@ -119,6 +120,8 @@ export interface AppState {
   pluginNames: Map<string, string>;
   /** v1 のプラグインが出した診断（プラグインごとに最後のもの。version はそれを出したテキストの版。dropped は件数の上限を超えて捨てた数）。 */
   pluginDiagnostics: { plugin: string; version: number; items: PlacedDiagnostic[]; dropped: number }[];
+  /** フォルダのほかのファイルの問題（ADR-0021 §6。フォルダを開いていなければ空）。 */
+  fileProblems: FileProblems[];
 }
 
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
@@ -177,6 +180,7 @@ export const S: AppState = {
   pluginNotes: [],
   pluginNames: new Map(),
   pluginDiagnostics: [],
+  fileProblems: [],
 };
 
 /** 選択と一時的な操作状態をすべて外す。 */

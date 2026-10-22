@@ -25,7 +25,9 @@ import { pluginFolderPath } from "./plugins";
 import { idbBrowserPlugins, idbPluginData } from "../plugins/browser-store";
 import { importedDocName } from "../plugins/transfer";
 import { projectNotice, projectTitle } from "./project";
-import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast, toastFailure } from "./sync";
+import { coreClient, loadLayout, onAnalyzedProject, onLayoutChange, onTextChange, renderProblems, setText, settled, toast, toastFailure } from "./sync";
+import { fileProblems, fileStatus, folderStatus, statusBadge, statusClass, type FileStatus } from "./project-problems";
+import { scrollEditorTo } from "./render";
 import { opsIdle } from "./intent";
 import { onOpenProjectFile } from "./other-file";
 
@@ -402,19 +404,64 @@ async function closeDoc(key: string): Promise<void> {
 }
 
 /**
- * 開いているフォルダのファイルをパスで開いて表示する（ほかのファイルの要素の案内から。ADR-0021 §5）。
- * 見つからない・開けないときは、トーストで知らせる。
+ * 開いているフォルダのファイルをパスで開いて表示する（ほかのファイルの要素の案内・問題一覧のほかのファイルの行から。ADR-0021 §5・§6）。
+ * 位置を渡せば、開いた後にテキストのその位置へ移る。見つからない・開けないときは、トーストで知らせる。
  *
  * @param path フォルダからのパス
+ * @param at 開いた後に移るテキストの位置（UTF-16。無ければ移らない）
  */
-function openInFolder(path: string): void {
+function openInFolder(path: string, at?: number): void {
   const f = ws.folder();
   const ref = f ? findFile(f.entries, path) : null;
   if (!ref) return toast(`「${path}」が見つかりません。フォルダの一覧を更新してください`);
   void ws.openRef(ref).then(
-    (d) => showDoc(d.key),
+    (d) => {
+      showDoc(d.key);
+      if (at !== undefined) moveCaret(at);
+    },
     (err: unknown) => toastFailure("開けませんでした", err),
   );
+}
+
+/**
+ * テキストの位置へカーソルを移し、その行が見えるようにする（問題一覧の行を押したときと同じ）。
+ *
+ * @param at テキストの位置（UTF-16）
+ */
+function moveCaret(at: number): void {
+  const ed = $<HTMLTextAreaElement>("#ed");
+  ed.focus();
+  ed.setSelectionRange(at, at);
+  scrollEditorTo(at);
+}
+
+let problemsTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * フォルダのほかのファイルの問題を、少し待ってから数え直す（解析のたびに呼ぶ。続けて打っている間は数えない）。
+ */
+function scheduleProjectProblems(): void {
+  clearTimeout(problemsTimer);
+  problemsTimer = setTimeout(() => void countProjectProblems(), 500);
+}
+
+/**
+ * フォルダのほかのファイルの問題をコアに数えてもらい、問題一覧とファイルの一覧を描き直す（ADR-0021 §6）。
+ * フォルダを開いていなければ、前の結果を消す。数える間にテキストが変わったら、次の解析の後に数え直すので捨てる。
+ */
+async function countProjectProblems(): Promise<void> {
+  const client = coreClient();
+  if (!client.hasFiles) {
+    if (!S.fileProblems.length) return;
+    S.fileProblems = [];
+  } else {
+    const counted = await client.projectProblems();
+    if (!counted) return;
+    const texts = ws.projectTexts();
+    S.fileProblems = counted.reports.map((r) => fileProblems(r, texts.get(r.path), S.pluginNames));
+  }
+  renderProblems();
+  renderFiles();
 }
 
 /** コアに渡したプロジェクトのファイル（パス → テキスト。ADR-0021）と、そのフォルダの id（フォルダを開いていなければ null）。 */
@@ -571,7 +618,7 @@ function renderFiles(): void {
   const f = ws.folder();
   if (f) {
     h += folderHeader();
-    h += f.entries.length ? folderRows(f.entries, 0) : `<div class="msg">モデルのファイル（.sysml）がありません。</div>`;
+    h += f.entries.length ? folderRows(f.entries, 0, fileStatuses()) : `<div class="msg">モデルのファイル（.sysml）がありません。</div>`;
   } else if (local) {
     h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">フォルダを開くと、中の .sysml ファイルを一覧して編集・上書き保存できます。<br><button data-cmd="openFolder" class="primary">フォルダを開く</button>`;
     if (recentName) h += `<br><button data-cmd="reopen">前回のフォルダ「${esc(recentName)}」を開く</button>`;
@@ -737,29 +784,49 @@ function folderHeader(): string {
 
 /**
  * フォルダの中身をツリーの行の HTML にする。閉じたフォルダの中は出さない。開いているファイルには印を付ける。
+ * エラーのあるファイルの名前は赤く、警告だけのファイルの名前は黄色くして件数を添え、エラーのあるファイルを中に持つフォルダの名前も赤くする（ADR-0021 §6）。
  *
  * @param entries フォルダの中身
  * @param depth 入れ子の深さ（0 が最上位）
+ * @param statuses ファイルのパス → エラーと警告の件数
  * @returns 行の HTML。中身が無ければ ""
  * @example
  * // models フォルダ（開いている）の中に a.sysml がある
- * folderRows(entries, 0)
+ * folderRows(entries, 0, new Map())
  * // → '<div class="fi" data-dir="models" style="--d:0">…models…</div><div class="fi" data-file="…" style="--d:1" …>…a.sysml…</div>'
- * folderRows([], 0) // → ""
+ * folderRows(entries, 0, new Map([["models/a.sysml", { errors: 1, warnings: 0 }]]))
+ * // → '<div class="fi err" data-dir="models" …>…</div><div class="fi err" data-file="…" …>…a.sysml…<span class="cnt err" …>1</span></div>'
+ * folderRows([], 0, new Map()) // → ""
  */
-function folderRows(entries: DirEntry[], depth: number): string {
+function folderRows(entries: DirEntry[], depth: number, statuses: ReadonlyMap<string, FileStatus>): string {
   const active = ws.active();
   return entries
     .map((e) => {
       if (e.kind === "dir") {
         const open = !collapsed.has(e.path);
-        return `<div class="fi" data-dir="${esc(e.path)}" style="--d:${depth}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1) : "");
+        const mark = folderStatus(statuses, e.path).errors ? " err" : "";
+        return `<div class="fi${mark}" data-dir="${esc(e.path)}" style="--d:${depth}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1, statuses) : "");
       }
       const doc = ws.list().find((d) => d.ref?.provider === e.ref.provider && d.ref.id === e.ref.id);
       const sel = !!doc && doc.key === active?.key;
-      return `<div class="fi${sel ? " sel" : ""}" data-file="${esc(e.ref.id)}" style="--d:${depth}" title="${esc(e.ref.path)}"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
+      const st = statuses.get(e.ref.path);
+      return `<div class="fi${sel ? " sel" : ""}${statusClass(st)}" data-file="${esc(e.ref.id)}" style="--d:${depth}" title="${esc(e.ref.path)}"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${st ? statusBadge(st) : ""}${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
     })
     .join("");
+}
+
+/**
+ * ファイルの一覧に出す、フォルダのファイルごとのエラーと警告の件数。ほかのファイルはコアが数えたもの、表示中のファイルは今の解析結果のもの。
+ *
+ * @returns ファイルのパス → 件数
+ * @example
+ * fileStatuses() // → Map { "parts.sysml" → { errors: 1, warnings: 0 }, "app.sysml" → { errors: 0, warnings: 2 } }
+ */
+function fileStatuses(): Map<string, FileStatus> {
+  const statuses = new Map(S.fileProblems.map((f) => [f.path, f.status]));
+  const shown = shownKey ? ws.folderPath(shownKey) : null;
+  if (shown) statuses.set(shown, fileStatus(S.M.problems, S.findings));
+  return statuses;
 }
 
 /**
@@ -1059,7 +1126,14 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
     onEdited(shownKey);
   });
   // 設定ファイルの読み取りの状態を先に変えてから描く
-  onOpenProjectFile(openInFolder);
+  onOpenProjectFile((path) => openInFolder(path));
+  onAnalyzedProject(scheduleProjectProblems);
+  $("#problems").addEventListener("click", (ev) => {
+    // ほかのファイルの行は、そのファイルを開いてその行へ移る（ADR-0021 §6）
+    const b = closest(ev, "button[data-path]");
+    const path = b?.dataset["path"];
+    if (path !== undefined) openInFolder(path, Number(b?.dataset["at"] ?? 0));
+  });
   ws.subscribe(syncProject);
   ws.subscribe(syncProjectFiles);
   ws.subscribe(renderFiles);

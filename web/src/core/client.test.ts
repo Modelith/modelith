@@ -5,8 +5,8 @@ import { CoreClient, CORE_STOPPED, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text";
 import {
-  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, removeProjectFile, RulePlugins, setFocusFile, setProjectFile,
-  updateProjectPlugin,
+  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, projectProblems, removeProjectFile, RulePlugins, setFocusFile,
+  setProjectFile, updateProjectPlugin,
 } from "./wasm/modelith_core.js";
 import type { PluginFiles, RuleFinding } from "./rust";
 import type { Model, ParseResult } from "./types";
@@ -14,7 +14,7 @@ import type { Model, ParseResult } from "./types";
 /** 返事をためておき、deliver() で届ける偽の Worker。 */
 const wasm: CoreFns = {
   analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json), modelSnapshot, checkPluginMessage,
-  setProjectFile, removeProjectFile, clearProjectFiles, setFocusFile,
+  setProjectFile, removeProjectFile, clearProjectFiles, setFocusFile, projectProblems,
 };
 /** コアがどの依頼にも壊れた JSON を返す（Q-5 の異常系）。 */
 const broken: CoreFns = {
@@ -24,13 +24,14 @@ const broken: CoreFns = {
   createProjectFile: () => "{",
   updateProjectPlugin: () => "{",
   describePlugin: () => "{",
-  loadPlugins: () => ({ summary: () => "{", analyze: () => "{", free: () => {} }),
+  loadPlugins: () => ({ summary: () => "{", analyze: () => "{", projectProblems: () => "{", free: () => {} }),
   modelSnapshot: () => "{",
   checkPluginMessage: () => "{",
   setProjectFile: () => {},
   removeProjectFile: () => {},
   clearProjectFiles: () => {},
   setFocusFile: () => {},
+  projectProblems: () => "{",
 };
 
 function fakeWorker(fns: CoreFns = wasm) {
@@ -372,7 +373,7 @@ describe("CoreClient（チェックルールのプラグイン、F-PLUG-1・F-PL
 
   it("コアが返事の形の違う JSON を返しても、誤りとして返す（異常系）", async () => {
     // Arrange
-    const { c, deliver } = client({ ...wasm, loadPlugins: () => ({ summary: () => '{"error":"x"}', analyze, free: () => {} }), describePlugin: () => "{}" });
+    const { c, deliver } = client({ ...wasm, loadPlugins: () => ({ summary: () => '{"error":"x"}', analyze, projectProblems, free: () => {} }), describePlugin: () => "{}" });
     // Act
     const set = c.setPlugins([plugin()]);
     const described = c.describePlugin("{}");
@@ -385,7 +386,7 @@ describe("CoreClient（チェックルールのプラグイン、F-PLUG-1・F-PL
   it("プラグインを置き換えると、前に読み込んだものを返す（free）", () => {
     // Arrange
     let freed = 0;
-    const fns: CoreFns = { ...wasm, loadPlugins: () => ({ summary: () => '{"plugins":[]}', analyze, free: () => void freed++ }) };
+    const fns: CoreFns = { ...wasm, loadPlugins: () => ({ summary: () => '{"plugins":[]}', analyze, projectProblems, free: () => void freed++ }) };
     const state: CoreState = { text: "", plugins: null };
     handle(state, { type: "setPlugins", id: 1, plugins: [plugin()] }, fns);
     // Act
@@ -702,5 +703,42 @@ describe("CoreClient: プロジェクトのファイル（ADR-0021、F-FILE-15�
     await removed;
     // Assert
     expect(analyzed.at(-1)?.M.problems.map((p) => p.msg)).toEqual(["型「Parts::Car」が見つかりません（c）"]);
+  });
+});
+
+describe("CoreClient: ほかのファイルの問題（ADR-0021 §6、F-FILE-16）", () => {
+  afterEach(() => clearProjectFiles());
+
+  it("覚えさせたほかのファイルごとに、表示中のファイルの今のテキストをつないで問題を数える", async () => {
+    // Arrange（parts.sysml は表示中の app.sysml の Wheel を使う。保存前の今のテキストで数える）
+    const { c, deliver } = client();
+    const set = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { import App::*; part def Car { part w : Wheel; part x : Nope; } }" }], remove: [] });
+    deliver();
+    await set;
+    c.focus("app.sysml");
+    c.sync("package App { part def Wheel; }");
+    deliver();
+    // Act
+    const counted = c.projectProblems();
+    deliver();
+    // Assert
+    expect((await counted)?.reports.map((r) => [r.path, r.problems.map((p) => p.msg)])).toEqual([["parts.sysml", ["型「Nope」が見つかりません（x）"]]]);
+    expect(c.hasFiles).toBe(true);
+  });
+
+  it("数える間にテキストが変わったら、結果を捨てる（境界値）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const set = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts;" }], remove: [] });
+    deliver();
+    await set;
+    c.sync("package App;");
+    deliver();
+    // Act
+    const counted = c.projectProblems();
+    c.sync("package App2;");
+    deliver();
+    // Assert
+    expect(await counted).toBeNull();
   });
 });

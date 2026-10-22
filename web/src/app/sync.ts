@@ -12,6 +12,7 @@ import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { droppedDiagnosticsNote, MAX_DIAGNOSTICS } from "../plugins/limits";
 import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
+import type { FileProblems } from "./project-problems";
 import { highlight, render } from "./render";
 import { S } from "./state";
 import { curLayout, curView, syncModelViewKind, VK, viewContent } from "./views";
@@ -114,9 +115,19 @@ export function onAnalyzed(version: number, P: ParseResult, M: Model, findings: 
   waiters = [];
   for (const w of ws) w();
   analyzedListener(version);
+  projectListener();
 }
 
 let analyzedListener: (version: number) => void = () => {};
+let projectListener: () => void = () => {};
+/**
+ * 今の版の解析結果を画面に反映した後に、フォルダのほかのファイルの問題を数え直す処理を登録する（ADR-0021 §6）。前に登録した処理は置き換える。
+ *
+ * @param fn 反映するたびに呼ばれる処理
+ */
+export function onAnalyzedProject(fn: () => void): void {
+  projectListener = fn;
+}
 /**
  * 今の版の解析結果を画面に反映した後の処理（v1 のプラグインへの didChange）を登録する。前に登録した処理は置き換える。
  *
@@ -396,7 +407,28 @@ export function renderProblems(): void {
     ...notes,
     ...sorted.filter((p) => p.kind).map(model),
   ];
-  $("#problems").innerHTML = items.slice(0, 40).join("");
+  $("#problems").innerHTML = items.slice(0, 40).join("") + S.fileProblems.map(otherFileHtml).join("");
+}
+
+/** 問題一覧に出す、ほかのファイル 1 つの行の上限（多いファイルで一覧が埋まらないように）。 */
+const MAX_FILE_ROWS = 20;
+
+/**
+ * 問題一覧の、ほかのファイル 1 つのまとまりの HTML（ADR-0021 §6）。見出しにファイルのパスと件数、その下に行を並べる。
+ * 行には data-path と data-at（そのファイルの中の位置）を付け、押すとそのファイルを開いてその行へ移る。問題の無いファイルは出さない。
+ *
+ * @param f ほかのファイルの問題
+ * @returns まとまりの HTML。行が無ければ ""
+ * @example
+ * otherFileHtml({ path: "parts.sysml", status: { errors: 1, warnings: 0 }, rows: [{ pos: 33, line: 2, cls: "", mark: "⚠", text: "…" }] })
+ * // → '<div class="pfile">parts.sysml<small>エラー 1・警告 0</small></div><button data-path="parts.sysml" data-at="33" class="">⚠ 2 行目：…</button>'
+ */
+function otherFileHtml(f: FileProblems): string {
+  if (!f.rows.length) return "";
+  const head = `<div class="pfile">${esc(f.path)}<small>エラー ${f.status.errors}・警告 ${f.status.warnings}</small></div>`;
+  const rows = f.rows.slice(0, MAX_FILE_ROWS).map((r) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" class="${r.cls}">${r.mark} ${r.line} 行目：${esc(r.text)}</button>`);
+  const more = f.rows.length > MAX_FILE_ROWS ? [`<div class="pfile-more">ほか ${f.rows.length - MAX_FILE_ROWS} 件</div>`] : [];
+  return head + rows.join("") + more.join("");
 }
 
 /**

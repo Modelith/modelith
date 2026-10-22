@@ -2,8 +2,8 @@
 
 /// <reference lib="webworker" />
 import initWasm, {
-  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, removeProjectFile, RulePlugins, setFocusFile,
-  setProjectFile, updateProjectPlugin,
+  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, projectProblems, removeProjectFile, RulePlugins,
+  setFocusFile, setProjectFile, updateProjectPlugin,
 } from "./wasm/modelith_core.js";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 
@@ -24,6 +24,7 @@ const fns: CoreFns = {
   removeProjectFile,
   clearProjectFiles,
   setFocusFile,
+  projectProblems,
 };
 /**
  * 画面のスレッドに返事を送る（`postMessage`）。
