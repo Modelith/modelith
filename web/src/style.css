@@ -208,6 +208,7 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .modal[hidden]{display:none}
 .modal .box{background:var(--panel);border-radius:10px;padding:14px;width:min(640px,100%);display:flex;flex-direction:column;gap:10px;max-height:90vh}
 .modal .field{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--ink2)}
+.modal .field[hidden],.modal .row button[hidden]{display:none}
 .modal .field input,.modal .field select{font-size:13px;font-weight:400;color:var(--ink);background:var(--panel2);border:1px solid var(--rule);border-radius:6px;padding:6px 8px;min-width:0}
 .modal p{margin:0;font-size:13px;color:var(--ink2);line-height:1.6}
 .modal .row{display:flex;gap:8px;justify-content:flex-end}

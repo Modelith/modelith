@@ -24,7 +24,7 @@
           <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
           <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
           <div class="sep"></div>
-          <button id="btnExport" title="表示中の図を、SVG 画像や draw.io のファイルとしてダウンロードする">エクスポート…</button>
+          <button id="btnExport" title="表示中の図を、画像（SVG・PNG・JPEG）や draw.io のファイルとしてダウンロードする">エクスポート…</button>
           <div class="sep"></div>
           <button id="btnSample">サンプルを開く</button>
           <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
@@ -192,10 +192,13 @@
 <div class="modal" id="exportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="exportTitle" aria-describedby="exportText">
   <form class="box" id="exportForm">
     <b id="exportTitle">エクスポート</b>
-    <p id="exportText">表示中の図を、ファイルとしてダウンロードします。draw.io のファイルは、draw.io でそのまま開けます。</p>
+    <p id="exportText">表示中の図を、ファイルとしてダウンロードします。draw.io のファイルは、draw.io でそのまま開けます。「画像をコピー」を押すと、ほかのアプリに貼り付けられます。</p>
     <label class="field"><span>ファイル名</span><input id="exportName" type="text" autocomplete="off" spellcheck="false"></label>
     <label class="field"><span>形式</span><select id="exportFormat"></select></label>
-    <div class="row"><button type="submit" id="exportOk" class="primary">エクスポート</button><button type="button" id="exportCancel">やめる</button></div>
+    <label class="field" id="exportRangeField"><span>範囲</span><select id="exportRange"><option value="all">図の全体</option><option value="selection">選んだ要素</option></select></label>
+    <label class="field" id="exportScaleField"><span>倍率</span><select id="exportScale"></select></label>
+    <label class="field" id="exportBgField"><span>背景</span><select id="exportBg"><option value="white">白</option><option value="transparent">透明</option></select></label>
+    <div class="row"><button type="submit" id="exportOk" class="primary">エクスポート</button><button type="button" id="exportCopy">画像をコピー</button><button type="button" id="exportCancel">やめる</button></div>
   </form>
 </div>
 <script type="module" src="/src/main.ts"></script>
