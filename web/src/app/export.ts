@@ -3,7 +3,7 @@
 import { $, esc } from "./dom";
 import type { ModelNode, ModelSequenceEvent } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
-import { boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
+import { boundaryBoxes, boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
 import { isPseudoState } from "./state-machine";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn } from "./svg";
@@ -183,11 +183,21 @@ export function drawioXml(): string {
   const rects = boxesOf(nodes, L.pos);
   const rect = (n: ModelNode): Box => rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
   let frameRect: Box | undefined;
+  const boundaryRects = new Map<string, NodeBox>();
   if (cc.frame && nodes.length) {
     const x0 = Math.min(...nodes.map((n) => rect(n).x)) - 60, y0 = Math.min(...nodes.map((n) => rect(n).y)) - 80;
     const x1 = Math.max(...nodes.map((n) => rect(n).x + rect(n).w)) + 60, y1 = Math.max(...nodes.map((n) => rect(n).y + rect(n).h)) + 50;
     frameRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     cells += `<mxCell id="n${id++}" value="${q(`«${cc.frame.kind}»<br><b>${esc(cc.frame.title)}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;align=left;spacingLeft=10;rounded=0;fillColor=#F3F7FB;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" as="geometry"/></mxCell>`;
+    // 対象そのもののポート（8.2.3.13）は、枠の辺の上の小さな四角
+    for (const [key, r] of boundaryBoxes(frameRect, cc.boundary ?? [])) {
+      const n = (cc.boundary ?? []).find((x) => x.key === key);
+      if (!n) continue;
+      boundaryRects.set(key, { ...r, n, pins: [] });
+      const lp = n.boundary === "in" ? "labelPosition=left;align=right;" : n.boundary === "out" ? "labelPosition=right;align=left;" : "verticalLabelPosition=bottom;verticalAlign=top;";
+      map.set(key, "n" + id);
+      cells += `<mxCell id="n${id++}" value="${q(n.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#2D5A87;fontSize=9;${lp}" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+    }
   }
   for (const n of nodes) {
     const c = LC("k-" + n.fam), bg = LC("k-" + n.fam + "-bg");
@@ -248,7 +258,7 @@ export function drawioXml(): string {
     for (const sep of regionSeparators(outer, nodes.filter((n) => (n.container ?? "") === k).map(rect)))
       cells += `<mxCell id="e${id++}" value="" style="endArrow=none;dashed=1;html=1;strokeColor=${LC("k-beh")};" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="${sep.x1}" y="${sep.y}" as="sourcePoint"/><mxPoint x="${sep.x2}" y="${sep.y}" as="targetPoint"/></mxGeometry></mxCell>`;
   }
-  const box = new Map<string, NodeBox>(nodes.map((n) => [n.key, { ...rect(n), n, pins: n.junction || n.note ? [] : pinsOf(n, L, S.view) }]));
+  const box = new Map<string, NodeBox>([...nodes.map((n): [string, NodeBox] => [n.key, { ...rect(n), n, pins: n.junction || n.note ? [] : pinsOf(n, L, S.view) }]), ...boundaryRects]);
   const routes = computeRoutes(box, edges, L, "ortho");
   const cp = (side: string, t: string, pre: string): string =>
     side === "l" ? `${pre}X=0;${pre}Y=${t};` : side === "r" ? `${pre}X=1;${pre}Y=${t};` : side === "t" ? `${pre}X=${t};${pre}Y=0;` : `${pre}X=${t};${pre}Y=1;`;

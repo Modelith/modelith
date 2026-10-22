@@ -497,6 +497,44 @@ test.describe("作成した図（テキストの view、F-VIEW-7、ADR-0005）",
     await expect(page.locator('[data-edge="flow|u:pump|u:pump.impeller|#1"]')).toHaveCount(1);
   });
 
+  test("F-VIEW-14: 内部ブロック図で、対象そのもののポートを枠の上に描き、その線を図から削除できる", async ({ page }) => {
+    // Arrange
+    const text = `package W {
+    port def Sig;
+    part def Heater { port pin : Sig; }
+    part def Kettle {
+        in port power : Sig;
+        part heater : Heater;
+        connect power to heater.pin;
+    }
+    view iv : InterconnectionView { expose W::Kettle; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="iv"]').click();
+    await expect(page.locator('.boundary[data-key="b:power"]')).toHaveText("power");
+    // Act（線の上の点（始まりから 1 割の位置）を押して選び、2 回押しで削除。線の矩形の中央は部品に重なる）
+    const at = await page.locator('[data-edge="flow|b:power|u:heater|#1"] path.hit').evaluate((el) => {
+      const path = el as SVGPathElement;
+      const p = path.getPointAtLength(path.getTotalLength() * 0.1);
+      const m = path.getScreenCTM();
+      return m ? { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f } : null;
+    });
+    if (!at) throw new Error("線の位置が分かりません");
+    await page.mouse.click(at.x, at.y);
+    await expect(page.locator("#insp")).toContainText("power → heater");
+    await page.locator('#insp [data-act="delEdge"]').click();
+    await page.locator('#insp [data-act="delEdge"]').click();
+    // Assert（線と、線の端でなくなった枠の上のポートが消え、ポートの宣言は残る）
+    await expect(page.locator("#ed")).not.toHaveValue(/connect power to heater\.pin;/);
+    await expect(page.locator("#ed")).toHaveValue(/in port power : Sig;/);
+    await expect(page.locator('[data-edge="flow|b:power|u:heater|#1"]')).toHaveCount(0);
+    await expect(page.locator('.boundary[data-key="b:power"]')).toHaveCount(0);
+  });
+
   test("F-VIEW-7: GeneralView に、割り当ての線を «allocate» の破線と開いた矢印で描く", async ({ page }) => {
     // Arrange
     const text = `package A {

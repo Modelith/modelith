@@ -44,6 +44,8 @@ export interface ViewContent {
   dim?: Set<string>;
   empty?: string;
   frame?: { kind: string; title: string };
+  /** 内部ブロック図の対象そのもののポート（枠の上に描く、8.2.3.13）。 */
+  boundary?: ModelNode[];
   /** 図に出した package の枠（F-VIEW-9）。`inner` は、この枠の中にある枠の番号。 */
   packages?: PackageFrame[];
   ctx?: ModelNode;
@@ -493,10 +495,12 @@ export const CC = (): ViewContent => viewContent(S.M, curView());
  * nodeByKey("Vehicle")    // → Vehicle のノード
  * // 内部ブロック図に部品 engine を表示中
  * nodeByKey("u:engine")   // → 部品 engine のノード
+ * nodeByKey("b:pwr")      // → 対象そのもののポート pwr（枠の上のポート）
  * nodeByKey(undefined)    // → null
  */
 export function nodeByKey(k: string | null | undefined): ModelNode | null {
   if (!k) return null;
+  if (k.startsWith("b:")) return CC().boundary?.find((n) => n.key === k) ?? null;
   if (/^(?:[uljas]|note):/.test(k)) return CC().nodes.find((n) => n.key === k) ?? null;
   return S.M.nodes.find((n) => n.key === k) ?? null;
 }

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelNode } from "../core";
 import { build, parse } from "../core/rust";
-import { assertWord, autoPlace, boxesOf, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
+import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -389,5 +389,38 @@ describe("compartment（説明の区画、8.2.3.4 の documentation-compartment�
     const got = n ? compartment(n).map((l) => [l.t, l.cls]) : [];
     // Assert
     expect(got).toEqual([["お湯を沸かす道具", "doc"], ["m : Real", "attr"]]);
+  });
+});
+
+describe("boundaryBoxes（内部ブロック図の枠の上のポート、8.2.3.13）", () => {
+  /** 向きだけを持つ枠の上のポート。 */
+  const bp = (name: string, dir: "in" | "out" | "inout"): ModelNode =>
+    ({ key: "b:" + name, name, boundary: dir }) as unknown as ModelNode;
+  const frame: Box = { x: 0, y: 0, w: 400, h: 300 };
+
+  it("入力は左の辺、出力は右の辺、両向きは下の辺に、四角の中心を辺に載せる", () => {
+    // Arrange
+    const ports = [bp("a", "in"), bp("b", "out"), bp("c", "inout")];
+    // Act
+    const r = boundaryBoxes(frame, ports);
+    // Assert
+    const h = BOUNDARY / 2;
+    expect(r.get("b:a")).toEqual({ x: -h, y: 150 - h, w: BOUNDARY, h: BOUNDARY });
+    expect(r.get("b:b")).toEqual({ x: 400 - h, y: 150 - h, w: BOUNDARY, h: BOUNDARY });
+    expect(r.get("b:c")).toEqual({ x: 200 - h, y: 300 - h, w: BOUNDARY, h: BOUNDARY });
+  });
+
+  it("同じ辺のポートは、等しい間隔で並べる", () => {
+    // Arrange
+    const ports = [bp("a", "in"), bp("b", "in")];
+    // Act
+    const r = boundaryBoxes(frame, ports);
+    // Assert
+    expect([r.get("b:a")?.y, r.get("b:b")?.y]).toEqual([100 - BOUNDARY / 2, 200 - BOUNDARY / 2]);
+  });
+
+  it("ポートが無ければ空（境界値）", () => {
+    // Act / Assert
+    expect(boundaryBoxes(frame, []).size).toBe(0);
   });
 });
