@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry as Slot;
 
-use super::{ActionFlow, Builder, Edge, FlowNode, Port, flow_label, has_word};
+use super::{ActionFlow, Builder, Edge, FlowNode, Lane, Port, flow_label, has_word};
 use crate::project::{ACTION_FLOW_KINDS, Entry, Rel, RelKind, Span};
 
 /// 継起の端（元か先）。
@@ -211,13 +211,86 @@ impl Builder<'_> {
             *k += 1;
             e.id = format!("{base}#{k}");
         }
+        let lanes = self.lanes(def, &keys);
         ActionFlow {
             key,
             entry: def,
             nodes,
             params: own,
+            lanes,
             edges,
         }
+    }
+
+    /// アクション定義の区画（8.2.3.17 の swimlane）。アクション定義を型にしたアクションの使用 `u` について、部品の本体に書いた
+    /// `perform u.要素;` を、その部品がアクション定義の直下の要素を受け持つものとして読む。区画は部品ごとに、最初の `perform` の順に並べ、
+    /// 同じ要素を 2 つの部品が受け持つときは先の部品に入れる。
+    ///
+    /// # 引数
+    ///
+    /// - `def`：アクション定義の宣言の番号
+    /// - `keys`：図の要素のキーの表
+    ///
+    /// # 戻り値
+    ///
+    /// 区画。`perform` が無ければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "action def T { action boil; action pour; } action t : T;
+    /// //  part k { perform t; part heater { perform t.boil; } part ctrl { perform t.pour; } }" のとき
+    /// lanes(T の番号, keys) → [Lane { name: "k.heater", nodes: ["a:boil"] }, Lane { name: "k.ctrl", nodes: ["a:pour"] }]
+    /// ```
+    fn lanes(&self, def: usize, keys: &Keys) -> Vec<Lane> {
+        let entries = self.entries;
+        // アクション定義を型にしたアクションの使用の名前
+        let users: Vec<&str> = entries
+            .iter()
+            .filter(|u| {
+                NESTING_KINDS.contains(&u.kind.as_str())
+                    && !u.ty.is_empty()
+                    && self.def_of(&u.ty_path, u.pe) == Some(def)
+            })
+            .map(|u| u.name.as_str())
+            .collect();
+        let mut lanes: Vec<Lane> = Vec::new();
+        let mut taken: Vec<String> = Vec::new();
+        for e in entries.iter().filter(|e| e.kind == "perform action") {
+            let Some(target) = e
+                .specs
+                .iter()
+                .find(|s| s.op == "references")
+                .map(|s| s.target.as_str())
+            else {
+                continue;
+            };
+            let mut segs = target.rsplit('.');
+            let (Some(child), Some(user)) = (segs.next(), segs.next()) else {
+                continue;
+            };
+            let Some(node) = keys.by_name.get(&(def, child.to_owned())) else {
+                continue;
+            };
+            let Some(holder) = e.pe.filter(|_| users.contains(&user)) else {
+                continue;
+            };
+            if taken.contains(node) {
+                continue;
+            }
+            taken.push(node.clone());
+            let name = part_path(entries, holder);
+            match lanes.iter_mut().find(|l| l.entry == holder) {
+                Some(l) => l.nodes.push(node.clone()),
+                None => lanes.push(Lane {
+                    key: format!("lane:{name}"),
+                    name,
+                    entry: holder,
+                    nodes: vec![node.clone()],
+                }),
+            }
+        }
+        lanes
     }
 
     /// アクションの使用のパラメータ。本体に書いたパラメータが無く型があれば、型の定義のパラメータ（8.2.3.17 の parameter）。
@@ -661,4 +734,33 @@ fn param_dir(e: &Entry) -> Option<&'static str> {
         .or(e.dir.as_deref())
         .unwrap_or("");
     ["inout", "out", "in"].into_iter().find(|d| has_word(m, d))
+}
+
+/// 部品の道のり（外の部品から `.` でつなぐ。部品の使用でない持ち主で止める）。
+///
+/// # 引数
+///
+/// - `entries`：解析結果の宣言
+/// - `part`：部品の宣言の番号
+///
+/// # 戻り値
+///
+/// 道のり。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { part k { part heater; } }" のとき
+/// part_path(entries, heater の番号) → "k.heater"
+/// part_path(entries, k の番号)      → "k"
+/// ```
+fn part_path(entries: &[Entry], part: usize) -> String {
+    let mut names = vec![entries[part].name.as_str()];
+    let mut at = entries[part].pe;
+    while let Some(p) = at.filter(|&p| entries[p].kind == "part" && !entries[p].is_def) {
+        names.push(entries[p].name.as_str());
+        at = entries[p].pe;
+    }
+    names.reverse();
+    names.join(".")
 }

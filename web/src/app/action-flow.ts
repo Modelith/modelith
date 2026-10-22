@@ -1,7 +1,7 @@
 // アクションの流れの図（ActionFlowView、8.2.3.17）の中身を、モデルのアクションの流れから作る。
 // 要素のキーと線の ID は Rust のコア（crates/modelith-core/src/model/flows.rs）が決めたもの。図の操作（edit/flow.rs）も同じものを探す（ADR-0016）。
 
-import type { Entry, Model, ModelEdge, ModelNode } from "../core";
+import type { Entry, Model, ModelEdge, ModelLane, ModelNode } from "../core";
 import { kindLabel } from "./labels";
 
 /** アクションの流れの図に描く要素と線。 */
@@ -10,6 +10,8 @@ export interface FlowContent {
   edges: ModelEdge[];
   /** アクション定義そのもののパラメータ（枠の上に描く、8.2.3.17 の parameter）。キーは `b:名前`。 */
   boundary: ModelNode[];
+  /** 区画（8.2.3.17 の swimlane）。要素を受け持つ部品ごと。 */
+  lanes: ModelLane[];
 }
 
 /** 要素の形（8.2.3.17 の記号）。start は塗った丸、done は丸の中の塗った丸、bar は太い棒（fork・join）、diamond はひし形（decide・merge）、
@@ -60,7 +62,7 @@ export function defaultFlowContext(M: Model): ModelNode | null {
 /**
  * アクションの流れの図の中身を作る。モデルのアクションの流れの要素を、種類 `flow` の図の要素にし（開始・終了の宣言は対象のアクション定義）、
  * 要素のパラメータを接続点（ポート）にする。入れ子の本体の要素は、その本体を持つアクションを `container` に持たせる（中に描く）。
- * アクション定義そのもののパラメータは、枠の上に描く要素（`b:名前`）にする。
+ * アクション定義そのもののパラメータは、枠の上に描く要素（`b:名前`）にする。区画（要素を受け持つ部品）はそのまま使う。
  * 線（継起・順序付きの流れ・流れ）はそのまま使う。
  *
  * @param M モデル
@@ -73,7 +75,7 @@ export function defaultFlowContext(M: Model): ModelNode | null {
  */
 export function flowContentOf(M: Model, ctx: ModelNode): FlowContent {
   const f = M.actionFlows?.find((x) => x.key === ctx.key);
-  if (!f) return { nodes: [], edges: [], boundary: [] };
+  if (!f) return { nodes: [], edges: [], boundary: [], lanes: [] };
   const nodes = f.nodes.map(
     (n): ModelNode => ({
       key: n.key, name: n.name, short: "", kind: n.kind, isDef: false, entry: n.entry ?? ctx.entry, fam: "beh", trans: [], ports: n.ports,
@@ -86,7 +88,7 @@ export function flowContentOf(M: Model, ctx: ModelNode): FlowContent {
       boundary: p.dir, phase: null, phaseOwn: false,
     }),
   );
-  return { nodes, edges: f.edges, boundary };
+  return { nodes, edges: f.edges, boundary, lanes: f.lanes };
 }
 
 /**

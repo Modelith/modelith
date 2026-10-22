@@ -1741,6 +1741,47 @@ fn action_flow_follows_a_chain_into_a_nested_body() {
 }
 
 #[test]
+fn action_flow_groups_performed_elements_into_swimlanes() {
+    // Arrange（8.2.3.17 の swimlane：部品が perform 使用.要素 で受け持つ要素を、部品ごとの区画にする）
+    let text = "package P { action def MakeTea { action boil; then pour; action pour; then serve; action serve; } \
+                action makeTea : MakeTea; \
+                part kettle { perform makeTea; part heater { perform makeTea.boil; } \
+                part ctrl { perform makeTea.pour; perform makeTea.boil; perform makeTea.nope; } } \
+                part other { perform elsewhere.serve; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（boil は先に受け持った heater の区画、知らない要素と別のアクションの perform は区画にしない）
+    let lanes: Vec<(&str, &str, Vec<&str>)> = flow(&m, "MakeTea")
+        .lanes
+        .iter()
+        .map(|l| {
+            (
+                l.key.as_str(),
+                l.name.as_str(),
+                l.nodes.iter().map(String::as_str).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        lanes,
+        [
+            ("lane:kettle.heater", "kettle.heater", vec!["a:boil"]),
+            ("lane:kettle.ctrl", "kettle.ctrl", vec!["a:pour"]),
+        ]
+    );
+}
+
+#[test]
+fn action_flow_without_performers_has_no_swimlanes() {
+    // Arrange（境界値：perform が無い）
+    let text = "package P { action def A { action a; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(flow(&m, "A").lanes.is_empty());
+}
+
+#[test]
 fn unnamed_action_nodes_get_numbered_keys() {
     // Arrange（境界値：名前の無いアクションの節は、書いた順に番号を付ける）
     let text = "package P { action def A { send S() to b; then accept e : E; then terminate; } part def E; }";

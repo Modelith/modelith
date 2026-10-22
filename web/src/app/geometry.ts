@@ -1,6 +1,6 @@
 // 図の幾何計算（ノードの大きさ・接続点・線の経路・自動配置）。DOM に依存しない純粋関数。
 
-import type { Entry, Expr, ModelEdge, ModelNode, Port, PortDir } from "../core";
+import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from "../core";
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
 import { isPseudoState, stateActionLines } from "./state-machine";
 import type { Pos, Side, ViewLayout } from "./layout";
@@ -1359,6 +1359,83 @@ export function packageRects(frames: readonly { keys: readonly string[]; inner: 
     return r;
   };
   return frames.map((_, i) => rect(i, new Set()));
+}
+
+/** アクティビティ図の区画の、中の要素のまわりの余白。 */
+export const LANE_PAD = 16;
+/** アクティビティ図の区画の見出し（«performer» と部品の名前）の高さ。 */
+export const LANE_HEAD = 44;
+/** 区画の列の中で、同じ段に並べる要素の間の空き。 */
+const LANE_GAP = 30;
+
+/**
+ * アクティビティ図の区画（8.2.3.17 の swimlane）の矩形。区画ごとに受け持つ要素を左右に LANE_PAD の余白を付けて囲み、
+ * 上下はすべての区画でそろえる（受け持つ要素全体の上に見出しの LANE_HEAD、下に LANE_PAD）。
+ *
+ * @param lanes 区画
+ * @param boxes 要素のキーから矩形への対応
+ * @returns 区画と矩形（受け持つ要素が図に無い区画は除く）。区画が無ければ空
+ * @example
+ * // 区画 heater が (100, 200, 168 × 44) の要素を、ctrl が (300, 300, 168 × 44) の要素を受け持つ
+ * laneRects([heater, ctrl], boxes)
+ * // → [{ lane: heater, r: { x: 84, y: 156, w: 200, h: 204 } }, { lane: ctrl, r: { x: 284, y: 156, w: 200, h: 204 } }]
+ * laneRects([], boxes) // → []
+ */
+export function laneRects(lanes: readonly ModelLane[], boxes: ReadonlyMap<string, Box>): { lane: ModelLane; r: Box }[] {
+  const members = lanes.map((l) => l.nodes.flatMap((k) => boxes.get(k) ?? []));
+  const all = members.flat();
+  if (!all.length) return [];
+  const top = Math.min(...all.map((b) => b.y)) - LANE_HEAD, bottom = Math.max(...all.map((b) => b.y + b.h)) + LANE_PAD;
+  return lanes.flatMap((lane, i) => {
+    const bs = members[i] ?? [];
+    if (!bs.length) return [];
+    const x0 = Math.min(...bs.map((b) => b.x)) - LANE_PAD, x1 = Math.max(...bs.map((b) => b.x + b.w)) + LANE_PAD;
+    return [{ lane, r: { x: x0, y: top, w: x1 - x0, h: bottom - top } }];
+  });
+}
+
+/**
+ * アクティビティ図の要素を、区画の列に置き直す（自動で置いた要素だけ。縦の位置はそのまま）。区画を受け持たない要素は左の列に、
+ * 区画の要素はその区画の列に置く。列の幅は、同じ段（同じ縦の位置）に並ぶ要素の幅の合計で決め、列どうしは隙間なく並べる（区画が接するように）。
+ *
+ * @param nodes 図に描く要素（中の要素は動かさない。外の要素に付いて動く）
+ * @param lanes 区画
+ * @param pos 要素のキーから左上の座標への対応（書き換える）
+ * @param fresh 自動で置いたばかりの要素のキー（これだけを動かす）
+ * @example
+ * // 区画 heater が a:boil を、ctrl が a:pour を受け持ち、a:start・a:boil・a:pour を置いたばかり
+ * placeInLanes(nodes, [heater, ctrl], pos, new Set(["a:start", "a:boil", "a:pour"]))
+ * // → a:start は左の列、a:boil はその右の列、a:pour はさらに右の列の中央（縦の位置は変えない）
+ * placeInLanes(nodes, [], pos, fresh) // → 何もしない
+ */
+export function placeInLanes(nodes: readonly ModelNode[], lanes: readonly ModelLane[], pos: Record<string, Pos>, fresh: ReadonlySet<string>): void {
+  const col = new Map<string, number>();
+  lanes.forEach((l, i) => l.nodes.forEach((k) => col.has(k) || col.set(k, i + 1)));
+  if (!col.size) return;
+  const moving = nodes.filter((n) => fresh.has(n.key) && !n.container && pos[n.key]);
+  const width = (n: ModelNode): number => stackedWidth(n, nodes);
+  // 列ごとに、同じ段の要素を左から並べた幅
+  const rows = new Map<string, ModelNode[]>();
+  for (const n of moving) {
+    const k = `${col.get(n.key) ?? 0}|${pos[n.key]?.[1] ?? 0}`;
+    rows.set(k, [...(rows.get(k) ?? []), n]);
+  }
+  const cols = lanes.length + 1;
+  const colW = Array.from({ length: cols }, () => 0);
+  for (const [k, row] of rows) {
+    const c = Number(k.split("|")[0]);
+    colW[c] = Math.max(colW[c] ?? 0, row.reduce((w, n) => w + width(n), 0) + LANE_GAP * (row.length - 1) + 2 * LANE_PAD);
+  }
+  const colX = colW.map((_, i) => colW.slice(0, i).reduce((a, b) => a + b, 0));
+  for (const [k, row] of rows) {
+    const c = Number(k.split("|")[0]);
+    const used = row.reduce((w, n) => w + width(n), 0) + LANE_GAP * (row.length - 1);
+    let x = (colX[c] ?? 0) + ((colW[c] ?? 0) - used) / 2;
+    for (const n of row) {
+      pos[n.key] = [Math.round(x), pos[n.key]?.[1] ?? 0];
+      x += width(n) + LANE_GAP;
+    }
+  }
 }
 
 /** 内部ブロック図の枠の上のポートの四角の一辺。 */

@@ -1,8 +1,8 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
-import type { Entry, ModelEdge, ModelNode } from "../core";
+import type { Entry, ModelEdge, ModelLane, ModelNode } from "../core";
 import { build, parse } from "../core/rust";
-import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
+import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -424,3 +424,57 @@ describe("boundaryBoxes（内部ブロック図の枠の上のポート、8.2.3.
     expect(boundaryBoxes(frame, []).size).toBe(0);
   });
 });
+
+describe("laneRects・placeInLanes（アクティビティ図の区画、8.2.3.17 の swimlane）", () => {
+  /** 受け持つ要素のキーだけを持つ区画。 */
+  const lane = (name: string, nodes: string[]): ModelLane => ({ key: "lane:" + name, name, nodes }) as unknown as ModelLane;
+  /** 幅 168・高さ 44 のアクション。 */
+  const act = (key: string): ModelNode =>
+    ({ key, name: key, kind: "action", flow: true, ports: [], entry: { kind: "action", children: [], head: "", type: "" } }) as unknown as ModelNode;
+
+  it("区画ごとに受け持つ要素を左右の余白付きで囲み、上下はすべての区画でそろえる", () => {
+    // Arrange
+    const boxes = new Map<string, Box>([
+      ["a", { x: 100, y: 200, w: 168, h: 44 }],
+      ["b", { x: 300, y: 300, w: 168, h: 44 }],
+    ]);
+    // Act
+    const r = laneRects([lane("heater", ["a"]), lane("ctrl", ["b"])], boxes);
+    // Assert
+    expect(r.map((x) => [x.lane.name, x.r])).toEqual([
+      ["heater", { x: 100 - LANE_PAD, y: 200 - LANE_HEAD, w: 168 + 2 * LANE_PAD, h: 344 + LANE_PAD - (200 - LANE_HEAD) }],
+      ["ctrl", { x: 300 - LANE_PAD, y: 200 - LANE_HEAD, w: 168 + 2 * LANE_PAD, h: 344 + LANE_PAD - (200 - LANE_HEAD) }],
+    ]);
+  });
+
+  it("受け持つ要素が図に無い区画は描かず、区画が無ければ空（境界値）", () => {
+    // Act / Assert
+    expect(laneRects([lane("x", ["nope"])], new Map())).toEqual([]);
+    expect(laneRects([], new Map())).toEqual([]);
+  });
+
+  it("置いたばかりの要素を、区画を受け持たない列・区画ごとの列に、縦の位置はそのまま置き直す", () => {
+    // Arrange
+    const nodes = [act("start"), act("a"), act("b")];
+    const pos: Record<string, [number, number]> = { start: [0, 0], a: [0, 100], b: [0, 200] };
+    // Act
+    placeInLanes(nodes, [lane("heater", ["a"]), lane("ctrl", ["b"])], pos, new Set(["start", "a", "b"]));
+    // Assert（列の幅は 168 + 2 × LANE_PAD。列は隙間なく並ぶ）
+    const col = 168 + 2 * LANE_PAD;
+    expect([pos["start"], pos["a"], pos["b"]]).toEqual([
+      [LANE_PAD, 0],
+      [col + LANE_PAD, 100],
+      [2 * col + LANE_PAD, 200],
+    ]);
+  });
+
+  it("自分で動かした要素（置いたばかりでない要素）は動かさない", () => {
+    // Arrange
+    const pos: Record<string, [number, number]> = { a: [500, 100] };
+    // Act
+    placeInLanes([act("a")], [lane("heater", ["a"])], pos, new Set());
+    // Assert
+    expect(pos["a"]).toEqual([500, 100]);
+  });
+});
+
