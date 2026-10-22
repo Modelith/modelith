@@ -1192,6 +1192,27 @@ fn imports_are_recorded_by_their_package_path() {
     let r = run(text);
     // Assert
     assert_eq!(r.imports, ["ISQ", "ScalarValues::Real", "SI"]);
+    let kinds: Vec<(&str, bool, bool, bool, bool)> = r
+        .import_list
+        .iter()
+        .map(|i| {
+            (
+                i.path.as_str(),
+                i.members,
+                i.recursive,
+                i.private,
+                i.pe.is_some(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("ISQ", true, false, true, true),
+            ("ScalarValues::Real", false, false, false, true),
+            ("SI", true, true, false, true),
+        ]
+    );
 }
 
 #[test]
@@ -2067,4 +2088,60 @@ fn objective_doc_is_kept_apart_from_the_owner_doc() {
     let v = entry(&r, "V");
     assert_eq!(v.doc.as_deref(), Some("検証の説明"));
     assert_eq!(v.objective.as_deref(), Some("沸く時間を確かめる"));
+}
+
+#[test]
+fn merge_appends_other_files_with_shifted_indices_and_positions() {
+    // Arrange（ADR-0021：ほかのファイルの宣言・関係の番号と位置をずらしてつなぐ）
+    use super::merge::{FILE_STRIDE, file_of, merge};
+    let focus = run("package A { part def X; }");
+    let other =
+        run("package B { part def Y; part def Z { part y : Y; } connection c connect y to y; }");
+    let broken = run("package C {");
+    // Act
+    let m = merge(focus, vec![other, broken]);
+    // Assert（B の中身は B を指し、位置は 2 つ目のファイルの区切りから。壊れたファイルの構文エラーは混ぜない）
+    let b = m.entries.iter().position(|e| e.name == "B").expect("B");
+    let y = entry(&m, "Y");
+    assert_eq!(y.pe, Some(b));
+    assert_eq!(m.entries[b].start, FILE_STRIDE);
+    assert_eq!(file_of(y.start), 1);
+    assert_eq!(file_of(entry(&m, "X").start), 0);
+    let z = m.entries.iter().position(|e| e.name == "Z").expect("Z");
+    assert!(
+        m.entries[z]
+            .children
+            .iter()
+            .all(|&c| m.entries[c].pe == Some(z))
+    );
+    let usage = m.rels.iter().find_map(|r| match r.kind {
+        RelKind::Connect { usage, .. } => Some(usage),
+        _ => None,
+    });
+    assert_eq!(usage.map(|u| m.entries[u].name.as_str()), Some("c"));
+    assert!(m.errors.is_empty(), "{:?}", m.errors);
+    assert_eq!(file_of(entry(&m, "C").start), 2);
+}
+
+#[test]
+fn merge_with_no_other_files_keeps_the_focus_result() {
+    // Arrange（境界値：ほかのファイルが無い）
+    use super::merge::merge;
+    let focus = run("package A { part def X; }");
+    // Act
+    let m = merge(focus.clone(), vec![]);
+    // Assert
+    assert_eq!(m, focus);
+}
+
+#[test]
+fn file_longer_than_the_stride_is_not_joined() {
+    // Arrange（境界値：区切りちょうどの長さのファイルはつながない。短いファイルはつなぐ）
+    let huge = " ".repeat(merge::FILE_STRIDE);
+    // Act
+    let p = merge::project_files("part def X;", &[&huge, "part def Y;"]);
+    // Assert
+    let names: Vec<&str> = p.entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["X", "Y"]);
+    assert_eq!(merge::file_of(p.entries[1].start), 1);
 }

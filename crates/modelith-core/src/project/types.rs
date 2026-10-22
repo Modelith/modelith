@@ -450,6 +450,23 @@ pub struct Alias {
 }
 
 /// `metadata M about A` の相手のうち、見つからなかったもの（8.2.2.27）。
+/// `import` 1 つ（Import、8.2.2.5）。名前の解決に使い、TS には渡さない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Import {
+    /// 取り込む名前空間か要素の修飾名（`::*`・`::**` を除き、引用符を外して `::` でつなぐ）。
+    pub path: String,
+    /// 名前空間の中身を取り込む（`P::*`・`P::**`）か。
+    pub members: bool,
+    /// 入れ子の中身まで取り込む（`P::**`）か。
+    pub recursive: bool,
+    /// `private import` か（取り込んだ名前を、書いた名前空間の外へ見せない）。
+    pub private: bool,
+    /// 書いた名前空間の宣言の番号。ファイルの一番上なら `None`。
+    pub pe: Option<usize>,
+    /// 文の位置（UTF-16。どのファイルに書いたかを知るため）。
+    pub start: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MissingRef {
     /// 文の位置（UTF-16 のオフセット）。
@@ -472,6 +489,9 @@ pub struct ParseResult {
     /// `import` の対象の修飾名（`ISQ::*` なら `ISQ`。書いた順）。標準ライブラリの型の判定にだけ使い、TS には渡さない。
     #[serde(skip)]
     pub imports: Vec<String>,
+    /// `import` の詳しい形（書いた順。`imports` と同じ数）。
+    #[serde(skip)]
+    pub import_list: Vec<Import>,
     /// `metadata M about A` の相手のうち、見つからなかったもの。問題一覧に出すためだけに使い、TS には渡さない。
     #[serde(skip)]
     pub missing_about: Vec<MissingRef>,

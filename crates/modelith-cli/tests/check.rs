@@ -203,6 +203,29 @@ fn findings_are_sorted_by_path_line_and_column_across_files() {
 }
 
 #[test]
+fn files_of_the_folder_are_checked_as_one_model() {
+    // Arrange（要求を満たす関係を、ほかのファイルに書く。ADR-0021）
+    let dir = project();
+    dir.write(
+        "reqs.sysml",
+        "package Reqs {\n  requirement def SupplyWater;\n  requirement def KeepPressure;\n}\n",
+    );
+    dir.write(
+        "parts.sysml",
+        "package Parts {\n  import Reqs::*;\n  part def Pump { port inlet; }\n  satisfy SupplyWater by Pump;\n}\n",
+    );
+    // Act
+    let out = check(&dir);
+    // Assert（満たされていない KeepPressure だけを、書いたファイルで知らせる）
+    assert_eq!(
+        stdout(&out),
+        "reqs.sysml:3:3: エラー: 要求「KeepPressure」を満たす要素がありません [jp.example.trace/req-has-satisfier]\n\
+         ファイル 2 件をチェックしました：エラー 1 件・警告 0 件・情報 0 件・ヒント 0 件\n"
+    );
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
 fn hidden_build_and_dependency_folders_are_not_checked() {
     // Arrange（どれも、検査すれば注意が出る部品定義）
     let dir = project();

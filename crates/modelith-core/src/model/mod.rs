@@ -8,6 +8,7 @@
 mod chains;
 mod filters;
 mod flows;
+mod focus;
 mod names;
 mod sequences;
 mod states;
@@ -21,7 +22,7 @@ pub use views::{is_standard_view, std_view_label};
 
 use std::collections::{HashMap, HashSet};
 
-use crate::project::{Entry, ParseResult, RelKind, Span};
+use crate::project::{Entry, ParseResult, RelKind, Span, merge};
 
 /// 図に描かない定義の種類（ほかの定義はすべて図に描く要素になる）。ツリーにだけ出す。
 /// `def` は、基の種類の決まらない利用者定義のキーワードの定義（`#X def H;`）。
@@ -289,6 +290,27 @@ fn has_word(mods: &str, w: &str) -> bool {
 ///   → problems に「型「Nope」が見つかりません（y）」が 1 件（kind は None）
 /// ```
 pub fn build(p: &ParseResult) -> Model {
+    focus::keep_focus(build_whole(p), p.entries.as_slice())
+}
+
+/// 解析結果から、ほかのファイルの要素も絞らずにモデルを作る（ADR-0021）。ファイルをまたぐ関係を数える検査（チェックルール）に使う。
+/// ほかのファイルが無ければ `build` と同じ。
+///
+/// # 引数
+///
+/// - `p`：`project` の解析結果か、`merge` でつないだ解析結果
+///
+/// # 戻り値
+///
+/// すべてのファイルの要素・線・問題を入れたモデル。ほかのファイルの要素は `Node.file` を持つ。
+///
+/// # 例
+///
+/// ```text
+/// // 表示中 "package A { requirement def R; }"、ほか "package B { part def X; satisfy A::R by X; }" をつないだとき
+/// build_whole(p).edges → [satisfy|X|R|…]   // build(p) では、ほかのファイルに書いた関係なので残らない
+/// ```
+pub fn build_whole(p: &ParseResult) -> Model {
     let mut b = Builder::new(p);
     b.nodes();
     b.ports();
@@ -313,6 +335,8 @@ pub(crate) struct Builder<'a> {
     pub(crate) by_name: HashMap<&'a str, Vec<usize>>,
     /// ファイルが量と単位のライブラリ（ISQ・SI など）を `import` しているか（`is_lib` に渡す）。
     quantities_imported: bool,
+    /// ファイルごとの、`import` で取り込んだ宣言（ADR-0021。0 は表示中のファイル）。ほかのファイルが無ければ空。
+    imported: Vec<HashSet<usize>>,
     /// 宣言の番号 → 図の要素の番号。
     pub(crate) node_of: HashMap<usize, usize>,
     pub(crate) model: Model,
@@ -347,9 +371,159 @@ impl<'a> Builder<'a> {
             p,
             by_name,
             quantities_imported: p.imports.iter().any(|i| is_quantity_path(i)),
+            imported: Vec::new(),
             node_of: HashMap::new(),
             model: Model::default(),
         }
+        .with_imports()
+    }
+
+    /// ファイルごとに、`import` で取り込んだ宣言を集める（ADR-0021）。`P::*` は P の中身、`P::**` は入れ子の中身すべて、
+    /// `P::A` は A を取り込む。取り込んだ名前空間の中の `private` でない `import` も 1 段だけたどる（取り込みの取り込み）。
+    ///
+    /// # 戻り値
+    ///
+    /// 取り込みを入れた自分。ほかのファイルが無ければ、何も集めない（1 つのファイルでは、名前はファイル全体から探すため）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 表示中のファイル "import B::*;"、2 つ目のファイル "package B { part def Y; }" のとき
+    /// with_imports().imported[0] → { Y の番号 }
+    /// ```
+    fn with_imports(mut self) -> Self {
+        let files = self.entries.last().map_or(0, |e| merge::file_of(e.start)) + 1;
+        if files <= 1 {
+            return self;
+        }
+        let mut imported = vec![HashSet::new(); files];
+        for imp in &self.p.import_list {
+            let f = merge::file_of(imp.start);
+            let Some(ns) = self.lookup(&imp.path, imp.pe) else {
+                continue;
+            };
+            let set = &mut imported[f];
+            self.bring(ns, imp.members, imp.recursive, set, 0);
+            // 取り込んだ名前空間の中の、private でない import も取り込む
+            for inner in self
+                .p
+                .import_list
+                .iter()
+                .filter(|i| i.pe == Some(ns) && !i.private)
+            {
+                if let Some(n2) = self.lookup(&inner.path, inner.pe) {
+                    self.bring(n2, inner.members, inner.recursive, set, 0);
+                }
+            }
+        }
+        self.imported = imported;
+        self
+    }
+
+    /// 名前空間 `ns`（または要素）を取り込む宣言の集まりに足す。
+    ///
+    /// # 引数
+    ///
+    /// - `ns`：取り込む名前空間か要素の宣言の番号
+    /// - `members`：中身を取り込むか（false なら `ns` そのもの）
+    /// - `recursive`：入れ子の中身まで取り込むか
+    /// - `set`：足す先
+    /// - `depth`：たどった深さ
+    fn bring(
+        &self,
+        ns: usize,
+        members: bool,
+        recursive: bool,
+        set: &mut HashSet<usize>,
+        depth: usize,
+    ) {
+        if !members {
+            set.insert(ns);
+            return;
+        }
+        for &c in &self.e(ns).children {
+            if self.hidden(c) {
+                continue;
+            }
+            set.insert(c);
+            if recursive && depth < 16 {
+                self.bring(c, true, true, set, depth + 1);
+            }
+        }
+    }
+
+    /// 宣言 `i` が `private`・`protected` で、持ち主の名前空間の外へ見せないものか。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// 外へ見せなければ true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "package P { private part def S; part def A; }" のとき
+    /// hidden(S の番号) → true
+    /// hidden(A の番号) → false
+    /// ```
+    fn hidden(&self, i: usize) -> bool {
+        self.e(i).mods.as_deref().is_some_and(|m| {
+            m.split_whitespace()
+                .any(|w| w == "private" || w == "protected")
+        })
+    }
+
+    /// 宣言 `i` が、`ctx` を書いたファイルから修飾の無い名前で見えるか（ADR-0021）。同じファイルの宣言・どのファイルの一番上の宣言・
+    /// `import` で取り込んだ宣言が見える。ほかのファイルが無ければ、いつも見える。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    /// - `ctx`：名前を書いた場所の宣言の番号（無ければ表示中のファイル）
+    ///
+    /// # 戻り値
+    ///
+    /// 見えれば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 表示中のファイル "package A { part def X; }"、2 つ目 "package B { part def Y; }" のとき
+    /// visible(Y, Some(A)) → false（取り込んでいない）
+    /// visible(B, Some(A)) → true（一番上の宣言）
+    /// ```
+    pub(crate) fn visible(&self, i: usize, ctx: Option<usize>) -> bool {
+        if self.imported.is_empty() {
+            return true;
+        }
+        let f = ctx.map_or(0, |c| merge::file_of(self.e(c).start));
+        merge::file_of(self.e(i).start) == f || self.e(i).pe.is_none() || self.imported_into(i, ctx)
+    }
+
+    /// 宣言 `i` を、`ctx` を書いたファイルが `import` で取り込んでいるか（ADR-0021）。ほかのファイルが無ければ false。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    /// - `ctx`：名前を書いた場所の宣言の番号（無ければ表示中のファイル）
+    ///
+    /// # 戻り値
+    ///
+    /// 取り込んでいれば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 表示中のファイル "package A { import B::*; }"、2 つ目 "package B { package Q; }" のとき
+    /// imported_into(Q, Some(A)) → true
+    /// imported_into(B, Some(A)) → false（一番上の宣言は取り込まなくても見える）
+    /// ```
+    pub(crate) fn imported_into(&self, i: usize, ctx: Option<usize>) -> bool {
+        let f = ctx.map_or(0, |c| merge::file_of(self.e(c).start));
+        self.imported.get(f).is_some_and(|s| s.contains(&i))
     }
 
     /// 宣言の番号から宣言を取り出す。
@@ -420,6 +594,7 @@ impl<'a> Builder<'a> {
                 ports: Vec::new(),
                 phase: None,
                 phase_own: false,
+                file: Some(merge::file_of(e.start)).filter(|&f| f > 0),
             });
         }
     }
@@ -430,6 +605,7 @@ impl<'a> Builder<'a> {
     /// # 引数
     ///
     /// - `nm`：探す名前（修飾の無い名前）
+    /// - `ctx`：名前を書いた場所の宣言の番号（ほかのファイルの定義は、見えるもの（`visible`）だけを探す）
     ///
     /// # 戻り値
     ///
@@ -439,15 +615,19 @@ impl<'a> Builder<'a> {
     ///
     /// ```text
     /// // "package P { part def A; part a : A; alias B for A; }" のとき
-    /// def_named("A") → Some(part def A の番号)
-    /// def_named("B") → Some(part def A の番号)   // 別名
-    /// def_named("a") → None   // 使用だけ
-    /// def_named("Z") → None   // 名前が無い
+    /// def_named("A", None) → Some(part def A の番号)
+    /// def_named("B", None) → Some(part def A の番号)   // 別名
+    /// def_named("a", None) → None   // 使用だけ
+    /// def_named("Z", None) → None   // 名前が無い
     /// ```
-    pub(crate) fn def_named(&self, nm: &str) -> Option<usize> {
+    pub(crate) fn def_named(&self, nm: &str, ctx: Option<usize>) -> Option<usize> {
         self.by_name
             .get(nm)
-            .and_then(|l| l.iter().copied().find(|&i| self.e(i).is_def))
+            .and_then(|l| {
+                l.iter()
+                    .copied()
+                    .find(|&i| self.e(i).is_def && self.visible(i, ctx))
+            })
             .or_else(|| self.alias_anywhere(nm, 0).filter(|&i| self.e(i).is_def))
     }
 
@@ -547,10 +727,15 @@ impl<'a> Builder<'a> {
         let Some(list) = self.by_name.get(nm) else {
             return self.alias_anywhere(nm, depth);
         };
-        list.iter()
+        let seen: Vec<usize> = list
+            .iter()
+            .copied()
+            .filter(|&i| self.visible(i, ctx))
+            .collect();
+        seen.iter()
             .copied()
             .find(|i| self.node_of.contains_key(i))
-            .or_else(|| list.first().copied())
+            .or_else(|| seen.first().copied())
     }
 
     /// `a.b.c` の参照をたどる。暫定コアの `resolve` と同じ。

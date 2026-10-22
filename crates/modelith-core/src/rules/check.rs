@@ -97,7 +97,8 @@ pub fn check(plugins: &[LoadedPlugin], parse: &ParseResult, model: &Model) -> Ve
     let mut found = Vec::new();
     for plugin in plugins {
         for rule in &plugin.rules {
-            for node in &model.nodes {
+            // ほかのファイルの要素は、そのファイルを検査するときに当てる（ADR-0021）
+            for node in model.nodes.iter().filter(|n| n.file.is_none()) {
                 if !matches_target(&rule.target, node) || holds(&rule.require, node, &links) {
                     continue;
                 }
@@ -109,10 +110,12 @@ pub fn check(plugins: &[LoadedPlugin], parse: &ParseResult, model: &Model) -> Ve
 }
 
 /// テキストを解析してモデルを作り、ルールを当て、結果の位置を行・列にする（CLI と画面で同じ手順にする）。
+/// プロジェクトのほかのファイルも渡すと、それとつないだモデル（ADR-0021）で、`text` の要素だけを検査する。
 ///
 /// # 引数
 ///
 /// - `text`：SysML v2 / KerML のテキスト全体
+/// - `others`：プロジェクトのほかのファイルのテキスト（無ければ空）
 /// - `plugins`：読み込んだプラグイン
 ///
 /// # 戻り値
@@ -122,12 +125,13 @@ pub fn check(plugins: &[LoadedPlugin], parse: &ParseResult, model: &Model) -> Ve
 /// # 例
 ///
 /// ```text
-/// check_text("package P {\n  requirement def S;\n}", 上のルール) → [Located { place: { line: 2, column: 3 }, … }]
-/// check_text("", 上のルール) → []
+/// check_text("package P {\n  requirement def S;\n}", &[], 上のルール) → [Located { place: { line: 2, column: 3 }, … }]
+/// check_text("package P {\n  requirement def S;\n}", &["part def A; satisfy P::S by A;"], 上のルール) → []
+/// check_text("", &[], 上のルール) → []
 /// ```
-pub fn check_text(text: &str, plugins: &[LoadedPlugin]) -> Vec<Located> {
-    let parse = crate::project::project(text, &crate::syntax::parse(text));
-    let model = crate::model::build(&parse);
+pub fn check_text(text: &str, others: &[&str], plugins: &[LoadedPlugin]) -> Vec<Located> {
+    let parse = crate::project::merge::project_files(text, others);
+    let model = crate::model::build_whole(&parse);
     let utf16 = Utf16::new(text);
     check(plugins, &parse, &model)
         .into_iter()

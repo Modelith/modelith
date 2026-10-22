@@ -5,6 +5,7 @@
 //! 構文木から取り、文の頭の文字列（`head`・式）は、コメントを空白にして空白をまとめたテキストから取る。
 //! alpha.4 でモデル構築を Rust に移すときに、この層は置き換える。
 
+pub mod merge;
 pub(crate) mod text;
 mod types;
 
@@ -764,7 +765,17 @@ impl Ctx {
         }
         if n.kind() == IMPORT {
             if let Some(q) = child(n, QUALIFIED_NAME) {
-                self.out.imports.push(path_of(&q));
+                let path = path_of(&q);
+                let written = compact(n);
+                self.out.import_list.push(Import {
+                    path: path.clone(),
+                    members: written.contains("::*"),
+                    recursive: written.contains("::**"),
+                    private: has_keyword(n, "private"),
+                    pe,
+                    start: self.utf16(n.text_range().start().into()),
+                });
+                self.out.imports.push(path);
             }
             return None;
         }
