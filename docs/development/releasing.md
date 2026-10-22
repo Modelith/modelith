@@ -18,8 +18,8 @@
 3. リリースノートの「（ここに書く）」を埋め（下の「リリースノート」）、`node web/tools/release-notes-cli.ts check <版>` で確かめる。
 4. PR（`chore(release): v<版>`）を `dev` に向けて出し、CI グリーンで Squash merge する。
    マージすると「Release draft」ワークフローが動き、`dev` のマージコミットを対象に、リリースの下書き（プレリリース）を作る。
-5. メンテナが下書きを確かめ、「Publish release」を押す。このときタグ `v<版>` が作られ、`.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する。
-6. 公開後、画面左上のメニューの「ヘルプ」でバージョンを確かめ、[リリース計画](release-plan.md) のその行に「（公開済み）」を足す。
+5. メンテナが下書きを確かめ、「Publish release」を押す。このときタグ `v<版>` が作られ、`.github/workflows/pages.yml` が Web アプリを GitHub Pages に公開する（下の「公開先」）。
+6. 公開後、公開した版が出るはずの URL で、画面左上のメニューの「ヘルプ」のバージョンを確かめ、[リリース計画](release-plan.md) のその行に「（公開済み）」を足す。
 
 エージェントは 1〜4 と 6 を行い、5 の公開だけをメンテナに頼む（[release スキル](../../.claude/skills/release/SKILL.md)）。
 
@@ -30,6 +30,20 @@
    マージすると、`main` のマージコミットを対象に下書きが作られる。
 3. メンテナが下書きを公開する。
 4. 不具合が見つかったら `dev` で修正し、rc の番号を上げて 1 からやり直す。
+
+## 公開先（安定版とプレリリース版）
+
+[ADR-0020](../adr/0020-release-channels.md) に従い、1 つのサイトに 2 つの版を置く。どのリリースを公開しても、両方を選び直してビルドする。
+
+| 系列 | URL | 置く版 |
+| --- | --- | --- |
+| 安定版 | `https://modelith.github.io/modelith/` | 最新の正式版。正式版が無ければ最新の rc |
+| プレリリース版 | `https://modelith.github.io/modelith/preview/` | 最も新しい版（alpha・beta・rc・正式版） |
+
+- 版の選び方は `web/tools/channels.ts`、ビルドは `scripts/pages-build.sh`。版ごとに、そのタグの中身で e2e・UI テストを流す。
+- プレリリース版は、ブラウザの保存領域（前回の続き・下書き・設定・プラグインの許可）を安定版と分ける（`@preview` を付けた名前）。
+- 公開で動くワークフローは、タグのコミットにある `pages.yml`。この仕組みより前のコミットに付けた下書きは公開せず、作り直す。
+- 公開し直すときは、Actions の「Pages」を既定のブランチから手動で起動する。
 
 ## GitHub Pages の初期設定（一度だけ）
 

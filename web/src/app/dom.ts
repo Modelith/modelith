@@ -1,5 +1,7 @@
 // DOM の小さな補助。
 
+import { channelName } from "../channel";
+
 /**
  * セレクタに合う最初の要素を返す。無ければ index.html との食い違いなので例外にする。
  *
@@ -61,6 +63,7 @@ export function isFormField(t: EventTarget | null): boolean {
 /**
  * localStorage は使えない環境（プライベートモードなど）や、保存領域がいっぱいのとき（QuotaExceededError）があるため、失敗しても止めない。
  * 書けたかは戻り値で返すので、下書きのように失われては困るものを書く側は、それを見て知らせる（F-FILE-11）。
+ * キーは公開の系列ごとに分ける（プレリリース版は `キー@preview`。ADR-0020）。
  */
 export const store = {
   /**
@@ -74,7 +77,7 @@ export const store = {
    */
   get(key: string): string | null {
     try {
-      return localStorage.getItem(key);
+      return localStorage.getItem(channelName(key));
     } catch {
       return null;
     }
@@ -91,7 +94,7 @@ export const store = {
    */
   set(key: string, value: string): boolean {
     try {
-      localStorage.setItem(key, value);
+      localStorage.setItem(channelName(key), value);
       return true;
     } catch {
       return false; // 保存できなくても編集は続けられる。知らせるかは呼ぶ側が決める
@@ -108,7 +111,7 @@ export const store = {
    */
   remove(key: string): boolean {
     try {
-      localStorage.removeItem(key);
+      localStorage.removeItem(channelName(key));
       return true;
     } catch {
       return false;

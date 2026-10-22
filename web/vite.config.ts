@@ -70,7 +70,13 @@ function bundledLicenses(): Plugin {
 export default defineConfig({
   // GitHub Pages ではリポジトリ名のパス（/modelith/）の下に置く。CI が MODELITH_BASE で渡す
   base: process.env.MODELITH_BASE ?? "/",
-  define: { __APP_COPYRIGHT__: JSON.stringify(COPYRIGHT), __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT__: JSON.stringify(commitSha()) },
+  define: {
+    __APP_COPYRIGHT__: JSON.stringify(COPYRIGHT),
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_COMMIT__: JSON.stringify(commitSha()),
+    // 公開の系列（stable・preview）。保存領域の名前を系列ごとに分ける（ADR-0020）。CI が MODELITH_CHANNEL で渡す
+    __APP_CHANNEL__: JSON.stringify(process.env.MODELITH_CHANNEL ?? "stable"),
+  },
   plugins: [bundledLicenses(), cspPlugin()],
   server: { fs: { allow: [".."] } },
   // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src と tools の単体・結合テストだけを拾う
