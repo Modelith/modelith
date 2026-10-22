@@ -99,6 +99,11 @@ package ModelithRequirements {
         requirement def <'F-EDIT-5'> ProblemsReq {
             doc /* 構文エラー・型や参照の見つからない箇所を、行番号付きで一覧にし、クリックでその行へ移る */
         }
+        requirement def <'F-EDIT-13'> ProblemCopyReq {
+            doc /* 問題一覧の行を、1 行ずつ（右クリック、または行を選んで Ctrl＋C）と、一覧のすべて（「すべてコピー」）を、
+                   「ファイル名:行: メッセージ」の形の文としてクリップボードに入れ、ほかのアプリ（チャットや課題管理）に貼り付けられる。
+                   ほかのファイルの問題も、そのファイル名で入れる。ブラウザがコピーを許さないときは、そのことを知らせる */
+        }
         requirement def <'F-EDIT-6'> ParseParityReq {
             doc /* モックと同じ振る舞いの範囲では、解析とモデル構築の結果はゴールデン（モックの出力）と一致する（ADR-0002・ADR-0013） */
         }
@@ -431,6 +436,7 @@ package ModelithRequirements {
         #derivation dependency from RenameReq to EditBothWaysNeed;
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
+        #derivation dependency from ProblemCopyReq to EditBothWaysNeed;
         #derivation dependency from ProblemLevelReq to EditBothWaysNeed;
         #derivation dependency from ParseParityReq to EditBothWaysNeed;
         #derivation dependency from BuiltInViewsReq to ViewsNeed;
@@ -585,6 +591,7 @@ package ModelithRequirements {
         satisfy EditDetailsReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
+        satisfy ProblemCopyReq by TextEditor;
         satisfy ProblemLevelReq by AppShell;
         satisfy ParseParityReq by Core;
         satisfy BuiltInViewsReq by DiagramUI;
