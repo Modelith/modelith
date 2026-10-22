@@ -23,10 +23,13 @@ pub struct Span {
 }
 
 /// 要素に書かれた式。`via` は囲んでいる無名ブロックのキーワード。
+/// `neg` は否定した制約（`assert not constraint …`、8.2.2.20）。否定していなければ JSON に出さない。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
     pub text: String,
     pub via: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub neg: bool,
 }
 
 /// 書いた順を保つ文字列の表（メタデータの名前の順を JSON にそのまま出す）。
@@ -110,6 +113,9 @@ pub struct Entry {
     pub value_op: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+    /// ケース・解析・検証の目的（`objective { doc /* … */ }`、8.2.2.21）の説明。持ち主の説明（`doc`）とは分けて持つ。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objective: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<OrderedMap<OrderedMap<String>>>,
     #[serde(skip_serializing_if = "Option::is_none")]

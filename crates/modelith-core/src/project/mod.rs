@@ -442,7 +442,13 @@ impl Ctx {
                     let t = body.text();
                     let inner = t.strip_prefix("/*").unwrap_or(t);
                     let inner = inner.strip_suffix("*/").unwrap_or(inner);
-                    self.out.entries[pe].doc = Some(normalize(inner));
+                    // 目的（`objective { doc /* … */ }`）の説明は、持ち主の説明を上書きせず目的として持つ（8.2.2.21）
+                    let in_objective = matches!(owner, Some(Scope::Block(b)) if self.out.blocks[b].kw == "objective");
+                    if in_objective {
+                        self.out.entries[pe].objective = Some(normalize(inner));
+                    } else {
+                        self.out.entries[pe].doc = Some(normalize(inner));
+                    }
                 }
                 return;
             }
@@ -770,10 +776,17 @@ impl Ctx {
         {
             if let Some(pe) = pe {
                 let text = constraint_reference_text(h);
+                let neg = text == "not" || text.starts_with("not ");
+                let text = if neg {
+                    text.trim_start_matches("not").trim_start().to_owned()
+                } else {
+                    text
+                };
                 if !text.is_empty() {
                     self.out.entries[pe].exprs.push(Expr {
                         text,
                         via: first_word(h).to_owned(),
+                        neg,
                     });
                 }
             }
@@ -856,6 +869,7 @@ impl Ctx {
                     .and(child(n, FEATURE_VALUE))
                     .and_then(|v| value_op(&v)),
                 doc: None,
+                objective: None,
                 meta: None,
                 phase_val: None,
                 phase_block: None,
@@ -954,6 +968,7 @@ impl Ctx {
                 value: None,
                 value_op: None,
                 doc: None,
+                objective: None,
                 meta: None,
                 phase_val: None,
                 phase_block: None,
@@ -978,13 +993,20 @@ impl Ctx {
         if let Some(pe) = pe
             && (term == Term::Close || h.contains(['=', '<', '>']))
         {
-            let via = match owner {
-                Some(Scope::Block(b)) => self.out.blocks[b].kw.clone(),
-                _ => String::new(),
+            let (via, neg) = match owner {
+                // `assert not constraint d { … }` の本体の式は、否定した制約の式として持つ（8.2.2.20）
+                Some(Scope::Block(b)) => {
+                    let blk = &self.out.blocks[b];
+                    let neg =
+                        blk.kw == "assert" && blk.head.split_whitespace().nth(1) == Some("not");
+                    (blk.kw.clone(), neg)
+                }
+                _ => (String::new(), false),
             };
             self.out.entries[pe].exprs.push(Expr {
                 text: h.to_owned(),
                 via,
+                neg,
             });
         } else if crate::syntax::is_keyword(first_word(h)) {
             self.out.unsupported.push(Unsupported {
@@ -1614,6 +1636,7 @@ impl Ctx {
             value: None,
             value_op: None,
             doc: None,
+            objective: None,
             meta: None,
             phase_val: None,
             phase_block: None,

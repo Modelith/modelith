@@ -11,7 +11,7 @@
 //! - 定義：`occurrence def`・`part def`・`requirement def`・`constraint def`・`port def`・`item def`・
 //!   `attribute def`・`concern def`・`verification def`・`analysis def`・`state def`・`action def`・
 //!   `interface def`・`calc def`・`connection def`・`allocation def`・`flow def`・`use case def`・`enum def`
-//! - 使用：`part`・`requirement`（package の直下にあるものだけ。部品の中の部品は要素にならない）
+//! - 使用：`part`・`requirement`・`verification`・`analysis`（package の直下にあるものだけ。部品の中の部品は要素にならない）
 //!
 //! `require.incoming`・`require.outgoing` に書ける関係の種類（[`RELATIONS`]）。向きは「元 → 先」：
 //!

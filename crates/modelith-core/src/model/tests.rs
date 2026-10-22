@@ -710,24 +710,27 @@ fn alias_cycle_or_missing_target_is_not_found() {
 }
 
 #[test]
-fn verify_inside_a_package_level_usage_draws_from_its_type() {
-    // Arrange（RequirementVerificationUsage、8.2.2.24）
+fn verify_inside_a_package_level_usage_draws_from_the_usage() {
+    // Arrange（RequirementVerificationUsage、8.2.2.24。package の直下の検証の使用は図の要素になり、型への線も引く）
     let text = "package P { requirement def RD; verification def VD; verification v : VD { objective { verify RD; } } }";
     // Act
     let (_, m) = run(text);
     // Assert
-    assert_eq!(edge_ids(&m), ["verify|VD|RD|«verify»#1"]);
+    assert_eq!(edge_ids(&m), ["defined|v|VD|#1", "verify|v|RD|«verify»#1"]);
     assert!(m.problems.is_empty());
 }
 
 #[test]
-fn verify_inside_an_untyped_usage_is_not_reported_as_missing() {
-    // Arrange（境界値：線を引く元が図に無い）
-    let text = "package P { requirement def RD; verification v { objective { verify RD; } } }";
+fn verify_inside_an_untyped_usage_draws_from_the_usage() {
+    // Arrange（境界値：型の無い検証の使用。0.2.0 から、使用そのものから線を引く）
+    let text = "package P { requirement def RD; verification v { objective { verify RD; } } analysis a { objective { verify RD; } } }";
     // Act
     let (_, m) = run(text);
     // Assert
-    assert!(m.edges.is_empty());
+    assert_eq!(
+        edge_ids(&m),
+        ["verify|v|RD|«verify»#1", "verify|a|RD|«verify»#1"]
+    );
     assert!(m.problems.is_empty());
 }
 
