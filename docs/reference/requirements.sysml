@@ -122,9 +122,10 @@ package ModelithRequirements {
                    「編集」ボタンで編集できるようにし、もう一度押すと読み取り専用に戻す。語をダブルタップすると、その語を選び、意味を示す（F-EDIT-9） */
         }
         requirement def <'F-EDIT-11'> ProblemLevelReq {
-            doc /* 保留：0.2.0 以降。問題一覧と図の印に出す知らせ（トレースの抜けの種類ごと・まだ扱えない構文・チェックルールの結果など）の重さを、
-                   利用者が種類ごとに「エラー」「警告」「情報」「出さない」から選べる（lint の規則の重さを変えるのと同じ）。構文エラーは出さないにできない。
-                   設定はプロジェクト（modelith.json）とこのブラウザの両方に置け、どちらが効くかは F-PROJ-2 の決まりに従う */
+            doc /* 問題一覧と図の印に出す知らせ（トレースの抜けの種類ごと（導出・満たす要素・検証）・まだ扱えない構文・チェックルールの結果のルールごと）の重さを、
+                   利用者が種類ごとに「エラー」「警告」「情報」「出さない」から選べる（lint の規則の重さを変えるのと同じ）。構文エラーと見つからない型は変えられない。
+                   選んだ重さは結果に効くので、このプロジェクトの設定（modelith.json の levels）にだけ置き（F-PROJ-2）、画面と CLI の modelith check の両方が従う。
+                   プロジェクトの無いフォルダやファイルでは既定の重さ（トレースの抜けは警告、まだ扱えない構文は情報、チェックルールはルールに書いた重さ）を使う */
         }
 
         // ---- ビュー ------------------------------------------------
@@ -592,7 +593,9 @@ package ModelithRequirements {
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
         satisfy ProblemCopyReq by TextEditor;
+        satisfy ProblemLevelReq by Core;
         satisfy ProblemLevelReq by AppShell;
+        satisfy ProblemLevelReq by Cli;
         satisfy ParseParityReq by Core;
         satisfy BuiltInViewsReq by DiagramUI;
         satisfy ViewTabsReq by DiagramUI;
