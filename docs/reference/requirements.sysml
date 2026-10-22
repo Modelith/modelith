@@ -692,6 +692,14 @@ package ModelithRequirements {
                 verify TraceGapReq;
             }
         }
+        verification def RelationOptionsTest {
+            doc /* web/src/app/relations.test.ts：2 つの要素の間に追加できる関係の候補。要求をつなぐ関係（要求 → 検証・検証 → 要求・要求 → 部品（定義と使用）・部品 → 要求・
+                   要求どうしの導出の両向き・要求と関心事）を、線の向きによらず規格どおりの向きで出すこと（逆向きの候補の印）、自分自身と要求を含まない組み合わせでは出さないこと、
+                   「〜として持つ」など既存の候補を残すこと */
+            objective {
+                verify DiagramToTextReq;
+            }
+        }
         verification def TapTest {
             doc /* web/src/app/tap.test.ts：タップ（動きと時間の上限）とダブルタップ（間の時間と離れ方の上限）の判定 */
             objective {
@@ -799,7 +807,7 @@ package ModelithRequirements {
             }
         }
         verification def EditingE2E {
-            doc /* web/e2e/editing.spec.ts：図からの追加と削除・名前変更・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・要求をつなぐ関係の追加（要求 → 検証・検証 → 要求の «verify»、要求 → 部品の «satisfy»、要求どうしの導出の逆向き）・名前変更・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
             objective {
                 verify DiagramToTextReq;
                 verify NewPackageGuideReq;
