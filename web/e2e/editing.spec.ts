@@ -112,6 +112,7 @@ test("F-EDIT-3: 日本語の名前に変えると、テキストには引用名�
   // Arrange
   await openApp(page);
   await page.locator("#ed").fill("package P {\n    part def Kettle;\n    part def Stand { part k : Kettle; }\n}\n");
+  await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
   await page.locator(".tabadd summary").click();
   await page.locator('[data-open="all"]').click();
   await page.locator('#gNodes .node[data-key="Kettle"]').click();
@@ -130,6 +131,7 @@ test("F-EDIT-3: 名前に「'」は使えず、理由を伝える（異常系）
   await openApp(page);
   const text = "package P {\n    part def Kettle;\n}\n";
   await page.locator("#ed").fill(text);
+  await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
   await page.locator(".tabadd summary").click();
   await page.locator('[data-open="all"]').click();
   await page.locator('#gNodes .node[data-key="Kettle"]').click();
@@ -149,6 +151,7 @@ test.describe("説明の編集（F-EDIT-12）", () => {
   async function selectIn(page: Page, key: string): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(REQ);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
     await page.locator(".tabadd summary").click();
     await page.locator('[data-open="all"]').click();
     await page.locator(`#gNodes .node[data-key="${key}"]`).click();
@@ -204,6 +207,7 @@ test.describe("属性の編集（F-EDIT-12）", () => {
   async function selectKettle(page: Page): Promise<void> {
     await openApp(page);
     await page.locator("#ed").fill(PART);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
     await page.locator(".tabadd summary").click();
     await page.locator('[data-open="all"]').click();
     await page.locator('#gNodes .node[data-key="Kettle"]').click();
