@@ -6,6 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use modelith_core::levels;
 use modelith_core::project_file;
 use modelith_core::rules::{self, LoadedPlugin, ReadError};
 
@@ -85,10 +86,19 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
             .filter(|&(j, _)| j != k)
             .map(|(_, (_, t))| t.as_str())
             .collect();
+        // プロジェクトで選んだ知らせの重さを当てる（F-EDIT-11。画面と同じ）
+        let located = rules::check_text(text, &others, &plugins);
         entries.extend(
-            rules::check_text(text, &others, &plugins)
-                .iter()
-                .map(|l| report::from_finding(path, l)),
+            located
+                .into_iter()
+                .filter_map(|l| {
+                    let finding = levels::apply_findings(vec![l.finding], &project.levels).pop()?;
+                    Some(rules::Located {
+                        place: l.place,
+                        finding,
+                    })
+                })
+                .map(|l| report::from_finding(path, &l)),
         );
     }
     Ok(report::render(entries, files.len()))

@@ -575,7 +575,15 @@ impl<'a> Builder<'a> {
     /// - `msg`：画面に出す文
     /// - `kind`：問題の種類。None はエラー、`Some("gap")` はトレースの抜け、`Some("unsupported")` はまだ扱えない構文
     pub(crate) fn problem(&mut self, pos: usize, msg: String, kind: Option<&'static str>) {
-        self.model.problems.push(Problem { pos, msg, kind });
+        // まだ扱えない構文は、それ自体が知らせの種類（F-EDIT-11）
+        let code = kind.filter(|k| *k == "unsupported");
+        self.model.problems.push(Problem {
+            pos,
+            msg,
+            kind,
+            code,
+            level: None,
+        });
     }
 
     /// 図に描く要素（定義と、package の直下の部品・要求）。
@@ -1608,7 +1616,7 @@ impl<'a> Builder<'a> {
     }
 
     /// フェーズに沿った要求のトレースの抜け（導出・充足・検証）を問題として加える。暫定コアの `addTraceGaps` にならう（短い名前の無い要求の名前を 2 回並べていた所は直した）。
-    /// 最初のフェーズの要求定義は下位への展開（derive の終わりの端）が無いことを、それ以外のフェーズの要求定義は導出元・満たす要素・検証が無いことを、種類 `gap` の問題にする（モデルの `problems` を書き換える）。
+    /// 最初のフェーズの要求定義は下位への展開（derive の終わりの端）が無いことを、それ以外のフェーズの要求定義は導出元・満たす要素・検証が無いことを、種類 `gap` の問題にする（知らせの種類 `trace.derive`・`trace.satisfy`・`trace.verify` を添える。F-EDIT-11。モデルの `problems` を書き換える）。
     /// 文の頭には要求を、短い名前があれば `<'K3'> 名前`、無ければ名前だけで書く。
     ///
     /// # 引数
@@ -1635,26 +1643,45 @@ impl<'a> Builder<'a> {
                 format!("<'{}'> {}", n.short, n.name)
             };
             let pos = self.e(n.entry).start;
-            let mut gap = |msg: &str| gaps.push((pos, format!("{label}：{msg}")));
+            let mut gap =
+                |code: &'static str, msg: &str| gaps.push((pos, code, format!("{label}：{msg}")));
             let edges = &self.model.edges;
             if i == 0 {
                 if !has(edges, "derive", false, &n.key) {
-                    gap("どの下位の要求にも展開されていません（derivation）");
+                    gap(
+                        "trace.derive",
+                        "どの下位の要求にも展開されていません（derivation）",
+                    );
                 }
             } else {
                 if !has(edges, "derive", true, &n.key) {
-                    gap("導出元の上位の要求がありません（derivation）");
+                    gap(
+                        "trace.derive",
+                        "導出元の上位の要求がありません（derivation）",
+                    );
                 }
                 if !has(edges, "satisfy", false, &n.key) {
-                    gap("この要求を満たす要素がありません（satisfy）");
+                    gap(
+                        "trace.satisfy",
+                        "この要求を満たす要素がありません（satisfy）",
+                    );
                 }
                 if !has(edges, "verify", false, &n.key) {
-                    gap("この要求を確かめる検証がありません（verify）");
+                    gap(
+                        "trace.verify",
+                        "この要求を確かめる検証がありません（verify）",
+                    );
                 }
             }
         }
-        for (pos, msg) in gaps {
-            self.problem(pos, msg, Some("gap"));
+        for (pos, code, msg) in gaps {
+            self.model.problems.push(Problem {
+                pos,
+                msg,
+                kind: Some("gap"),
+                code: Some(code),
+                level: None,
+            });
         }
     }
 }

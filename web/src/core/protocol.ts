@@ -13,6 +13,9 @@ export type CoreRequest =
   | { type: "parseProject"; id: number; text: string }
   | { type: "createProject"; id: number; name: string }
   | { type: "updateProject"; id: number; text: string; plugin: string; change: PluginChange }
+  | { type: "updateLevel"; id: number; text: string; kind: string; level: string }
+  | { type: "setLevels"; id: number; levels: Record<string, string> }
+  | { type: "problemKinds"; id: number }
   | { type: "setPlugins"; id: number; plugins: PluginFiles[] }
   | { type: "describePlugin"; id: number; text: string }
   | { type: "modelSnapshot"; version: number; id: number }
@@ -39,6 +42,8 @@ export type CoreResponse =
   | ({ type: "snapshotMade"; version: number; id: number; json: string } & Failure)
   | ({ type: "pluginMessageChecked"; version: number; id: number; json: string } & Failure)
   | ({ type: "projectFilesSet"; id: number; json: string } & Failure)
+  | ({ type: "levelsSet"; id: number; json: string } & Failure)
+  | ({ type: "kindsListed"; id: number; json: string } & Failure)
   | ({ type: "problemsCounted"; version: number; id: number; json: string } & Failure);
 
 /** プロジェクトのほかのファイル 1 つ（フォルダからのパスとテキスト。ADR-0021）。 */
@@ -78,6 +83,12 @@ export interface CoreFns {
   parseProjectFile: (text: string) => string;
   createProjectFile: (name: string) => string;
   updateProjectPlugin: (text: string, id: string, change: string) => string;
+  /** 設定ファイルの知らせの重さを 1 つ書き換える（wasm の `updateProjectLevel`。F-EDIT-11。重さが空なら既定に戻す）。 */
+  updateProjectLevel: (text: string, kind: string, level: string) => string;
+  /** 知らせの重さを覚える（wasm の `setProblemLevels`。`modelith.json` の `levels` の JSON）。 */
+  setProblemLevels: (json: string) => void;
+  /** 重さを選べるモデルの知らせの種類の JSON（wasm の `problemKinds`）。 */
+  problemKinds: () => string;
   /** プラグインのファイルの JSON（`PluginFiles` の配列）を読み込む（wasm の `new RulePlugins(json)`）。 */
   loadPlugins: (json: string) => LoadedRules;
   describePlugin: (text: string) => string;
@@ -107,10 +118,10 @@ export interface CoreState {
 /**
  * 1 つの依頼を処理して返事を作る（`init` 以外。届いた順に処理するので、`edit` は直前に届いたテキストに対して計算する）。
  * Worker の中でも、テストで同じスレッドでも、同じこの関数を使う。`didChange` なら state.text と表示中のファイルのパスを、`setPlugins` なら state.plugins を、
- * `projectFiles` ならコアが覚えるプロジェクトのファイル（ADR-0021）を書き換える。
+ * `projectFiles` ならコアが覚えるプロジェクトのファイル（ADR-0021）を、`setLevels` ならコアが覚える知らせの重さ（F-EDIT-11）を書き換える。
  *
  * @param state コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）
- * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`・`projectFiles`・`projectProblems`）
+ * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`updateLevel`・`setLevels`・`problemKinds`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`・`projectFiles`・`projectProblems`）
  * @param fns コアの中身（wasm の関数。テストでは差し替える）
  * @returns 依頼への返事（`analyzed`・`edited` は依頼と同じ版、ほかは同じ id）。fns が例外を投げればそのまま投げる
  * @example
@@ -143,6 +154,13 @@ export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init
       return { type: "projectCreated", id: req.id, json: fns.createProjectFile(req.name) };
     case "updateProject":
       return { type: "projectUpdated", id: req.id, json: fns.updateProjectPlugin(req.text, req.plugin, JSON.stringify(req.change)) };
+    case "updateLevel":
+      return { type: "projectUpdated", id: req.id, json: fns.updateProjectLevel(req.text, req.kind, req.level) };
+    case "setLevels":
+      fns.setProblemLevels(JSON.stringify(req.levels));
+      return { type: "levelsSet", id: req.id, json: "{}" };
+    case "problemKinds":
+      return { type: "kindsListed", id: req.id, json: fns.problemKinds() };
     case "setPlugins":
       return { type: "pluginsSet", id: req.id, json: setPlugins(state, req.plugins, fns) };
     case "describePlugin":
@@ -222,7 +240,12 @@ function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: s
     case "createProject":
       return { type: "projectCreated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定ファイルを作成できませんでした（${message}）` }) };
     case "updateProject":
+    case "updateLevel":
       return { type: "projectUpdated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定を変更できませんでした（${message}）` }) };
+    case "setLevels":
+      return { type: "levelsSet", id: req.id, json: JSON.stringify({ error: message }) };
+    case "problemKinds":
+      return { type: "kindsListed", id: req.id, json: "[]" };
     case "setPlugins":
       return { type: "pluginsSet", id: req.id, json: JSON.stringify({ error: `プラグインを読み込めませんでした（${message}）` }) };
     case "describePlugin":

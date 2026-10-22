@@ -53,6 +53,8 @@
           <div class="phead">線の形</div>
           <button id="menuEdgeOrtho" aria-pressed="true" title="図の線を、直角に折れる線で描く">直角</button>
           <button id="menuEdgeCurve" aria-pressed="false" title="図の線を、曲線で描く">曲線</button>
+          <div class="sep"></div>
+          <button id="menuLevels" title="トレースの抜け・まだ扱えない書き方・チェックルールの結果を、エラー・警告・情報・出さないのどれで知らせるかを選ぶ">知らせの重さ…</button>
         </div>
       </details>
       <details class="menu" id="diagramMenu">
@@ -187,6 +189,14 @@
     <div class="ddetail" id="dialogDetail" hidden></div>
     <div class="dpick" id="dialogPick" hidden></div>
     <div class="row" id="dialogButtons"></div>
+  </div>
+</div>
+<div class="modal" id="levelsDialog" hidden role="dialog" aria-modal="true" aria-labelledby="levelsTitle" aria-describedby="levelsText">
+  <div class="box">
+    <b id="levelsTitle">知らせの重さ</b>
+    <p id="levelsText"></p>
+    <div class="lvlist" id="levelsList"></div>
+    <div class="row"><button type="button" id="levelsClose" class="primary">閉じる</button></div>
   </div>
 </div>
 <div class="modal" id="exportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="exportTitle" aria-describedby="exportText">

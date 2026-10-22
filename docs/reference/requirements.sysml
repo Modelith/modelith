@@ -122,9 +122,10 @@ package ModelithRequirements {
                    「編集」ボタンで編集できるようにし、もう一度押すと読み取り専用に戻す。語をダブルタップすると、その語を選び、意味を示す（F-EDIT-9） */
         }
         requirement def <'F-EDIT-11'> ProblemLevelReq {
-            doc /* 保留：0.2.0 以降。問題一覧と図の印に出す知らせ（トレースの抜けの種類ごと・まだ扱えない構文・チェックルールの結果など）の重さを、
-                   利用者が種類ごとに「エラー」「警告」「情報」「出さない」から選べる（lint の規則の重さを変えるのと同じ）。構文エラーは出さないにできない。
-                   設定はプロジェクト（modelith.json）とこのブラウザの両方に置け、どちらが効くかは F-PROJ-2 の決まりに従う */
+            doc /* 問題一覧と図の印に出す知らせ（トレースの抜けの種類ごと（導出・満たす要素・検証）・まだ扱えない構文・チェックルールの結果のルールごと）の重さを、
+                   利用者が種類ごとに「エラー」「警告」「情報」「出さない」から選べる（lint の規則の重さを変えるのと同じ）。構文エラーと見つからない型は変えられない。
+                   選んだ重さは結果に効くので、このプロジェクトの設定（modelith.json の levels）にだけ置き（F-PROJ-2）、画面と CLI の modelith check の両方が従う。
+                   プロジェクトの無いフォルダやファイルでは既定の重さ（トレースの抜けは警告、まだ扱えない構文は情報、チェックルールはルールに書いた重さ）を使う */
         }
 
         // ---- ビュー ------------------------------------------------
@@ -592,7 +593,9 @@ package ModelithRequirements {
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
         satisfy ProblemCopyReq by TextEditor;
+        satisfy ProblemLevelReq by Core;
         satisfy ProblemLevelReq by AppShell;
+        satisfy ProblemLevelReq by Cli;
         satisfy ParseParityReq by Core;
         satisfy BuiltInViewsReq by DiagramUI;
         satisfy ViewTabsReq by DiagramUI;
@@ -1206,6 +1209,16 @@ package ModelithRequirements {
                    web/e2e/problem-copy.spec.ts：行の右クリックでその行を、行を選んで Ctrl＋C でその行（ほかのファイルの行はそのファイル名）を、「すべてコピー」で表示中のファイルとほかのファイルの問題をコピーすること */
             objective {
                 verify ProblemCopyReq;
+            }
+        }
+        verification def ProblemLevelTest {
+            doc /* crates/modelith-core/src/levels：選べる種類と既定の重さ、設定に書ける種類の名前、出さないにした問題とルールの結果を除き、選んだ重さを付ける・置き換えること、トレースの抜けの種類。
+                   crates/modelith-core/src/project_file：levels の読み取り（4 つの重さ・それ以外は誤り・{ } でないと誤り・不明な種類は注意して残す）と書き換え（既定に戻すと項目を消す）。
+                   crates/modelith-wasm：覚えた重さを解析とほかのファイルの問題に当てること、読めない重さは既定に戻すこと、重さの書き換えと種類の一覧。crates/modelith-cli/tests/check.rs：modelith check がプロジェクトの重さに従うこと。
+                   web/src/core/client.test.ts：重さを覚えさせて解析し直すこと・書き換え・種類の一覧・壊れた返事。web/src/app/notice-levels.test.ts：問題の重さ・画面の言葉・選ぶ画面の行。web/src/app/project-problems.test.ts：重さで並べ、印と件数を決めること。
+                   web/e2e/notice-levels.spec.ts：プロジェクトで選んだ重さで問題一覧の印と色を変え、出さないにした種類を出さないこと、「知らせの重さ…」で選んだ重さを modelith.json に書くこと、プロジェクトでなければ選べないことを示すこと */
+            objective {
+                verify ProblemLevelReq;
             }
         }
         verification def ProjectProblemsTest {

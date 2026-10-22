@@ -489,7 +489,7 @@ function syncProjectFiles(): void {
 /**
  * 開いているフォルダのプロジェクトの設定ファイル（modelith.json）が変わったら、コアに読み取ってもらう（ADR-0019、F-PROJ-1）。
  * ワークスペースの変更のたびに呼ぶ。読み取れたらエクスプローラーを描き直し、問題があればトーストで知らせる（黙って捨てない）。
- * 読み取った設定で、プロジェクトのプラグインを読み込み直す（ADR-0018）。プロジェクトでなくなったら、プラグインを外す。
+ * 読み取った設定で、プロジェクトのプラグインを読み込み直す（ADR-0018）。プロジェクトでなくなったら、プラグインを外す。知らせの重さ（F-EDIT-11）もコアに渡す。
  * 同じフォルダの同じテキストなら、読み直さない。
  */
 function syncProject(): void {
@@ -500,6 +500,8 @@ function syncProject(): void {
   projectKey = key;
   project = null;
   if (key === null || text === null) {
+    // プロジェクトでなければ、知らせは既定の重さ（F-EDIT-11）
+    void coreClient().setLevels({});
     void reloadPlugins();
     return;
   }
@@ -509,6 +511,8 @@ function syncProject(): void {
       // 読み取る間に、別のフォルダを開いた・設定ファイルが変わった
       if (projectKey !== key) return;
       project = result;
+      // プロジェクトで選んだ知らせの重さで解析し直す（F-EDIT-11）
+      void coreClient().setLevels(result.project?.levels ?? {});
       const notice = projectNotice(result.problems);
       if (notice) toast(notice);
       renderFiles();

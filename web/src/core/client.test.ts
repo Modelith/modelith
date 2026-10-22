@@ -5,8 +5,8 @@ import { CoreClient, CORE_STOPPED, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text";
 import {
-  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, projectProblems, removeProjectFile, RulePlugins, setFocusFile,
-  setProjectFile, updateProjectPlugin,
+  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, problemKinds, projectProblems, removeProjectFile, RulePlugins, setFocusFile,
+  setProblemLevels, setProjectFile, updateProjectLevel, updateProjectPlugin,
 } from "./wasm/modelith_core.js";
 import type { PluginFiles, RuleFinding } from "./rust";
 import type { Model, ParseResult } from "./types";
@@ -14,7 +14,7 @@ import type { Model, ParseResult } from "./types";
 /** 返事をためておき、deliver() で届ける偽の Worker。 */
 const wasm: CoreFns = {
   analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json), modelSnapshot, checkPluginMessage,
-  setProjectFile, removeProjectFile, clearProjectFiles, setFocusFile, projectProblems,
+  setProjectFile, removeProjectFile, clearProjectFiles, setFocusFile, projectProblems, updateProjectLevel, setProblemLevels, problemKinds,
 };
 /** コアがどの依頼にも壊れた JSON を返す（Q-5 の異常系）。 */
 const broken: CoreFns = {
@@ -23,6 +23,9 @@ const broken: CoreFns = {
   parseProjectFile: () => "{",
   createProjectFile: () => "{",
   updateProjectPlugin: () => "{",
+  updateProjectLevel: () => "{",
+  setProblemLevels: () => {},
+  problemKinds: () => "{",
   describePlugin: () => "{",
   loadPlugins: () => ({ summary: () => "{", analyze: () => "{", projectProblems: () => "{", free: () => {} }),
   modelSnapshot: () => "{",
@@ -740,5 +743,64 @@ describe("CoreClient: ほかのファイルの問題（ADR-0021 §6、F-FILE-16�
     deliver();
     // Assert
     expect(await counted).toBeNull();
+  });
+});
+
+describe("CoreClient: 知らせの重さ（F-EDIT-11）", () => {
+  it("覚えさせた重さで解析し直し、選んだ種類の問題に重さを付ける", async () => {
+    // Arrange（2 つ目のフェーズの要求に、満たす要素と検証が無い）
+    const { c, got, deliver } = client();
+    c.sync(
+      "package P { enum def Stage { enum concept; enum detail; } metadata def Phase { attribute stage : Stage; } " +
+        "requirement def Need { @Phase { stage = concept; } } requirement def FlowReq { @Phase { stage = detail; } } " +
+        "#derivation dependency from Need to FlowReq; }",
+    );
+    deliver();
+    // Act
+    const pending = c.setLevels({ "trace.verify": "error", "trace.satisfy": "off" });
+    deliver();
+    await pending;
+    // Assert（テキストは同じでも解析し直し、検証の抜けはエラーに、満たす要素の抜けは出さない）
+    const gaps = got.at(-1)?.M.problems.filter((p) => p.kind === "gap") ?? [];
+    expect(got.length).toBe(2);
+    expect(gaps.filter((p) => p.msg.includes("verify")).map((p) => p.level)).toEqual(["error"]);
+    expect(gaps.filter((p) => p.msg.includes("satisfy"))).toEqual([]);
+  });
+
+  it("設定ファイルの重さを書き換え、既定に戻すと項目を消す", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const set = c.updateProjectLevel("{}", "unsupported", "off");
+    const reset = c.updateProjectLevel('{"levels":{"unsupported":"off"}}', "unsupported", null);
+    deliver();
+    // Assert
+    expect(await set).toEqual({ text: '{\n  "plugins": {},\n  "levels": {\n    "unsupported": "off"\n  }\n}\n' });
+    expect(await reset).toEqual({ text: '{\n  "plugins": {}\n}\n' });
+  });
+
+  it("重さを選べるモデルの知らせの種類を、既定の重さと一緒に返す", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const kinds = c.problemKinds();
+    deliver();
+    // Assert
+    expect((await kinds).map((k) => [k.code, k.default])).toEqual([
+      ["trace.derive", "warning"],
+      ["trace.satisfy", "warning"],
+      ["trace.verify", "warning"],
+      ["unsupported", "info"],
+    ]);
+  });
+
+  it("コアの返事が壊れていれば、種類は空にする（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client(broken);
+    // Act
+    const kinds = c.problemKinds();
+    deliver();
+    // Assert
+    expect(await kinds).toEqual([]);
   });
 });

@@ -114,19 +114,19 @@ test.describe("キーボード", () => {
     expect(seen).toEqual(["btnNew", "btnOpen", "btnOpenFolder", "btnOpen"]);
   });
 
-  test("Q-9: 表示のメニューで上の矢印キーを押すと、線の形の「曲線」「直角」へ下から順に移り、小見出しは飛ばす", async ({ page }) => {
+  test("Q-9: 表示のメニューで上の矢印キーを押すと、「知らせの重さ…」、線の形の「曲線」「直角」へ下から順に移り、区切りと小見出しは飛ばす", async ({ page }) => {
     // Arrange
     await openApp(page);
     await page.locator("#viewMenu > summary").focus();
     await page.keyboard.press("Enter");
     // Act
     const seen: (string | undefined)[] = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       await page.keyboard.press("ArrowUp");
       seen.push(await page.evaluate(() => document.activeElement?.id));
     }
     // Assert
-    expect(seen).toEqual(["menuEdgeCurve", "menuEdgeOrtho", "menuMini"]);
+    expect(seen).toEqual(["menuLevels", "menuEdgeCurve", "menuEdgeOrtho", "menuMini"]);
   });
 
   test("Q-8・Q-9: 矢印キーで移ったメニューも、Esc で閉じて見出しへ入力が戻る", async ({ page }) => {

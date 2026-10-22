@@ -396,3 +396,10 @@ main[data-nodoc] .toast{z-index:30}
 .problems .phead{display:flex;align-items:center;gap:8px;padding:3px 8px 3px 12px;border-bottom:1px solid var(--rule);background:var(--panel2);color:var(--ink2);position:sticky;top:0}
 .problems .phead span{flex:1}
 .problems .phead button.pcopy{display:inline-block;width:auto;border:1px solid var(--rule);border-radius:6px;padding:2px 8px;color:var(--ink);background:var(--panel)}
+.problems button.lv-error{color:var(--err)}
+.problems button.lv-warning{color:var(--k-req)}
+.problems button.lv-info{color:var(--ink2)}
+.modal .lvlist{display:flex;flex-direction:column;gap:6px;overflow:auto}
+.modal .lvrow{display:flex;align-items:center;gap:10px;font-size:13px}
+.modal .lvrow span{flex:1;min-width:0}
+.modal .lvrow select{font-size:13px;color:var(--ink);background:var(--panel2);border:1px solid var(--rule);border-radius:6px;padding:4px 6px}

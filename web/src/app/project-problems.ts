@@ -2,6 +2,7 @@
 // コアが数えたファイルごとの問題を受け取り、ここでは重さの分け方・件数・行の文だけを決める（描くのは sync.ts・files.ts）。
 
 import { lineOf, type FileReport, type Problem, type RuleFinding } from "../core";
+import { LEVEL_MARK, problemLevel } from "./notice-levels";
 import { findingText, SEVERITY_MARK } from "./plugins";
 
 /** ファイルのエラーと警告の件数。 */
@@ -31,12 +32,9 @@ export interface FileProblems {
   rows: FileProblemRow[];
 }
 
-/** モデルの問題の印（エラー・トレースの抜け・まだ扱えない構文）。表示中のファイルの行と同じ。 */
-const PROBLEM_MARK = { gap: "△", unsupported: "ℹ" } as const;
-
 /**
- * モデルの問題とチェックルールの結果から、エラーと警告の件数を数える。エラーは構文エラー・見つからない型など（種類の無い問題）とルールのエラー、
- * 警告はトレースの抜けとルールの警告。まだ扱えない構文と、情報・ヒントのルールは数えない。
+ * モデルの問題とチェックルールの結果から、エラーと警告の件数を数える。問題は重さ（プロジェクトで選んだ重さ、無ければ種類の既定。F-EDIT-11）で、
+ * ルールの結果は重さで分ける。情報とヒントは数えない。
  *
  * @param problems モデルの問題
  * @param findings チェックルールの結果
@@ -44,15 +42,16 @@ const PROBLEM_MARK = { gap: "△", unsupported: "ℹ" } as const;
  * @example
  * fileStatus([{ pos: 0, msg: "…" }, { pos: 9, msg: "…", kind: "gap" }], [{ severity: "error", … }]) // → { errors: 2, warnings: 1 }
  * fileStatus([{ pos: 0, msg: "…", kind: "unsupported" }], [])                                     // → { errors: 0, warnings: 0 }
+ * fileStatus([{ pos: 0, msg: "…", kind: "gap", level: "error" }], [])                              // → { errors: 1, warnings: 0 }（選んだ重さ）
  */
 export function fileStatus(problems: readonly Problem[], findings: readonly RuleFinding[]): FileStatus {
-  const errors = problems.filter((p) => p.kind === undefined).length + findings.filter((f) => f.severity === "error").length;
-  const warnings = problems.filter((p) => p.kind === "gap").length + findings.filter((f) => f.severity === "warning").length;
+  const errors = problems.filter((p) => problemLevel(p) === "error").length + findings.filter((f) => f.severity === "error").length;
+  const warnings = problems.filter((p) => problemLevel(p) === "warning").length + findings.filter((f) => f.severity === "warning").length;
   return { errors, warnings };
 }
 
 /**
- * コアが数えたほかのファイル 1 つの問題を、問題一覧の行にする。表示中のファイルと同じく、エラー → ルールの結果 → 抜けとまだ扱えない構文の順に並べる。
+ * コアが数えたほかのファイル 1 つの問題を、問題一覧の行にする。表示中のファイルと同じく、エラーの重さの問題 → ルールの結果 → ほかの問題の順に並べる。
  *
  * @param report コアが数えたファイルの問題
  * @param text そのファイルのテキスト（行を数える。無ければ 1 行目とする）
@@ -64,9 +63,10 @@ export function fileStatus(problems: readonly Problem[], findings: readonly Rule
  */
 export function fileProblems(report: FileReport, text: string | undefined, names: ReadonlyMap<string, string>): FileProblems {
   const line = (pos: number): number => (text === undefined ? 1 : lineOf(text, pos));
-  const model = (p: Problem): FileProblemRow => ({ pos: p.pos, line: line(p.pos), cls: p.kind ?? "", mark: p.kind ? PROBLEM_MARK[p.kind] : "⚠", text: p.msg });
+  const model = (p: Problem): FileProblemRow => ({ pos: p.pos, line: line(p.pos), cls: problemClass(p), mark: LEVEL_MARK[problemLevel(p)], text: p.msg });
   const rule = (f: RuleFinding): FileProblemRow => ({ pos: f.pos, line: line(f.pos), cls: `rule ${f.severity}`, mark: SEVERITY_MARK[f.severity], text: findingText(f, names) });
-  const rows = [...report.problems.filter((p) => !p.kind).map(model), ...report.findings.map(rule), ...report.problems.filter((p) => p.kind).map(model)];
+  const isError = (p: Problem): boolean => problemLevel(p) === "error";
+  const rows = [...report.problems.filter(isError).map(model), ...report.findings.map(rule), ...report.problems.filter((p) => !isError(p)).map(model)];
   return { path: report.path, status: fileStatus(report.problems, report.findings), rows };
 }
 
@@ -118,4 +118,18 @@ export function statusBadge(s: FileStatus): string {
 export function statusClass(s: FileStatus | undefined): string {
   if (!s) return "";
   return s.errors ? " err" : s.warnings ? " warn" : "";
+}
+
+/**
+ * 問題一覧の、モデルの問題の行に付ける見た目の名前（種類と重さ。色は重さで決める。F-EDIT-11）。
+ *
+ * @param p モデルの問題
+ * @returns 行の class
+ * @example
+ * problemClass({ pos: 0, msg: "…" })                              // → "lv-error"
+ * problemClass({ pos: 0, msg: "…", kind: "gap" })                 // → "gap lv-warning"
+ * problemClass({ pos: 0, msg: "…", kind: "gap", level: "error" }) // → "gap lv-error"
+ */
+export function problemClass(p: Problem): string {
+  return `${p.kind ? `${p.kind} ` : ""}lv-${problemLevel(p)}`;
 }

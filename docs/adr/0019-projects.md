@@ -42,12 +42,15 @@ Modelith では、SysML v2 の構文を知らない人にも分かる形（ADR-0
   "name": "給水システム",
   "plugins": {
     "jp.modelith.fmea": { "version": "0.2.0", "enabled": true, "settings": { "rating": "rpn" } }
-  }
+  },
+  "levels": { "trace.verify": "error", "unsupported": "off" }
 }
 ```
 
 - `name`：画面に出すプロジェクト名
 - `plugins`：プロジェクトが使うプラグイン。版・有効かどうか・プラグインごとの設定（中身はプラグインが決め、ホストはそのまま渡す）
+- `levels`：知らせの重さ（F-EDIT-11）。知らせの種類（`trace.derive`・`trace.satisfy`・`trace.verify`・`unsupported`、チェックルールは `プラグインの ID/ルールの ID`）ごとに、
+  `error`・`warning`・`info`・`off` のどれか。書いていない種類は既定の重さ。結果に効くので、このプロジェクトの設定だけに置く（§3）
 - 項目は互換を保って足していく。未知の項目は消さずに残し、問題一覧で知らせる（F-EDIT-8 と同じ考え方）
 - 形は Rust の型として `modelith-core` に置き、JSON Schema を生成する。プラグインの設定の中身は plugin-sdk の契約の外（プラグインごとの自由な JSON）とする
 

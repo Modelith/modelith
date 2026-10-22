@@ -2,8 +2,8 @@
 
 /// <reference lib="webworker" />
 import initWasm, {
-  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, projectProblems, removeProjectFile, RulePlugins,
-  setFocusFile, setProjectFile, updateProjectPlugin,
+  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, problemKinds, projectProblems, removeProjectFile, RulePlugins,
+  setFocusFile, setProblemLevels, setProjectFile, updateProjectLevel, updateProjectPlugin,
 } from "./wasm/modelith_core.js";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 
@@ -16,6 +16,9 @@ const fns: CoreFns = {
   parseProjectFile,
   createProjectFile,
   updateProjectPlugin,
+  updateProjectLevel,
+  setProblemLevels,
+  problemKinds,
   describePlugin,
   loadPlugins: (json) => new RulePlugins(json),
   modelSnapshot,
