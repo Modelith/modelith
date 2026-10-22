@@ -292,7 +292,8 @@ function nodeHtml(n: ModelNode): string {
     delBtn("del", "削除") +
     `</div>` +
     docHtml(n) +
-    attrsHtml(n) +
+    // トレースの抜けを案内しているときは、案内と図が狭い画面でも見えるよう、属性の欄を出さない
+    (guide ? "" : attrsHtml(n)) +
     annotationsHtml(e, S.P.entries)
   );
 }
