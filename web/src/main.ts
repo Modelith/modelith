@@ -41,14 +41,16 @@ const EDGE_KEY = "modelith-edgestyle";
 installUnexpectedErrorHandlers(window, toast, (detail) => console.error("予期しない問題:", detail));
 
 /**
- * 線の描き方を切り替え、ボタンの文言を合わせ、選んだ描き方を覚える（次に開いたときも使う）。図の描き直しはしない。
+ * 線の描き方を切り替え、図のツールバーのボタンの文言と、表示のメニューの「線の形」の ✓ を合わせ、
+ * 選んだ描き方を覚える（次に開いたときも使う）。図の描き直しはしない。
  *
  * @param s 線の描き方（"ortho" は直角、"curve" は曲線）
  */
 function setEdgeStyle(s: "ortho" | "curve"): void {
   S.edgeStyle = s;
   $("#btnEdge").textContent = s === "curve" ? "線：曲線" : "線：直角";
-  $("#menuEdge").setAttribute("aria-pressed", String(s === "curve"));
+  $("#menuEdgeOrtho").setAttribute("aria-pressed", String(s === "ortho"));
+  $("#menuEdgeCurve").setAttribute("aria-pressed", String(s === "curve"));
   store.set(EDGE_KEY, s);
 }
 
@@ -79,9 +81,18 @@ function initMenus(): void {
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#licenseLink").href = `https://github.com/modelith/modelith/blob/${__APP_COMMIT__}/README.md#license`;
 }
 
-/** 線の描き方を、直角と曲線で切り替えて描き直す（図のツールバーの「線：…」と、図のメニューの「線を曲線で描く」）。 */
+/** 線の描き方を、直角と曲線で切り替えて描き直す（図のツールバーの「線：…」）。 */
 function toggleEdgeStyle(): void {
-  setEdgeStyle(S.edgeStyle === "curve" ? "ortho" : "curve");
+  chooseEdgeStyle(S.edgeStyle === "curve" ? "ortho" : "curve");
+}
+
+/**
+ * 線の描き方を選んで描き直す（表示のメニューの「線の形」の「直角」「曲線」）。
+ *
+ * @param s 線の描き方（"ortho" は直角、"curve" は曲線）
+ */
+function chooseEdgeStyle(s: "ortho" | "curve"): void {
+  setEdgeStyle(s);
   render();
 }
 
@@ -108,12 +119,14 @@ function selectAll(): void {
 }
 
 /**
- * ツールバーのボタン（ビューとして保存・線の描き方・並べ直し・ミニマップ）と、同じ操作のメニューの項目（編集・表示・図）と、
+ * ツールバーのボタン（ビューとして保存・線の描き方・並べ直し・ミニマップ）と、同じ操作のメニューの項目（編集・表示・図。線の形は表示）と、
  * キーボードの近道（Ctrl/⌘+A ですべて選ぶ、Ctrl/⌘+Z で元に戻す、Ctrl/⌘+Shift+Z・Ctrl/⌘+Y でやり直す）をつなぐ。
  */
 function initToolbar(): void {
   $("#btnSaveView").onclick = $("#menuSaveView").onclick = () => void saveAsView();
-  $("#btnEdge").onclick = $("#menuEdge").onclick = toggleEdgeStyle;
+  $("#btnEdge").onclick = toggleEdgeStyle;
+  $("#menuEdgeOrtho").onclick = () => chooseEdgeStyle("ortho");
+  $("#menuEdgeCurve").onclick = () => chooseEdgeStyle("curve");
   $("#btnLayout").onclick = $("#menuLayout").onclick = relayoutView;
   $("#menuSelectAll").onclick = selectAll;
   $("#miniHide").onclick = (ev) => {
