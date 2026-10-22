@@ -168,7 +168,8 @@ export function compartment(n: ModelNode): Line[] {
   const push = (t: string, cls: Line["cls"], max = 2): void => {
     for (const x of wrap(t, W - 18, max)) L.push({ t: x, cls });
   };
-  if (e.doc && ["req", "concern", "ver", "con"].includes(n.fam)) push(e.doc, "doc", 3);
+  // 説明（8.2.3.4 の documentation-compartment）。要求・関心事・検証・制約は 3 行、ほかは 2 行まで
+  if (e.doc) push(e.doc, "doc", ["req", "concern", "ver", "con"].includes(n.fam) ? 3 : 2);
   // 検証・解析の目的（8.2.3.22 の objective-compartment）
   if (n.fam === "ver") {
     if (e.objective) push(`objective: ${e.objective}`, "doc", 2);
@@ -235,8 +236,9 @@ export function noteLines(body: string): Line[] {
  * @example
  * noteTop(名前の無いメモ) // → 10
  * noteTop(名前 c のメモ)  // → 28
+ * noteTop(別の言語での表し方) // → 28（«rep» の見出しを書く）
  */
-export const noteTop = (n: ModelNode): number => (n.name ? 28 : 10);
+export const noteTop = (n: ModelNode): number => (n.name || n.kind === "rep" ? 28 : 10);
 
 const linesCache = new WeakMap<ModelNode, Line[]>();
 /**

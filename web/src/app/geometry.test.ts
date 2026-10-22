@@ -380,3 +380,14 @@ describe("compartment（要求図の区画：前提・満たすべき制約・�
     expect([assertWord({ text: "x", via: "assert" }), assertWord({ text: "x", via: "assert", neg: true })]).toEqual(["assert", "assert not"]);
   });
 });
+
+describe("compartment（説明の区画、8.2.3.4 の documentation-compartment）", () => {
+  it("部品定義などにも説明（doc）を 2 行まで書く", () => {
+    // Arrange
+    const n = build(parse("package P { part def A { doc /* お湯を沸かす道具 */ attribute m : Real; } }")).nodes.find((x) => x.name === "A");
+    // Act
+    const got = n ? compartment(n).map((l) => [l.t, l.cls]) : [];
+    // Assert
+    expect(got).toEqual([["お湯を沸かす道具", "doc"], ["m : Real", "attr"]]);
+  });
+});

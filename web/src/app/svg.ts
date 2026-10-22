@@ -449,7 +449,9 @@ function noteMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): string
   let s = `<g class="node note${opts.pulse?.has(n.key) ? " pulse" : ""}" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})"${opts.dim?.has(n.key) ? ' opacity=".42"' : ""}>`;
   s += `<path class="body" d="M0,0 H${b.w - f} L${b.w},${f} V${b.h} H0 Z" fill="${C("panel")}" stroke="${stroke}" stroke-width="${isSel ? 2.6 : 1.1}"/>`;
   s += `<path d="M${b.w - f},0 V${f} H${b.w}" fill="none" stroke="${stroke}" stroke-width="1.1"/>`;
-  if (n.name) s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«comment» <tspan font-weight="700" fill="${C("ink")}">${esc(n.name)}</tspan></text>`;
+  // 別の言語での表し方（8.2.3.4 の textual-representation-node）は «rep» と名前・言語を見出しに書く
+  if (n.kind === "rep") s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«rep»${n.name ? ` <tspan font-weight="700" fill="${C("ink")}">${esc(n.name)}</tspan>` : ""} language "${esc(n.entry.type)}"</text>`;
+  else if (n.name) s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«comment» <tspan font-weight="700" fill="${C("ink")}">${esc(n.name)}</tspan></text>`;
   linesOf(n).forEach((ln, k) => {
     s += `<text x="12" y="${top + 11 + k * LH}" font-size="11" fill="${C("ink")}" font-family="${F}">${esc(ln.t)}</text>`;
   });

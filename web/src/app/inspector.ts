@@ -256,6 +256,14 @@ function nodeHtml(n: ModelNode): string {
       `</div>`
     );
   }
+  if (n.note && n.kind === "rep") {
+    // 別の言語での表し方（8.2.3.4 の textual-representation）。持ち主の要素の中に書くので、ここでは消さない
+    return (
+      `<div class="what"><small>別の言語での表し方（rep） テキスト ${line} 行目</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
+      `<button data-act="goto">テキストで見る</button>` +
+      `</div><div class="notes"><div class="note"><small>言語</small><p>${esc(e.type)}</p></div><div class="note"><small>本文</small><pre>${esc(e.body ?? "")}</pre></div></div>`
+    );
+  }
   if (n.note) {
     // メモ（8.2.3.4 の comment）。注釈する要素と本文を見せ、削除するとコメントごと消える
     const about = (e.about ?? []).map((a) => a.name || "（名前なし）").join("、");

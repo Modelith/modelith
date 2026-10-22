@@ -123,6 +123,9 @@ fn element_kinds_are_the_kinds_drawn_as_elements() {
         "requirement",
         "verification",
         "analysis",
+        "action",
+        "item",
+        "state",
     ];
     // Act
     let kinds = element_kinds();

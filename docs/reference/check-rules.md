@@ -123,6 +123,9 @@ rules:
 | `requirement` | 要求（package の直下にあるものだけ） |
 | `verification` | 検証（package の直下にあるものだけ） |
 | `analysis` | 解析（package の直下にあるものだけ） |
+| `action` | アクション（package の直下にあるものだけ） |
+| `item` | アイテム（package の直下にあるものだけ） |
+| `state` | 状態（package の直下にあるものだけ） |
 | `concern def` | 関心事 |
 | `verification def` | 検証 |
 | `occurrence def` | シナリオ |

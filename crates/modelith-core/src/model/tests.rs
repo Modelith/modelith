@@ -1968,3 +1968,24 @@ fn transitions_outside_state_definitions_are_not_drawn() {
     assert!(m.state_machines.is_empty());
     assert!(m.problems.is_empty());
 }
+
+#[test]
+fn package_level_action_item_and_state_usages_are_drawn() {
+    // Arrange（同値分割：package の直下・定義の中。GeneralView に描く使用、0.2.0）
+    let text =
+        "package P { action def AD; action a : AD; item i; state s; part def H { action inner; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert!(
+        keys.contains(&"a") && keys.contains(&"i") && keys.contains(&"s"),
+        "{keys:?}"
+    );
+    assert!(!keys.contains(&"inner"), "{keys:?}");
+    assert!(
+        edge_ids(&m).contains(&"defined|a|AD|#1"),
+        "{:?}",
+        edge_ids(&m)
+    );
+}
