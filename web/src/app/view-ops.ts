@@ -1,7 +1,7 @@
 // 画面で図を作る操作（ADR-0005、F-VIEW-8）。利用者には「新しい図を作成する・図に入れる・図から外す」と見せ、
 // テキストには標準の view と expose を書く（ADR-0014）。
 
-import type { Entry, ModelNode, ViewKind } from "../core";
+import { inOpenFile, type Entry, type ModelNode, type ViewKind } from "../core";
 import { type AskOption, ask } from "./dialog";
 import { perform } from "./intent";
 import { diagramName } from "./labels";
@@ -73,7 +73,7 @@ function suggestName(base: string): string {
  * 作成した図のタブを開いてトーストで知らせる。ダイアログでやめた・コアが断ったときは何も変えない。package が無ければトーストで断る。
  */
 export async function createDiagram(): Promise<void> {
-  const pkg = S.P.entries.find((e) => e.kind === "package");
+  const pkg = S.P.entries.find((e) => e.kind === "package" && inOpenFile(e));
   if (!pkg) {
     toast("図を置くパッケージがありません。先に要素を追加してパッケージを作ってください");
     return;

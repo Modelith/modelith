@@ -11,6 +11,8 @@ mod states;
 mod tests;
 pub mod text;
 
+use std::cell::Cell;
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::{self, Model};
@@ -214,9 +216,57 @@ pub type Refusal = String;
 ///   → Err("…Gone…")                                    // 要素が無い
 /// ```
 pub fn edit(text: &str, intent: &Intent) -> Result<Outcome, Refusal> {
-    let doc = Doc::new(text);
-    let change = ops::run(&doc, intent)?;
-    Ok(change.outcome(text))
+    edit_in(text, Vec::new(), intent).map_err(|r| r.reason)
+}
+
+/// ほかのファイルの要素を書き換えようとしたときの断り（ADR-0021 §5。画面はファイルの名前を添えて、そのファイルを開く操作を示す）。
+pub const IN_OTHER_FILE: &str =
+    "この要素はほかのファイルにあります。そのファイルを開いて編集してください";
+
+/// 操作できなかった理由と、書き換えようとした要素のあるファイル。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Refused {
+    /// 画面にそのまま出す文（ADR-0014）。
+    pub reason: String,
+    /// ほかのファイルの要素を書き換えようとしたなら、そのファイルの番号（`merge` に渡した順で 1 から）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<usize>,
+}
+
+/// プロジェクトのほかのファイルとつないだモデルで、表示中のファイルに意図を当てる（ADR-0021 §5）。
+/// ほかのファイルの要素を参照する操作（例：ほかのファイルの要求を満たす関係を足す）はできるが、
+/// ほかのファイルのテキストに触れる操作（名前の変更・削除など）は断り、そのファイルの番号を返す。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト（全体）
+/// - `others`：ほかのファイルの解析結果（`merge::Files::others` の順）
+/// - `intent`：図の操作の意図
+///
+/// # 戻り値
+///
+/// 表示中のファイルの編集。操作できなければ理由（ほかのファイルの要素なら、そのファイルの番号も）。
+///
+/// # 例
+///
+/// ```text
+/// // others = [parse_file("package Fleet { part def Car; }")]
+/// edit_in("package App { part c : Fleet::Car; }", others, Rename { key: "c", name: "d" }) → Ok(…)
+/// edit_in("package App { part c : Fleet::Car; }", others, Rename { key: "Car", name: "Bus" })
+///   → Err(Refused { reason: IN_OTHER_FILE, file: Some(1) })
+/// ```
+pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<Outcome, Refused> {
+    let doc = Doc::with(text, project::merge::join(text, others));
+    let result = ops::run(&doc, intent);
+    if let Some(file) = doc.touched.get() {
+        return Err(Refused {
+            reason: IN_OTHER_FILE.to_owned(),
+            file: Some(file),
+        });
+    }
+    result
+        .map(|change| change.outcome(text))
+        .map_err(|reason| Refused { reason, file: None })
 }
 
 /// 操作の対象のテキストと、その解析結果・モデル。
@@ -225,6 +275,8 @@ pub(crate) struct Doc<'a> {
     pub p: ParseResult,
     pub m: Model,
     utf16: Utf16,
+    /// ほかのファイルの位置に触れたら、そのファイルの番号（ADR-0021。その操作は断る）。
+    touched: Cell<Option<usize>>,
 }
 
 impl<'a> Doc<'a> {
@@ -244,18 +296,39 @@ impl<'a> Doc<'a> {
     /// Doc::new("package P { part def A; }") → m.nodes のキーは ["A"]
     /// Doc::new("")                          → m.nodes は空
     /// ```
+    #[cfg(test)]
     pub fn new(text: &'a str) -> Self {
-        let p = project::project(text, &crate::syntax::parse(text));
+        Self::with(text, project::project(text, &crate::syntax::parse(text)))
+    }
+
+    /// 解析結果（ほかのファイルをつないだものでもよい）からモデルを作って、操作の対象にする。
+    ///
+    /// # 引数
+    ///
+    /// - `text`：表示中のファイルの今のテキスト（全体）
+    /// - `p`：`text` の解析結果か、それにほかのファイルをつないだ解析結果
+    ///
+    /// # 戻り値
+    ///
+    /// 操作の対象。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// Doc::with("package P { part def A; }", project(…)) → Doc::new と同じ
+    /// ```
+    pub fn with(text: &'a str, p: ParseResult) -> Self {
         let m = model::build(&p);
         Self {
             text,
             p,
             m,
             utf16: Utf16::new(text),
+            touched: Cell::new(None),
         }
     }
 
-    /// 解析結果の位置（UTF-16）のバイトオフセット。
+    /// 解析結果の位置（UTF-16）のバイトオフセット。ほかのファイルの位置なら、操作を断る印を付ける。
     ///
     /// # 引数
     ///
@@ -273,6 +346,11 @@ impl<'a> Doc<'a> {
     /// b(9) → 4   // 範囲外は末尾
     /// ```
     pub fn b(&self, pos: usize) -> usize {
+        let file = project::merge::file_of(pos);
+        if file > 0 {
+            // ほかのファイルの位置。表示中のファイルのテキストには無いので、操作を断る印を付ける
+            self.touched.set(Some(file));
+        }
         self.utf16.byte(pos)
     }
 

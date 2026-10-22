@@ -83,7 +83,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 基本名 | NAME | ○ | | |
 | 引用名 `'Fuel Tank'` | NAME | ○ | | 宣言の名前と型の参照に使える（ADR-0013） |
 | 短い名前 `<'R1'>`・`<R1>` | Identification | ○ | | 引用あり・なしの両方（ADR-0013） |
-| 修飾名 `A::B` | QualifiedName | △ | 0.2.0 | 参照した場所から外へ最初の段を探し、中へたどる（同じファイルの中）。たどれなければ「見つかりません」と示す。`import` を通した名前と他のファイルは解決しない |
+| 修飾名 `A::B` | QualifiedName | ○ | — | 参照した場所から外へ最初の段を探し、中へたどる。最初の段は、フォルダの中のほかのファイルの一番上の要素と、`import` で取り込んだ名前からも探す（ADR-0021）。たどれなければ「見つかりません」と示す |
 | コメント `/* */`・`//` | 8.2.2.1.2 | ○ | | 解析では読み飛ばす。中の括弧も数えない。`comment` を書いたコメントは要素にする（2.2 の `comment … about`） |
 | 文字列 `"a{b"` | STRING_VALUE | ○ | | 字句解析で 1 つの語にする。中の括弧で誤ったエラーを出さない（以前は ⚠） |
 | 知らない文 | — | △ | — | 予約語で始まり、どの読み方にも当たらない文は「まだ扱えない」と問題一覧に示す（エラーとしては数えない。ADR-0013）。予約語以外で始まる文と、読み飛ばしを決めている文（`import` など）は知らせない |
@@ -106,11 +106,11 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- | --- |
 | `package`（入れ子を含む） | Package | ○ | | ツリーに出る。図のノードにはならない。作成した図（view）で package そのものを expose すると、名前を書いた枠（フォルダの形、8.2.3.5）として描き、中の要素を枠の中に示す（F-VIEW-9） |
 | `standard library package`・`library package` | LibraryPackage | △ | — | package として取り込む。ライブラリ・標準の印は記録しない |
-| `import Q::A` / `::*` / `::**` / `all` | Import 系 | × | 0.2.0 | 黙って捨てる。他のファイルは読まない。型の名前はファイル全体から単純名で探すため、`import` の無い別の package の型も見つかる（誤ったエラーは出ないが、見えないはずの名前も通す） |
+| `import Q::A` / `::*` / `::**` / `all` | Import 系 | △ | 0.2.0 | 名前の解決に使う（8.2.2.5、ADR-0021）。フォルダを開いているときは、フォルダの中のほかのファイルも 1 つのモデルとして読む。`private` の要素は取り込まず、取り込んだ名前空間の `public` の `import` は 1 段だけたどる。`all`（private も取り込む）は区別しない。同じファイルの中では、これまでどおり型の名前をファイル全体から単純名で探す（`import` の無い別の package の型も見つかる） |
 | `import Q::*[@F]` | FilterPackage | × | 0.2.0 | |
-| `alias B for A` | AliasMember | △ | 0.2.0 | 同じファイルの別名は、指す先として解決する（型付け・関係の相手・expose。別名の別名も）。他のファイルの別名と `import` は解決しない |
+| `alias B for A` | AliasMember | △ | 0.2.0 | 同じファイルの別名は、指す先として解決する（型付け・関係の相手・expose。別名の別名も）。他のファイルの別名は解決しない |
 | `filter @X;`（package 直下） | ElementFilterMember | × | 0.2.0 | 黙って捨てる |
-| `private` / `public` / `protected` | VisibilityIndicator | △ | 0.2.0 | 記録するだけ（import と一緒に意味を持つ） |
+| `private` / `public` / `protected` | VisibilityIndicator | ○ | — | `private`・`protected` の要素と `private import` で取り込んだ名前は、ほかのファイルの `import` で取り込ませない（ADR-0021） |
 | package の無いファイルの直下の使用 | RootNamespace | △ | — | ツリーには出るが、図には描かない |
 
 ### 2.4 定義と使用の共通部分（8.2.2.6）
@@ -223,7 +223,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- | --- |
 | `view def` | ViewDefinition | ○ | | 標準ビュー定義の特殊化（`:>`・`specializes`）をたどる。中の `filter`・`render` は、その型の `view` に引き継ぐ。図のノードにはしない |
 | `view` | ViewUsage | ○ | | 名前のある `view` を、＋メニューから図として開ける（F-VIEW-7）。型の無い `view` は GeneralView として描く |
-| `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 0.2.0 | 修飾名は view から外へ最初の段を探し、中へたどる。同じファイルの `alias` は解決する。`import` を通した名前は解決しない |
+| `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 0.2.0 | 修飾名は view から外へ最初の段を探し、中へたどる。同じファイルの `alias` と、ほかのファイルの名前（一番上の要素・`import`）も解決する。示したほかのファイルの要素は、ファイル名の札を付けて描く |
 | ビュー内の `filter` | ElementFilterMember | ○ | | `@メタクラス`（`@SysML::PartDefinition` など）・`@メタデータ`・`istype X`・`hastype X` を、`and`・`&`・`or`・`|`・`xor`・`not` と括弧で組み合わせた式（KerML 8.2.5.8.1 の優先順位）。expose の `[ ]` も同じ。メタデータの値の比較（`level > 1` など）を含む式は、知らせたうえで使わない（0.3.0 以降、式の評価と一緒に） |
 | `render`（参照形） | ViewRenderingMember | △ | 0.3.0 以降 | `asTreeDiagram`・`asInterconnectionDiagram` と、それを特殊化・再定義・参照した `rendering`（`rendering myIbd :> asInterconnectionDiagram;`）は型より優先する。特殊化や本体が続く形（`render asTreeDiagram :> base { … }`）も読む。`asTextualNotation`・`asElementTable` は知らせて図で描く |
 | `render`（合成形） | ViewRenderingUsage | ○ | | `render rendering r :> asTreeDiagram { … }`・`render rendering r redefines Views::asInterconnectionDiagram;` を view の中の `rendering` の使用として本体ごと読み、特殊化・再定義・参照の相手をたどって描き方を決める（以前は相手のある形を黙って捨て、ほかは「まだ扱えない」と知らせていた）。標準の表し方に行き着かない形（`render rendering r : R;`）は知らせて図で描く |
@@ -276,7 +276,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 ## 4. 標準ライブラリ
 
-- 同梱も解析もしていない（0.3.0 以降）。`import` は捨てる。
+- 同梱も解析もしていない（0.3.0 以降）。標準ライブラリを指す `import` は、名前の解決に使わない（取り込む先が無い）。
 - 「型が見つかりません」の警告を抑える標準ライブラリの型は、名前で判定する（`crates/modelith-core/src/model/mod.rs` の `LIBRARY_TYPES`。`ScalarValues::Real` のような修飾名も、最後の名前で判定する）。
   - 一覧には、照合した `sysml.library` にある名前だけを入れた：Base・ScalarValues・Occurrences（`Anything`・`DataValue`・`ScalarValue`・`Boolean`・`String`・`NumericalValue`・`Number`・`Complex`・`Real`・`Rational`・`Integer`・`Natural`・`Positive`・`Occurrence`）、Systems Library の基の定義（`Part`・`Item`・`Action`・`StateAction`・`Port`・`Connection`・`Interface`・`Allocation`・`Calculation`・`ConstraintCheck`・`RequirementCheck`・`Case`・`AnalysisCase`・`VerificationCase`・`UseCase`・`View`・`Rendering`・`MetadataItem`）、VerificationCases（`VerdictKind`・`VerificationMethodKind`）、Time（`TimeInstantValue`・`DateTime`・`Date`・`TimeOfDay`・`UtcTimeInstantValue`・`Iso8601DateTime`）。
   - `…Value`・`…Kind` で終わる名前（`MassValue` など）は、ファイルが量と単位のライブラリ（`ISQ`・`ISQBase`・`ISQSpaceTime` などの ISQ の各パッケージ、`SI`・`SIPrefixes`・`USCustomaryUnits`・`Quantities`・`QuantityCalculations`・`MeasurementReferences`・`MeasurementRefCalculations`・`Time`・`TensorCalculations`・`VectorCalculations`）のどれかを `import` しているとき、または名前をそのパッケージで修飾しているとき（`ISQ::MassValue`）だけ標準とみなす。それ以外で、ファイルに定義の無い `…Value` の型は「見つかりません」と示す（alpha.6 までは、名前だけで標準とみなし、書き間違いを見逃していた）。

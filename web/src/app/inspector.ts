@@ -6,6 +6,7 @@ import { eventName } from "./sequence";
 import { isPseudoState, stateActionLines, stateName } from "./state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
+import { openProjectFile, otherFileText } from "./other-file";
 import { attrText, kindLabel } from "./labels";
 import type { Pin } from "./geometry";
 import { centerOn, render, scrollEditorTo } from "./render";
@@ -233,6 +234,23 @@ function pinHtml(n: ModelNode, pin: Pin): string {
 }
 
 /**
+ * ほかのファイルの要素（ADR-0021）のインスペクタの HTML。図からは書き換えられないので、どのファイルにあるかと、そのファイルを開くボタンだけを出す。
+ *
+ * @param n 選んだ要素（`file` を持つ）
+ * @param path 要素のあるファイル（フォルダからのパス）
+ * @returns インスペクタの HTML
+ * @example
+ * otherFileHtml(Car, "parts.sysml") // → '<div class="what"><small>«part def» parts.sysml の要素</small><b>Car</b></div>…そのファイルを開く…'
+ */
+function otherFileHtml(n: ModelNode, path: string): string {
+  return (
+    `<div class="what"><small>«${esc(n.kind)}» ${esc(path)} の要素</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
+    `<button class="primary" data-act="openFile">そのファイルを開く</button></div>` +
+    `<div class="notes"><div class="note"><p>${esc(otherFileText(path))}</p></div></div>`
+  );
+}
+
+/**
  * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、n 項の接続の点なら接続の名前と「接続を削除」を、メモなら注釈する相手・本文と「メモを削除」を、
  * 使用・ライフラインなら型と「型の定義へ」を、
  * 定義なら種類・テキストの行・（フェーズの定義があれば）フェーズの選択欄と、名前の変更・関係の追加・削除のボタンを出す。
@@ -252,6 +270,7 @@ function nodeHtml(n: ModelNode): string {
     return `<div class="what"><small>新しい名前（日本語も使えます。参照もまとめて変更されます）</small></div><input id="renameIn" value="${esc(n.name)}" aria-label="新しい名前"><div class="acts"><button class="primary" data-act="renameOk">変更する</button><button data-act="renameCancel">やめる</button></div>`;
   }
   const e = n.entry;
+  if (n.file) return otherFileHtml(n, n.file);
   const line = lineOf(S.text, e.start);
   if (n.junction) {
     // n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。削除すると接続ごと消える
@@ -604,6 +623,9 @@ export function act(a: string): void {
       S.wire = null;
       render();
       renderInspector();
+      return;
+    case "openFile":
+      if (n?.file) openProjectFile(n.file);
       return;
     case "goto": {
       const ed = edgeById(S.selEdge);

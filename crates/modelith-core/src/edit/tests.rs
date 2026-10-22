@@ -1584,3 +1584,67 @@ fn remove_attribute_removes_the_line() {
             .contains("見つかりません")
     );
 }
+
+// ---- 複数のファイル（ADR-0021 §5） ----
+
+const FLEET: &str = "package Fleet {\n    part def Car;\n    requirement def Safe;\n}\n";
+
+/// ほかのファイル `FLEET` とつないで意図を当てる。
+fn run_in(text: &str, json: &str) -> Result<String, Refused> {
+    let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+    let others = vec![project::merge::parse_file(FLEET).expect("短いファイル")];
+    edit_in(text, others, &intent).map(|out| apply(text, &out.edits))
+}
+
+#[test]
+fn element_of_another_file_is_not_rewritten() {
+    // Arrange（異常系：ほかのファイルの要素の名前の変更・削除）
+    let text = "package App {\n    import Fleet::*;\n    part c : Car;\n}\n";
+    for json in [
+        r#"{"op":"rename","key":"Car","name":"Bus"}"#,
+        r#"{"op":"delete","keys":["Car"]}"#,
+    ] {
+        // Act
+        let got = run_in(text, json);
+        // Assert
+        assert_eq!(
+            got,
+            Err(Refused {
+                reason: IN_OTHER_FILE.to_owned(),
+                file: Some(1)
+            }),
+            "{json}"
+        );
+    }
+}
+
+#[test]
+fn element_of_the_open_file_is_rewritten_with_other_files() {
+    // Arrange
+    let text = "package App {\n    import Fleet::*;\n    part c : Car;\n}\n";
+    // Act
+    let got = run_in(text, r#"{"op":"rename","key":"c","name":"d"}"#);
+    // Assert
+    assert_eq!(
+        got.as_deref(),
+        Ok("package App {\n    import Fleet::*;\n    part d : Car;\n}\n")
+    );
+}
+
+#[test]
+fn relation_to_another_file_is_written_in_the_open_file() {
+    // Arrange（ほかのファイルの要求を満たす関係は、表示中のファイルに書く。Safe は既にある関係で図に出ている）
+    let added = "package App {\n    import Fleet::*;\n    part def Brake;\n    part def Horn;\n    part c : Car;\n    satisfy Safe by Brake;\n}\n";
+    // Act
+    let got = run_in(
+        added,
+        r#"{"op":"connect","rel":"satisfy","from":"Horn","to":"Safe"}"#,
+    );
+    // Assert
+    let after = got.expect("書ける");
+    assert!(after.contains("satisfy Safe by Horn;"), "{after}");
+    assert!(
+        after.starts_with("package App {") && after.ends_with("}\n"),
+        "{after}"
+    );
+}

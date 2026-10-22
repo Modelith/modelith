@@ -222,6 +222,8 @@ export interface ModelNode {
   ports: Port[];
   phase: string | null;
   phaseOwn: boolean;
+  /** ほかのファイルの要素なら、そのファイルのパス（プロジェクトのフォルダから。ADR-0021）。表示中のファイルの要素には無い。 */
+  file?: string;
   /** 内部ブロック図の部品（使用）。 */
   usage?: boolean;
   /** シーケンス図のライフライン。 */

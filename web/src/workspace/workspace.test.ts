@@ -1175,3 +1175,52 @@ describe("Workspace: 前回の続き（F-FILE-13）", () => {
     expect(s.drafts.load().drafts.map((d) => d.name)).toEqual(["u2.sysml"]);
   });
 });
+
+describe("Workspace: フォルダのファイルを 1 つのモデルにする（ADR-0021、F-FILE-15）", () => {
+  it("フォルダのモデルのファイルを読み、開いている文書は編集中のテキストを使う", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("parts.sysml", "package Parts;");
+    s.root.put("notes.md", "# メモ");
+    const { doc } = await openA(s);
+    // Act
+    s.ws.setText(doc.key, "package A { import Parts::*; }");
+    // Assert（.sysml だけ、a.sysml は編集中のテキスト）
+    expect(s.ws.projectTexts()).toEqual(new Map([["a.sysml", "package A { import Parts::*; }"], ["parts.sysml", "package Parts;"]]));
+    expect(s.ws.folderPath(doc.key)).toBe("a.sysml");
+  });
+
+  it("開いていないファイルが他のアプリで変わったら、画面に戻ったときに読み直す", async () => {
+    // Arrange
+    const s = setup();
+    const parts = s.root.put("parts.sysml", "package Parts;");
+    await openA(s);
+    // Act
+    parts.content = "package Parts { part def Car; }";
+    parts.lastModified += 1;
+    await s.ws.checkExternal();
+    // Assert
+    expect(s.ws.projectTexts().get("parts.sysml")).toBe("package Parts { part def Car; }");
+  });
+
+  it("保存した文書は、閉じた後も保存した中身をモデルに入れる", async () => {
+    // Arrange
+    const s = setup();
+    const { doc } = await openA(s);
+    s.ws.setText(doc.key, "package A2;");
+    // Act
+    await s.ws.save(doc.key, s.browser);
+    s.ws.close(doc.key);
+    // Assert
+    expect(s.ws.projectTexts().get("a.sysml")).toBe("package A2;");
+  });
+
+  it("フォルダを開いていない・無題の文書では空（異常系）", () => {
+    // Arrange
+    const s = setup();
+    const doc = s.ws.newUntitled("u.sysml", "package U;");
+    // Act・Assert
+    expect(s.ws.projectTexts().size).toBe(0);
+    expect(s.ws.folderPath(doc.key)).toBeNull();
+  });
+});

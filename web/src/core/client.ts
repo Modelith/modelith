@@ -1,7 +1,7 @@
 // 画面の側から見たコア（ADR-0016 §4）。テキストを変えるたびに版を 1 つ上げてコアに送り、
 // 返ってきた結果の版が今の版と同じときだけ使う。違えば捨てる（解析なら次の結果を待ち、編集なら適用しない）。
 
-import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type CoreResponse } from "./protocol";
+import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type CoreResponse, type ProjectFileText } from "./protocol";
 import type { Permission } from "../plugins/generated/protocol";
 import {
   fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
@@ -61,6 +61,12 @@ export class CoreClient {
   private readonly pending = new Map<string, Pending>();
   /** 最後にコアに読み込ませたプラグイン（つなぎ直したときに送り直す）。 */
   private plugins: PluginFiles[] = [];
+  /** コアに覚えさせたプロジェクトのファイル（パス → テキスト。つなぎ直したときに送り直す。ADR-0021）。 */
+  private readonly files = new Map<string, string>();
+  /** 表示中のファイルのパス（フォルダの外のファイルなら null）。次に送るテキストに添える。 */
+  private focusPath: string | null = null;
+  /** 最後に送ったテキストに添えたパス。 */
+  private sentPath: string | null = null;
   /** 今の通り道。コアが止まってから、つなぎ直すまでは null（その間の依頼はすぐ失敗にする）。 */
   private port: CorePort | null = null;
   private readonly timeoutMs: number;
@@ -128,6 +134,7 @@ export class CoreClient {
   reconnect(port: CorePort): void {
     this.connect(port);
     if (this.plugins.length) void this.request((id) => ({ type: "setPlugins", id, plugins: this.plugins }));
+    if (this.files.size) void this.request((id) => ({ type: "projectFiles", id, clear: true, set: this.fileTexts(), remove: [] }));
     if (this.sent !== null) this.send(this.sent);
   }
 
@@ -157,8 +164,48 @@ export class CoreClient {
    * c.sync("y") // → 2
    */
   sync(text: string): number {
-    if (text === this.sent) return this.version;
+    if (text === this.sent && this.focusPath === this.sentPath) return this.version;
     return this.send(text);
+  }
+
+  /**
+   * 表示中のファイルのパスを決める（ADR-0021）。次に送るテキストに添え、コアはそのパスのファイルをほかのファイルとしてつながない。
+   *
+   * @param path プロジェクトのフォルダからのパス。フォルダの外のファイル・無題のファイルなら null
+   * @example
+   * c.focus("app.sysml"); c.sync(text) // → 同じテキストでも、パスが変われば送り直す
+   */
+  focus(path: string | null): void {
+    this.focusPath = path;
+  }
+
+  /**
+   * コアが覚えるプロジェクトのファイルを書き換え、今のテキストを解析し直してもらう（ADR-0021 §3）。
+   *
+   * @param change 覚える（置き換える）ファイル・忘れるパス・先にすべて忘れるか
+   * @returns コアが覚え終えたら解決する Promise（例外は投げない）
+   * @example
+   * await c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts;" }], remove: [] })
+   * await c.updateFiles({ clear: true, set: [], remove: [] }) // → フォルダを閉じたとき
+   */
+  async updateFiles(change: { clear?: boolean; set: ProjectFileText[]; remove: string[] }): Promise<void> {
+    if (change.clear) this.files.clear();
+    for (const path of change.remove) this.files.delete(path);
+    for (const f of change.set) this.files.set(f.path, f.text);
+    const pending = this.request((id) => ({ type: "projectFiles", id, clear: change.clear ?? false, set: change.set, remove: change.remove }));
+    if (this.sent !== null) this.send(this.sent);
+    await pending;
+  }
+
+  /**
+   * 覚えさせたプロジェクトのファイルの並び。
+   *
+   * @returns パスとテキストの並び（覚えさせた順）
+   * @example
+   * this.fileTexts() // → [{ path: "parts.sysml", text: "package Parts;" }]
+   */
+  private fileTexts(): ProjectFileText[] {
+    return [...this.files].map(([path, text]) => ({ path, text }));
   }
 
   /**
@@ -174,8 +221,9 @@ export class CoreClient {
   private send(text: string): number {
     this.version += 1;
     this.sent = text;
+    this.sentPath = this.focusPath;
     this.texts.set(this.version, text);
-    if (this.port) this.post({ type: "didChange", version: this.version, text }, `v${this.version}`, () => {});
+    if (this.port) this.post({ type: "didChange", version: this.version, text, path: this.focusPath }, `v${this.version}`, () => {});
     return this.version;
   }
 

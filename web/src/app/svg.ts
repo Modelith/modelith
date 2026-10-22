@@ -296,7 +296,30 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   }
   const gap = opts.gaps?.get(n.key);
   if (gap) s += gapBadge(C, b.w, gap);
+  if (n.file) s += fileBadge(C, n.file, F);
   return s + "</g>";
+}
+
+/**
+ * ほかのファイルの要素の札（箱の左上の上に、ファイルの名前を書いた小さな札。ADR-0021 §4）を SVG の文字列にする。
+ * 札にはファイルの名前だけを書き、フォルダからのパスはツールチップに出す。
+ *
+ * @param C 色の関数
+ * @param path 要素のあるファイル（フォルダからのパス）
+ * @param F 文字のフォント
+ * @returns `<g class="filebadge">…</g>` の文字列
+ * @example
+ * fileBadge(CV, "lib/parts.sysml", "inherit")
+ * // → '<g class="filebadge" transform="translate(0,-17)"><title>lib/parts.sysml</title><rect width="…" height="14" rx="3" …/><text x="5" y="10.5" …>parts.sysml</text></g>'
+ */
+export function fileBadge(C: ColorFn, path: string, F: string): string {
+  const name = path.split("/").pop() ?? path;
+  const w = Math.round(textWidth(name) * (9 / 11) + 10);
+  return (
+    `<g class="filebadge" transform="translate(0,-17)"><title>${esc(path)}</title>` +
+    `<rect width="${w}" height="14" rx="3" fill="${C("panel")}" stroke="${C("ink2")}" stroke-width=".8"/>` +
+    `<text x="5" y="10.5" font-size="9" fill="${C("ink2")}" font-family="${F}">${esc(name)}</text></g>`
+  );
 }
 
 /**

@@ -1,6 +1,6 @@
 // 図からの編集操作。すべてテキストの書き換えとして行い、setText で反映する（ADR-0001）。
 
-import type { Entry, ModelEdge, ModelNode } from "../core";
+import { inOpenFile, type Entry, type ModelEdge, type ModelNode } from "../core";
 import { ask } from "./dialog";
 import { perform } from "./intent";
 import { flowName } from "./action-flow";
@@ -46,7 +46,7 @@ export const uniqueChild = (entry: Entry, base: string): string => {
  * // S.text が "part def A;" のとき
  * firstPackage() // → undefined
  */
-const firstPackage = (): Entry | undefined => S.P.entries.find((e) => e.kind === "package");
+const firstPackage = (): Entry | undefined => S.P.entries.find((e) => e.kind === "package" && inOpenFile(e));
 
 /**
  * 表示中の内部ブロック図・シーケンス図の対象のキーを返す（コアが `u:`・`l:` のキーの要素を探す先。意図の ctx に渡す）。

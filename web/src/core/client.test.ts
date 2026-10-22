@@ -4,12 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreClient, CORE_STOPPED, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text";
-import { analyze, checkPluginMessage, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
+import {
+  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, removeProjectFile, RulePlugins, setFocusFile, setProjectFile,
+  updateProjectPlugin,
+} from "./wasm/modelith_core.js";
 import type { PluginFiles, RuleFinding } from "./rust";
 import type { Model, ParseResult } from "./types";
 
 /** 返事をためておき、deliver() で届ける偽の Worker。 */
-const wasm: CoreFns = { analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json), modelSnapshot, checkPluginMessage };
+const wasm: CoreFns = {
+  analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json), modelSnapshot, checkPluginMessage,
+  setProjectFile, removeProjectFile, clearProjectFiles, setFocusFile,
+};
 /** コアがどの依頼にも壊れた JSON を返す（Q-5 の異常系）。 */
 const broken: CoreFns = {
   analyze: () => "{",
@@ -21,6 +27,10 @@ const broken: CoreFns = {
   loadPlugins: () => ({ summary: () => "{", analyze: () => "{", free: () => {} }),
   modelSnapshot: () => "{",
   checkPluginMessage: () => "{",
+  setProjectFile: () => {},
+  removeProjectFile: () => {},
+  clearProjectFiles: () => {},
+  setFocusFile: () => {},
 };
 
 function fakeWorker(fns: CoreFns = wasm) {
@@ -612,7 +622,7 @@ describe("CoreClient（コアが止まった・返事をしないときの出口
     // Act
     c.reconnect(next.port);
     // Assert
-    expect(next.posted).toEqual([{ type: "didChange", version: c.current, text: "package Q;" }]);
+    expect(next.posted).toEqual([{ type: "didChange", version: c.current, text: "package Q;", path: null }]);
   });
 
   it("古い通り道から遅れて届いた返事は捨てる", () => {
@@ -626,5 +636,71 @@ describe("CoreClient（コアが止まった・返事をしないときの出口
     w.deliverAll();
     // Assert
     expect(got).toEqual([]);
+  });
+});
+
+describe("CoreClient: プロジェクトのファイル（ADR-0021、F-FILE-15）", () => {
+  // コア（wasm）が覚えるファイルはテストの間で共有されるので、毎回忘れさせる
+  afterEach(() => clearProjectFiles());
+
+  it("ほかのファイルを覚えさせると、その定義を参照する要素を描き、ファイルのパスを持つ", async () => {
+    // Arrange
+    const { c, got: analyzed, deliver } = client();
+    c.focus("app.sysml");
+    c.sync("package App { import Parts::*; part c : Car; }");
+    deliver();
+    // Act
+    const done = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { part def Car; part def Bus; }" }], remove: [] });
+    deliver();
+    await done;
+    // Assert（Bus は参照していないので描かない）
+    const M = analyzed.at(-1)?.M;
+    expect(M?.nodes.map((n) => [n.key, n.file])).toEqual([["c", undefined], ["Car", "parts.sysml"]]);
+  });
+
+  it("表示中のファイルと同じパスのファイルは、ほかのファイルとしてつながない（境界値）", async () => {
+    // Arrange
+    const { c, got: analyzed, deliver } = client();
+    const done = c.updateFiles({ set: [{ path: "app.sysml", text: "package Old { part def Car; }" }], remove: [] });
+    deliver();
+    await done;
+    // Act
+    c.focus("app.sysml");
+    c.sync("package App { part c : Old::Car; }");
+    deliver();
+    // Assert（保存前の古い中身の Car は見えない）
+    expect(analyzed.at(-1)?.M.problems.map((p) => p.msg)).toEqual(["型「Old::Car」が見つかりません（c）"]);
+  });
+
+  it("ほかのファイルの要素を書き換えようとすると、そのファイルのパスを添えて断る（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const text = "package App { part c : Parts::Car; }";
+    const done = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { part def Car; }" }], remove: [] });
+    deliver();
+    await done;
+    c.focus("app.sysml");
+    c.sync(text);
+    deliver();
+    // Act
+    const edited = c.edit(text, { op: "rename", key: "Car", name: "Bus" });
+    deliver();
+    // Assert
+    expect(await edited).toMatchObject({ file: "parts.sysml" });
+  });
+
+  it("忘れさせたファイルの定義は見つからなくなる", async () => {
+    // Arrange
+    const { c, got: analyzed, deliver } = client();
+    c.sync("package App { part c : Parts::Car; }");
+    const set = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { part def Car; }" }], remove: [] });
+    deliver();
+    await set;
+    // Act
+    const removed = c.updateFiles({ set: [], remove: ["parts.sysml"] });
+    deliver();
+    await removed;
+    // Assert
+    expect(analyzed.at(-1)?.M.problems.map((p) => p.msg)).toEqual(["型「Parts::Car」が見つかりません（c）"]);
   });
 });
