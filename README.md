@@ -70,13 +70,13 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 | | キーワードの無い特性 `x : Real;`・`ref r;`・交差 `=>`・`crosses`・共役ポート `~Pt` | 対応 | | |
 | つながり | `connection`・`connect`（3 つ以上をつなぐ形を含む）・`interface`（`connect` を省いた形を含む）・`bind`・`allocate`・`dependency` | 対応 | | |
 | | `flow`・`flow def`・`message`・`succession flow`（`from` を省いた短い形を含む） | 対応 | | |
-| 振る舞い | `action`・順序 `first … then`・`fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` | 対応 | アクションのパラメータとその間のフローを図に描かない | 0.3.0 以降 |
+| 振る舞い | `action`・順序 `first … then`・`fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` | 対応 | アクションのパラメータとその間のフローを図に描かない | 0.2.0 |
 | | `state`・遷移 `transition`（トリガ・ガード・効果と省略形）・`entry`・`do`・`exit`・`parallel` | 対応 | 状態の使用の中の遷移を図に描かない | 0.3.0 以降 |
 | | `perform`・`exhibit`（既存の要素を指す `perform x.y;`・`exhibit s;` を含む）、`calc`・`constraint` | 対応 | | |
 | 要求と検証 | `requirement`・`subject`・`stakeholder`・`actor`・`concern`・`case`・`analysis`・`verification`・`use case`・`#derivation dependency` | 対応 | | |
 | | `satisfy`（`by` の無い形・宣言する形を含む）・`frame` | 対応 | | |
 | | `verify` | 一部対応 | 型の無い検証の使用の中では線を引かない | — |
-| | `objective`・`assert constraint`・`assert not` | 一部対応 | 中身を親の要素に入れる | 0.3.0 以降 |
+| | `objective`・`assert constraint`・`assert not` | 一部対応 | 中身を親の要素に入れる | 0.2.0 |
 | 図（ビュー） | `view`・`view def`・`expose`・`filter`（`and`・`or`・`not` などの式）・`render` | 一部対応 | メタデータの値を比べる `filter`、表や文字の形の `render` は使えない | 0.3.0 以降 |
 | 注釈 | `doc`・`comment … about`（メモ）・`rep`・`metadata def`・`#M`・`metadata … about`・自分で決めたキーワード | 対応 | 関係（`dependency`・`alias`）の本体の `doc` は記録しない | — |
 | 式 | 式・単位 `1500 [kg]`・`->collect{ … }` | 一部対応 | 文字列として持つだけで、計算しない | 0.3.0 以降 |
@@ -84,9 +84,9 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 
 | 図の種類（SysML v2 の標準ビュー） | 状況 | 足りないところ | 対応の予定 |
 | --- | --- | --- | --- |
-| ブロック定義図・一般の図（GeneralView） | 一部対応 | package 直下の使用のうち、図に出るのは `part`・`requirement` だけ。ユースケースの楕円・アクターの記号が無い | — |
-| 内部ブロック図（InterconnectionView） | 一部対応 | 対象そのもののポートへの線と、入れ子の部品のポートを図から作る操作が無い | — |
-| アクティビティ図（ActionFlowView） | 一部対応 | パラメータとその間のフロー、区画（swim lane）が無い | 0.3.0 以降 |
+| ブロック定義図・一般の図（GeneralView） | 一部対応 | package 直下の使用のうち、図に出るのは `part`・`requirement` だけ。ユースケースの楕円・アクターの記号が無い | 0.2.0（ユースケースの記号は 0.3.0 以降） |
+| 内部ブロック図（InterconnectionView） | 一部対応 | 対象そのもののポートへの線と、入れ子の部品のポートを図から作る操作が無い | 0.2.0 |
+| アクティビティ図（ActionFlowView） | 一部対応 | パラメータとその間のフロー、区画（swim lane）が無い | 0.2.0 |
 | 状態遷移図（StateTransitionView） | 一部対応 | 状態の使用の中の遷移と、2 つ目以降の状態定義を描かない | 0.3.0 以降 |
 | シーケンス図（SequenceView） | 一部対応 | 分岐や繰り返しの枠（`alt`・`loop`）が無く、図からイベントや順序を足せない | 0.3.0 以降 |
 | ジオメトリ・グリッド・ブラウザ（GeometryView・GridView・BrowserView） | 未対応 | 一般の図で代わりに描き、そのことを知らせる | 0.3.0 以降 |
@@ -100,7 +100,7 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 | 版 | 内容 |
 | --- | --- |
 | 0.1.0 | 正式版 |
-| 0.2.0 | `import` と、複数のファイルにまたがるモデル |
+| 0.2.0 | 図を作る・画面で編集・線の調整・エクスポートの強化と、要求図・ブロック定義図・内部ブロック図・アクティビティ図の不足を埋める。`import` と複数のファイルにまたがるモデルは進み具合を見て決める |
 | 0.3.0 以降 | 式の計算と単位、KerML、標準ライブラリ、残りの図、モデル交換の形式 |
 
 詳しくは [リリース計画](docs/development/release-plan.md)、各版の変更点は [リリース](https://github.com/modelith/modelith/releases) をご覧ください。
