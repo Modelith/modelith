@@ -164,6 +164,18 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("menu-narrow.png");
     });
 
+    test("Q-9・Q-2: 幅 390px の画面で、☰ のメニューを開いて表示のメニュー（線の形つき）を開いたところ", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#menuToggle").click();
+      await page.locator("#viewMenu summary").click();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("view-menu-narrow.png");
+    });
+
     test("F-EXP-1・F-EXP-2・Q-2: 幅 390px の画面の、エクスポートのダイアログ", async ({ page }) => {
       // Arrange
       await openApp(page);
@@ -465,7 +477,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "Q-9: 開いた「表示」メニュー（押されている切り替えの印つき）",
+    title: "Q-9: 開いた「表示」メニュー（押されている切り替えの印と、線の形つき）",
     shot: "view-menu",
     act: async (page) => {
       await page.locator("#viewMenu summary").click();

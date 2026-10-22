@@ -548,7 +548,7 @@ function renderFiles(): void {
 }
 
 /** 開いている文書が無いときに押せなくする、メニューの項目（ファイル・編集・表示・図のメニュー）。 */
-const NEEDS_DOC = ["#btnSave", "#btnSaveAs", "#menuSelectAll", "#menuZoomIn", "#menuZoomOut", "#menuFit", "#menuMini", "#menuSaveView", "#menuEdge", "#menuLayout", "#btnExport"];
+const NEEDS_DOC = ["#btnSave", "#btnSaveAs", "#menuSelectAll", "#menuZoomIn", "#menuZoomOut", "#menuFit", "#menuMini", "#menuSaveView", "#menuEdgeOrtho", "#menuEdgeCurve", "#menuLayout", "#btnExport"];
 
 /**
  * 開いている文書が無いときの案内（図とテキストの場所を覆う）を出し入れする（F-FILE-14）。

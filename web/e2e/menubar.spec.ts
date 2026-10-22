@@ -114,6 +114,21 @@ test.describe("キーボード", () => {
     expect(seen).toEqual(["btnNew", "btnOpen", "btnOpenFolder", "btnOpen"]);
   });
 
+  test("Q-9: 表示のメニューで上の矢印キーを押すと、線の形の「曲線」「直角」へ下から順に移り、小見出しは飛ばす", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#viewMenu > summary").focus();
+    await page.keyboard.press("Enter");
+    // Act
+    const seen: (string | undefined)[] = [];
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press("ArrowUp");
+      seen.push(await page.evaluate(() => document.activeElement?.id));
+    }
+    // Assert
+    expect(seen).toEqual(["menuEdgeCurve", "menuEdgeOrtho", "menuMini"]);
+  });
+
   test("Q-8・Q-9: 矢印キーで移ったメニューも、Esc で閉じて見出しへ入力が戻る", async ({ page }) => {
     // Arrange
     await openApp(page);
@@ -190,15 +205,60 @@ test("Q-9・F-VIEW-4: 表示のメニューで、全体図を隠し、拡大・�
   await expect(page.locator("#menuMini")).toHaveAttribute("aria-pressed", "false");
 });
 
-test("Q-9: 図のメニューの「線を曲線で描く」は、図のツールバーの線の描き方と同じ切り替え", async ({ page }) => {
+test("Q-9: 表示のメニューの「線の形」で「曲線」を選ぶと、図のツールバーのボタンが「線：曲線」になり、✓ が「曲線」に移る", async ({ page }) => {
   // Arrange
   await openApp(page);
-  await page.locator("#diagramMenu > summary").click();
+  await page.locator("#viewMenu > summary").click();
+  await expect(page.locator("#viewMenu .phead")).toHaveText("線の形");
   // Act
-  await page.locator("#menuEdge").click();
+  await page.locator("#menuEdgeCurve").click();
   // Assert
   await expect(page.locator("#btnEdge")).toHaveText("線：曲線");
-  await expect(page.locator("#menuEdge")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#menuEdgeCurve")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#menuEdgeOrtho")).toHaveAttribute("aria-pressed", "false");
+});
+
+test("Q-9: 表示のメニューで、選んでいる「直角」をもう一度選んでも、直角のまま", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  await page.locator("#viewMenu > summary").click();
+  // Act
+  await page.locator("#menuEdgeOrtho").click();
+  // Assert
+  await expect(page.locator("#btnEdge")).toHaveText("線：直角");
+  await expect(page.locator("#menuEdgeOrtho")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#menuEdgeCurve")).toHaveAttribute("aria-pressed", "false");
+});
+
+test("Q-9: 図のツールバーで線の描き方を切り替えると、表示のメニューの「線の形」の ✓ も移る", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  await page.locator("#btnEdge").click();
+  // Assert
+  await expect(page.locator("#menuEdgeCurve")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#menuEdgeOrtho")).toHaveAttribute("aria-pressed", "false");
+});
+
+test("Q-9: 選んだ線の形は、読み込み直しても残る", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  await page.locator("#viewMenu > summary").click();
+  await page.locator("#menuEdgeCurve").click();
+  // Act
+  await page.reload();
+  // Assert
+  await expect(page.locator("#btnEdge")).toHaveText("線：曲線");
+  await expect(page.locator("#menuEdgeCurve")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("Q-9: 図のメニューに「線を曲線で描く」は無い", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  await page.locator("#diagramMenu > summary").click();
+  // Assert
+  await expect(page.locator("#diagramMenu .pop button")).toHaveText(["新しい図を作成…", "整列"]);
 });
 
 test("Q-9・F-FILE-14: 開いているファイルが無いときは、図と表示のメニューの項目を押せない", async ({ page }) => {
@@ -210,7 +270,7 @@ test("Q-9・F-FILE-14: 開いているファイルが無いときは、図と表
   // Act
   await page.locator("#diagramMenu > summary").click();
   // Assert
-  for (const id of ["#menuSaveView", "#menuEdge", "#menuLayout", "#menuZoomIn", "#menuFit", "#menuSelectAll"]) await expect(page.locator(id)).toBeDisabled();
+  for (const id of ["#menuSaveView", "#menuEdgeOrtho", "#menuEdgeCurve", "#menuLayout", "#menuZoomIn", "#menuFit", "#menuSelectAll"]) await expect(page.locator(id)).toBeDisabled();
 });
 
 test("F-FILE-14・F-EXP-1・F-EXP-2: 開いているファイルが無いときは、ファイルのメニューの「エクスポート…」を押せない", async ({ page }) => {
@@ -293,6 +353,20 @@ test.describe("狭い画面", () => {
     await expect(page.locator("#menubar")).toBeHidden();
     await expect(page.locator("#menuToggle")).toHaveAttribute("aria-expanded", "false");
     await expect(page.locator("#menuToggle")).toBeFocused();
+  });
+
+  test("Q-9・Q-2: 狭い画面でも、表示のメニューで線の形を選べる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#menuToggle").click();
+    await page.locator("#viewMenu > summary").click();
+    // Act
+    await page.locator("#menuEdgeCurve").click();
+    // Assert
+    await expect(page.locator("#btnEdge")).toHaveText("線：曲線");
+    await page.locator("#menuToggle").click();
+    await page.locator("#viewMenu > summary").click();
+    await expect(page.locator("#menuEdgeCurve")).toHaveAttribute("aria-pressed", "true");
   });
 
   test("Q-9: 表示のメニューに、狭い画面では使わないパネルの切り替えを出さない", async ({ page }) => {
