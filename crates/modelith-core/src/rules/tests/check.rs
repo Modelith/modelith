@@ -411,6 +411,7 @@ fn node(name: &str, kind: &str) -> Node {
         ports: vec![],
         phase: None,
         phase_own: false,
+        file: None,
     }
 }
 

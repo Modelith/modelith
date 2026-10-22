@@ -33,6 +33,9 @@ pub struct Node {
     pub ports: Vec<Port>,
     pub phase: Option<String>,
     pub phase_own: bool,
+    /// ほかのファイルの要素なら、そのファイルの番号（1 から、`merge` に渡した順。ADR-0021）。表示中のファイルの要素は None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<usize>,
 }
 
 /// 図に描く関係。
