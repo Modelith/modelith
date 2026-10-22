@@ -561,7 +561,8 @@ const scenes: Scene[] = [
     act: async (page) => {
       await page.locator("#btnGaps").click();
       await expect(page.locator("#insp .gapguide")).toContainText("この要求を確かめる検証がありません");
-      return [page.locator(".diagrampane")];
+      // 図と案内（インスペクタ）だけを撮る。タブバーの「＋」の縁は、実行ごとに 1 画素の揺れが出るので入れない
+      return [page.locator("#wrap")];
     },
   },
   {
