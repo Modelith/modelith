@@ -1211,6 +1211,16 @@ package ModelithRequirements {
                 verify ProblemCopyReq;
             }
         }
+        verification def ProblemLevelTest {
+            doc /* crates/modelith-core/src/levels：選べる種類と既定の重さ、設定に書ける種類の名前、出さないにした問題とルールの結果を除き、選んだ重さを付ける・置き換えること、トレースの抜けの種類。
+                   crates/modelith-core/src/project_file：levels の読み取り（4 つの重さ・それ以外は誤り・{ } でないと誤り・不明な種類は注意して残す）と書き換え（既定に戻すと項目を消す）。
+                   crates/modelith-wasm：覚えた重さを解析とほかのファイルの問題に当てること、読めない重さは既定に戻すこと、重さの書き換えと種類の一覧。crates/modelith-cli/tests/check.rs：modelith check がプロジェクトの重さに従うこと。
+                   web/src/core/client.test.ts：重さを覚えさせて解析し直すこと・書き換え・種類の一覧・壊れた返事。web/src/app/notice-levels.test.ts：問題の重さ・画面の言葉・選ぶ画面の行。web/src/app/project-problems.test.ts：重さで並べ、印と件数を決めること。
+                   web/e2e/notice-levels.spec.ts：プロジェクトで選んだ重さで問題一覧の印と色を変え、出さないにした種類を出さないこと、「知らせの重さ…」で選んだ重さを modelith.json に書くこと、プロジェクトでなければ選べないことを示すこと */
+            objective {
+                verify ProblemLevelReq;
+            }
+        }
         verification def ProjectProblemsTest {
             doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
                    crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印。

@@ -493,6 +493,8 @@ export interface PluginSummary {
   manifest: PluginInfo | null;
   /** 使えるルールの数。 */
   rules: number;
+  /** 使えるルールの ID（書いた順。知らせの重さを選ぶ画面に並べる。F-EDIT-11）。 */
+  ruleIds?: string[];
   problems: PluginLoadProblem[];
 }
 

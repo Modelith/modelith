@@ -4,7 +4,8 @@
 
 import type { FolderRef } from "../files/types";
 import { hasFolderFiles, hasFolderTrees, type FolderFiles, type FolderTrees } from "../files/types";
-import type { PluginFiles, PluginInfo, PluginSummary, ProjectFile, ProjectFileResult } from "../core";
+import type { CreatedProjectFile, PluginFiles, PluginInfo, PluginSummary, ProjectFile, ProjectFileResult, Refused } from "../core";
+import type { RuleSet } from "./notice-levels";
 import { PROJECT_FILE, type OpenFolder } from "../workspace/workspace";
 import { ask } from "./dialog";
 import { $, closest, esc } from "./dom";
@@ -342,6 +343,63 @@ async function isProjectFresh(f: { ref: FolderRef; source: FolderFiles; projectT
 }
 
 /**
+ * プロジェクトの設定ファイル（modelith.json）を書き換えて保存し、フォルダを読み直して知らせる。他のアプリで変わっていたら書かない（黙って上書きしない）。
+ *
+ * @param update 今のテキストから、書き換えた後のテキスト（か断り）を作る処理（コアに頼む）
+ * @param done 保存できたときの知らせ
+ * @returns 保存できたら true。プロジェクトが無い・断られた・他で変わっていた・保存できなかったら false（断りと失敗はトーストで知らせる）
+ * @example
+ * await changeProjectFile((t) => coreClient().updateProjectLevel(t, "unsupported", "off"), "知らせの重さを変更しました") // → true
+ */
+export async function changeProjectFile(update: (text: string) => Promise<CreatedProjectFile | Refused>, done: string): Promise<boolean> {
+  const f = pluginFolder();
+  const text = f?.projectText;
+  if (!f || text == null) return false;
+  const updated = await update(text);
+  if ("refused" in updated) {
+    toast(updated.refused);
+    return false;
+  }
+  try {
+    if (!(await isProjectFresh(f))) return false;
+    await f.source.writeInFolder(f.ref, PROJECT_FILE, updated.text);
+    await pluginEnv().refreshFolder();
+    toast(done);
+    return true;
+  } catch (e) {
+    toastFailure("プロジェクトの設定を保存できませんでした", e);
+    return false;
+  }
+}
+
+/**
+ * 使う（有効な）チェックルールのプラグインと、そのルールの ID（知らせの重さを選ぶ画面に並べる。F-EDIT-11）。
+ *
+ * @returns プラグインごとの ID・名前・ルールの ID（ルールの無いプラグインは入れない）
+ * @example
+ * ruleSets() // → [{ plugin: "jp.x", name: "トレーサビリティのチェック", rules: ["req-sat"] }]
+ */
+export function ruleSets(): RuleSet[] {
+  return summaries
+    .filter((s) => s.enabled && s.ruleIds?.length)
+    .map((s) => ({ plugin: s.id, name: s.manifest?.name ?? s.id, rules: s.ruleIds ?? [] }));
+}
+
+/**
+ * プロジェクトの設定に書いてある知らせの重さ（F-EDIT-11）。
+ *
+ * @returns 種類 → 重さ。プロジェクトが無ければ null（重さを変えられない）
+ * @example
+ * projectLevels() // → { "trace.verify": "error" }
+ * projectLevels() // → null（modelith.json の無いフォルダ・フォルダを開いていない）
+ */
+export function projectLevels(): ProjectFile["levels"] | null {
+  const project = currentProject();
+  if (!project || pluginFolder()?.projectText == null) return null;
+  return project.levels ?? {};
+}
+
+/**
  * プラグインの有効・無効を切り替える。プロジェクトのものは設定ファイルに書き（チームでそろう）、このブラウザのものは保存場所に書く（F-PLUG-8）。
  *
  * @param id プラグインの ID
@@ -363,19 +421,7 @@ async function setEnabled(id: string, place: PluginPlace, enabled: boolean): Pro
     }
     return;
   }
-  const f = pluginFolder();
-  const text = f?.projectText;
-  if (!f || text == null) return;
-  const updated = await coreClient().updateProjectPlugin(text, id, { op: "setEnabled", enabled });
-  if ("refused" in updated) return toast(updated.refused);
-  try {
-    if (!(await isProjectFresh(f))) return;
-    await f.source.writeInFolder(f.ref, PROJECT_FILE, updated.text);
-    await pluginEnv().refreshFolder();
-    toast(done);
-  } catch (e) {
-    toastFailure("プロジェクトの設定を保存できませんでした", e);
-  }
+  await changeProjectFile((text) => coreClient().updateProjectPlugin(text, id, { op: "setEnabled", enabled }), done);
 }
 
 /**

@@ -16,6 +16,7 @@ import { initEditor } from "./app/editor";
 import { initWordHelp } from "./app/word-help";
 import { initTextMode } from "./app/text-mode";
 import { initExportDialog, showExportDialog } from "./app/export-dialog";
+import { initLevelsDialog, showLevelsDialog } from "./app/levels-dialog";
 import { initFiles } from "./app/files";
 import { closeMenus, initMenuBar } from "./app/menubar";
 import { initHistory, redo, undo } from "./app/history";
@@ -64,6 +65,10 @@ function initMenus(): void {
   $("#btnExport").onclick = () => {
     closeMenus();
     showExportDialog();
+  };
+  $("#menuLevels").onclick = () => {
+    closeMenus();
+    showLevelsDialog();
   };
   $("#appVersion").textContent = __APP_VERSION__ + (__APP_COMMIT__ ? ` (${__APP_COMMIT__.slice(0, 7)})` : "");
   // 見出しの札と「ヘルプ」の開発段階は、版の名前（alpha・beta・rc）から決める。正式版では出さない
@@ -193,6 +198,7 @@ try {
   initTextMode();
   initHistory();
   initExportDialog();
+  initLevelsDialog();
   initMenus();
   initToolbar();
   await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });

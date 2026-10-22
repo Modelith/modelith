@@ -7,6 +7,7 @@ import { centerOn, highlight, render, scrollEditorTo, syncScroll } from "./rende
 import { cancelConnect, S } from "./state";
 import { problemCopyRows, reparse, notifyTextChange, setSync, toast } from "./sync";
 import { copiedText, problemsText } from "./problem-copy";
+import { showLevelsDialog } from "./levels-dialog";
 import { diagramName } from "./labels";
 import { goToGap } from "./gap-guide";
 import { isNarrow } from "./panels";
@@ -94,6 +95,7 @@ export function initEditor(): void {
   // 問題のコピー：「すべてコピー」、行の右クリック、行を選んで Ctrl＋C（F-EDIT-13）
   $("#problems").addEventListener("click", (ev) => {
     if (closest(ev, "[data-copy-all]")) void copyProblems();
+    if (closest(ev, "[data-levels]")) showLevelsDialog();
   });
   $("#problems").addEventListener("contextmenu", (ev) => {
     const b = closest(ev, "[data-copy]");

@@ -33,12 +33,25 @@ describe("fileProblems（F-FILE-16）", () => {
     );
     // Assert
     expect(f.rows.map((r) => [r.line, r.mark, r.cls])).toEqual([
-      [2, "⚠", ""],
+      [2, "⚠", "lv-error"],
       [3, "△", "rule warning"],
-      [3, "△", "gap"],
+      [3, "△", "gap lv-warning"],
     ]);
     expect(f.rows[1]?.text).toBe("m（プラグイン「トレース」のルール r1）");
     expect(f.status).toEqual({ errors: 1, warnings: 2 });
+  });
+
+  it("F-EDIT-11: プロジェクトで選んだ重さで並べ、印と件数を決める", () => {
+    // Arrange（トレースの抜けをエラーにした）
+    const report = { path: "p.sysml", problems: [{ pos: 0, msg: "まだ", kind: "unsupported" as const }, { pos: 0, msg: "抜け", kind: "gap" as const, level: "error" as const }], findings: [] };
+    // Act
+    const f = fileProblems(report, "x", new Map());
+    // Assert（エラーにした抜けが先頭）
+    expect(f.rows.map((r) => [r.text, r.mark, r.cls])).toEqual([
+      ["抜け", "⚠", "gap lv-error"],
+      ["まだ", "ℹ", "unsupported lv-info"],
+    ]);
+    expect(f.status).toEqual({ errors: 1, warnings: 0 });
   });
 
   it("テキストが無ければ 1 行目とする（異常系：読めなかったファイル）", () => {

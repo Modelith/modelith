@@ -12,8 +12,9 @@ import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { droppedDiagnosticsNote, MAX_DIAGNOSTICS } from "../plugins/limits";
 import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
+import { LEVEL_MARK, problemLevel } from "./notice-levels";
 import type { CopyRow } from "./problem-copy";
-import type { FileProblems } from "./project-problems";
+import { problemClass, type FileProblems } from "./project-problems";
 import { highlight, render } from "./render";
 import { S } from "./state";
 import { curLayout, curView, syncModelViewKind, VK, viewContent } from "./views";
@@ -366,12 +367,12 @@ export function setSync(cls: "" | "busy" | "bad", txt: string): void {
 
 /**
  * 今のモデルから、同期の状態（問題の件数）と、テキスト欄の見出しの要素と関係の数を書き換える。
- * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数に、チェックルールと v1 のプラグインの診断のエラーと警告、プラグインについての行を足したもの。
+ * 問題の件数は、エラーの重さのモデルの問題（F-EDIT-11）に、チェックルールと v1 のプラグインの診断のエラーと警告、プラグインについての行を足したもの。
  */
 export function updateSync(): void {
   const serious = (s: string): boolean => s === "error" || s === "warning";
   const rules = S.findings.filter((f) => serious(f.severity)).length + currentDiagnostics().filter((d) => serious(d.item.severity)).length;
-  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => !x.kind).length + rules + S.pluginNotes.length;
+  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => problemLevel(x) === "error").length + rules + S.pluginNotes.length;
   setSync(p ? "bad" : "", p ? `同期済み（問題 ${p} 件）` : "同期済み");
   $("#textInfo").textContent = `SysML v2 テキスト：要素 ${n}、関係 ${e}`;
 }
@@ -412,16 +413,15 @@ export function problemCopyRows(which?: number): CopyRow[] {
  * 一覧の上に「すべてコピー」を、各行にコピーする行の番号（data-copy）を付ける（F-EDIT-13）。
  */
 export function renderProblems(): void {
-  // エラー → まだ扱えない構文 → トレースの抜け、の順に並べる
-  const order = (k: Problem["kind"]): number => (k === undefined ? 0 : k === "unsupported" ? 1 : 2);
-  const sorted = [...S.M.problems].sort((a, b) => order(a.kind) - order(b.kind));
-  const mark = { gap: "△", unsupported: "ℹ" } as const;
+  // エラーの重さの問題 → まだ扱えない構文 → トレースの抜け、の順に並べる（重さはプロジェクトで選べる。F-EDIT-11）
+  const order = (p: Problem): number => (problemLevel(p) === "error" ? 0 : p.kind === "unsupported" ? 1 : 2);
+  const sorted = [...S.M.problems].sort((a, b) => order(a) - order(b));
   // トレースの抜けの行には、何件目の抜けか（data-gap）を付ける。押したときに図の要素へ移るため（F-TRACE-2）
   const gapIndex = new Map(S.M.problems.filter((p) => p.kind === "gap").map((p, i) => [p, i]));
   const own = (pos: number, text: string, html: (copy: number) => string): ProblemRow => ({ html, own: true, path: null, line: lineOf(S.text, pos), text });
   const note = (text: string, html: (copy: number) => string): ProblemRow => ({ html, own: false, path: null, line: null, text });
   const model = (p: Problem): ProblemRow =>
-    own(p.pos, p.msg, (c) => `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} data-copy="${c}" class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`);
+    own(p.pos, p.msg, (c) => `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} data-copy="${c}" class="${problemClass(p)}">${LEVEL_MARK[problemLevel(p)]} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`);
   const rule = (f: RuleFinding): ProblemRow => {
     const text = findingText(f, S.pluginNames);
     return own(f.pos, text, (c) => `<button data-pos="${f.pos}" data-copy="${c}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(text)}</button>`);
@@ -438,12 +438,12 @@ export function renderProblems(): void {
       return note(text, (c) => `<button class="plugin" data-copy="${c}">⚠ ${esc(text)}</button>`);
     });
   const mine = [
-    ...sorted.filter((p) => !p.kind).map(model),
+    ...sorted.filter((p) => order(p) === 0).map(model),
     ...S.findings.map(rule),
     ...dropped,
     ...currentDiagnostics().map(diagnostic),
     ...notes,
-    ...sorted.filter((p) => p.kind).map(model),
+    ...sorted.filter((p) => order(p) > 0).map(model),
   ];
   const others = S.fileProblems.map((f) => f.rows.map((r): ProblemRow => ({
     html: (c) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" data-copy="${c}" class="${r.cls}">${r.mark} ${r.line} 行目：${esc(r.text)}</button>`,
@@ -457,7 +457,7 @@ export function renderProblems(): void {
     $("#problems").innerHTML = "";
     return;
   }
-  const head = `<div class="phead"><span>問題 ${rows.length} 件</span><button type="button" class="pcopy" data-copy-all title="一覧のすべての問題を「ファイル名:行: メッセージ」の形でコピーする">すべてコピー</button></div>`;
+  const head = `<div class="phead"><span>問題 ${rows.length} 件</span><button type="button" class="pcopy" data-levels title="知らせの種類ごとに、エラー・警告・情報・出さないのどれで知らせるかを選ぶ">知らせの重さ…</button><button type="button" class="pcopy" data-copy-all title="一覧のすべての問題を「ファイル名:行: メッセージ」の形でコピーする">すべてコピー</button></div>`;
   let at = mine.length;
   const files = S.fileProblems.map((f, i) => {
     const html = otherFileHtml(f, (others[i] ?? []).map((r, j) => r.html(at + j)));
