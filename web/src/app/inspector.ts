@@ -180,7 +180,7 @@ function multiHtml(): string {
 }
 
 /**
- * 選んだ接続点の HTML を作る。ポートなら向きのボタンと削除、ポートにする途中なら名前・型・向きの入力欄、
+ * 選んだ接続点の HTML を作る。ポートなら向きのボタンと削除（アクティビティ図のパラメータなら名前と向きだけ）、ポートにする途中なら名前・型・向きの入力欄、
  * 自由な接続点ならつながる線の数と「ポートにする」「接続点を外す」を出す。
  * ポートにする途中で向きが未定（S.portForm が true）なら、縁の向きから推測した向き（右は出力・左は入力・上下は双方向）を S.portForm に入れる。
  *
@@ -192,9 +192,15 @@ function multiHtml(): string {
  * pinHtml(A, a1) // → '<div class="what"><small>接続点（A）・線 1 本・ドラッグで移動</small><b>ここからさらに線を引けます</b></div>…'
  * // ポート p（in）のとき
  * pinHtml(A, p)  // → '<div class="what"><small>ポート（A）・ドラッグで縁に沿って移動</small><b>p</b></div>…（入力のボタンが押された状態）'
+ * // アクティビティ図のアクション boil のパラメータ w（in）のとき
+ * pinHtml(boil, w) // → '<div class="what"><small>パラメータ（boil）・入力</small><b>w : Water</b></div>'
  */
 function pinHtml(n: ModelNode, pin: Pin): string {
   const p = pin.port;
+  // アクティビティ図のパラメータは、向きや宣言をテキストで書き換える（図からは変えない）
+  if (p && n.flow) {
+    return `<div class="what"><small>パラメータ（${esc(n.name)}）・${DIR_LABEL[p.dir]}</small><b>${esc(p.name)}${p.type ? " : " + esc(p.type) : ""}</b></div>`;
+  }
   if (p) {
     return (
       `<div class="what"><small>ポート（${esc(n.name)}）・ドラッグで縁に沿って移動</small><b>${esc(p.name)}${p.type ? " : " + (p.conj ? "~" : "") + esc(p.type) : ""}</b></div><div class="acts">` +

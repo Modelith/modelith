@@ -115,6 +115,9 @@ pub struct FlowNode {
     /// 宣言（`ParseResult.entries` の番号）。開始・終了は宣言を持たないので `None`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry: Option<usize>,
+    /// パラメータ（向き `in`・`out`・`inout` の付いた特徴量。8.2.3.17 の parameter）。本体に無く型があれば、型の定義のパラメータ。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<Port>,
 }
 
 /// アクション定義 1 つの、アクションの流れの図（ActionFlowView、8.2.3.17）。
@@ -127,7 +130,10 @@ pub struct ActionFlow {
     pub entry: usize,
     /// 要素（開始、書いた順の要素、終了の順）。
     pub nodes: Vec<FlowNode>,
-    /// 継起（種類 `succession`）と順序付きの流れ（種類 `successionFlow`）の線。端は `nodes` のキー。
+    /// アクション定義そのもののパラメータ（枠の上に描く。8.2.3.17 の parameter）。図のキーは `b:名前`。
+    pub params: Vec<Port>,
+    /// 継起（種類 `succession`）・順序付きの流れ（種類 `successionFlow`）・流れ（種類 `flow`）の線。
+    /// 端は `nodes` のキーか、アクション定義そのもののパラメータ（`b:名前`）。流れの端のパラメータは `fromPort`・`toPort`（`port:名前`）。
     pub edges: Vec<Edge>,
 }
 

@@ -8,6 +8,11 @@ import { relOptions } from "./relations";
 import { emptyView } from "./layout";
 import { CV, edgeStroke, kindIcon, svgMarkup } from "./svg";
 
+const TEA =
+  "package P { item def Water; action def MakeTea { in item cold : Water; out item tea : Water; " +
+  "action boil { in item w : Water; out item hot : Water; } action brew { in water : Water; out t : Water; } " +
+  "flow cold to boil.w; flow of Water from boil.hot to brew.water; flow brew.t to tea; } }";
+
 const TEXT =
   "package P { action def A { first start; then action a : Heat; then decide d; if x > 0 then s; else c; " +
   "action s send S() to b; action c; first s then done; first c then done; } action def Heat; action def Idle; }";
@@ -71,7 +76,22 @@ describe("flowContentOf（アクションの流れの図の中身）", () => {
     // Act
     const content = flowContentOf(M, c);
     // Assert
-    expect(content).toEqual({ nodes: [], edges: [] });
+    expect(content).toEqual({ nodes: [], edges: [], boundary: [] });
+  });
+
+  it("アクションのパラメータを接続点に、アクション定義そのもののパラメータを枠の上の要素に、パラメータの間の流れを線にする（8.2.3.17）", () => {
+    // Arrange
+    const { M, c } = setup(TEA, "MakeTea");
+    // Act
+    const { nodes, edges, boundary } = flowContentOf(M, c);
+    // Assert
+    expect(nodeOf(nodes, "a:boil").ports.map((p) => [p.name, p.dir])).toEqual([["w", "in"], ["hot", "out"]]);
+    expect(boundary.map((b) => [b.key, b.boundary, b.entry.name])).toEqual([["b:cold", "in", "cold"], ["b:tea", "out", "tea"]]);
+    expect(edges.map((e) => [e.id, e.fromPort, e.toPort])).toEqual([
+      ["flow|b:cold|a:boil|#1", undefined, "port:w"],
+      ["flow|a:boil|a:brew|Water#1", "port:hot", "port:water"],
+      ["flow|a:brew|b:tea|#1", "port:t", undefined],
+    ]);
   });
 
   it("対象にできるのはアクション定義で、既定の対象は線の最も多いもの", () => {
@@ -190,6 +210,16 @@ describe("flowLayers・autoPlace（アクションの流れの図を上から並
     expect(Object.fromEntries(layers)).toEqual({ "a:start": 0, "a:a": 1, "a:f": 2, "a:b": 3, "a:c": 3, "a:j": 4, "a:d": 5, "a:done": 6 });
   });
 
+  it("パラメータの間の流れも段を決め、枠の上のパラメータへの流れは段を決めない", () => {
+    // Arrange
+    const { M, c } = setup(TEA, "MakeTea");
+    const { nodes, edges } = flowContentOf(M, c);
+    // Act
+    const layers = flowLayers(nodes, edges);
+    // Assert
+    expect(Object.fromEntries(layers)).toEqual({ "a:boil": 0, "a:brew": 1 });
+  });
+
   it("つながらない要素は最初の段（境界値）", () => {
     // Arrange
     const { M, c } = setup("package P { action def A { action a; action b; } }", "A");
@@ -245,6 +275,20 @@ describe("アクションの流れの図の記法（svg）", () => {
     expect(node("a:a")).toContain('<rect class="body" width="168" height="44" rx="10"');
     expect(node("a:a")).toContain(">a : Heat</text>");
     expect(es).toContain(">[x &gt; 0]</text>");
+  });
+
+  it("パラメータは要素の縁の接続点に、アクション定義そのもののパラメータは枠の上の四角に描く", () => {
+    // Arrange
+    const { M, c } = setup(TEA, "MakeTea");
+    const content = { ...flowContentOf(M, c), frame: { kind: "action def", title: "MakeTea" } };
+    const L = emptyView();
+    content.nodes.forEach((n, i) => (L.pos[n.key] = [0, i * 120]));
+    // Act
+    const { ns } = svgMarkup(CV, content, L, { view: "afv" });
+    // Assert
+    expect(ns).toContain('<g class="pin" data-node="a:boil" data-pin="port:w">');
+    expect(ns).toContain('<g class="boundary" data-key="b:cold"');
+    expect(ns).toContain(">tea</text>");
   });
 });
 

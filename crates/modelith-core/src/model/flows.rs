@@ -1,12 +1,13 @@
 //! アクション定義ごとに、アクションの流れの図（ActionFlowView、8.2.3.17）に描く要素と線を作る。
 //!
 //! 要素は、アクション定義の直下のアクションの流れの要素（アクション・制御の節・送受信などのアクションの節）と、
-//! 継起が指す暗黙の開始（`start`）・終了（`done`）。線は、アクション定義の直下に書いた継起と順序付きの流れ。
+//! 継起が指す暗黙の開始（`start`）・終了（`done`）。要素のパラメータと、アクション定義そのもののパラメータ（枠の上に描く）も持つ。
+//! 線は、アクション定義の直下に書いた継起・順序付きの流れ・流れ（パラメータの間）。
 //! 要素のキーと線の ID は、図の操作（`edit`）が同じものを探し直せるよう、ここで決める（ADR-0016）。
 
 use std::collections::HashMap;
 
-use super::{ActionFlow, Builder, Edge, FlowNode, flow_label};
+use super::{ActionFlow, Builder, Edge, FlowNode, Port, flow_label, has_word};
 use crate::project::{ACTION_FLOW_KINDS, Entry, Rel, RelKind, Span};
 
 /// 継起の端（元か先）。
@@ -115,15 +116,27 @@ impl Builder<'_> {
     /// ```
     fn action_flow(&mut self, key: String, def: usize) -> ActionFlow {
         let (mut nodes, mut keys) = flow_nodes(self.entries, def);
+        for n in &mut nodes {
+            if let Some(e) = n.entry {
+                n.ports = self.action_params(e);
+            }
+        }
+        let own = params(self.entries, def);
         let mut edges: Vec<Edge> = Vec::new();
         let p = self.p;
         for r in p.rels.iter().filter(|r| r.pe == Some(def)) {
             let Some(line) = line_of(r, &p.entries) else {
                 continue;
             };
-            let (from, to) = (keys.find(&line.a), keys.find(&line.b));
-            let (Some(from), Some(to)) = (from.clone(), to.clone()) else {
-                self.missing_ends(r.start, &line, [from.is_some(), to.is_some()], def);
+            let (from, to) = (
+                end_key(&mut keys, &line.a, line.kind, &own),
+                end_key(&mut keys, &line.b, line.kind, &own),
+            );
+            let (Some((from, from_port)), Some((to, to_port))) = (from.clone(), to.clone()) else {
+                // 流れの見つからない端は、関係の確かめ（`relations`）が知らせる
+                if line.kind != "flow" {
+                    self.missing_ends(r.start, &line, [from.is_some(), to.is_some()], def);
+                }
                 continue;
             };
             edges.push(Edge {
@@ -134,8 +147,8 @@ impl Builder<'_> {
                 label: line.label,
                 src: line.src,
                 rel: None,
-                from_port: None,
-                to_port: None,
+                from_port,
+                to_port,
                 end_label: None,
             });
         }
@@ -156,8 +169,37 @@ impl Builder<'_> {
             key,
             entry: def,
             nodes,
+            params: own,
             edges,
         }
+    }
+
+    /// アクションの使用のパラメータ。本体に書いたパラメータが無く型があれば、型の定義のパラメータ（8.2.3.17 の parameter）。
+    ///
+    /// # 引数
+    ///
+    /// - `e`：アクションの使用（流れの要素）の宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// パラメータ（書いた順）。無ければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "action def Boil { in item w; out item hot; } action def A { action b : Boil; action c { in x; } }" のとき
+    /// action_params(b の番号) → [w（in）, hot（out）]（型の定義から）
+    /// action_params(c の番号) → [x（in）]
+    /// ```
+    fn action_params(&self, e: usize) -> Vec<Port> {
+        let own = params(self.entries, e);
+        let u = &self.entries[e];
+        if !own.is_empty() || u.ty.is_empty() {
+            return own;
+        }
+        self.def_of(&u.ty_path, u.pe)
+            .map(|t| params(self.entries, t))
+            .unwrap_or_default()
     }
 
     /// 図に無い継起の端のうち、アクション定義の中からも名前が見つからないものを問題にする（モデルの `problems` を書き換える）。
@@ -240,13 +282,14 @@ fn flow_nodes(entries: &[Entry], def: usize) -> (Vec<FlowNode>, Keys) {
             name: e.name.clone(),
             kind: e.kind.clone(),
             entry: Some(c),
+            ports: Vec::new(),
         });
     }
     (nodes, keys)
 }
 
 /// 関係を、アクションの流れの図の線の形にする。継起は種類 `succession`（ラベルは名前と `[ガード]`、範囲は文）、
-/// 順序付きの流れは種類 `successionFlow`（ラベルは名前・型・アイテム、範囲は名前付きなら使用、名前の無いものは文）。
+/// 順序付きの流れは種類 `successionFlow`、流れは種類 `flow`（ラベルは名前・型・アイテム、範囲は名前付きなら使用、名前の無いものは文）。
 ///
 /// # 引数
 ///
@@ -263,6 +306,7 @@ fn flow_nodes(entries: &[Entry], def: usize) -> (Vec<FlowNode>, Keys) {
 /// line_of(if x > 0 then b; の継起)       → Some(Line { kind: "succession", label: "[x > 0]", … })
 /// line_of(succession s first a then b;)  → Some(Line { kind: "succession", label: "s", … })
 /// line_of(succession flow of W from a to b;) → Some(Line { kind: "successionFlow", label: "W", … })
+/// line_of(flow a.o to b.i;)              → Some(Line { kind: "flow", label: "", … })
 /// line_of(satisfy の関係)                → None
 /// ```
 fn line_of<'r>(r: &'r Rel, entries: &[Entry]) -> Option<Line<'r>> {
@@ -306,8 +350,20 @@ fn line_of<'r>(r: &'r Rel, entries: &[Entry]) -> Option<Line<'r>> {
             name,
             ty,
             usage,
+        }
+        | RelKind::Flow {
+            item,
+            a,
+            b,
+            name,
+            ty,
+            usage,
         } => Some(Line {
-            kind: "successionFlow",
+            kind: if matches!(r.kind, RelKind::Flow { .. }) {
+                "flow"
+            } else {
+                "successionFlow"
+            },
             a: End {
                 reference: a,
                 entry: None,
@@ -339,7 +395,7 @@ fn line_of<'r>(r: &'r Rel, entries: &[Entry]) -> Option<Line<'r>> {
 /// # 例
 ///
 /// ```text
-/// implicit("start") → FlowNode { key: "a:start", name: "start", kind: "start", entry: None }
+/// implicit("start") → FlowNode { key: "a:start", name: "start", kind: "start", entry: None, ports: [] }
 /// ```
 fn implicit(which: &str) -> FlowNode {
     FlowNode {
@@ -347,5 +403,113 @@ fn implicit(which: &str) -> FlowNode {
         name: which.to_owned(),
         kind: which.to_owned(),
         entry: None,
+        ports: Vec::new(),
     }
+}
+
+/// 線の端の、図の要素のキーとパラメータ。流れ・順序付きの流れの端の 2 段目（`a.o` の `o`）はパラメータ（`port:o`）にする。
+/// 要素に無い 1 段だけの端が、アクション定義そのもののパラメータなら、枠の上のパラメータ（`b:名前`）にする。
+///
+/// # 引数
+///
+/// - `keys`：図の要素のキーの表
+/// - `end`：線の端
+/// - `kind`：線の種類（`succession`・`successionFlow`・`flow`）
+/// - `own`：アクション定義そのもののパラメータ
+///
+/// # 戻り値
+///
+/// （要素のキー, パラメータ）。図に無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// // 要素 a:boil があり、アクション定義のパラメータ cold がある
+/// end_key(keys, "boil.hot", "flow", own)       → Some(("a:boil", Some("port:hot")))
+/// end_key(keys, "boil.hot", "succession", own) → Some(("a:boil", None))
+/// end_key(keys, "cold", "flow", own)           → Some(("b:cold", None))
+/// end_key(keys, "nope", "flow", own)           → None
+/// ```
+fn end_key(
+    keys: &mut Keys,
+    end: &End<'_>,
+    kind: &str,
+    own: &[Port],
+) -> Option<(String, Option<String>)> {
+    let flowing = kind != "succession";
+    if let Some(k) = keys.find(end) {
+        let port = end
+            .reference
+            .split('.')
+            .nth(1)
+            .filter(|_| flowing && end.entry.is_none())
+            .map(|p| format!("port:{p}"));
+        return Some((k, port));
+    }
+    let name = end.reference;
+    (flowing && !name.contains('.') && own.iter().any(|p| p.name == name))
+        .then(|| (format!("b:{name}"), None))
+}
+
+/// 宣言の直下の、名前のあるパラメータ（向き `in`・`out`・`inout` の付いた特徴量。書いた順）。
+///
+/// # 引数
+///
+/// - `entries`：解析結果の宣言
+/// - `owner`：アクション定義かアクションの使用の宣言の番号
+///
+/// # 戻り値
+///
+/// パラメータ。向きの無い特徴量・アクションの流れの要素は含めない。
+///
+/// # 例
+///
+/// ```text
+/// // "action def A { in item cold : Water; out tea : Water; attribute n; action b; }" のとき
+/// params(entries, A の番号) → [cold（in, Water）, tea（out, Water）]
+/// ```
+fn params(entries: &[Entry], owner: usize) -> Vec<Port> {
+    entries[owner]
+        .children
+        .iter()
+        .copied()
+        .filter_map(|c| {
+            let e = &entries[c];
+            let dir = param_dir(e)?;
+            (!e.name.is_empty() && !ACTION_FLOW_KINDS.contains(&e.kind.as_str())).then(|| Port {
+                name: e.name.clone(),
+                ty: e.ty.clone(),
+                conj: e.conj.unwrap_or(false),
+                dir,
+                entry: c,
+            })
+        })
+        .collect()
+}
+
+/// 特徴量の向き（修飾の `in`・`out`・`inout`、無ければ書いた向き）。
+///
+/// # 引数
+///
+/// - `e`：特徴量の宣言
+///
+/// # 戻り値
+///
+/// `in`・`out`・`inout` のいずれか。向きが無ければ `None`。
+///
+/// # 例
+///
+/// ```text
+/// param_dir(in item w;)  → Some("in")
+/// param_dir(out t : W;)  → Some("out")
+/// param_dir(attribute n;) → None
+/// ```
+fn param_dir(e: &Entry) -> Option<&'static str> {
+    let m = e
+        .mods
+        .as_deref()
+        .filter(|m| !m.is_empty())
+        .or(e.dir.as_deref())
+        .unwrap_or("");
+    ["inout", "out", "in"].into_iter().find(|d| has_word(m, d))
 }
