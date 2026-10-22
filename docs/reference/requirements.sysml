@@ -1174,6 +1174,15 @@ package ModelithRequirements {
                 verify ProjectProblemsReq;
             }
         }
+        verification def EdgeShapeTest {
+            doc /* web/src/app/edge-shape.test.ts：曲がり角を通る直角の経路（始点・終点の縁の向き、続けて同じ点の省き方）、区間の中ほどの位置、ラベルの位置、
+                   付け替えた端の縁の位置、配置ファイルの @bends・@anchors の読み書きと形の合わない値を捨てること、曲がり角の足し方・動かし方・消し方、端の付け替えと接続点の指定の外し方、
+                   元に戻すこと、要素の名前の変更での鍵の付け替えと無くなった線の形の片付け。web/e2e/edge-shape.spec.ts：線を選んでつまみを出し、区間の中ほどを動かして曲がり角を足し、元に戻すこと、
+                   要素を動かしても曲がり角は動かず、続けて 2 回押すと消えること、端を別の縁へ付け替え、draw.io に曲がり角の点と付け替えた端を書くこと */
+            objective {
+                verify EdgeShapeReq;
+            }
+        }
         verification def CliCheckTest {
             doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json・シンボリックリンクのルールのファイルと modelith.json は誤りとして知らせる（シンボリックリンクを作れない環境では飛ばす）。フォルダのファイルを 1 つのモデルとして検査し、ほかのファイルに書いた関係も数えること（ADR-0021）。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方、シンボリックリンクを読まないこと */
             objective {

@@ -6,6 +6,7 @@ import { eventName } from "./sequence";
 import { isPseudoState, stateActionLines, stateName } from "./state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
+import { hasShape, resetShape } from "./edge-shape";
 import { openProjectFile, otherFileText } from "./other-file";
 import { attrText, kindLabel } from "./labels";
 import type { Pin } from "./geometry";
@@ -17,6 +18,7 @@ import { relOptions, type RelChoice, type RelKind } from "./relations";
 import { activeGapKind, gapGuideHtml, stepGapGuide } from "./gap-guide";
 import { gapGuide, gapRelOptions } from "./trace-gap";
 import { cancelConnect, clearSel, S } from "./state";
+import { commitLayout } from "./sync";
 import { CC, curLayout, edgeById, nodeByKey, phaseLabel } from "./views";
 
 const SELECT_STYLE = 'style="border:1px solid var(--rule);border-radius:6px;padding:6px;background:var(--panel2)"';
@@ -508,6 +510,8 @@ function edgeHtml(ed: ModelEdge): string {
   return (
     `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && (ed.kind === "comp" || ed.kind === "transition") ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : endName(ed.from))} → ${esc(endName(ed.to))}</b></div><div class="acts">` +
     `<button data-act="goto">テキストで見る</button>` +
+    // 調整した線の形を、自動の経路に戻す（F-VIEW-16）
+    (hasShape(curLayout(), ed.id) ? `<button data-act="resetShape">線の形を元に戻す</button>` : "") +
     // メモの線だけを削除する操作は無い（メモごと削除する）
     (ed.kind === "annotate" ? "" : delBtn("delEdge", "関係を削除")) +
     `</div>`
@@ -623,6 +627,13 @@ export function act(a: string): void {
       S.wire = null;
       render();
       renderInspector();
+      return;
+    case "resetShape":
+      if (S.selEdge) {
+        resetShape(curLayout(), S.selEdge);
+        commitLayout();
+        renderInspector();
+      }
       return;
     case "openFile":
       if (n?.file) openProjectFile(n.file);

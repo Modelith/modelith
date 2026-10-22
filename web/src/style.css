@@ -178,6 +178,9 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .node.pulse .body{animation:pulse 1.6s ease-out}
 @keyframes pulse{0%{stroke:var(--sel);stroke-width:5}100%{stroke-width:1.3}}
 .edge .hit{stroke:transparent;stroke-width:16;fill:none;cursor:pointer}
+.eh{cursor:grab}
+.eh.mid{cursor:copy}
+.eh.end{cursor:crosshair}
 .edge.sel path.line{stroke:var(--sel)!important;stroke-width:2.4}
 .zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px;z-index:5}
 .zoom button{width:34px;height:34px;padding:0;font-size:16px}

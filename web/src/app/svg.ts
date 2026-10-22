@@ -4,8 +4,8 @@ import type { Family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./dom";
 import {
-  boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, STATE_HEAD, stateSize, stateTitle,
-  textWidth, type Box, type NodeBox,
+  boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, segmentMids, STATE_HEAD, stateSize, stateTitle,
+  textWidth, type Box, type NodeBox, type Route,
 } from "./geometry";
 import { isPseudoState } from "./state-machine";
 import type { ViewLayout } from "./layout";
@@ -228,7 +228,37 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
   let ns = "", ps = "";
   for (const [, b] of box) if (!b.holds) ns += nodeMarkup(C, b, opts, F, MONO);
   for (const [, b] of box) ps += pinsMarkup(C, b, opts, MONO);
-  return { es, ns: ns + ps, box };
+  // 選んだ線には、形を調整するつまみを要素の上に描く（F-VIEW-16）
+  const selRoute = opts.interactive && opts.selEdge ? routes.get(opts.selEdge) : undefined;
+  const hs = selRoute && opts.selEdge ? edgeHandles(C, opts.selEdge, selRoute) : "";
+  return { es, ns: ns + ps + hs, box };
+}
+
+/**
+ * 選んだ線の形を調整するつまみを SVG の文字列にする（F-VIEW-16）。両端は四角、曲がり角は丸、区間の中ほどは小さな丸（動かすと曲がり角を足す）。
+ *
+ * @param C 色の関数
+ * @param id 線の ID
+ * @param rt 線の経路（`via` と `pts` を使う）
+ * @returns `<g class="ehandles">…</g>` の文字列
+ * @example
+ * edgeHandles(CV, "e1", { via: [[0, 0], [100, 50]], pts: [[0, 0], [100, 0], [100, 50]], … })
+ * // → '<g class="ehandles"><rect class="eh end" data-edge="e1" data-end="f" …/>…<circle class="eh mid" data-edge="e1" data-mid="0" cx="75" cy="0" …/></g>'
+ */
+export function edgeHandles(C: ColorFn, id: string, rt: Route): string {
+  const e = esc(id);
+  const fill = `fill="${C("paper")}" stroke="${C("sel")}" stroke-width="1.5"`;
+  const ends = (["f", "t"] as const).map((which, i) => {
+    const p = (i === 0 ? rt.via[0] : rt.via[rt.via.length - 1]) ?? [0, 0];
+    return `<rect class="eh end" data-edge="${e}" data-end="${which}" x="${p[0] - 5}" y="${p[1] - 5}" width="10" height="10" ${fill}><title>端を別の縁へ付け替える</title></rect>`;
+  });
+  const bends = rt.via
+    .slice(1, -1)
+    .map((p, i) => `<circle class="eh bend" data-edge="${e}" data-bend="${i}" cx="${p[0]}" cy="${p[1]}" r="5.5" ${fill}><title>動かす・ダブルクリックで消す</title></circle>`);
+  const mids = segmentMids(rt.via, rt.pts).map(
+    (p, k) => `<circle class="eh mid" data-edge="${e}" data-mid="${k}" cx="${p[0]}" cy="${p[1]}" r="4" fill="${C("sel")}" fill-opacity=".55"><title>動かして曲がり角を足す</title></circle>`,
+  );
+  return `<g class="ehandles">${[...ends, ...mids, ...bends].join("")}</g>`;
 }
 
 /**
