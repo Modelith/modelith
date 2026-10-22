@@ -1,7 +1,8 @@
 // 図の幾何計算のうち、package の枠（F-VIEW-9）。
 import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelNode } from "../core";
-import { autoPlace, boxesOf, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
+import { build, parse } from "../core/rust";
+import { assertWord, autoPlace, boxesOf, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -343,5 +344,39 @@ describe("メモ（8.2.3.4 の comment）", () => {
     placeNotes([A, N, M], [annotate("note:#1", "A"), annotate("note:#2", "A")], pos);
     // Assert
     expect(pos).toEqual({ "note:#2": [5, 5] });
+  });
+});
+
+describe("compartment（要求図の区画：前提・満たすべき制約・目的。8.2.3.20〜22）", () => {
+  /** テキストを読み、名前の要素の区画の行を返す。 */
+  const rows = (text: string, name: string): string[] => {
+    const n = build(parse(text)).nodes.find((x) => x.name === name);
+    return n ? compartment(n).map((l) => l.t) : [];
+  };
+
+  it("要求には、require の式に加えて assume と assert（否定は assert not）の式を書く（正常系）", () => {
+    // Act
+    const got = rows("package P { requirement def R { require constraint { a > 0 } assume constraint { b > 0 } assert not constraint { c > 0 } } }", "R");
+    // Assert
+    expect(got).toEqual(["{ a > 0 }", "assume { b > 0 }", "assert not { c > 0 }"]);
+  });
+
+  it("部品定義にも、満たすべき制約（assert）の式を書く", () => {
+    // Act
+    const got = rows("package P { part def H { assert constraint { x < 0 } } }", "H");
+    // Assert
+    expect(got).toEqual(["assert { x < 0 }"]);
+  });
+
+  it("検証には、目的の説明と式を書き、持ち主の説明も残す", () => {
+    // Act
+    const got = rows("package P { requirement def R; verification def V { doc /* 沸騰の検証 */ objective { doc /* 3 分で沸く */ verify R; } } }", "V");
+    // Assert
+    expect(got).toEqual(["沸騰の検証", "objective: 3 分で沸く"]);
+  });
+
+  it("assertWord は否定した制約に not を付ける（境界値）", () => {
+    // Act / Assert
+    expect([assertWord({ text: "x", via: "assert" }), assertWord({ text: "x", via: "assert", neg: true })]).toEqual(["assert", "assert not"]);
   });
 });

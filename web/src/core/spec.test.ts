@@ -348,13 +348,23 @@ describe("assert not・assume・require の制約（AssertConstraintUsage・Requ
 });
 
 describe("verify（RequirementVerificationUsage、8.2.2.24）", () => {
-  it("パッケージ直下の使用の中の verify は、相手を見つけ、使用の型から線を引く", () => {
+  it("パッケージ直下の検証の使用の中の verify は、相手を見つけ、検証の使用から線を引く（8.2.3.24 の verify-relationship は検証のケースから要求へ）", () => {
     // Arrange
     const text = "package P { requirement def RD; verification def VD; verification v : VD { objective { verify RD; } } }";
     // Act
     const es = edges(text);
     // Assert
-    expect(es).toEqual(["verify|VD|RD"]);
+    expect(es).toEqual(["defined|v|VD", "verify|v|RD"]);
+    expect(problems(text)).toEqual([]);
+  });
+
+  it("型の無い検証・解析の使用の中の verify も線にする（境界値）", () => {
+    // Arrange
+    const text = "package P { requirement def RD; verification v { objective { verify RD; } } analysis a { objective { verify RD; } } }";
+    // Act
+    const es = edges(text);
+    // Assert
+    expect(es).toEqual(["verify|v|RD", "verify|a|RD"]);
     expect(problems(text)).toEqual([]);
   });
 });

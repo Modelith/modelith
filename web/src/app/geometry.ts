@@ -1,6 +1,6 @@
 // 図の幾何計算（ノードの大きさ・接続点・線の経路・自動配置）。DOM に依存しない純粋関数。
 
-import type { Entry, ModelEdge, ModelNode, Port, PortDir } from "../core";
+import type { Entry, Expr, ModelEdge, ModelNode, Port, PortDir } from "../core";
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
 import { isPseudoState, stateActionLines } from "./state-machine";
 import type { Pos, Side, ViewLayout } from "./layout";
@@ -124,6 +124,17 @@ export interface Line {
 }
 
 /**
+ * 満たすべき制約（`assert constraint`）の区画の行の頭。否定した制約は `assert not` にする（8.2.2.20）。
+ *
+ * @param x 制約の式
+ * @returns 行の頭の語
+ * @example
+ * assertWord({ text: "x < 0", via: "assert" })            // → "assert"
+ * assertWord({ text: "x < 0", via: "assert", neg: true }) // → "assert not"
+ */
+export const assertWord = (x: Expr): string => (x.neg ? "assert not" : "assert");
+
+/**
  * ノードの区画（説明・式・属性など）に書く行を作る。要求などの説明（doc）、要求の require 式・制約の式、
  * part の属性、状態の一覧と遷移、アクションの手順を並べ、8 行を超えたら最後を「… ほか N 行」にまとめる。
  * メモ（`note`）は本文の行（`noteLines`）にする。
@@ -158,8 +169,16 @@ export function compartment(n: ModelNode): Line[] {
     for (const x of wrap(t, W - 18, max)) L.push({ t: x, cls });
   };
   if (e.doc && ["req", "concern", "ver", "con"].includes(n.fam)) push(e.doc, "doc", 3);
+  // 検証・解析の目的（8.2.3.22 の objective-compartment）
+  if (n.fam === "ver") {
+    if (e.objective) push(`objective: ${e.objective}`, "doc", 2);
+    for (const x of e.exprs) if (x.via === "objective") push(`objective { ${x.text} }`, "expr");
+  }
   if (n.fam === "req") for (const x of e.exprs) if (x.via === "require" || !x.via) push(`{ ${x.text} }`, "expr");
-  if (n.fam === "con") for (const x of e.exprs) push(x.text, "expr", 3);
+  // 前提の制約（8.2.3.21 の assume-constraints-compartment）と、満たすべき制約（8.2.3.20 の assert-constraints-compartment。否定は not を付ける）
+  if (n.fam === "req") for (const x of e.exprs) if (x.via === "assume") push(`assume { ${x.text} }`, "expr");
+  if (n.fam !== "con") for (const x of e.exprs) if (x.via === "assert") push(`${assertWord(x)} { ${x.text} }`, "expr");
+  if (n.fam === "con") for (const x of e.exprs) push(x.via === "assert" ? `${assertWord(x)} { ${x.text} }` : x.text, "expr", 3);
   if (["part", "other"].includes(n.fam)) {
     for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(featureText(c), "attr", 1);
   }
