@@ -310,7 +310,9 @@ export type Intent =
   | { op: "deletePort"; key: string; port: string; ctx?: string }
   | { op: "saveView"; name: string; kind: string; targets: string[] }
   | { op: "addToView"; view: string; key: string }
-  | { op: "removeFromView"; view: string; key: string };
+  | { op: "removeFromView"; view: string; key: string }
+  | { op: "renameView"; view: string; name: string }
+  | { op: "deleteView"; view: string };
 
 /** テキストの編集（古いテキストの [start, end) を text に置き換える。位置は UTF-16）。 */
 export interface TextEdit {

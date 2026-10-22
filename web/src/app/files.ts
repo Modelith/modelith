@@ -29,6 +29,8 @@ import { opsIdle } from "./intent";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
+/** 横のパネルの種類。 */
+type Side = "files" | "model" | "views";
 /** 設定「起動時にサンプルを開く」を有効にしたら "1" を置くキー（F-FILE-13）。 */
 const START_SAMPLE_KEY = "modelith-start-sample";
 
@@ -741,15 +743,15 @@ function findEntry(entries: DirEntry[], id: string): DirEntry | undefined {
 }
 
 /**
- * 横のパネルを、ファイル（エクスプローラー）とモデル（ツリー）のどちらかに切り替え、選んだ方を保存する。
+ * 横のパネルを、ファイル（エクスプローラー）・モデル（ツリー）・図（作成した図の一覧、F-VIEW-11）のどれかに切り替え、選んだ方を保存する。
  *
- * @param which "files"：ファイル・"model"：モデル
+ * @param which "files"：ファイル・"model"：モデル・"views"：図
  */
-function showSide(which: "files" | "model"): void {
-  $("#filesSide").hidden = which !== "files";
-  $("#modelSide").hidden = which !== "model";
-  $("#sideFiles").setAttribute("aria-selected", String(which === "files"));
-  $("#sideModel").setAttribute("aria-selected", String(which === "model"));
+function showSide(which: Side): void {
+  for (const [side, pane, tab] of [["files", "#filesSide", "#sideFiles"], ["model", "#modelSide", "#sideModel"], ["views", "#viewsSide", "#sideViews"]] as const) {
+    $(pane).hidden = which !== side;
+    $(tab).setAttribute("aria-selected", String(which === side));
+  }
   store.set(SIDE_KEY, which);
 }
 
@@ -892,7 +894,9 @@ function initMenu(): void {
 function initExplorer(): void {
   $("#sideFiles").onclick = () => showSide("files");
   $("#sideModel").onclick = () => showSide("model");
-  showSide(store.get(SIDE_KEY) === "model" ? "model" : "files");
+  $("#sideViews").onclick = () => showSide("views");
+  const side = store.get(SIDE_KEY);
+  showSide(side === "model" || side === "views" ? side : "files");
   $("#explorer").addEventListener("click", (ev) => {
     const close = closest(ev, "[data-close]");
     if (close) {

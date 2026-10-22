@@ -58,7 +58,7 @@
       <details class="menu" id="diagramMenu">
         <summary>図</summary>
         <div class="pop">
-          <button id="menuSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成…</button>
+          <button id="menuSaveView" title="名前と図の種類を選んで、新しい図を作成する。今の図の要素と配置のまま作ることも、空の図から始めることもできる">新しい図を作成…</button>
           <button id="menuLayout" title="この図を自動で並べ直す">整列</button>
         </div>
       </details>
@@ -104,6 +104,7 @@
       <div class="sidetabs" role="tablist" aria-label="サイドバーの切り替え">
         <button id="sideFiles" role="tab" aria-selected="true">エクスプローラー</button>
         <button id="sideModel" role="tab" aria-selected="false">モデル</button>
+        <button id="sideViews" role="tab" aria-selected="false">図</button>
       </div>
       <div class="side" id="filesSide">
         <div class="explorer" id="explorer" role="tree" aria-label="ファイル"></div>
@@ -111,6 +112,10 @@
       <div class="side" id="modelSide" hidden>
         <div class="panehead"><input id="treeSearch" type="search" placeholder="要素を名前で絞り込み" aria-label="モデル要素を名前で絞り込む"></div>
         <div class="tree" id="tree" role="tree" aria-label="モデルツリー"></div>
+      </div>
+      <div class="side" id="viewsSide" hidden>
+        <div class="panehead"><button id="btnNewDiagram" title="名前と図の種類を選んで、新しい図を作成する">＋ 新しい図を作成…</button></div>
+        <div class="tree" id="diagramList" role="tree" aria-label="作成した図"></div>
       </div>
     </aside>
     <div class="split" id="splitTree" role="separator" aria-orientation="vertical" aria-label="ツリーの幅を変更"></div>
@@ -120,7 +125,7 @@
         <div class="palette" id="palette" role="toolbar" aria-label="要素パレット"></div>
         <div class="spacer"></div>
         <div class="subbar" id="subbar"></div>
-        <button id="btnSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成</button>
+        <button id="btnSaveView" title="名前と図の種類を選んで、新しい図を作成する。今の図の要素と配置のまま作ることも、空の図から始めることもできる">新しい図を作成</button>
         <button id="btnEdge" title="線の描き方を切り替える">線：直角</button>
         <button id="btnLayout" title="この図を自動で並べ直す">整列</button>
       </div>

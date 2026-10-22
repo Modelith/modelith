@@ -16,7 +16,7 @@ import { kindLabel } from "./labels";
 import { kindIcon } from "./svg";
 import { relayout, toast } from "./sync";
 import { CC, edgeById, nodeByKey, phaseLabel } from "./views";
-import { addToView, canAddToView, editableView, removeFromView } from "./view-ops";
+import { addToView, canAddToView, deleteDiagram, editableView, removeFromView, renameDiagram } from "./view-ops";
 
 export type CtxItem = { sep: true } | { head: string } | { label: string; icon?: string; disabled?: boolean; act: () => void };
 
@@ -392,6 +392,9 @@ export function initCtxMenu(): void {
       });
     }
     if (n) items.push({ sep: true }, { label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+    else if (e.kind === "view" && S.M.views.some((v) => v.name === e.name)) {
+      items.push({ sep: true }, { label: "図の名前を変更", act: () => void renameDiagram(e.name) }, { label: "図を削除", act: () => void deleteDiagram(e.name) });
+    }
     closeCtx();
     openCtx(ev.clientX, ev.clientY, items);
   });
