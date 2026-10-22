@@ -9,7 +9,7 @@
 
 | 項目 | 決定 |
 | --- | --- |
-| 公開先 | GitHub Pages（`https://modelith.github.io/modelith/`）。サーバを持たず、データは利用者の手元か、利用者自身のクラウドに置く |
+| 公開先 | GitHub Pages（安定版 `https://modelith.github.io/modelith/`、プレリリース版 `…/modelith/preview/`。ADR-0020）。サーバを持たず、データは利用者の手元か、利用者自身のクラウドに置く |
 | 独自ドメイン | 持たない。モデルは利用者がファイルとして保存するため、将来 URL が変わっても移行できる。org の Pages には第三者が書いた HTML を置かない（保存領域を共有するため） |
 | 配布形態 | Web アプリ。デスクトップアプリ（Tauri）は beta 前後に要否を判断する |
 | フィードバック | GitHub Issues（不具合・要望のテンプレート） |
