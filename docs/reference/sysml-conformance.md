@@ -175,7 +175,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | `action def` / `action` / `then action` | ○ | | 区画に手順として番号付きで並ぶ。アクションの流れ図には、角の丸い四角と継起の線で描く |
-| アクションのパラメータ `in w : W;` | △ | 0.3.0 以降 | 要素として読むが、アクティビティ図にパラメータとその間のフローを描かない |
+| アクションのパラメータ `in w : W;` | △ | 0.2.0 | 要素として読むが、アクティビティ図にパラメータとその間のフローを描かない |
 | `perform action` | ○ | | `perform action a : A;` は種類 `perform action` の使用になる |
 | 参照の形 `perform x.y;` | ○ | | 種類 `perform action` の使用（名前は y）にし、x.y を参照の相手として記録する。アクティビティ図の要素になる。`perform use case u : U;` は「まだ扱えない」と知らせる。指す先が無くても知らせない |
 | アクションの継起 `first a1 then a2;` | ○ | | `first a then b;`・`then b;`（直前の要素から。続けて書いた `then` はどれも同じ要素から）・`then action b;`（`then` だけが継起）・`first start;`（続く継起の元）を読み、アクションの流れ図に描く。開始・終了（`start`・`done`）は塗った丸と、丸の中の塗った丸（8.2.3.17）。図から 2 つの要素の間に線を引くと `first a then b;` を書き、線を消すとその文（`then action b;` は `then` だけ）を消す |
@@ -196,7 +196,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `calc def` / `calc` / `return` | ○ | | 式は文字列 |
 | `constraint def` / `constraint` | ○ | | 式は文字列（評価しない） |
 | 本体が `true`・`false`・`not` で始まる制約・計算・`require` | ○ | | `null`・`new` も含め、式として持ち主に入れる（区画に出る）。`not satisfy` はこれまでどおり否定の satisfy |
-| `assert constraint` / `assert not` | △ | 0.3.0 以降 | `assert constraint { … }`・`assert not constraint d { … }` は式として親に入る（`x < 0` のような比べる式も誤ったエラーにしない）。本体の無い `assert constraint c : CD;` も `c : CD` を親の式として残す（`not` は `not c : CD` と残す）。本体のある形では否定（`not`）を記録しない |
+| `assert constraint` / `assert not` | △ | 0.2.0 | `assert constraint { … }`・`assert not constraint d { … }` は式として親に入る（`x < 0` のような比べる式も誤ったエラーにしない）。本体の無い `assert constraint c : CD;` も `c : CD` を親の式として残す（`not` は `not c : CD` と残す）。本体のある形では否定（`not`）を記録しない |
 | `requirement def` / `requirement` | ○ | | |
 | `subject` / `stakeholder` | ○ | | |
 | `require` / `assume constraint` | ○ | | `require constraint { … }`・`assume constraint { … }`（名前付きも）は式として入る。本体の無い `require c : CD;`・`require constraint c : CD;` も `c : CD` を式として残す（要求の区画に出る） |
@@ -207,10 +207,10 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `concern def`、`frame concern c : C` | ○ | | |
 | 型の無い `frame c;` | ○ | | 関心事の使用 c の型への «frame» の線にする。見つからなければ「見つかりません」と示す |
 | `case def` / `case` | ○ | | ツリーに出る要素になる（図のノードにはしない）。本体（`subject`・`actor`・`objective` など）も読む |
-| `objective` | △ | — | 中身は親に入る（目的の要求そのものは要素にしない） |
+| `objective` | △ | 0.2.0 | 中身は親に入る（目的の要求そのものは要素にしない） |
 | `analysis def` / `analysis` | ○ | | |
 | `verification def` / `verification` | ○ | | |
-| `verify` | △ | — | 定義の中と、パッケージ直下の型付きの使用の中（型の定義から線を引く）で線になる。型の無い使用の中では線を引かない |
+| `verify` | △ | 0.2.0 | 定義の中と、パッケージ直下の型付きの使用の中（型の定義から線を引く）で線になる。型の無い使用の中では線を引かない |
 | 宣言する形 `verify requirement r : R;` | ○ | | 型 R を検証する線にする |
 | `use case def` / `use case` | ○ | | 専用のビューは無い |
 | `include use case` | ○ | | 種類 `include use case` の要素になる（`include use case u : U;` は U を型にする。`include u;` は u を名前にし、型は付けない）。図の線は引かない |
@@ -259,9 +259,9 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 標準ビュー定義 | 短い名前 | 画面の名前 | `view` の描き方 | 対応 | 予定 |
 | --- | --- | --- | --- | --- | --- |
-| GeneralView | `gv` | 一般ビュー | ノードと線の図（expose した要素と、その間の関係） | △ 図のノードにするのは、定義と、package の直下の `part`・`requirement` の使用だけ（`action`・`item`・`state`・`use case` の使用と `case def` は描かない。ユースケースの楕円・アクターの記号も無い）。特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
-| InterconnectionView | `iv` | 内部ブロック図 | 内部ブロック図（expose した part def、または part の型が対象） | △ 部品の本体に書いた部品（どの深さでも）と、線の端 `a.b.p`・`a.b.c.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
-| ActionFlowView | `afv` | アクティビティ図 | アクティビティ図（expose した action def が対象。自動の図「アクティビティ図」とツリーの「アクティビティ図で開く」でも開ける） | △ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータとその間のフロー、入れ子の本体の流れ、区画（swim lane）は無い | 0.3.0 以降 |
+| GeneralView | `gv` | 一般ビュー | ノードと線の図（expose した要素と、その間の関係） | △ 図のノードにするのは、定義と、package の直下の `part`・`requirement` の使用だけ（`action`・`item`・`state`・`use case` の使用と `case def` は描かない。ユースケースの楕円・アクターの記号も無い）。特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | 0.2.0（ユースケースの楕円・アクターの記号は 0.3.0 以降） |
+| InterconnectionView | `iv` | 内部ブロック図 | 内部ブロック図（expose した part def、または part の型が対象） | △ 部品の本体に書いた部品（どの深さでも）と、線の端 `a.b.p`・`a.b.c.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | 0.2.0 |
+| ActionFlowView | `afv` | アクティビティ図 | アクティビティ図（expose した action def が対象。自動の図「アクティビティ図」とツリーの「アクティビティ図で開く」でも開ける） | △ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータとその間のフロー、入れ子の本体の流れ、区画（swim lane）は無い | 0.2.0 |
 | StateTransitionView | `stv` | 状態遷移図 | 状態遷移図（expose した state def が対象。ツリーの「状態遷移図で開く」でも開ける。組み込みのビューの一覧には出さない） | △ 状態・入れ子の状態・並行の領域（破線で区切る）・entry／do／exit の区画・開始と終了の記号と、遷移を `トリガ [ガード] / 効果` のラベルの線で、8.2.3.18 の記法で描く。本体ごとに、遷移の向きに左から並べる。図から遷移を消す・引く（`transition first a then b;`）。expose した state def が複数あっても最初の 1 つだけを描き、状態の使用（`exhibit state s { … }`）の中の遷移、効果の本体の中身、線の交差を避ける配置は無い | 0.3.0 以降 |
 | SequenceView | `sv` | シーケンス図 | シーケンス図（expose した occurrence def が対象） | △ ライフライン・メッセージ・ライフラインの上のイベント（白抜きの丸と `.ev` の札。入れ子の部品のイベントは `.sub.ev`、ライフラインの型の中のイベントも）・別のライフラインのイベントの間の順序（破線と開いた矢印）を、8.2.3.9 の記法で描く。時間は上から下へ進み、メッセージとメッセージの端でないイベントが 1 段ずつ使い、段は順序（`first … then`・`then event occurrence`）を守り、ほかは書いた順にする。図から順序の線を消す。複合フラグメント（`alt`・`loop` に当たるもの）、入れ子のシーケンス図（view の参照）、ライフラインの頭のポート（sq-port）、入れ子の部品ごとのライフライン、図からイベントや順序を足す操作は無い | 0.3.0 以降 |
 | GeometryView | `gev` | ジオメトリビュー | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |
