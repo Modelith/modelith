@@ -29,6 +29,7 @@
   - [ブランチ戦略](development/branching-strategy.md)
   - [リリース手順](development/releasing.md)
   - [リリース計画（0.1.0）](development/release-plan.md)
+  - [リリース計画（0.2.0）](development/release-plan-0.2.0.md)
   - [テスト](development/testing.md)
 - [設計判断（ADR）](adr/README.md)
 
