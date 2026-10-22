@@ -143,9 +143,15 @@ package ModelithRequirements {
                    順序に合わせて上から描く（9.2.20.2.7 SequenceView・8.2.3.9）。メッセージ・順序の相手のイベントが見つからないときと、順序が循環しているときは、問題一覧で知らせる */
         }
         requirement def <'F-VIEW-8'> CreateViewReq {
-            doc /* 図のメニューと図のツールバーの「新しい図を作成」で、表示中の図の要素と配置のまま名前の付いた図を作成し、作成した図に要素を入れたり、図から外したりできる。
+            doc /* 図のメニュー・図のツールバー・サイドバーの「図」の「新しい図を作成」で、名前と図の種類を選んで図を作成する。種類は「今の図のまま」（表示中の図の要素と配置のまま）・
+                   一般の図（空の図から始める）・内部ブロック図・アクティビティ図・状態遷移図・シーケンス図で、後の 4 つは描く対象（部品定義・アクション定義・状態定義・シナリオ）を
+                   モデルから選ぶか、新しく作る。作成した図に要素を入れたり、図から外したりできる。
                    ＋メニューでは、自動で描く図と作成した図を見出しで分けて示し、タブのツールチップでも作成した図であることを示す。テキストには標準の view と expose として書き、利用者には view・expose という言葉を見せない（ADR-0005・ADR-0014）。
                    図から外しても、モデルの要素は消さない。モデルから削除するのは別の操作にする */
+        }
+        requirement def <'F-VIEW-11'> ViewListReq {
+            doc /* サイドバーの「図」に作成した図を並べ、選ぶと開く。一覧とツリーの右クリックから、作成した図の名前を変えたり、削除したりできる。
+                   名前を変えても図の配置と開いているタブは保ち、削除しても図に出していたモデルの要素は残す（確認を取る）。テキストでは view の宣言の名前を変える・宣言を消す（ADR-0005） */
         }
         requirement def <'F-VIEW-9'> PackageFrameReq {
             doc /* 図に package そのものを出したとき（expose P）、package を枠（フォルダ形）として描き、中の要素を枠の中に示す（8.2.3.5 の package の記法、ADR-0005） */
@@ -369,6 +375,7 @@ package ModelithRequirements {
         #derivation dependency from UnsavedLayoutReq to SafetyNeed;
         #derivation dependency from StandardViewReq to ViewsNeed;
         #derivation dependency from CreateViewReq to ViewsNeed;
+        #derivation dependency from ViewListReq to ViewsNeed;
         #derivation dependency from PackageFrameReq to ViewsNeed;
         #derivation dependency from SequenceReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
@@ -509,6 +516,7 @@ package ModelithRequirements {
         satisfy UnsavedLayoutReq by Workspace;
         satisfy StandardViewReq by DiagramUI;
         satisfy CreateViewReq by DiagramUI;
+        satisfy ViewListReq by DiagramUI;
         satisfy PackageFrameReq by DiagramUI;
         satisfy SequenceReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
