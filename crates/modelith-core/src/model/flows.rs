@@ -6,6 +6,7 @@
 //! 要素のキーと線の ID は、図の操作（`edit`）が同じものを探し直せるよう、ここで決める（ADR-0016）。
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry as Slot;
 
 use super::{ActionFlow, Builder, Edge, FlowNode, Port, flow_label, has_word};
 use crate::project::{ACTION_FLOW_KINDS, Entry, Rel, RelKind, Span};
@@ -27,49 +28,77 @@ struct Line<'r> {
     src: Span,
 }
 
-/// 図の要素のキーの表（宣言の番号・名前から）と、開始・終了を使ったか。
+/// 図の要素のキーの表（宣言の番号・本体ごとの名前から）と、開始・終了を使った本体。
+/// 本体は、アクション定義そのものと、中にアクションの流れを書いたアクションの使用（入れ子の本体）。
 #[derive(Default)]
 struct Keys {
     by_entry: HashMap<usize, String>,
-    by_name: HashMap<String, String>,
-    start: bool,
-    done: bool,
+    /// 要素のキーから宣言の番号（入れ子の本体をたどるため）。
+    entry_by_key: HashMap<String, usize>,
+    /// （本体の宣言の番号, 名前）から要素のキー（同じ名前は最初の要素）。
+    by_name: HashMap<(usize, String), String>,
+    /// 本体の宣言の番号から、その中の要素のキーの頭（アクション定義は `a:`、入れ子の本体は `a:外.`）。
+    prefix: HashMap<usize, String>,
+    /// 開始（`start`）を使った本体（使った順）。
+    start: Vec<usize>,
+    /// 終了（`done`）を使った本体（使った順）。
+    done: Vec<usize>,
 }
 
 impl Keys {
-    /// 継起の端の、図の要素のキー。宣言の番号があればその要素、無ければ参照の最初の段の名前の要素。
-    /// `start`・`done` は、同じ名前の要素が無ければ暗黙の開始・終了にする（使ったことを覚える）。
+    /// 線の端の、図の要素のキーと、その後ろの段（パラメータの候補）。宣言の番号があればその要素、無ければ参照を本体の中から段ごとにたどる
+    /// （`boil.heat.x` は、本体の要素 boil の中の要素 heat までたどり、`x` を残す）。
+    /// `start`・`done` は、同じ名前の要素が無ければ、その本体の暗黙の開始・終了にする（使ったことを覚える）。
     ///
     /// # 引数
     ///
-    /// - `end`：継起の端
+    /// - `end`：線の端
+    /// - `body`：線を書いた本体の宣言の番号
     ///
     /// # 戻り値
     ///
-    /// 要素のキー。図に無ければ `None`。
+    /// （要素のキー, たどった後の次の段）。図に無ければ `None`。
     ///
     /// # 例
     ///
     /// ```text
-    /// // 要素 a:a がある
-    /// find(End { reference: "a.out", entry: None }) → Some("a:a")
-    /// find(End { reference: "done", entry: None })  → Some("a:done")（done を使ったことを覚える）
-    /// find(End { reference: "x", entry: None })     → None
+    /// // アクション定義 A の本体に要素 a:a、a の中に要素 a:a.b がある
+    /// find(End { reference: "a.out", entry: None }, A)  → Some(("a:a", Some("out")))
+    /// find(End { reference: "a.b.x", entry: None }, A)  → Some(("a:a.b", Some("x")))
+    /// find(End { reference: "done", entry: None }, A)   → Some(("a:done", None))（done を使ったことを覚える）
+    /// find(End { reference: "start", entry: None }, a)  → Some(("a:a.start", None))（入れ子の本体の開始）
+    /// find(End { reference: "x", entry: None }, A)      → None
     /// ```
-    fn find(&mut self, end: &End<'_>) -> Option<String> {
+    fn find<'r>(&mut self, end: &End<'r>, body: usize) -> Option<(String, Option<&'r str>)> {
         if let Some(e) = end.entry {
-            return self.by_entry.get(&e).cloned();
+            return self.by_entry.get(&e).map(|k| (k.clone(), None));
         }
-        let head = end.reference.split('.').next().unwrap_or("");
-        if let Some(k) = self.by_name.get(head) {
-            return Some(k.clone());
+        let mut segs = end.reference.split('.');
+        let head = segs.next().unwrap_or("");
+        if let Some(k) = self.by_name.get(&(body, head.to_owned())) {
+            let mut key = k.clone();
+            let mut rest = segs.next();
+            while let Some(seg) = rest {
+                let inner = self
+                    .entry_by_key
+                    .get(&key)
+                    .and_then(|&e| self.by_name.get(&(e, seg.to_owned())));
+                let Some(inner) = inner else { break };
+                key = inner.clone();
+                rest = segs.next();
+            }
+            return Some((key, rest));
         }
-        match head {
-            "start" => self.start = true,
-            "done" => self.done = true,
+        let used = match head {
+            "start" => &mut self.start,
+            "done" => &mut self.done,
             _ => return None,
+        };
+        if !used.contains(&body) {
+            used.push(body);
         }
-        Some(format!("a:{head}"))
+        let prefix = self.prefix.get(&body).map_or("a:", String::as_str);
+        Some((format!("{prefix}{head}"), None))
     }
 }
 
@@ -91,7 +120,7 @@ impl Builder<'_> {
 
     /// アクション定義 1 つの、アクションの流れの図。
     ///
-    /// 要素は `flow_nodes` で作り、継起が `start`・`done` を指せば、開始を先頭・終了を末尾に足す。
+    /// 要素は `flow_nodes` で作り（入れ子の本体の要素も）、継起が `start`・`done` を指せば、その本体の開始・終了を足す（`add_pseudo`）。
     /// 線は、直下に書いた継起（種類 `succession`）と順序付きの流れ（種類 `successionFlow`）で、ID は `種類|元|先|ラベル#番号`。
     /// 端が要素に無いときは線にせず、アクション定義の中からも名前が見つからなければ問題にする（直前の要素の無い `then b;` の元は問題にしない）。
     ///
@@ -113,6 +142,10 @@ impl Builder<'_> {
     ///     edges の ID: ["succession|a:start|a:a|#1", "succession|a:a|a:d|#1", "succession|a:d|a:b|[x]#1"]
     /// // "action def A { first a then nope; action a; }" のとき
     /// action_flow("A", A の番号) → edges は空、problems に「「順序」の相手「nope」が見つかりません（succession）」
+    /// // "action def A { action a { first start then b; action b; } }" のとき（入れ子の本体）
+    /// action_flow("A", A の番号)
+    ///   → nodes のキー: ["a:a", "a:a.start", "a:a.b"]（a:a.start・a:a.b の container は "a:a"）
+    ///     edges の ID: ["succession|a:a.start|a:a.b|#1"]
     /// ```
     fn action_flow(&mut self, key: String, def: usize) -> ActionFlow {
         let (mut nodes, mut keys) = flow_nodes(self.entries, def);
@@ -124,18 +157,36 @@ impl Builder<'_> {
         let own = params(self.entries, def);
         let mut edges: Vec<Edge> = Vec::new();
         let p = self.p;
-        for r in p.rels.iter().filter(|r| r.pe == Some(def)) {
+        for r in &p.rels {
+            // アクション定義そのものと、入れ子の本体に書いた線
+            let Some(body) = r.pe.filter(|b| keys.prefix.contains_key(b)) else {
+                continue;
+            };
             let Some(line) = line_of(r, &p.entries) else {
                 continue;
             };
+            // 本体そのもののパラメータ：アクション定義なら枠の上（`b:名前`）、入れ子の本体ならその本体を持つアクションの縁
+            let holder = (body != def)
+                .then(|| keys.by_entry.get(&body).cloned())
+                .flatten();
+            let body_params = if body == def {
+                own.clone()
+            } else {
+                params(self.entries, body)
+            };
+            let at = Body {
+                entry: body,
+                holder: holder.as_deref(),
+                params: &body_params,
+            };
             let (from, to) = (
-                end_key(&mut keys, &line.a, line.kind, &own),
-                end_key(&mut keys, &line.b, line.kind, &own),
+                end_key(&mut keys, &line.a, line.kind, &at),
+                end_key(&mut keys, &line.b, line.kind, &at),
             );
             let (Some((from, from_port)), Some((to, to_port))) = (from.clone(), to.clone()) else {
                 // 流れの見つからない端は、関係の確かめ（`relations`）が知らせる
                 if line.kind != "flow" {
-                    self.missing_ends(r.start, &line, [from.is_some(), to.is_some()], def);
+                    self.missing_ends(r.start, &line, [from.is_some(), to.is_some()], body);
                 }
                 continue;
             };
@@ -152,12 +203,7 @@ impl Builder<'_> {
                 end_label: None,
             });
         }
-        if keys.start {
-            nodes.insert(0, implicit("start"));
-        }
-        if keys.done {
-            nodes.push(implicit("done"));
-        }
+        add_pseudo(&mut nodes, &keys, def);
         let mut seen: HashMap<String, usize> = HashMap::new();
         for e in &mut edges {
             let base = format!("{}|{}|{}|{}", e.kind, e.from, e.to, e.label);
@@ -210,8 +256,8 @@ impl Builder<'_> {
     /// - `pos`：関係の文の位置（UTF-16）
     /// - `line`：線の形にした関係
     /// - `found`：元・先が図の要素に見つかったか
-    /// - `def`：アクション定義の宣言の番号（名前を探し始める場所）
-    fn missing_ends(&mut self, pos: usize, line: &Line<'_>, found: [bool; 2], def: usize) {
+    /// - `body`：線を書いた本体の宣言の番号（名前を探し始める場所）
+    fn missing_ends(&mut self, pos: usize, line: &Line<'_>, found: [bool; 2], body: usize) {
         let (what, rel) = if line.kind == "succession" {
             ("「順序」", "succession")
         } else {
@@ -222,7 +268,7 @@ impl Builder<'_> {
             if found
                 || end.entry.is_some()
                 || head.is_empty()
-                || self.resolve(head, Some(def)).is_some()
+                || self.resolve(head, Some(body)).is_some()
             {
                 continue;
             }
@@ -235,8 +281,15 @@ impl Builder<'_> {
     }
 }
 
-/// アクション定義の直下の、アクションの流れの要素（`ACTION_FLOW_KINDS`。書いた順）と、そのキーの表。
-/// キーは `a:名前`。名前の無い要素は `a:#番号`（1 から）、同じ名前の 2 つ目からは `a:名前#2`。
+/// 中にアクションの流れ（入れ子の本体）を描く要素の種類。if・while などの本体は、区画の行に書く（`flowBodyLines`）。
+const NESTING_KINDS: &[&str] = &["action", "perform action"];
+
+/// 入れ子の本体をたどる深さの上限。
+const NEST_DEPTH: usize = 8;
+
+/// アクション定義の、アクションの流れの要素（`ACTION_FLOW_KINDS`）と、そのキーの表。
+/// 中にアクションの流れを書いたアクションの使用は入れ子の本体とし、その要素も、外の要素の直後に書いた順で並べる（`container` は外の要素）。
+/// キーは `a:名前`（入れ子は `a:外.名前`）。名前の無い要素は `a:#番号`（1 から、本体ごと）、同じ名前の 2 つ目からは `a:名前#2`。
 ///
 /// # 引数
 ///
@@ -245,47 +298,124 @@ impl Builder<'_> {
 ///
 /// # 戻り値
 ///
-/// 要素と、キーの表（宣言の番号・名前から。同じ名前は最初の要素）。
+/// 要素と、キーの表（宣言の番号・本体ごとの名前から。同じ名前は最初の要素）。
 ///
 /// # 例
 ///
 /// ```text
 /// // "action def A { action a; attribute x; send s; fork f; }" のとき
 /// flow_nodes(entries, A の番号) → キー ["a:a", "a:#1", "a:f"]（属性は要素にしない）
+/// // "action def A { action boil { action heat; then action wait; } action c; }" のとき
+/// flow_nodes(entries, A の番号) → キー ["a:boil", "a:boil.heat", "a:boil.wait", "a:c"]
 /// ```
 fn flow_nodes(entries: &[Entry], def: usize) -> (Vec<FlowNode>, Keys) {
     let mut nodes: Vec<FlowNode> = Vec::new();
     let mut keys = Keys::default();
+    body_nodes(entries, def, None, &mut nodes, &mut keys, 0);
+    (nodes, keys)
+}
+
+/// 本体 1 つの、アクションの流れの要素を足す（`flow_nodes` の中身）。入れ子の本体は、その要素の直後にたどる。
+///
+/// # 引数
+///
+/// - `entries`：解析結果の宣言
+/// - `body`：本体の宣言の番号
+/// - `container`：本体を持つ要素のキー（アクション定義そのものなら `None`）
+/// - `nodes`：要素を足す先
+/// - `keys`：キーの表を足す先
+/// - `depth`：たどった深さ
+fn body_nodes(
+    entries: &[Entry],
+    body: usize,
+    container: Option<&str>,
+    nodes: &mut Vec<FlowNode>,
+    keys: &mut Keys,
+    depth: usize,
+) {
+    let prefix = container.map_or_else(|| "a:".to_owned(), |c| format!("{c}."));
+    keys.prefix.insert(body, prefix.clone());
     let mut unnamed = 0;
-    for &c in &entries[def].children {
+    for &c in &entries[body].children {
         let e = &entries[c];
         if !ACTION_FLOW_KINDS.contains(&e.kind.as_str()) {
             continue;
         }
         let key = if e.name.is_empty() {
             unnamed += 1;
-            format!("a:#{unnamed}")
-        } else if keys.by_name.contains_key(&e.name) {
-            let mut n = 2;
-            while nodes.iter().any(|x| x.key == format!("a:{}#{n}", e.name)) {
-                n += 1;
-            }
-            format!("a:{}#{n}", e.name)
+            format!("{prefix}#{unnamed}")
         } else {
-            let k = format!("a:{}", e.name);
-            keys.by_name.insert(e.name.clone(), k.clone());
-            k
+            match keys.by_name.entry((body, e.name.clone())) {
+                // 同じ名前の 2 つ目から
+                Slot::Occupied(_) => {
+                    let mut n = 2;
+                    while nodes
+                        .iter()
+                        .any(|x| x.key == format!("{prefix}{}#{n}", e.name))
+                    {
+                        n += 1;
+                    }
+                    format!("{prefix}{}#{n}", e.name)
+                }
+                Slot::Vacant(v) => v.insert(format!("{prefix}{}", e.name)).clone(),
+            }
         };
         keys.by_entry.insert(c, key.clone());
+        keys.entry_by_key.insert(key.clone(), c);
         nodes.push(FlowNode {
-            key,
+            key: key.clone(),
             name: e.name.clone(),
             kind: e.kind.clone(),
             entry: Some(c),
             ports: Vec::new(),
+            container: container.map(str::to_owned),
         });
+        let nests = NESTING_KINDS.contains(&e.kind.as_str())
+            && e.children
+                .iter()
+                .any(|&g| ACTION_FLOW_KINDS.contains(&entries[g].kind.as_str()));
+        if nests && depth < NEST_DEPTH {
+            body_nodes(entries, c, Some(&key), nodes, keys, depth + 1);
+        }
     }
-    (nodes, keys)
+}
+
+/// 使った本体ごとに、暗黙の開始（`start`）・終了（`done`）の要素を足す。アクション定義そのものの開始は先頭、終了は末尾に、
+/// 入れ子の本体の開始は本体を持つ要素の直後、終了はその本体の最後の要素の後ろに置く。
+///
+/// # 引数
+///
+/// - `nodes`：要素（書き換える）
+/// - `keys`：キーの表（開始・終了を使った本体）
+/// - `def`：アクション定義の宣言の番号
+///
+/// # 例
+///
+/// ```text
+/// // 要素 [a:a, a:a.b, a:c] で、アクション定義と a の本体が start を、a の本体が done を使った
+/// add_pseudo(nodes, keys, A) → [a:start, a:a, a:a.start, a:a.b, a:a.done, a:c]
+/// ```
+fn add_pseudo(nodes: &mut Vec<FlowNode>, keys: &Keys, def: usize) {
+    for (which, bodies) in [("start", &keys.start), ("done", &keys.done)] {
+        for &body in bodies {
+            let prefix = keys.prefix.get(&body).map_or("a:", String::as_str);
+            let container = (body != def).then(|| prefix.trim_end_matches('.').to_owned());
+            let made = implicit(&format!("{prefix}{which}"), which, container.clone());
+            let at = match (&container, which) {
+                (None, "start") => 0,
+                (None, _) => nodes.len(),
+                (Some(c), "start") => nodes
+                    .iter()
+                    .position(|n| &n.key == c)
+                    .map_or(nodes.len(), |i| i + 1),
+                (Some(_), _) => nodes
+                    .iter()
+                    .rposition(|n| n.key.starts_with(prefix))
+                    .map_or(nodes.len(), |i| i + 1),
+            };
+            nodes.insert(at, made);
+        }
+    }
 }
 
 /// 関係を、アクションの流れの図の線の形にする。継起は種類 `succession`（ラベルは名前と `[ガード]`、範囲は文）、
@@ -386,36 +516,51 @@ fn line_of<'r>(r: &'r Rel, entries: &[Entry]) -> Option<Line<'r>> {
 ///
 /// # 引数
 ///
+/// - `key`：要素のキー（`a:start`、入れ子の本体なら `a:外.start`）
 /// - `which`：`start` か `done`
+/// - `container`：入れ子の本体なら、その本体を持つ要素のキー
 ///
 /// # 戻り値
 ///
-/// キー `a:start`・`a:done`、名前と種類が `which` の要素。
+/// 名前と種類が `which` の要素。
 ///
 /// # 例
 ///
 /// ```text
-/// implicit("start") → FlowNode { key: "a:start", name: "start", kind: "start", entry: None, ports: [] }
+/// implicit("a:start", "start", None) → FlowNode { key: "a:start", name: "start", kind: "start", entry: None, ports: [], container: None }
+/// implicit("a:b.done", "done", Some("a:b")) → FlowNode { key: "a:b.done", …, container: Some("a:b") }
 /// ```
-fn implicit(which: &str) -> FlowNode {
+fn implicit(key: &str, which: &str, container: Option<String>) -> FlowNode {
     FlowNode {
-        key: format!("a:{which}"),
+        key: key.to_owned(),
         name: which.to_owned(),
         kind: which.to_owned(),
         entry: None,
         ports: Vec::new(),
+        container,
     }
 }
 
-/// 線の端の、図の要素のキーとパラメータ。流れ・順序付きの流れの端の 2 段目（`a.o` の `o`）はパラメータ（`port:o`）にする。
-/// 要素に無い 1 段だけの端が、アクション定義そのもののパラメータなら、枠の上のパラメータ（`b:名前`）にする。
+/// 線を書いた本体（`end_key` に渡す）。
+struct Body<'a> {
+    /// 本体の宣言の番号。
+    entry: usize,
+    /// 入れ子の本体なら、その本体を持つ要素のキー。アクション定義そのものなら `None`。
+    holder: Option<&'a str>,
+    /// 本体そのもののパラメータ。
+    params: &'a [Port],
+}
+
+/// 線の端の、図の要素のキーとパラメータ。流れ・順序付きの流れの端の、要素をたどった後の段（`a.o` の `o`）はパラメータ（`port:o`）にする。
+/// 要素に無い 1 段だけの端が本体そのもののパラメータなら、アクション定義では枠の上のパラメータ（`b:名前`）、
+/// 入れ子の本体ではその本体を持つ要素の縁のパラメータにする。
 ///
 /// # 引数
 ///
 /// - `keys`：図の要素のキーの表
 /// - `end`：線の端
 /// - `kind`：線の種類（`succession`・`successionFlow`・`flow`）
-/// - `own`：アクション定義そのもののパラメータ
+/// - `at`：線を書いた本体
 ///
 /// # 戻り値
 ///
@@ -424,31 +569,35 @@ fn implicit(which: &str) -> FlowNode {
 /// # 例
 ///
 /// ```text
-/// // 要素 a:boil があり、アクション定義のパラメータ cold がある
-/// end_key(keys, "boil.hot", "flow", own)       → Some(("a:boil", Some("port:hot")))
-/// end_key(keys, "boil.hot", "succession", own) → Some(("a:boil", None))
-/// end_key(keys, "cold", "flow", own)           → Some(("b:cold", None))
-/// end_key(keys, "nope", "flow", own)           → None
+/// // アクション定義の本体に要素 a:boil があり、アクション定義のパラメータ cold がある
+/// end_key(keys, "boil.hot", "flow", 定義)       → Some(("a:boil", Some("port:hot")))
+/// end_key(keys, "boil.hot", "succession", 定義) → Some(("a:boil", None))
+/// end_key(keys, "cold", "flow", 定義)           → Some(("b:cold", None))
+/// // boil の本体（パラメータ w）の中で
+/// end_key(keys, "w", "flow", boil の本体)       → Some(("a:boil", Some("port:w")))
+/// end_key(keys, "nope", "flow", 定義)           → None
 /// ```
 fn end_key(
     keys: &mut Keys,
     end: &End<'_>,
     kind: &str,
-    own: &[Port],
+    at: &Body<'_>,
 ) -> Option<(String, Option<String>)> {
     let flowing = kind != "succession";
-    if let Some(k) = keys.find(end) {
-        let port = end
-            .reference
-            .split('.')
-            .nth(1)
+    if let Some((k, rest)) = keys.find(end, at.entry) {
+        let port = rest
             .filter(|_| flowing && end.entry.is_none())
             .map(|p| format!("port:{p}"));
         return Some((k, port));
     }
     let name = end.reference;
-    (flowing && !name.contains('.') && own.iter().any(|p| p.name == name))
-        .then(|| (format!("b:{name}"), None))
+    if !flowing || name.contains('.') || !at.params.iter().any(|p| p.name == name) {
+        return None;
+    }
+    Some(match at.holder {
+        None => (format!("b:{name}"), None),
+        Some(h) => (h.to_owned(), Some(format!("port:{name}"))),
+    })
 }
 
 /// 宣言の直下の、名前のあるパラメータ（向き `in`・`out`・`inout` の付いた特徴量。書いた順）。

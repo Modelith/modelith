@@ -182,7 +182,7 @@ export interface RawModel {
   actionFlows?: {
     key: string;
     entry: number;
-    nodes: { key: string; name: string; kind: string; entry?: number; ports?: RawPort[] }[];
+    nodes: { key: string; name: string; kind: string; entry?: number; ports?: RawPort[]; container?: string }[];
     params: RawPort[];
     edges: RawEdge[];
   }[];
@@ -267,7 +267,10 @@ function toModel(raw: RawModel, P: ParseResult): Model {
   const actionFlows = (raw.actionFlows ?? []).map((f) => ({
     key: f.key,
     entry: entry(f.entry),
-    nodes: f.nodes.map((n) => ({ key: n.key, name: n.name, kind: n.kind, entry: n.entry == null ? null : entry(n.entry), ports: (n.ports ?? []).map(port) })),
+    nodes: f.nodes.map((n) => ({
+      key: n.key, name: n.name, kind: n.kind, entry: n.entry == null ? null : entry(n.entry), ports: (n.ports ?? []).map(port),
+      ...(n.container ? { container: n.container } : {}),
+    })),
     params: f.params.map(port),
     edges: f.edges.map(({ rel: _rel, ...e }) => e),
   }));

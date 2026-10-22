@@ -1675,6 +1675,72 @@ fn action_flow_reports_a_flow_end_that_is_not_found() {
 }
 
 #[test]
+fn action_flow_draws_nested_bodies_inside_their_actions() {
+    // Arrange（8.2.3.17：中にアクションの流れを書いたアクションの使用は、その中に要素・開始と終了・線を描く）
+    let text = "package P { action def A { first start then boil; action boil { in item w; \
+                first start then heat; action heat { out item hot; } then wait; action wait; then done; \
+                flow w to heat.hot; } first boil then done; if x { action t; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let f = flow(&m, "A");
+    let nodes: Vec<(&str, Option<&str>)> = f
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.container.as_deref()))
+        .collect();
+    assert_eq!(
+        nodes,
+        [
+            ("a:start", None),
+            ("a:boil", None),
+            ("a:boil.start", Some("a:boil")),
+            ("a:boil.heat", Some("a:boil")),
+            ("a:boil.wait", Some("a:boil")),
+            ("a:boil.done", Some("a:boil")),
+            ("a:#1", None),
+            ("a:done", None),
+        ]
+    );
+    let edges: Vec<(&str, Option<&str>, Option<&str>)> = f
+        .edges
+        .iter()
+        .map(|e| (e.id.as_str(), e.from_port.as_deref(), e.to_port.as_deref()))
+        .collect();
+    assert_eq!(
+        edges,
+        [
+            ("succession|a:start|a:boil|#1", None, None),
+            ("succession|a:boil.start|a:boil.heat|#1", None, None),
+            ("succession|a:boil.heat|a:boil.wait|#1", None, None),
+            ("succession|a:boil.wait|a:boil.done|#1", None, None),
+            (
+                "flow|a:boil|a:boil.heat|#1",
+                Some("port:w"),
+                Some("port:hot")
+            ),
+            ("succession|a:boil|a:done|#1", None, None),
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn action_flow_follows_a_chain_into_a_nested_body() {
+    // Arrange（アクション定義の本体から、入れ子の本体の要素のパラメータ boil.heat.x を指す流れ）
+    let text = "package P { action def A { action boil { action heat { in x; } } action src { out o; } \
+                flow src.o to boil.heat.x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let e = &flow(&m, "A").edges[0];
+    assert_eq!(
+        (e.id.as_str(), e.to_port.as_deref()),
+        ("flow|a:src|a:boil.heat|#1", Some("port:x"))
+    );
+}
+
+#[test]
 fn unnamed_action_nodes_get_numbered_keys() {
     // Arrange（境界値：名前の無いアクションの節は、書いた順に番号を付ける）
     let text = "package P { action def A { send S() to b; then accept e : E; then terminate; } part def E; }";

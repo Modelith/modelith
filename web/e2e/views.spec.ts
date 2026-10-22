@@ -775,6 +775,42 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
     await expect(water).toHaveCount(0);
   });
 
+  test("F-VIEW-15: アクティビティ図に、アクションの中の流れ（入れ子の本体）を、そのアクションの中に描く", async ({ page }) => {
+    // Arrange
+    const text = `package T {
+    action def MakeTea {
+        first start then boil;
+        action boil {
+            first start then heat;
+            action heat;
+            then wait;
+            action wait;
+            then done;
+        }
+        first boil then pour;
+        action pour;
+        then done;
+    }
+    view teaFlow : ActionFlowView { expose T::MakeTea; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="teaFlow"]').click();
+    // Assert（中の要素はアクション boil の矩形の中にあり、中の線も描く）
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(
+      ["a:boil", "a:boil.done", "a:boil.heat", "a:boil.start", "a:boil.wait", "a:done", "a:pour", "a:start"],
+    );
+    const box = async (k: string) => (await page.locator(`[data-key="${k}"] .body`).boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
+    const [outer, inner] = [await box("a:boil"), await box("a:boil.heat")];
+    expect(inner.x).toBeGreaterThan(outer.x);
+    expect(inner.y + inner.height).toBeLessThan(outer.y + outer.height);
+    await expect(page.locator('[data-edge="succession|a:boil.heat|a:boil.wait|#1"]')).toHaveCount(1);
+  });
+
   test("F-VIEW-7: 順序の線を図から削除すると、テキストからその文だけが消える", async ({ page }) => {
     // Arrange
     await openFlow(page);

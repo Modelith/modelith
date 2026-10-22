@@ -59,7 +59,8 @@ export function defaultFlowContext(M: Model): ModelNode | null {
 
 /**
  * アクションの流れの図の中身を作る。モデルのアクションの流れの要素を、種類 `flow` の図の要素にし（開始・終了の宣言は対象のアクション定義）、
- * 要素のパラメータを接続点（ポート）にする。アクション定義そのもののパラメータは、枠の上に描く要素（`b:名前`）にする。
+ * 要素のパラメータを接続点（ポート）にする。入れ子の本体の要素は、その本体を持つアクションを `container` に持たせる（中に描く）。
+ * アクション定義そのもののパラメータは、枠の上に描く要素（`b:名前`）にする。
  * 線（継起・順序付きの流れ・流れ）はそのまま使う。
  *
  * @param M モデル
@@ -76,7 +77,7 @@ export function flowContentOf(M: Model, ctx: ModelNode): FlowContent {
   const nodes = f.nodes.map(
     (n): ModelNode => ({
       key: n.key, name: n.name, short: "", kind: n.kind, isDef: false, entry: n.entry ?? ctx.entry, fam: "beh", trans: [], ports: n.ports,
-      flow: true, phase: null, phaseOwn: false,
+      flow: true, phase: null, phaseOwn: false, ...(n.container ? { container: n.container } : {}),
     }),
   );
   const boundary = f.params.map(
@@ -188,8 +189,8 @@ export function flowLayers(list: readonly ModelNode[], edges: readonly ModelEdge
 export const flowName = (n: ModelNode): string => (n.kind === "start" || n.kind === "done" || !n.name ? kindLabel(n.kind) : n.name);
 
 /**
- * 順序の線（継起、8.2.2.14）を a から b へ引けるか。両方がアクションの流れの図の別の要素で、終了から始まらず、開始へ向かわず、
- * 名前の無い要素（テキストで参照できない）を含まないときに引ける。
+ * 順序の線（継起、8.2.2.14）を a から b へ引けるか。両方がアクションの流れの図の、同じ本体（アクション定義の直下か、同じ入れ子の本体）の別の要素で、
+ * 終了から始まらず、開始へ向かわず、名前の無い要素（テキストで参照できない）を含まないときに引ける。
  *
  * @param a 線の元
  * @param b 線の先
@@ -198,6 +199,7 @@ export const flowName = (n: ModelNode): string => (n.kind === "start" || n.kind 
  * canSucceed(start, heat)  // → true
  * canSucceed(heat, start)  // → false（開始へは向かわない）
  * canSucceed(heat, send)   // → false（名前の無い要素）
+ * canSucceed(boil.heat, c) // → false（入れ子の本体の中と外）
  */
 export const canSucceed = (a: ModelNode, b: ModelNode): boolean =>
-  !!a.flow && !!b.flow && a.key !== b.key && a.kind !== "done" && b.kind !== "start" && !!a.name && !!b.name;
+  !!a.flow && !!b.flow && a.key !== b.key && a.kind !== "done" && b.kind !== "start" && !!a.name && !!b.name && a.container === b.container;
