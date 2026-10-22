@@ -290,6 +290,8 @@ export interface Problem {
   msg: string;
   /** 無し：エラー。gap：トレースの抜け。unsupported：まだ扱えない構文（エラーではない）。 */
   kind?: "gap" | "unsupported";
+  /** プロジェクトの設定で選んだ重さ（F-EDIT-11）。無ければ既定の重さ（トレースの抜けは警告、まだ扱えない構文は情報）。 */
+  level?: "error" | "warning" | "info";
 }
 
 export interface PhaseInfo {

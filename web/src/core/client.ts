@@ -5,7 +5,7 @@ import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type
 import type { Permission } from "../plugins/generated/protocol";
 import {
   fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type FileReport, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
-  type Refused, type RuleFinding, type VersionedSnapshot,
+  type ProblemKind, type ProblemLevel, type Refused, type RuleFinding, type VersionedSnapshot,
 } from "./rust";
 import type { Model, ParseResult } from "./types";
 
@@ -61,6 +61,8 @@ export class CoreClient {
   private readonly pending = new Map<string, Pending>();
   /** 最後にコアに読み込ませたプラグイン（つなぎ直したときに送り直す）。 */
   private plugins: PluginFiles[] = [];
+  /** コアに覚えさせた知らせの重さ（modelith.json の levels。つなぎ直したときに送り直す。F-EDIT-11）。 */
+  private levels: Record<string, ProblemLevel> = {};
   /** コアに覚えさせたプロジェクトのファイル（パス → テキスト。つなぎ直したときに送り直す。ADR-0021）。 */
   private readonly files = new Map<string, string>();
   /** 表示中のファイルのパス（フォルダの外のファイルなら null）。次に送るテキストに添える。 */
@@ -134,6 +136,7 @@ export class CoreClient {
   reconnect(port: CorePort): void {
     this.connect(port);
     if (this.plugins.length) void this.request((id) => ({ type: "setPlugins", id, plugins: this.plugins }));
+    if (Object.keys(this.levels).length) void this.request((id) => ({ type: "setLevels", id, levels: this.levels }));
     if (this.files.size) void this.request((id) => ({ type: "projectFiles", id, clear: true, set: this.fileTexts(), remove: [] }));
     if (this.sent !== null) this.send(this.sent);
   }
@@ -323,6 +326,53 @@ export class CoreClient {
    */
   async updateProjectPlugin(text: string, plugin: string, change: PluginChange): Promise<CreatedProjectFile | Refused> {
     return parseText(await this.request((id) => ({ type: "updateProject", id, text, plugin, change })), "プロジェクトの設定を変更できませんでした");
+  }
+
+  /**
+   * 設定ファイルの知らせの重さを 1 つ、コアに書き換えてもらう（F-EDIT-11）。不明な項目は残る。
+   *
+   * @param text 今の modelith.json のテキスト全体
+   * @param kind 知らせの種類（`trace.verify`・`プラグインの ID/ルールの ID` など）
+   * @param level 選んだ重さ。null なら既定の重さに戻す（項目を消す）
+   * @returns 書き換えた後のテキスト。書き換えられなければ理由の断り。例外は投げない
+   * @example
+   * await c.updateProjectLevel("{}", "unsupported", "off") // → { text: '{\n  "plugins": {},\n  "levels": {\n    "unsupported": "off"\n  }\n}\n' }
+   * await c.updateProjectLevel("{", "unsupported", null)   // → { refused: "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。…" }
+   */
+  async updateProjectLevel(text: string, kind: string, level: ProblemLevel | null): Promise<CreatedProjectFile | Refused> {
+    return parseText(await this.request((id) => ({ type: "updateLevel", id, text, kind, level: level ?? "" })), "プロジェクトの設定を変更できませんでした");
+  }
+
+  /**
+   * 知らせの重さをコアに覚えさせ（F-EDIT-11）、今のテキストを解析し直してもらう。覚えさせた重さは控えておき、コアを作り直したときに送り直す。
+   *
+   * @param levels 知らせの種類 → 重さ（modelith.json の levels。プロジェクトが無ければ空）
+   * @returns コアが覚え終えたら解決する Promise（例外は投げない）
+   * @example
+   * await c.setLevels({ "trace.verify": "error" }) // → 続けて onAnalyzed に、検証の抜けをエラーにした結果が届く
+   * await c.setLevels({})                          // → 既定の重さに戻す
+   */
+  async setLevels(levels: Record<string, ProblemLevel>): Promise<void> {
+    this.levels = { ...levels };
+    const pending = this.request((id) => ({ type: "setLevels", id, levels: this.levels }));
+    if (this.sent !== null) this.send(this.sent);
+    await pending;
+  }
+
+  /**
+   * 重さを選べる、モデルの知らせの種類をコアに尋ねる（F-EDIT-11。チェックルールの種類は含まない）。
+   *
+   * @returns 種類の並び（画面の並び順）。コアの返事が読めなければ空。例外は投げない
+   * @example
+   * await c.problemKinds() // → [{ code: "trace.derive", label: "トレースの抜け：…", default: "warning" }, …]
+   */
+  async problemKinds(): Promise<ProblemKind[]> {
+    try {
+      const kinds = JSON.parse(await this.request((id) => ({ type: "problemKinds", id }))) as unknown;
+      return Array.isArray(kinds) ? (kinds as ProblemKind[]) : [];
+    } catch {
+      return [];
+    }
   }
 
   /**

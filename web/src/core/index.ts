@@ -3,7 +3,7 @@
 export { build, edit, FILE_STRIDE, initCore, inOpenFile, parse } from "./rust";
 export type {
   CheckedPluginMessage, CreatedProjectFile, DescribedPlugin, FileReport, PlacedDiagnostic, VersionedSnapshot, EditResult, Intent, PluginChange, PluginFiles, PluginInfo, PluginLoadProblem, PluginRuntime, PluginsResult, PluginSummary, PluginUse,
-  ProjectFile, ProjectFileResult, ProjectProblem, Refused, RuleFinding, RuleSeverity, TextEdit,
+  ProblemKind, ProblemLevel, ProjectFile, ProjectFileResult, ProjectProblem, Refused, RuleFinding, RuleSeverity, TextEdit,
 } from "./rust";
 export { CoreClient, CORE_STOPPED, STALE_EDIT, startCore } from "./client";
 export { superviseCore, type CoreSupervisorHooks } from "./supervisor";

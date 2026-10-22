@@ -384,7 +384,22 @@ export interface ProjectFile {
   /** 画面に出すプロジェクト名。無ければフォルダ名を出す。 */
   name?: string;
   plugins: Record<string, PluginUse>;
+  /** 知らせの種類ごとの重さ（F-EDIT-11）。書いていない種類は既定の重さ。 */
+  levels?: Record<string, ProblemLevel>;
   [key: string]: unknown;
+}
+
+/** 知らせの重さ（形は crates/modelith-core/src/project_file の Level。F-EDIT-11）。 */
+export type ProblemLevel = "error" | "warning" | "info" | "off";
+
+/** 重さを選べる、モデルの知らせの種類 1 つ（形は crates/modelith-core/src/levels の Kind）。 */
+export interface ProblemKind {
+  /** 設定に書く種類の名前（`trace.verify` など）。 */
+  code: string;
+  /** 画面に出す名前。 */
+  label: string;
+  /** 何も選んでいないときの重さ。 */
+  default: ProblemLevel;
 }
 
 /** 設定ファイルの問題 1 件。行・列は 1 始まり（列は UTF-16 の単位）、message は画面にそのまま出す文。 */
