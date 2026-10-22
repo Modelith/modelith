@@ -1061,6 +1061,10 @@ export interface Route {
   lab: { x: number; y: number; a: "middle" | "start" };
   from: RouteEnd;
   to: RouteEnd;
+  /** 線の始点・利用者が足した曲がり角・終点（つまみを置く。F-VIEW-16）。 */
+  via: Pt[];
+  /** 線の折れ点（始点から終点まで。曲線なら両端だけ）。区間の中ほどのつまみを線の上に置くのに使う。 */
+  pts: Pt[];
 }
 
 interface RouteRec {
@@ -1105,16 +1109,24 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
     const en = edgeEnds(e, L);
     const fp = en.f ? A.pins.find((p) => p.id === en.f) : undefined;
     const tp = en.t ? B.pins.find((p) => p.id === en.t) : undefined;
-    const qa = fp ? pinPoint(A, fp.side, fp.t) : null, qb = tp ? pinPoint(B, tp.side, tp.t) : null;
+    // 利用者が付け替えた端（接続点を使わない端）は、その縁の位置に固定する（F-VIEW-16）
+    const an = L?.anchors?.[e.id];
+    const fa = !fp && an?.[0] ? an[0] : null, ta = !tp && an?.[1] ? an[1] : null;
+    const qa = fp ? pinPoint(A, fp.side, fp.t) : fa ? pinPoint(A, fa[0], fa[1]) : null;
+    const qb = tp ? pinPoint(B, tp.side, tp.t) : ta ? pinPoint(B, ta[0], ta[1]) : null;
+    // 曲がり角があれば、端の縁は、隣の曲がり角に向いた縁にする
+    const bends = L?.bends?.[e.id] ?? [];
+    const first = bends[0], last = bends[bends.length - 1];
+    const toward = (p: Pt | undefined, q: BorderPoint | null, ob: Box): Box => (p ? { x: p[0], y: p[1], w: 0, h: 0 } : q ? pointBox(q) : ob);
     const rec: RouteRec = {
       e, A, B, fp, tp,
-      fs: fp ? fp.side : chooseSide(A, qb ? pointBox(qb) : B),
-      ts: tp ? tp.side : chooseSide(B, qa ? pointBox(qa) : A),
-      ft: 0.5, tt: 0.5,
+      fs: fp ? fp.side : fa ? fa[0] : chooseSide(A, toward(first, qb, B)),
+      ts: tp ? tp.side : ta ? ta[0] : chooseSide(B, toward(last, qa, A)),
+      ft: fa ? fa[1] : 0.5, tt: ta ? ta[1] : 0.5,
     };
     const other = (q: BorderPoint | null, ob: Box): Pt => (q ? [q.x, q.y] : [ob.x + ob.w / 2, ob.y + ob.h / 2]);
-    if (!fp) addGroup(A.n.key + "|" + rec.fs, { rec, end: "f", o: other(qb, B) });
-    if (!tp) addGroup(B.n.key + "|" + rec.ts, { rec, end: "t", o: other(qa, A) });
+    if (!fp && !fa) addGroup(A.n.key + "|" + rec.fs, { rec, end: "f", o: first ?? other(qb, B) });
+    if (!tp && !ta) addGroup(B.n.key + "|" + rec.ts, { rec, end: "t", o: last ?? other(qa, A) });
     recs.push(rec);
   }
   // 同じ辺から出る線は、相手の位置の順に等間隔に並べ、固定の接続点を避ける
@@ -1160,9 +1172,16 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
   };
   for (const r of recs) {
     const a = endOf(r.A, r.fp, r.fs, r.ft), z = endOf(r.B, r.tp, r.ts, r.tt);
+    const bends = L?.bends?.[r.e.id] ?? [];
     let d: string;
     let lab: Route["lab"];
-    if (style === "curve") {
+    let pts: Pt[] = [a.P, z.P];
+    if (bends.length) {
+      // 利用者が足した曲がり角を、直角に折れながら順に通る（線の形の指定はどちらでも同じ。F-VIEW-16）
+      pts = bendPoints(a, bends, z);
+      d = roundedPath(pts);
+      lab = longestLabel(pts);
+    } else if (style === "curve") {
       const dd = Math.hypot(z.P[0] - a.P[0], z.P[1] - a.P[1]);
       const kk = Math.max(28, Math.min(150, dd * 0.45));
       const C1: Pt = [a.P[0] + a.N[0] * kk, a.P[1] + a.N[1] * kk], C2: Pt = [z.P[0] + z.N[0] * kk, z.P[1] + z.N[1] * kk];
@@ -1173,24 +1192,106 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
         a: "middle",
       };
     } else {
-      const pts = orthoRoute(a.P, a.N, z.P, z.N, obs);
+      pts = orthoRoute(a.P, a.N, z.P, z.N, obs);
       d = roundedPath(pts);
-      // ラベルは最も長い区間に置く
-      let li = 1, ll = -1;
-      for (let i = 1; i < pts.length; i++) {
-        const p = pts[i] as Pt, q = pts[i - 1] as Pt;
-        const l = Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]);
-        if (l > ll) {
-          ll = l;
-          li = i;
-        }
-      }
-      const a0 = pts[li - 1] as Pt, a1 = pts[li] as Pt;
-      lab = a0[1] === a1[1] ? { x: (a0[0] + a1[0]) / 2, y: a0[1] + 13, a: "middle" } : { x: a0[0] + 5, y: (a0[1] + a1[1]) / 2 + 4, a: "start" };
+      lab = longestLabel(pts);
     }
-    out.set(r.e.id, { d, lab, from: a, to: z });
+    out.set(r.e.id, { d, lab, from: a, to: z, via: [a.P, ...bends, z.P], pts });
   }
   return out;
+}
+
+/**
+ * 直角に折れる線のラベルの位置。最も長い区間の中ほどに置く（横の区間なら下、縦の区間なら右）。
+ *
+ * @param pts 線の折れ点（始点から終点まで）
+ * @returns ラベルの位置と揃え
+ * @example
+ * longestLabel([[0, 0], [100, 0], [100, 40]]) // → { x: 50, y: 13, a: "middle" }（横の区間が最も長い）
+ * longestLabel([[0, 0], [0, 80]])             // → { x: 5, y: 44, a: "start" }
+ */
+export function longestLabel(pts: Pt[]): Route["lab"] {
+  let li = 1, ll = -1;
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i] as Pt, q = pts[i - 1] as Pt;
+    const l = Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]);
+    if (l > ll) {
+      ll = l;
+      li = i;
+    }
+  }
+  const a0 = (pts[li - 1] ?? [0, 0]) as Pt, a1 = (pts[li] ?? a0) as Pt;
+  return a0[1] === a1[1] ? { x: (a0[0] + a1[0]) / 2, y: a0[1] + 13, a: "middle" } : { x: a0[0] + 5, y: (a0[1] + a1[1]) / 2 + 4, a: "start" };
+}
+
+/**
+ * 利用者が足した曲がり角を順に通る、直角に折れる線の折れ点（F-VIEW-16）。始点からは縁の外向きの向きに出て、終点へは縁の外向きの向きから入り、
+ * 間の曲がり角どうしは横に進んでから縦に進む。続けて同じ点があれば 1 つにする（曲がり角は一直線に並んでも残し、つまみの位置を保つ）。
+ *
+ * @param a 始点（位置 P と、縁の外向きの向き N）
+ * @param bends 曲がり角（図の座標）
+ * @param z 終点（位置 P と、縁の外向きの向き N）
+ * @returns 折れ点（始点から終点まで）
+ * @example
+ * // 右の縁から出て、(200, 100) を通り、上の縁 (300, 200) へ入る
+ * bendPoints({ P: [100, 50], N: [1, 0] }, [[200, 100]], { P: [300, 200], N: [0, -1] })
+ * // → [[100, 50], [200, 50], [200, 100], [300, 100], [300, 200]]
+ */
+export function bendPoints(a: { P: Pt; N: Pt }, bends: readonly Pt[], z: { P: Pt; N: Pt }): Pt[] {
+  const via: Pt[] = [a.P, ...bends, z.P];
+  const out: Pt[] = [a.P];
+  for (let i = 1; i < via.length; i++) {
+    const p = via[i - 1] as Pt, q = via[i] as Pt;
+    if (p[0] !== q[0] && p[1] !== q[1]) {
+      // 最後の区間は終点の縁の向きから入る。最初の区間は始点の縁の向きに出る。間は横に進んでから縦に進む
+      const lastHoriz = z.N[0] !== 0, firstHoriz = a.N[0] !== 0;
+      const horizFirst = i === via.length - 1 ? !lastHoriz : i === 1 ? firstHoriz : true;
+      out.push(horizFirst ? [q[0], p[1]] : [p[0], q[1]]);
+    }
+    out.push(q);
+  }
+  return out.filter((p, i) => {
+    const prev = out[i - 1];
+    return !prev || prev[0] !== p[0] || prev[1] !== p[1];
+  });
+}
+
+/**
+ * 線の区間ごとの中ほどの点（区間の中ほどのつまみを置く。F-VIEW-16）。区間は、始点・曲がり角・終点の隣どうしの間で、
+ * 折れ点をたどった道のりの半分の位置にする。
+ *
+ * @param via 始点・曲がり角・終点
+ * @param pts 線の折れ点（via の点をこの順に含む）
+ * @returns 区間ごとの中ほどの点（via.length - 1 個）
+ * @example
+ * segmentMids([[0, 0], [100, 50]], [[0, 0], [100, 0], [100, 50]]) // → [[75, 0]]（道のり 150 の半分）
+ * segmentMids([[0, 0], [40, 0]], [[0, 0], [40, 0]])                // → [[20, 0]]
+ */
+export function segmentMids(via: readonly Pt[], pts: readonly Pt[]): Pt[] {
+  const same = (p: Pt, q: Pt): boolean => p[0] === q[0] && p[1] === q[1];
+  const mids: Pt[] = [];
+  let from = 0;
+  for (let k = 0; k + 1 < via.length; k++) {
+    const end = via[k + 1] as Pt;
+    let to = pts.findIndex((p, i) => i > from && same(p, end));
+    if (to < 0) to = pts.length - 1;
+    const seg = pts.slice(from, to + 1);
+    const len = seg.reduce((l, p, i) => (i ? l + Math.hypot(p[0] - (seg[i - 1] as Pt)[0], p[1] - (seg[i - 1] as Pt)[1]) : 0), 0);
+    let left = len / 2;
+    let mid: Pt = (seg[0] ?? end) as Pt;
+    for (let i = 1; i < seg.length; i++) {
+      const p = seg[i - 1] as Pt, q = seg[i] as Pt;
+      const l = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (l >= left && l > 0) {
+        mid = [p[0] + ((q[0] - p[0]) * left) / l, p[1] + ((q[1] - p[1]) * left) / l];
+        break;
+      }
+      left -= l;
+    }
+    mids.push(mid);
+    from = to;
+  }
+  return mids;
 }
 
 /**

@@ -1,6 +1,7 @@
 // 図からの編集操作。すべてテキストの書き換えとして行い、setText で反映する（ADR-0001）。
 
 import { inOpenFile, type Entry, type ModelEdge, type ModelNode } from "../core";
+import { renameEdgeKeys } from "./edge-shape";
 import { ask } from "./dialog";
 import { perform } from "./intent";
 import { flowName } from "./action-flow";
@@ -247,13 +248,10 @@ export const OPS = {
           v.pins[newKey] = pv;
           delete v.pins[ok];
         }
-        for (const [k, val] of Object.entries(v.ends)) {
-          const parts = k.split("|");
-          if (parts[1] === ok || parts[2] === ok) {
-            v.ends[parts.map((s, i) => ((i === 1 || i === 2) && s === ok ? newKey : s)).join("|")] = val;
-            delete v.ends[k];
-          }
-        }
+        // 線の ID に要素のキーが入るので、線の端・曲がり角・付け替えた端の鍵も付け替える
+        renameEdgeKeys(v.ends, ok, newKey);
+        renameEdgeKeys(v.bends, ok, newKey);
+        renameEdgeKeys(v.anchors, ok, newKey);
       }
     }
     S.sel = moves[0]?.[1] ?? nk;

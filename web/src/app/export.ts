@@ -271,7 +271,7 @@ export function drawioXml(): string {
     side === "l" ? `${pre}X=0;${pre}Y=${t};` : side === "r" ? `${pre}X=1;${pre}Y=${t};` : side === "t" ? `${pre}X=${t};${pre}Y=0;` : `${pre}X=${t};${pre}Y=1;`;
   for (const e of edges) {
     const st = drawioEdgeStyle(e.kind);
-    let src = map.get(e.from), dst = map.get(e.to), extra = "";
+    let src = map.get(e.from), dst = map.get(e.to), extra = "", points = "";
     const rt = routes.get(e.id);
     if (rt) {
       const f = rt.from, z = rt.to;
@@ -281,8 +281,12 @@ export function drawioXml(): string {
       else extra += cp(f.side, f.t.toFixed(3), "exit") + "exitPerimeter=0;";
       if (tpid) dst = tpid;
       else extra += cp(z.side, z.t.toFixed(3), "entry") + "entryPerimeter=0;";
+      // 利用者が足した曲がり角は、draw.io の線の通り道の点にする（F-VIEW-16）
+      const bends = rt.via.slice(1, -1);
+      if (bends.length) points = `<Array as="points">${bends.map((p) => `<mxPoint x="${p[0]}" y="${p[1]}"/>`).join("")}</Array>`;
     }
-    cells += `<mxCell id="e${id++}" value="${q(e.label)}" style="html=1;rounded=1;edgeStyle=orthogonalEdgeStyle;${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+    const geom = points ? `<mxGeometry relative="1" as="geometry">${points}</mxGeometry>` : `<mxGeometry relative="1" as="geometry"/>`;
+    cells += `<mxCell id="e${id++}" value="${q(e.label)}" style="html=1;rounded=1;edgeStyle=orthogonalEdgeStyle;${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}">${geom}</mxCell>`;
   }
   return mxfileXml(v.label, cells);
 }
