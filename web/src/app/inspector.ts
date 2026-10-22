@@ -1,12 +1,12 @@
 // 図の下に出るインスペクタ（選択中の要素・関係・接続点の情報と操作）。
 
-import { lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
+import { type Entry, lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
 import { flowDetail, flowName } from "./action-flow";
 import { eventName } from "./sequence";
 import { isPseudoState, stateActionLines, stateName } from "./state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
-import { kindLabel } from "./labels";
+import { attrText, kindLabel } from "./labels";
 import type { Pin } from "./geometry";
 import { centerOn, render, scrollEditorTo } from "./render";
 import { OPS, MSGOPS, PHASEOPS, alignSel, deleteSel, selNodes, setPhaseSel, uniqueChild, type AlignMode } from "./ops";
@@ -64,8 +64,8 @@ export function renderInspector(): void {
 }
 
 /**
- * 入力欄を出したときは、中身を選択してフォーカスし、Enter で確定（名前の変更・メッセージ・ポートの作成）、
- * 名前の変更中は Escape でやめられるようにする。入力欄が無ければ何もしない。
+ * 入力欄を出したときは、中身を選択してフォーカスし、Enter で確定（名前の変更・メッセージ・ポートの作成・属性）、
+ * 名前の変更中と属性の編集中は Escape でやめられるようにする。入力欄が無ければ何もしない。
  */
 function focusInput(): void {
   const inp = document.querySelector<HTMLInputElement>("#insp input");
@@ -74,11 +74,17 @@ function focusInput(): void {
     inp.focus();
     inp.select();
   }, 0);
-  const okAct = inp.id === "renameIn" ? "renameOk" : inp.id === "msgName" ? "msgOk" : "portOk";
-  inp.onkeydown = (ev) => {
-    if (ev.key === "Enter") act(okAct);
-    if (ev.key === "Escape" && inp.id === "renameIn") act("renameCancel");
-  };
+  const attr = inp.id.startsWith("attr");
+  const okAct = inp.id === "renameIn" ? "renameOk" : inp.id === "msgName" ? "msgOk" : attr ? "attrOk" : "portOk";
+  // 属性の欄は 3 つあるので、どの欄でも Enter で保存・Escape でやめる
+  const fields = attr ? [...document.querySelectorAll<HTMLInputElement>("#insp .attrform input")] : [inp];
+  for (const f of fields) {
+    f.onkeydown = (ev) => {
+      if (ev.key === "Enter") act(okAct);
+      if (ev.key === "Escape" && inp.id === "renameIn") act("renameCancel");
+      if (ev.key === "Escape" && attr) act("attrCancel");
+    };
+  }
 }
 
 /**
@@ -286,6 +292,8 @@ function nodeHtml(n: ModelNode): string {
     delBtn("del", "削除") +
     `</div>` +
     docHtml(n) +
+    // トレースの抜けを案内しているときは、案内と図が狭い画面でも見えるよう、属性の欄を出さない
+    (guide ? "" : attrsHtml(n)) +
     annotationsHtml(e, S.P.entries)
   );
 }
@@ -298,23 +306,54 @@ function nodeHtml(n: ModelNode): string {
  * @returns 欄の HTML（文字は esc で逃がす）
  * @example
  * // 要求 R（doc /* 3 分で沸かす *\/）を選んでいるとき
- * docHtml(R) // → '<div class="docbox"><div class="note"><small>要求の文章</small><p>3 分で沸かす</p></div><div class="acts"><button data-act="docEdit">要求の文章を編集</button></div></div>'
+ * docHtml(R) // → '<div class="docbox doc"><div class="note"><small>要求の文章</small><p>3 分で沸かす</p></div><div class="acts"><button data-act="docEdit">要求の文章を編集</button></div></div>'
  * // 説明の無い部品定義 A を編集しているとき
- * docHtml(A) // → '<div class="docbox"><div class="note"><small>説明</small></div><textarea id="docIn" …></textarea><div class="acts"><button class="primary" data-act="docOk">保存</button>…'
+ * docHtml(A) // → '<div class="docbox doc"><div class="note"><small>説明</small></div><textarea id="docIn" …></textarea><div class="acts"><button class="primary" data-act="docOk">保存</button>…'
  */
 function docHtml(n: ModelNode): string {
   const label = docLabel(n);
   const doc = n.entry.doc ?? "";
   if (S.docEdit) {
     return (
-      `<div class="docbox"><div class="note"><small>${label}（空にすると消えます）</small></div>` +
+      `<div class="docbox doc"><div class="note"><small>${label}（空にすると消えます）</small></div>` +
       `<textarea id="docIn" rows="4" aria-label="${label}">${esc(doc)}</textarea>` +
       `<div class="acts"><button class="primary" data-act="docOk">保存</button><button data-act="docCancel">やめる</button></div></div>`
     );
   }
   return (
-    `<div class="docbox"><div class="note"><small>${label}</small>${doc ? `<p>${esc(doc)}</p>` : `<p class="muted">まだありません</p>`}</div>` +
+    `<div class="docbox doc"><div class="note"><small>${label}</small>${doc ? `<p>${esc(doc)}</p>` : `<p class="muted">まだありません</p>`}</div>` +
     `<div class="acts"><button data-act="docEdit">${label}を編集</button></div></div>`
+  );
+}
+
+/**
+ * 定義の属性の欄の HTML を作る（F-EDIT-12）。属性を 1 行ずつ「編集」「削除」のボタンと並べ、末尾に「属性を追加」を置く。
+ * 編集中の属性（または追加中）は、名前・型・値の入力欄と「保存」「やめる」にする。
+ *
+ * @param n 定義の図の要素
+ * @returns 欄の HTML（文字は esc で逃がす）
+ * @example
+ * // part def A { attribute mass : Real = 1500; } を選んでいるとき
+ * attrsHtml(A) // → '<div class="docbox attrs"><div class="note"><small>属性</small></div><div class="attr"><span>mass : Real = 1500</span><button data-act="attrEdit" data-attr="mass">編集</button>…'
+ */
+function attrsHtml(n: ModelNode): string {
+  const attrs = n.entry.children.filter((c) => c.kind === "attribute");
+  const form = (a: Entry | null): string =>
+    `<div class="attrform">` +
+    `<input id="attrName" value="${esc(a?.name ?? "")}" placeholder="名前" aria-label="属性の名前">` +
+    `<input id="attrType" value="${esc(a?.type ?? "")}" placeholder="型（例：Real）" aria-label="属性の型">` +
+    `<input id="attrValue" value="${esc(a?.value ?? "")}" placeholder="値（例：1500）" aria-label="属性の値">` +
+    `<div class="acts"><button class="primary" data-act="attrOk">保存</button><button data-act="attrCancel">やめる</button></div></div>`;
+  const rows = attrs.map((a) =>
+    S.attrEdit === a.name
+      ? form(a)
+      : `<div class="attr"><span>${esc(attrText(a))}</span><button data-act="attrEdit" data-attr="${esc(a.name)}">編集</button><button data-act="attrDel" data-attr="${esc(a.name)}">削除</button></div>`,
+  );
+  return (
+    `<div class="docbox attrs"><div class="note"><small>属性</small>${attrs.length ? "" : `<p class="muted">まだありません</p>`}</div>` +
+    rows.join("") +
+    (S.attrEdit === "" ? form(null) : `<div class="acts"><button data-act="attrAdd">属性を追加</button></div>`) +
+    `</div>`
   );
 }
 
@@ -463,6 +502,9 @@ const ALIGN_ACTS: Record<string, AlignMode> = { alLeft: "left", alTop: "top", al
  */
 const inputValue = (sel: string): string => document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(sel)?.value ?? "";
 
+/** 最後に押した属性のボタンの属性の名前（`data-attr`。F-EDIT-12）。 */
+let pickedAttr = "";
+
 /**
  * インスペクタ・右クリックメニューのボタンの操作を行う。整列・接続モード・名前の変更・テキストへの移動・削除（2 回押しで確定）・
  * ポートの作成・型の定義を開く・メッセージの編集と並べ替えなどを、名前で振り分けて状態を変え、描き直す。知らない名前なら何もしない。
@@ -488,6 +530,30 @@ export function act(a: string): void {
     case "renameCancel":
       S.renaming = false;
       renderInspector();
+      return;
+    case "attrAdd":
+      S.attrEdit = "";
+      renderInspector();
+      return;
+    case "attrEdit":
+      S.attrEdit = pickedAttr;
+      renderInspector();
+      return;
+    case "attrCancel":
+      S.attrEdit = null;
+      renderInspector();
+      return;
+    case "attrOk":
+      if (n && S.attrEdit !== null) {
+        void OPS.setAttribute(n, S.attrEdit || null, inputValue("#attrName"), inputValue("#attrType"), inputValue("#attrValue")).then((ok) => {
+          if (!ok) return;
+          S.attrEdit = null;
+          renderInspector();
+        });
+      }
+      return;
+    case "attrDel":
+      if (n) void OPS.removeAttribute(n, pickedAttr);
       return;
     case "docEdit":
       S.docEdit = true;
@@ -635,7 +701,8 @@ export function initInspector(): void {
   box.addEventListener("click", (ev) => {
     const b = closest<HTMLButtonElement>(ev, "button");
     if (!b) return;
-    const { rel, dir, fdir, act: a, gap } = b.dataset;
+    const { rel, dir, fdir, act: a, gap, attr } = b.dataset;
+    if (attr !== undefined) pickedAttr = attr;
     if (rel) {
       const from = nodeByKey(S.connectFrom), to = nodeByKey(S.connectTo);
       if (!from || !to) return;

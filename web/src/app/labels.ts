@@ -1,7 +1,7 @@
 // 画面に出す種類の名前（ADR-0014、docs/development/ui-writing.md）。
 // 利用者は SysML v2 の構文を覚えていないので、画面では図の言葉を使い、キーワードは補足にする。
 
-import { stdViewLabel } from "../core";
+import { type Entry, stdViewLabel } from "../core";
 
 const KIND_LABEL: Record<string, string> = {
   "part def": "部品定義", part: "部品", "attribute def": "属性定義", attribute: "属性", "port def": "ポート定義", port: "ポート",
@@ -105,3 +105,17 @@ export const savedViewHint = (std: string | null): string => viewHint(stdViewLab
  * // → "ibd Vehicle\n内部ブロック図（SysML v2 では InterconnectionView）"
  */
 export const tabTitle = (name: string, hint: string): string => (hint.startsWith(`${name}（`) ? hint : `${name}\n${hint}`);
+
+/**
+ * 属性 1 つを `名前 : 型 = 値` の形の文にする（値の書き方 `:=`・`default` はそのまま）。
+ *
+ * @param a 属性（解析結果の項目）
+ * @returns 表示する文
+ * @example
+ * attrText({ name: "mass", type: "Real", value: "1500", … })               // → "mass : Real = 1500"
+ * attrText({ name: "t", type: "Real", value: "0", valueOp: ":=", … })     // → "t : Real := 0"
+ * attrText({ name: "重さ", type: "", … })                                  // → "重さ"
+ */
+export function attrText(a: Pick<Entry, "name" | "type"> & { value?: string | undefined; valueOp?: string | undefined }): string {
+  return `${a.name}${a.type ? ` : ${a.type}` : ""}${a.value ? ` ${a.valueOp ?? "="} ${a.value}` : ""}`;
+}

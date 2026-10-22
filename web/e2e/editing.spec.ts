@@ -157,7 +157,7 @@ test.describe("説明の編集（F-EDIT-12）", () => {
   test("F-EDIT-12: 要求の文章をインスペクタで書き換えると、テキストの doc が変わる", async ({ page }) => {
     // Arrange
     await selectIn(page, "BoilReq");
-    await expect(page.locator("#insp .docbox .note")).toHaveText("要求の文章5 分以内に沸かす");
+    await expect(page.locator("#insp .doc .note")).toHaveText("要求の文章5 分以内に沸かす");
     // Act
     await page.locator('[data-act="docEdit"]').click();
     await page.locator("#docIn").fill("3 分以内に\n1 L を沸かす");
@@ -165,13 +165,13 @@ test.describe("説明の編集（F-EDIT-12）", () => {
     // Assert
     await expect.poll(() => editorText(page)).toContain("        doc /* 3 分以内に\n           1 L を沸かす */\n");
     await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を変えました");
-    await expect(page.locator("#insp .docbox .note p")).toHaveText("3 分以内に 1 L を沸かす");
+    await expect(page.locator("#insp .doc .note p")).toHaveText("3 分以内に 1 L を沸かす");
   });
 
   test("F-EDIT-12: 説明の無い要素に説明を足せる", async ({ page }) => {
     // Arrange
     await selectIn(page, "Kettle");
-    await expect(page.locator("#insp .docbox .note")).toHaveText("説明まだありません");
+    await expect(page.locator("#insp .doc .note")).toHaveText("説明まだありません");
     // Act
     await page.locator('[data-act="docEdit"]').click();
     await page.locator("#docIn").fill("お湯を沸かす道具");
@@ -194,6 +194,61 @@ test.describe("説明の編集（F-EDIT-12）", () => {
     // Assert
     await expect.poll(() => editorText(page)).toBe("package P {\n    requirement def BoilReq {\n    }\n    part def Kettle;\n}\n");
     await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を消しました");
+  });
+});
+
+test.describe("属性の編集（F-EDIT-12）", () => {
+  const PART = "package P {\n    part def Kettle {\n        attribute capacity : Real = 1.0;\n    }\n}\n";
+
+  /** モデルを書き、「すべて」の図でケトルを選ぶ。 */
+  async function selectKettle(page: Page): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(PART);
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="all"]').click();
+    await page.locator('#gNodes .node[data-key="Kettle"]').click();
+  }
+
+  test("F-EDIT-12: 属性を足すと、テキストに名前・型・値を書く", async ({ page }) => {
+    // Arrange
+    await selectKettle(page);
+    await expect(page.locator("#insp .attr span")).toHaveText(["capacity : Real = 1.0"]);
+    // Act
+    await page.locator('[data-act="attrAdd"]').click();
+    await page.locator("#attrName").fill("重さ");
+    await page.locator("#attrType").fill("Real");
+    await page.locator("#attrValue").fill("1.2");
+    await page.keyboard.press("Enter");
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("        attribute capacity : Real = 1.0;\n        attribute '重さ' : Real = 1.2;\n    }");
+    await expect(page.locator("#insp .attr span")).toHaveText(["capacity : Real = 1.0", "重さ : Real = 1.2"]);
+  });
+
+  test("F-EDIT-12: 属性の値を書き換え、削除できる", async ({ page }) => {
+    // Arrange
+    await selectKettle(page);
+    // Act
+    await page.locator('[data-act="attrEdit"][data-attr="capacity"]').click();
+    await page.locator("#attrValue").fill("1.5");
+    await page.locator('[data-act="attrOk"]').click();
+    await expect.poll(() => editorText(page)).toContain("        attribute capacity : Real = 1.5;\n");
+    await page.locator('[data-act="attrDel"][data-attr="capacity"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toBe("package P {\n    part def Kettle {\n    }\n}\n");
+    await expect(page.locator("#toast")).toHaveText("属性「capacity」を消しました");
+  });
+
+  test("F-EDIT-12: 値に「;」は書けず、理由を伝える（異常系）", async ({ page }) => {
+    // Arrange
+    await selectKettle(page);
+    // Act
+    await page.locator('[data-act="attrAdd"]').click();
+    await page.locator("#attrName").fill("x");
+    await page.locator("#attrValue").fill("1; part q");
+    await page.locator('[data-act="attrOk"]').click();
+    // Assert
+    await expect(page.locator("#toast")).toHaveText("型と値には「;」「{」「}」や改行は書けません（型には「=」も書けません）");
+    expect(await editorText(page)).toBe(PART);
   });
 });
 

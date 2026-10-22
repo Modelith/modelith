@@ -313,7 +313,9 @@ export type Intent =
   | { op: "removeFromView"; view: string; key: string }
   | { op: "renameView"; view: string; name: string }
   | { op: "deleteView"; view: string }
-  | { op: "setDoc"; key: string; text: string; ctx?: string };
+  | { op: "setDoc"; key: string; text: string; ctx?: string }
+  | { op: "setAttribute"; key: string; attr?: string; name: string; type: string; value: string; ctx?: string }
+  | { op: "removeAttribute"; key: string; attr: string; ctx?: string };
 
 /** テキストの編集（古いテキストの [start, end) を text に置き換える。位置は UTF-16）。 */
 export interface TextEdit {

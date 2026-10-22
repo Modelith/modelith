@@ -138,6 +138,26 @@ pub enum Intent {
     RemoveFromView { view: String, key: String },
     /// 作成した図の名前を変える。
     RenameView { view: String, name: String },
+    /// 属性を足す（`attr` が無いとき）か、書き換える（`attr` は今の名前）。型と値は空なら書かない。
+    SetAttribute {
+        key: String,
+        #[serde(default)]
+        attr: Option<String>,
+        name: String,
+        #[serde(rename = "type", default)]
+        ty: String,
+        #[serde(default)]
+        value: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
+    /// 属性を消す。
+    RemoveAttribute {
+        key: String,
+        attr: String,
+        #[serde(default)]
+        ctx: Option<String>,
+    },
     /// 要素の説明（要求の文章など、`doc`）を書き換える。空なら説明を消す。
     SetDoc {
         key: String,

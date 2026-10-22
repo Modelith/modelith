@@ -156,6 +156,44 @@ export const OPS = {
   },
 
   /**
+   * 属性を足すか書き換える（意図 `setAttribute`、F-EDIT-12）。書いたらトーストで知らせる。
+   *
+   * @param n 属性を持つ定義
+   * @param attr 書き換える属性の今の名前（足すときは null）
+   * @param name 新しい名前
+   * @param type 型（空なら書かない）
+   * @param value 値（空なら書かない）
+   * @returns 書いたなら true。コアが断った（名前が空・既にある名前・使えない文字など）なら false
+   * @example
+   * await OPS.setAttribute(A, null, "mass", "Real", "1500") // → true（attribute mass : Real = 1500; を足す）
+   * await OPS.setAttribute(A, "mass", "mass", "", "")        // → true（型と値を消す）
+   */
+  async setAttribute(n: ModelNode, attr: string | null, name: string, type: string, value: string): Promise<boolean> {
+    const r = await perform({ op: "setAttribute", key: n.key, ...(attr === null ? {} : { attr }), name, type, value, ctx: ctxKey() });
+    if (!r) return false;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    toast(attr === null ? `「${n.name}」に属性「${name.trim()}」を足しました` : `属性「${name.trim()}」を書き換えました`);
+    return true;
+  },
+
+  /**
+   * 属性を消す（意図 `removeAttribute`、F-EDIT-12）。消したらトーストで知らせる。
+   *
+   * @param n 属性を持つ定義
+   * @param attr 消す属性の名前
+   * @returns 消したなら true。コアが断ったなら false
+   * @example
+   * await OPS.removeAttribute(A, "mass") // → true（attribute mass … ; の行が消える）
+   */
+  async removeAttribute(n: ModelNode, attr: string): Promise<boolean> {
+    const r = await perform({ op: "removeAttribute", key: n.key, attr, ctx: ctxKey() });
+    if (!r) return false;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    toast(`属性「${attr}」を消しました`);
+    return true;
+  },
+
+  /**
    * 要素の説明（要求なら要求の文章。テキストの doc）を書き換える（意図 `setDoc`、F-EDIT-12）。空なら説明を消す。
    * 書き換えたらトーストで知らせる。
    *
