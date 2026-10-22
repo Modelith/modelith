@@ -3,6 +3,7 @@
 import type { Model, ParseResult, PlacedDiagnostic, PortDir, RuleFinding } from "../core";
 import type { Layout, Side } from "./layout";
 import type { PluginNote } from "./plugins";
+import type { GapFocus, GapKind } from "./trace-gap";
 
 /** 図の縁上の位置（接続点があればその ID）。 */
 export interface EndSpec {
@@ -70,6 +71,8 @@ export interface AppState {
   mode: "connect" | null;
   connectFrom: string | null;
   connectTo: string | null;
+  /** 抜けの案内の「関係を追加」で始めた接続なら、解消する抜けの種類（候補を、抜けを解消できる相手に絞る。F-TRACE-2）。 */
+  connectGap: GapKind | null;
   wire: { from: EndSpec; to: EndSpec | null } | null;
   wireDrag: WireDrag | null;
   tf: Transform;
@@ -84,6 +87,8 @@ export interface AppState {
   pulse: Set<string>;
   flash: [number, number] | null;
   textMark: [number, number] | null;
+  /** インスペクタで案内しているトレースの抜け（F-TRACE-2）。選択を外すと消える。 */
+  gap: GapFocus | null;
   confirmDel: boolean;
   renaming: boolean;
   msgEdit: boolean;
@@ -130,6 +135,7 @@ export const S: AppState = {
   mode: null,
   connectFrom: null,
   connectTo: null,
+  connectGap: null,
   wire: null,
   wireDrag: null,
   tf: { x: 40, y: 40, s: 1 },
@@ -144,6 +150,7 @@ export const S: AppState = {
   pulse: new Set(),
   flash: null,
   textMark: null,
+  gap: null,
   confirmDel: false,
   renaming: false,
   msgEdit: false,
@@ -172,6 +179,7 @@ export function clearSel(): void {
   S.band = null;
   S.treeSel = null;
   S.textMark = null;
+  S.gap = null;
   S.msgEdit = false;
   S.sel = null;
   S.selEdge = null;
@@ -186,5 +194,6 @@ export function cancelConnect(): void {
   S.mode = null;
   S.connectFrom = null;
   S.connectTo = null;
+  S.connectGap = null;
   S.wire = null;
 }

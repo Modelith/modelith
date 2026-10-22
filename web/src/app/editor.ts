@@ -7,6 +7,9 @@ import { centerOn, highlight, render, scrollEditorTo, syncScroll } from "./rende
 import { cancelConnect, S } from "./state";
 import { reparse, notifyTextChange, setSync, toast } from "./sync";
 import { diagramName } from "./labels";
+import { goToGap } from "./gap-guide";
+import { isNarrow } from "./panels";
+import { gapScreen } from "./trace-gap";
 import { CC, curView, viewContent } from "./views";
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -48,6 +51,7 @@ function caretToNode(): void {
  * テキストエディタに操作をつなぐ。起動時に 1 回呼ぶ。入力は色付けをすぐ直し、入力が 280 ミリ秒止まったら
  * 解析して図などに反映し（F-EDIT-1）、履歴に記録する。クリックや矢印キーでカーソルを動かしたら、
  * カーソル位置の要素を図で選ぶ。問題一覧の項目を押したら、その位置にカーソルを移す（F-EDIT-5）。
+ * ただし、トレースの抜けの行は、図が見えていれば図の要素へ移る（F-TRACE-2）。
  */
 export function initEditor(): void {
   const ed = $<HTMLTextAreaElement>("#ed");
@@ -72,6 +76,12 @@ export function initEditor(): void {
     const b = closest(ev, "button");
     // テキストの中の位置の無い行（プラグインについての行）は、ここでは扱わない
     if (b?.dataset["pos"] === undefined) return;
+    // トレースの抜けの行は、図が見えていれば図の要素へ移る（テキストの行の印も付ける。F-TRACE-2）
+    const gap = b.dataset["gap"];
+    if (gap !== undefined && gapScreen(isNarrow(), $("#main").dataset["tab"]) === "diagram") {
+      goToGap(Number(gap));
+      return;
+    }
     const p = Number(b.dataset["pos"]);
     ed.focus();
     ed.setSelectionRange(p, p);

@@ -171,16 +171,205 @@ test.describe("トレーサビリティ", () => {
     await expect.poll(async () => (await nodeKeys(page)).length).toBeLessThan(before);
     expect(await nodeKeys(page)).toContain("BoilTimeReq");
   });
+});
 
-  test("F-TRACE-2: トレースの抜けを件数で示し、押すと問題一覧の該当箇所へ移る", async ({ page }) => {
+test.describe("トレースの抜けの案内（F-TRACE-2）", () => {
+  // 抜けが 4 件のモデル：利用者要求 SupplyNeed は展開されておらず、システム要求 FlowReq は導出元・満たす部品・検証が無い
+  const GAPS = `package Water {
+    metadata def Phase { attribute stage : PhaseKind; }
+    enum def PhaseKind { enum StakeholderNeeds; enum SystemRequirements; enum Architecture; enum Verification; }
+    package Needs {
+        @Phase { stage = PhaseKind::StakeholderNeeds; }
+        requirement def SupplyNeed;
+    }
+    package Reqs {
+        @Phase { stage = PhaseKind::SystemRequirements; }
+        requirement def FlowReq;
+    }
+    package Design {
+        @Phase { stage = PhaseKind::Architecture; }
+        part def Pump;
+    }
+    package Tests {
+        @Phase { stage = PhaseKind::Verification; }
+        verification def FlowTest;
+    }
+}
+`;
+  const guide = (page: import("@playwright/test").Page) => page.locator("#insp .gapguide");
+
+  /**
+   * 要素の箱の中心と、図のうちインスペクタと全体図に隠れていない所の中央とのずれ（px）。
+   * 箱がその所からはみ出していれば Infinity。
+   */
+  async function offCenter(page: import("@playwright/test").Page, key: string): Promise<number> {
+    const box = await page.locator(`#gNodes [data-key="${key}"] .body`).boundingBox();
+    const wrap = await page.locator("#wrap").boundingBox();
+    const insp = await page.locator("#insp").boundingBox();
+    const mini = await page.locator("#mini").boundingBox();
+    if (!box || !wrap || !insp || !mini) return Infinity;
+    const bottom = Math.min(insp.y, mini.y);
+    if (box.y < wrap.y || box.y + box.height > bottom) return Infinity;
+    return Math.hypot(box.x + box.width / 2 - (wrap.x + wrap.width / 2), box.y + box.height / 2 - (wrap.y + bottom) / 2);
+  }
+
+  test("F-TRACE-2: 図で抜けの件数を押すと、図のまま抜けのある要素を選んで中央に出し、足りない関係の案内と「関係を追加」を示す", async ({ page }) => {
     // Arrange
     await openApp(page);
     const gaps = page.locator("#btnGaps");
+    await expect(gaps).toHaveText("トレースの抜け 1 件");
     // Act
     await gaps.click();
     // Assert
-    await expect(gaps).toHaveText("トレースの抜け 1 件");
-    await expect(page.locator("#problems .gap")).toContainText("DryBoilCutoffReq");
+    await expect(guide(page)).toContainText("1 / 1 件目");
+    await expect(guide(page)).toContainText("この要求を確かめる検証がありません");
+    await expect(guide(page)).toContainText("「関係を追加」を押して、検証の要素を選ぶと解消します（verify）");
+    await expect(guide(page).getByRole("button", { name: "関係を追加" })).toBeVisible();
+    await expect(page.locator("#insp .what b")).toHaveText("DryBoilCutoffReq");
+    await expect(page.locator("#main")).toHaveAttribute("data-tab", "diagram");
+    await expect.poll(() => offCenter(page, "DryBoilCutoffReq")).toBeLessThan(4);
+    await expect(page.locator("#hl mark.selr")).toContainText("DryBoilCutoffReq");
+  });
+
+  test("F-TRACE-2: 今の図に抜けのある要素が無ければ、その要素が載るトレーサビリティの図に切り替えて示す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="structure"]').click();
+    // Act
+    await page.locator("#btnGaps").click();
+    // Assert
+    await expect(page.locator('.tab[aria-selected="true"]')).toContainText("トレーサビリティ");
+    await expect(guide(page)).toContainText("この要求を確かめる検証がありません");
+    await expect(page.locator('#gNodes [data-key="DryBoilCutoffReq"]')).toHaveCount(1);
+  });
+
+  test("F-TRACE-2: 案内の「関係を追加」から検証の要素を選んでつなぐと、抜けが解消する", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#btnGaps").click();
+    await guide(page).getByRole("button", { name: "関係を追加" }).click();
+    await expect(page.locator("#insp")).toContainText("検証の要素をタップしてください");
+    // Act
+    await page.locator("#zFit").click();
+    await page.locator('#gNodes [data-key="BoilTest"]').click();
+    await page.locator('#insp [data-rel="verify"]').click();
+    // Assert
+    await expect(page.locator("#subbar")).toContainText("トレースの抜けなし");
+    await expect(page.locator("#ed")).toHaveValue(/objective \{ verify kettleRequirements\.k1; verify DryBoilCutoffReq; \}/);
+    await expect(page.locator(".gapbadge")).toHaveCount(0);
+    await expect(guide(page)).toContainText("トレースの抜けはすべて解消しました");
+  });
+
+  test("F-TRACE-2: 抜けが複数あれば何件目かを示し、‹ › で前後へ移る（両端で回る）", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#ed").fill(GAPS);
+    await expect(page.locator("#btnGaps")).toHaveText("トレースの抜け 4 件");
+    await page.locator("#btnGaps").click();
+    await expect(guide(page)).toContainText("1 / 4 件目");
+    await expect(guide(page)).toContainText("この要求は、どの下位の要求にも展開されていません");
+    // Act
+    await page.getByRole("button", { name: "次の抜けへ" }).click();
+    // Assert
+    await expect(guide(page)).toContainText("2 / 4 件目");
+    await expect(guide(page)).toContainText("この要求の導出元になる上位の要求がありません");
+    await expect(page.locator("#insp .what b")).toHaveText("FlowReq");
+    await page.getByRole("button", { name: "前の抜けへ" }).click();
+    await page.getByRole("button", { name: "前の抜けへ" }).click();
+    await expect(guide(page)).toContainText("4 / 4 件目");
+    await expect(guide(page)).toContainText("この要求を確かめる検証がありません");
+  });
+
+  test("F-TRACE-2: 抜けのある要素の箱すべてに △ の印を付け、ツールチップに何が足りないかを書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator("#ed").fill(GAPS);
+    // Assert
+    await expect(page.locator(".gapbadge")).toHaveCount(2);
+    await expect(page.locator('[data-key="FlowReq"] .gapbadge title')).toHaveText(
+      "トレースの抜け：\nこの要求の導出元になる上位の要求がありません\nこの要求を満たす部品がありません\nこの要求を確かめる検証がありません",
+    );
+    await expect(page.locator('[data-key="Pump"] .gapbadge')).toHaveCount(0);
+  });
+
+  test("F-TRACE-2: 案内の「テキストで見る」で、隠していたテキストのパネルを開いてその行を示す", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#viewMenu summary").click();
+    await page.locator("#togText").click();
+    await expect(page.locator("#main")).toHaveAttribute("data-text", "off");
+    await page.keyboard.press("Escape");
+    await page.locator("#btnGaps").click();
+    // Act
+    await guide(page).getByRole("button", { name: "テキストで見る" }).click();
+    // Assert
+    await expect(page.locator("#main")).toHaveAttribute("data-text", "on");
+    await expect(page.locator("#hl mark.selr")).toContainText("DryBoilCutoffReq");
+  });
+
+  test("F-TRACE-2: 問題一覧の抜けの行を押すと、図が見えていれば図の要素へ移り、テキストの行の印も付ける", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator("#problems button.gap").click();
+    // Assert
+    await expect(guide(page)).toContainText("この要求を確かめる検証がありません");
+    await expect(page.locator("#insp .what b")).toHaveText("DryBoilCutoffReq");
+    await expect(page.locator("#hl mark.selr")).toContainText("DryBoilCutoffReq");
+  });
+
+  test("F-TRACE-2・Q-8: キーボードで抜けの件数を押すと案内へ入力が移り、› と「関係を追加」を操作できる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await page.locator("#ed").fill(GAPS);
+    await expect(page.locator("#btnGaps")).toHaveText("トレースの抜け 4 件");
+    await page.locator("#btnGaps").focus();
+    // Act
+    await page.keyboard.press("Enter");
+    // Assert
+    await expect(guide(page)).toBeFocused();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "次の抜けへ" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(guide(page)).toContainText("2 / 4 件目");
+    await expect(page.getByRole("button", { name: "次の抜けへ" })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#insp")).toContainText("上位の要求をタップしてください");
+  });
+
+  test.describe("幅 390px", () => {
+    test.use({ viewport: { width: 390, height: 800 } });
+
+    test("F-TRACE-2・Q-2: 図のタブで抜けの件数を押すと、図のタブのまま要素を選んで案内を出す", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#btnGaps").click();
+      // Assert
+      await expect(page.locator("#main")).toHaveAttribute("data-tab", "diagram");
+      await expect(guide(page)).toContainText("この要求を確かめる検証がありません");
+      await expect.poll(() => offCenter(page, "DryBoilCutoffReq")).toBeLessThan(4);
+      const box = await guide(page).boundingBox();
+      expect(box && box.x >= 0 && box.x + box.width <= 390).toBe(true);
+      await guide(page).getByRole("button", { name: "テキストで見る" }).click();
+      await expect(page.locator("#main")).toHaveAttribute("data-tab", "text");
+    });
+
+    test("F-TRACE-2・Q-2: テキストのタブで問題一覧の抜けの行を押すと、今までどおりテキストの行へ移る", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      await page.locator("#tabText").click();
+      const pos = Number(await page.locator("#problems button.gap").getAttribute("data-pos"));
+      // Act
+      await page.locator("#problems button.gap").click();
+      // Assert
+      await expect(page.locator("#main")).toHaveAttribute("data-tab", "text");
+      expect(await page.locator("#ed").evaluate((e) => (e as HTMLTextAreaElement).selectionStart)).toBe(pos);
+    });
   });
 });
 

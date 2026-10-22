@@ -189,6 +189,17 @@ test.describe("UI: 画面全体", () => {
       await expect(page).toHaveScreenshot("export-narrow.png");
     });
 
+    test("F-TRACE-2・Q-2: 幅 390px の画面で、トレースの抜けの案内を出した図", async ({ page }) => {
+      // Arrange
+      await openApp(page);
+      // Act
+      await page.locator("#btnGaps").click();
+      await expect(page.locator("#insp .gapguide")).toContainText("この要求を確かめる検証がありません");
+      await settle(page);
+      // Assert
+      await expect(page).toHaveScreenshot("trace-gap-guide-narrow.png");
+    });
+
     test("F-VIEW-1・Q-2・Q-4: 幅 390px の画面の「＋」メニュー（SysML v2 の名前の行つき）", async ({ page }) => {
       // Arrange
       await openApp(page);
@@ -545,12 +556,12 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-TRACE-2: トレースの抜けを押したときのツールバーと問題一覧",
-    shot: "trace-gaps",
+    title: "F-TRACE-2: トレースの抜けを押して、図の要素に足りない関係の案内を出したところ",
+    shot: "trace-gap-guide",
     act: async (page) => {
       await page.locator("#btnGaps").click();
-      await expect(page.locator("#problems .gap")).toBeVisible();
-      return [page.locator(".diagrampane .toolbar"), page.locator("#problems")];
+      await expect(page.locator("#insp .gapguide")).toContainText("この要求を確かめる検証がありません");
+      return [page.locator(".diagrampane")];
     },
   },
   {

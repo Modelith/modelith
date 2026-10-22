@@ -365,6 +365,7 @@ export function updateSync(): void {
  * 問題（構文エラー・参照切れ・チェックルールの結果・v1 のプラグインの診断・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
  * エラー → チェックルールの結果 → プラグインの診断（件数の上限を超えて捨てた分があれば、その知らせを先に）→ プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
  * テキストの中の位置があるもの（モデルの問題・チェックルールの結果・プラグインの診断）は行番号を付け、押すとその行に移る。
+ * トレースの抜けの行には何件目の抜けか（data-gap）を付け、図が見えていれば図の要素へ移れるようにする。
  * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
  */
 export function renderProblems(): void {
@@ -372,7 +373,10 @@ export function renderProblems(): void {
   const order = (k: Problem["kind"]): number => (k === undefined ? 0 : k === "unsupported" ? 1 : 2);
   const sorted = [...S.M.problems].sort((a, b) => order(a.kind) - order(b.kind));
   const mark = { gap: "△", unsupported: "ℹ" } as const;
-  const model = (p: Problem): string => `<button data-pos="${p.pos}" class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`;
+  // トレースの抜けの行には、何件目の抜けか（data-gap）を付ける。押したときに図の要素へ移るため（F-TRACE-2）
+  const gapIndex = new Map(S.M.problems.filter((p) => p.kind === "gap").map((p, i) => [p, i]));
+  const model = (p: Problem): string =>
+    `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`;
   const rule = (f: RuleFinding): string =>
     `<button data-pos="${f.pos}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(findingText(f, S.pluginNames))}</button>`;
   const notes = S.pluginNotes.map((n) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""}>⚠ ${esc(n.msg)}</button>`);
