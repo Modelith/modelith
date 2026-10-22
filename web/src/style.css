@@ -362,3 +362,16 @@ main[data-nodoc] .toast{z-index:30}
   #textInfo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .textpane .docname{flex:none;white-space:nowrap}
 }
+/* ---- トレースの抜けの案内と、図の上の印（F-TRACE-2） ---- */
+.inspector .gapguide{flex:1 1 100%;display:flex;flex-direction:column;gap:4px;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+.inspector .gapguide:focus{outline:none}
+.inspector .gapguide:focus-visible{outline:2px solid var(--sel);outline-offset:2px;border-radius:6px}
+.gapguide .gapnav{display:flex;align-items:center;gap:6px;font-size:12px;min-height:30px}
+.gapguide .gapnav b{color:var(--k-req)}
+.gapguide .gapmark{color:var(--k-req);font-weight:700}
+.gapguide .gapcount{color:var(--ink2)}
+.gapguide .gapstep{min-width:32px;padding:3px 8px;font-size:15px;line-height:1.2}
+.gapguide .gapstep[data-gap="prev"]{margin-left:auto}
+.gapguide p{margin:0;font-size:13px;line-height:1.5}
+.gapguide .gapfix{font-size:12px;color:var(--ink2)}
+.gapguide .acts{margin-top:4px}

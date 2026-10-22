@@ -39,6 +39,8 @@ export interface MarkupOpts {
   edgeStyle?: "ortho" | "curve";
   dim?: Set<string> | undefined;
   phases?: boolean;
+  /** トレースの抜けのある要素のキー → 印（△）のツールチップ（F-TRACE-2）。 */
+  gaps?: Map<string, string>;
 }
 
 /**
@@ -241,10 +243,11 @@ function endLabelMarkup(C: ColorFn, at: { x: number; y: number; a: string }, tex
 /**
  * 要素 1 つ（ブロック）を SVG の文字列にする。種類の «キーワード»・名前（長ければ縮めて 34 文字で切る）・属性などの行・工程を描き、
  * 選択・光らせる・接続の候補・薄くする、の状態を見た目に反映する。定義は角の四角、使用は角の丸い四角にする。
+ * トレースの抜けのある要素には、右上に △ の印（ツールチップに何が足りないか）を付ける。
  *
  * @param C 色の関数
  * @param b 要素の矩形と、その要素
- * @param opts 描き方（選択・光らせる要素・接続の候補・薄くする要素・工程を出すか）
+ * @param opts 描き方（選択・光らせる要素・接続の候補・薄くする要素・工程を出すか・トレースの抜けの印）
  * @param F 文字のフォント
  * @param MONO 式・属性の行のフォント
  * @returns `<g class="node" data-key="キー" transform="translate(x,y)">…</g>` の文字列
@@ -282,7 +285,28 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
       s += `<text x="12" y="${HEAD + 17 + k * LH}" font-size="${mono ? 10.5 : 11}" fill="${ln.cls === "more" ? C("ink2") : C("ink")}" font-family="${mono ? MONO : F}">${esc(ln.t)}</text>`;
     });
   }
+  const gap = opts.gaps?.get(n.key);
+  if (gap) s += gapBadge(C, b.w, gap);
   return s + "</g>";
+}
+
+/**
+ * トレースの抜けの印（右上の小さな △）を SVG の文字列にする。要求の色で塗り、縁を図の地の色で囲んで、明るい・暗い配色のどちらでも箱の線と見分けられるようにする。
+ *
+ * @param C 色の関数
+ * @param w 箱の幅（印は右端から 22 の所に置く）
+ * @param title ツールチップ（何が足りないか）
+ * @returns `<g class="gapbadge">…</g>` の文字列
+ * @example
+ * gapBadge(CV, 224, "トレースの抜け：\nこの要求を確かめる検証がありません")
+ * // → '<g class="gapbadge" transform="translate(202,5)"><title>トレースの抜け：…</title><path d="M8,0 L16,14 L0,14 Z" fill="var(--k-req)" …/>…</g>'
+ */
+function gapBadge(C: ColorFn, w: number, title: string): string {
+  return (
+    `<g class="gapbadge" transform="translate(${w - 22},5)"><title>${esc(title)}</title>` +
+    `<path d="M8,0 L16,14 L0,14 Z" fill="${C("k-req")}" stroke="${C("panel")}" stroke-width="1.5" stroke-linejoin="round"/>` +
+    `<text x="8" y="12.5" text-anchor="middle" font-size="10" font-weight="700" fill="${C("panel")}">!</text></g>`
+  );
 }
 
 /**

@@ -19,6 +19,7 @@ import { defaultFlowContext, flowContexts } from "./action-flow";
 import { defaultStateContext, isPseudoState, stateContexts } from "./state-machine";
 import { baseViewOf, CC, defaultIbdContext, edgeById, ibdContexts, modelView, nodeByKey, phaseLabel, seqContexts, VIEWS } from "./views";
 import { isCtxOpen } from "./ctxmenu";
+import { goToGap } from "./gap-guide";
 
 /* ---- パネル配置 ---- */
 /** パネルの設定を置く localStorage のキー（起動に失敗したときに初期化する設定。Q-6）。 */
@@ -1159,7 +1160,7 @@ export function renderSub(): void {
 
 /**
  * サブバーに操作をつなぐ。対象・工程を選んだら選択を解いて図を描き直して全体を表示し、タブを保存する。
- * 「フェーズ管理を始める」で工程を用意し、トレースの抜けのボタンで最初の抜けをテキストと問題一覧で示す。
+ * 「フェーズ管理を始める」で工程を用意し、トレースの抜けのボタンで最初の抜けへ移る（図の要素を選んで案内を出す。F-TRACE-2）。
  */
 function initSub(): void {
   const sub = $("#subbar");
@@ -1186,11 +1187,9 @@ function initSub(): void {
     if (!b) return;
     if (b.id === "btnPhaseInit") void PHASEOPS.init();
     if (b.id === "btnGaps") {
-      const g = S.M.problems.find((p) => p.kind === "gap");
-      setTab("text");
-      highlight();
-      if (g) scrollEditorTo(g.pos);
-      $("#problems").querySelector(".gap")?.scrollIntoView({ block: "nearest" });
+      goToGap(0);
+      // 図を切り替えるとボタンが描き直されるので、入力を案内へ移す（Q-8）
+      document.querySelector<HTMLElement>("#insp .gapguide")?.focus();
     }
   });
 }

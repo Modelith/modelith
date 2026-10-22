@@ -5,13 +5,16 @@ import { lineStart, type ModelNode } from "../core";
 import { $, esc } from "./dom";
 import { boxesOf, pinPoint, pinsOf, type Box } from "./geometry";
 import { relOptions } from "./relations";
+import { gapMarkTitles } from "./gap-guide";
+import { gapRelOptions } from "./trace-gap";
 import { S, type EndSpec } from "./state";
 import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "./svg";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
 
 /**
  * 表示中のビューの図を描き直す。空のときの案内を出し分け、シーケンス図ならライフラインとメッセージを、
- * それ以外なら線と要素を SVG に書く（接続モード中は、つなげる相手の候補を示す）。続けてミニマップと表示の移動・拡大を反映し、
+ * それ以外なら線と要素を SVG に書く（接続モード中は、つなげる相手の候補を示す。トレースの抜けの案内から始めた接続では、抜けを解消できる相手だけにする）。
+ * トレースの抜けのある要素には △ の印を付ける（F-TRACE-2）。続けてミニマップと表示の移動・拡大を反映し、
  * 光らせる要素（S.pulse）を空にする。
  */
 export function render(): void {
@@ -25,10 +28,12 @@ export function render(): void {
     $("#gNodes").innerHTML = sm.s;
   } else {
     const from = nodeByKey(S.connectFrom);
-    const cands = S.mode === "connect" ? new Set(content.nodes.filter((n) => n.key !== S.connectFrom && relOptions(from, n).length).map((n) => n.key)) : null;
+    const gap = S.connectGap;
+    const canConnect = (n: ModelNode): boolean => (gap && from ? gapRelOptions(gap, from, n).length > 0 : relOptions(from, n).length > 0);
+    const cands = S.mode === "connect" ? new Set(content.nodes.filter((n) => n.key !== S.connectFrom && canConnect(n)).map((n) => n.key)) : null;
     const { es, ns } = svgMarkup(CV, content, curLayout(), {
       interactive: true, view: S.view, sel: S.sel, selSet: S.selSet, selEdge: S.selEdge, selPin: S.selPin, pulse: S.pulse, cands,
-      edgeStyle: S.edgeStyle, dim: content.dim, phases: !!S.M.phases,
+      edgeStyle: S.edgeStyle, dim: content.dim, phases: !!S.M.phases, gaps: gapMarkTitles(),
     });
     $("#gEdges").innerHTML = es;
     $("#gNodes").innerHTML = ns;
@@ -239,8 +244,9 @@ export function scrollEditorTo(pos: number): void {
  *
  * @param key 要素のキー
  * @param onlyIfHidden true なら、要素の中心が既に見えている（縁から 40px より内側）ときは動かさない
+ * @param bottomInset 図の下の端から、隠れている高さ（px。インスペクタなどが重なる分）。その上の見えている所の中央に出す。既定 0
  */
-export function centerOn(key: string, onlyIfHidden = false): void {
+export function centerOn(key: string, onlyIfHidden = false, bottomInset = 0): void {
   const p = curLayout().pos[key];
   const n = nodeByKey(key);
   if (!p || !n) return;
@@ -250,7 +256,7 @@ export function centerOn(key: string, onlyIfHidden = false): void {
   const sx = cx * S.tf.s + S.tf.x, sy = cy * S.tf.s + S.tf.y;
   if (onlyIfHidden && sx > 40 && sx < r.width - 40 && sy > 40 && sy < r.height - 40) return;
   S.tf.x = r.width / 2 - cx * S.tf.s;
-  S.tf.y = r.height / 2 - cy * S.tf.s;
+  S.tf.y = Math.max(0, r.height - bottomInset) / 2 - cy * S.tf.s;
   applyTf();
 }
 

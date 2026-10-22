@@ -13,6 +13,8 @@ import { OPS, MSGOPS, PHASEOPS, alignSel, deleteSel, selNodes, setPhaseSel, uniq
 import { openTab, renderTree, setTab } from "./panels";
 import { DIR_LABEL, PINOPS, selPinInfo } from "./pins";
 import { relOptions, type RelKind } from "./relations";
+import { activeGapKind, gapGuideHtml, stepGapGuide } from "./gap-guide";
+import { gapGuide, gapRelOptions } from "./trace-gap";
 import { cancelConnect, clearSel, S } from "./state";
 import { CC, curLayout, edgeById, nodeByKey, phaseLabel } from "./views";
 
@@ -103,6 +105,7 @@ function inspectorHtml(): string | null {
 
 /**
  * 接続モードの案内の HTML を作る。接続先がまだなら接続先を選ぶよう案内し、決まっていれば追加できる関係（relOptions）のボタンを並べる。
+ * トレースの抜けの案内から始めた接続（S.connectGap）では、抜けを解消する相手を案内し、その相手なら抜けを解消する関係（gapRelOptions）を並べる。
  *
  * @returns 案内の HTML。接続元が見つからなければ null
  * @example
@@ -110,6 +113,8 @@ function inspectorHtml(): string | null {
  * connectHtml() // → '<div class="what"><small>A から線を引きます</small><b>接続先の要素をタップしてください</b></div>…'
  * // 追加できる関係が無い組み合わせのとき
  * connectHtml() // → '…この組み合わせで追加できる関係はありません…'
+ * // 検証の抜けの案内から始め、接続先が未定のとき
+ * connectHtml() // → '<div class="what"><small>R から線を引きます</small><b>検証の要素をタップしてください</b></div>…'
  * // 接続元が見つからないとき
  * connectHtml() // → null
  */
@@ -118,10 +123,12 @@ function connectHtml(): string | null {
   if (!a) return null;
   const fromTxt = portName(S.wire?.from.pin);
   const b = nodeByKey(S.connectTo);
+  const target = S.connectGap ? gapGuide(S.connectGap, "").target : null;
   if (!b) {
-    return `<div class="what"><small>${esc(a.name + fromTxt)} から線を引きます</small><b>接続先の要素をタップしてください</b></div><div class="acts"><button data-act="cancel">やめる</button></div>`;
+    return `<div class="what"><small>${esc(a.name + fromTxt)} から線を引きます</small><b>${esc(target ?? "接続先の要素")}をタップしてください</b></div><div class="acts"><button data-act="cancel">やめる</button></div>`;
   }
-  const opts = relOptions(a, b);
+  const fix = S.connectGap ? gapRelOptions(S.connectGap, a, b) : [];
+  const opts: { rel: RelKind; label: string; reverse?: boolean }[] = fix.length ? fix : relOptions(a, b);
   const toTxt = portName(S.wire?.to?.pin);
   const nm = (n: ModelNode): string => (n.flow ? flowName(n) : n.state ? stateName(n) : n.name);
   const why =
@@ -133,7 +140,7 @@ function connectHtml(): string | null {
   return (
     `<div class="what"><small>追加する関係を選択</small><b>${esc(nm(a) + fromTxt)} → ${esc(nm(b) + toTxt)}</b></div><div class="acts">` +
     (opts.length
-      ? opts.map((o) => `<button class="primary" data-rel="${o.rel}">${esc(o.label)}</button>`).join("")
+      ? opts.map((o) => `<button class="primary" data-rel="${o.rel}"${o.reverse ? ' data-reverse="1"' : ""}>${esc(o.label)}</button>`).join("")
       : `<span style="font-size:12px;color:var(--ink2)">${why}</span>`) +
     `<button data-act="cancel">やめる</button></div>`
   );
@@ -212,6 +219,7 @@ function pinHtml(n: ModelNode, pin: Pin): string {
  * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、n 項の接続の点なら接続の名前と「接続を削除」を、メモなら注釈する相手・本文と「メモを削除」を、
  * 使用・ライフラインなら型と「型の定義へ」を、
  * 定義なら種類・テキストの行・（フェーズの定義があれば）フェーズの選択欄と、名前の変更・関係の追加・削除のボタンを出す。
+ * トレースの抜けを案内している定義なら、その案内（gapGuideHtml）を先頭に出す。
  * 使用と定義では、要素に付けたメモと別の言語での表し方（comment・rep）も下に並べる。
  *
  * @param n 選んだ要素
@@ -264,9 +272,12 @@ function nodeHtml(n: ModelNode): string {
     phases && n.isDef
       ? `<select id="phaseSel" aria-label="フェーズ" ${SELECT_STYLE}><option value="">フェーズなし</option>${phases.map((p) => `<option value="${esc(p)}" ${n.phase === p ? "selected" : ""}>${esc(phaseLabel(p))}${n.phase === p && !n.phaseOwn ? "（継承）" : ""}</option>`).join("")}</select>`
       : "";
+  // トレースの抜けを案内しているときは、「テキストで見る」「関係を追加」を案内の中に置く（F-TRACE-2）
+  const guide = gapGuideHtml(n);
   return (
+    (guide ?? "") +
     `<div class="what"><small>«${esc(n.kind)}» テキスト ${line} 行目・縁の＋から線を引けます</small><b>${esc(n.name)}</b></div>${phSel}<div class="acts">` +
-    `<button data-act="goto">テキストで見る</button><button data-act="rename">名前を変更</button><button data-act="connect">関係を追加</button>` +
+    (guide ? `<button data-act="rename">名前を変更</button>` : `<button data-act="goto">テキストで見る</button><button data-act="rename">名前を変更</button><button data-act="connect">関係を追加</button>`) +
     delBtn("del", "削除") +
     `</div>` +
     annotationsHtml(e, S.P.entries)
@@ -443,6 +454,7 @@ export function act(a: string): void {
       }
       return;
     case "connect":
+      S.connectGap = activeGapKind();
       S.mode = "connect";
       S.connectFrom = S.sel;
       S.connectTo = null;
@@ -544,7 +556,7 @@ function deleteSelected(a: string, n: ModelNode | null): void {
 }
 
 /**
- * インスペクタのイベントを登録する（起動時に 1 回）。フェーズの選択欄の変更と、関係・ポートの向き・ポートの作成の向き・操作のボタンのクリックを処理する。
+ * インスペクタのイベントを登録する（起動時に 1 回）。フェーズの選択欄の変更と、関係・ポートの向き・ポートの作成の向き・トレースの抜けの前後・操作のボタンのクリックを処理する。
  */
 export function initInspector(): void {
   const box = $("#insp");
@@ -560,10 +572,19 @@ export function initInspector(): void {
   box.addEventListener("click", (ev) => {
     const b = closest<HTMLButtonElement>(ev, "button");
     if (!b) return;
-    const { rel, dir, fdir, act: a } = b.dataset;
+    const { rel, dir, fdir, act: a, gap } = b.dataset;
     if (rel) {
       const from = nodeByKey(S.connectFrom), to = nodeByKey(S.connectTo);
-      if (from && to) OPS.connect(from, to, rel as RelKind);
+      if (!from || !to) return;
+      if (b.dataset["reverse"]) {
+        // 抜けを解消する関係は、押した要素から抜けのある要素へ引く。線を描いた端は向きが合わないので使わない
+        S.wire = null;
+        void OPS.connect(to, from, rel as RelKind);
+      } else void OPS.connect(from, to, rel as RelKind);
+      return;
+    }
+    if (gap) {
+      stepGapGuide(gap === "prev" ? -1 : 1);
       return;
     }
     if (dir) {
