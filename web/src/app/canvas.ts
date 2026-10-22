@@ -9,6 +9,7 @@ import { placeTool } from "./panels";
 import { pinsFor } from "./pins";
 import { applyTf, boxOf, highlight, render, renderOverlay, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type EndSpec } from "./state";
+import { insertBend, moveBend, removeBend, setAnchor } from "./edge-shape";
 import { packageBoxes, SEQ, seqGeom } from "./svg";
 import { commitLayout, toast } from "./sync";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
@@ -100,6 +101,10 @@ type Drag =
   | { type: "pin"; node: string; pin: string; from: EndSpec; lx: number; ly: number; moved: boolean }
   | { type: "node"; key: string; lx: number; ly: number; ox: number; oy: number; moved: boolean; group?: { key: string; p: Pos }[] }
   | { type: "edge"; id: string; lx: number; ly: number; moved: boolean }
+  /** 選んだ線の曲がり角（insert なら区間の中ほどのつまみ。動かし始めたら、その区間に曲がり角を足す。F-VIEW-16）。 */
+  | { type: "bend"; id: string; i: number; insert: boolean; lx: number; ly: number; moved: boolean }
+  /** 選んだ線の端のつまみ（同じ要素の別の縁へ付け替える。F-VIEW-16）。 */
+  | { type: "endh"; id: string; end: "f" | "t"; lx: number; ly: number; moved: boolean }
   | { type: "pan"; lx: number; ly: number; ox: number; oy: number; moved: boolean }
   | { type: "band"; lx: number; ly: number; cx: number; cy: number; moved: boolean; addTo: boolean };
 
@@ -107,6 +112,8 @@ const ptrs = new Map<number, [number, number]>();
 let drag: Drag | null = null;
 let pinch: { d: number; s: number; cx: number; cy: number; x: number; y: number } | null = null;
 let longPress: ReturnType<typeof setTimeout> | undefined;
+/** 最後に動かさずに押した曲がり角のつまみと、その時刻（続けて 2 回押したら消すため）。 */
+let lastBendTap: { id: string; i: number; at: number } | null = null;
 /**
  * 座標を 10 単位に丸める（要素を動かすときの格子）。
  *
@@ -146,7 +153,15 @@ function onPointerDown(ev: PointerEvent): void {
     return;
   }
   const hEl = closest(ev, ".handle"), pEl = closest(ev, ".pin"), nEl = closest(ev, ".node"), eEl = closest(ev, ".edge");
-  if (hEl) {
+  const shEl = closest(ev, ".eh");
+  if (shEl) {
+    // 選んだ線の形のつまみ（F-VIEW-16）
+    const id = shEl.dataset["edge"] ?? "";
+    const end = shEl.dataset["end"];
+    if (end === "f" || end === "t") drag = { type: "endh", id, end, lx, ly, moved: false };
+    else if (shEl.dataset["mid"] !== undefined) drag = { type: "bend", id, i: Number(shEl.dataset["mid"]), insert: true, lx, ly, moved: false };
+    else drag = { type: "bend", id, i: Number(shEl.dataset["bend"]), insert: false, lx, ly, moved: false };
+  } else if (hEl) {
     const from: EndSpec = { node: hEl.dataset["node"] ?? "", side: (hEl.dataset["side"] ?? "t") as Side, t: Number(hEl.dataset["t"]), pin: hEl.dataset["pin"] || null };
     drag = from.pin ? { type: "pin", node: from.node, pin: from.pin, from, lx, ly, moved: false } : { type: "handle", from, lx, ly, moved: false };
   } else if (pEl) {
@@ -210,7 +225,8 @@ function onPointerMove(ev: PointerEvent): void {
     // ボタンを押していないマウスの移動：縁に＋ハンドルを出す
     if (ev.pointerType === "mouse" && !ptrs.size && S.view !== "seq") {
       const [cx, cy] = toCanvas(...local(ev.clientX, ev.clientY));
-      const h = borderHit(cx, cy, 7, false);
+      // 線の形のつまみの上では、縁の＋ハンドルを出さない（つまみを押せるように。F-VIEW-16）
+      const h = closest(ev, ".eh") ? null : borderHit(cx, cy, 7, false);
       const key = h ? `${h.node}|${h.side}|${h.t}|${h.pin}` : "";
       if (key !== S.hoverKey) {
         S.hoverKey = key;
@@ -260,6 +276,26 @@ function onPointerMove(ev: PointerEvent): void {
   if (drag.type === "wire") {
     S.wireDrag = { from: drag.from, x: cx, y: cy, target: borderHit(cx, cy, 16, true, drag.from.node) };
     renderOverlay();
+    return;
+  }
+  if (drag.type === "bend") {
+    // 曲がり角を動かす（区間の中ほどのつまみなら、先に曲がり角を足す）。格子に合わせる
+    const at: Pos = [snap(cx), snap(cy)];
+    if (drag.insert) {
+      drag.i = insertBend(curLayout(), drag.id, drag.i, at);
+      drag.insert = false;
+    } else moveBend(curLayout(), drag.id, drag.i, at);
+    render();
+    return;
+  }
+  if (drag.type === "endh") {
+    // 線の端を、同じ要素の近い縁へ付け替える
+    const e = edgeById(drag.id);
+    const n = e ? nodeByKey(drag.end === "f" ? e.from : e.to) : undefined;
+    if (!n) return;
+    const nb = nearestBorder(boxOf(n), cx, cy);
+    setAnchor(curLayout(), drag.id, drag.end, [nb.side, nb.t]);
+    render();
     return;
   }
   if (drag.type === "pin") {
@@ -358,9 +394,23 @@ function onPointerUp(ev: PointerEvent): void {
     return;
   }
   if (d.moved) {
-    if (d.type === "node" || d.type === "pin") commitLayout();
+    if (d.type === "node" || d.type === "pin" || d.type === "bend" || d.type === "endh") commitLayout();
+    // 線の形を変えたら、インスペクタに「線の形を元に戻す」を出す
+    if (d.type === "bend" || d.type === "endh") renderInspector();
     return;
   }
+  // 線の形のつまみは、動かさずに離しても選んだ線のまま。曲がり角のつまみを続けて 2 回押したら、その曲がり角を消す（F-VIEW-16）
+  if (d.type === "bend" && !d.insert) {
+    const now = Date.now();
+    if (lastBendTap && lastBendTap.id === d.id && lastBendTap.i === d.i && now - lastBendTap.at < 450) {
+      lastBendTap = null;
+      removeBend(curLayout(), d.id, d.i);
+      commitLayout();
+      renderInspector();
+    } else lastBendTap = { id: d.id, i: d.i, at: now };
+    return;
+  }
+  if (d.type === "bend" || d.type === "endh") return;
   tap(d);
 }
 

@@ -185,6 +185,12 @@ package ModelithRequirements {
         requirement def <'F-VIEW-9'> PackageFrameReq {
             doc /* 図に package そのものを出したとき（expose P）、package を枠（フォルダ形）として描き、中の要素を枠の中に示す（8.2.3.5 の package の記法、ADR-0005） */
         }
+        requirement def <'F-VIEW-16'> EdgeShapeReq {
+            doc /* すべての図で、線の形を手で調整できる。線を選ぶと曲がり角と区間の中ほどにつまみを出し、区間の中ほどのつまみを動かすと曲がり角を足し、
+                   曲がり角のつまみを動かすと曲がり角を動かし、続けて 2 回押す（ダブルクリック）と消す。インスペクタの「線の形を元に戻す」で、曲がり角と付け替えた端をすべて消す。
+                   線の端のつまみを、同じ要素の別の縁や接続点へ動かすと、端をそこへ付け替える。調整した線の形は配置ファイルに残し（ADR-0005）、要素を動かしても曲がり角は動かさない。
+                   エクスポートした SVG と draw.io にも、調整した形で書く。テキストは変えない */
+        }
         requirement def <'F-VIEW-4'> CanvasReq {
             doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える */
         }
@@ -430,6 +436,7 @@ package ModelithRequirements {
         #derivation dependency from PackageFrameReq to ViewsNeed;
         #derivation dependency from SequenceReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
+        #derivation dependency from EdgeShapeReq to ViewsNeed;
         #derivation dependency from TreeReq to ViewsNeed;
         #derivation dependency from PhaseReq to TraceNeed;
         #derivation dependency from TraceGapReq to TraceNeed;
@@ -581,6 +588,7 @@ package ModelithRequirements {
         satisfy NoSilentWriteReq by Workspace;
         satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
+        satisfy EdgeShapeReq by DiagramUI;
         satisfy TreeReq by DiagramUI;
         satisfy PhaseReq by Core;
         satisfy TraceGapReq by Core;
@@ -1164,6 +1172,15 @@ package ModelithRequirements {
                    表示中のファイルで直すとほかのファイルの問題も消えること（ADR-0021 §6） */
             objective {
                 verify ProjectProblemsReq;
+            }
+        }
+        verification def EdgeShapeTest {
+            doc /* web/src/app/edge-shape.test.ts：曲がり角を通る直角の経路（始点・終点の縁の向き、続けて同じ点の省き方）、区間の中ほどの位置、ラベルの位置、
+                   付け替えた端の縁の位置、配置ファイルの @bends・@anchors の読み書きと形の合わない値を捨てること、曲がり角の足し方・動かし方・消し方、端の付け替えと接続点の指定の外し方、
+                   元に戻すこと、要素の名前の変更での鍵の付け替えと無くなった線の形の片付け。web/e2e/edge-shape.spec.ts：線を選んでつまみを出し、区間の中ほどを動かして曲がり角を足し、元に戻すこと、
+                   要素を動かしても曲がり角は動かず、続けて 2 回押すと消えること、端を別の縁へ付け替え、draw.io に曲がり角の点と付け替えた端を書くこと */
+            objective {
+                verify EdgeShapeReq;
             }
         }
         verification def CliCheckTest {

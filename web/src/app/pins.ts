@@ -1,6 +1,7 @@
 // 接続点とポートの操作。接続点は配置情報、ポートはテキストの宣言として持つ。
 
 import type { ModelNode, Port, PortDir } from "../core";
+import { pruneShapes } from "./edge-shape";
 import { perform } from "./intent";
 import { pinsOf, type Pin } from "./geometry";
 import type { Ends, ViewLayout } from "./layout";
@@ -33,14 +34,17 @@ const endNodes = (edgeId: string): [string, string, string] => {
 };
 
 /**
- * 存在しない要素・線・ポートを指す接続点と線の端を、すべてのビューの配置（S.layout）から消す。
+ * 存在しない要素・線・ポートを指す接続点と線の端・曲がり角・付け替えた端を、すべてのビューの配置（S.layout）から消す。
  * どの線の端にも使われていない自由な接続点も消す（選択中の接続点は残す）。内部ブロック図（`ibd:`）のビューでは線の端と要素は消さない。
  */
 export function prunePins(): void {
   const ids = new Set(S.M.edges.map((e) => e.id));
   for (const [vk, v] of Object.entries(S.layout)) {
     const isIbd = vk.startsWith("ibd:");
-    if (!isIbd) for (const k of Object.keys(v.ends)) if (!ids.has(k)) delete v.ends[k];
+    if (!isIbd) {
+      for (const k of Object.keys(v.ends)) if (!ids.has(k)) delete v.ends[k];
+      pruneShapes(v, ids);
+    }
     for (const [nk, pv] of Object.entries(v.pins)) {
       const n = isIbd ? null : nodeByKey(nk);
       if (!isIbd && !n) {

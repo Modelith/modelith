@@ -33,7 +33,7 @@ function stable(v: unknown): string {
 }
 
 /**
- * 配置を、配置ファイル（`model.layout.json`、ADR-0005）の文字列にする。キー順を固定し、接続点・線の端は要素ごとに 1 行で書く。空のビューは書かない。
+ * 配置を、配置ファイル（`model.layout.json`、ADR-0005）の文字列にする。キー順を固定し、接続点・線の端・曲がり角・端の位置は要素・線ごとに 1 行で書く。空のビューは書かない。
  *
  * @param layout ビューごとの配置
  * @returns 配置ファイルの中身（末尾に改行を付ける）。同じ配置なら作った順によらず同じ文字列
@@ -46,8 +46,8 @@ export function serializeLayout(layout: Layout): string {
   const views = sortKeys(layoutToJson(layout)).filter(([, v]) => Object.keys(v).length);
   const view = ([vk, v]: [string, Record<string, unknown>]): string => {
     const lines = sortKeys(v).map(([k, x]) => {
-      // 接続点・線の端は、要素ごとに 1 行にする
-      if ((k === "@pins" || k === "@ends") && x && typeof x === "object") {
+      // 接続点・線の端・曲がり角・端の位置は、要素・線ごとに 1 行にする
+      if ((k === "@pins" || k === "@ends" || k === "@bends" || k === "@anchors") && x && typeof x === "object") {
         const inner = sortKeys(x as Record<string, unknown>).map(([ik, ix]) => `        ${JSON.stringify(ik)}: ${stable(ix)}`);
         return `      ${JSON.stringify(k)}: {\n${inner.join(",\n")}\n      }`;
       }
@@ -87,7 +87,7 @@ export function parseLayoutFile(text: string): { layout: Layout; error: string |
 }
 
 /**
- * 配置が空か（どのビューにも座標・接続点・線の端が無い）を判定する。
+ * 配置が空か（どのビューにも座標・接続点・線の端・曲がり角が無い）を判定する。
  *
  * @param layout ビューごとの配置
  * @returns 空なら true。ビューが無いときも true
@@ -97,7 +97,9 @@ export function parseLayoutFile(text: string): { layout: Layout; error: string |
  * isEmptyLayout({ v: { pos: { A: [0, 0] }, pins: {}, ends: {} } }) // → false
  */
 export const isEmptyLayout = (layout: Layout): boolean =>
-  Object.values(layout).every((v) => !Object.keys(v.pos).length && !Object.keys(v.pins).length && !Object.keys(v.ends).length);
+  Object.values(layout).every(
+    (v) => !Object.keys(v.pos).length && !Object.keys(v.pins).length && !Object.keys(v.ends).length && !Object.keys(v.bends ?? {}).length && !Object.keys(v.anchors ?? {}).length,
+  );
 
 /**
  * ビューの配置を取り出す。無ければ空の配置を作って layout に足す（layout を書き換える）。

@@ -13,7 +13,14 @@ export interface ViewLayout {
   pins: Record<string, Record<string, PinPos>>;
   /** 線の ID → 両端の接続点。 */
   ends: Record<string, Ends>;
+  /** 線の ID → 利用者が足した曲がり角（図の座標。F-VIEW-16）。無ければ自動の経路。 */
+  bends?: Record<string, Pos[]>;
+  /** 線の ID → 利用者が付け替えた両端の縁の位置（接続点を使わない端。null は自動。F-VIEW-16）。 */
+  anchors?: Record<string, Anchors>;
 }
+
+/** 線の両端の、利用者が決めた縁の位置（未指定は null）。 */
+export type Anchors = [PinPos | null, PinPos | null];
 
 /** ビューのキー（`trace`・`ibd:<文脈>` など）→ 配置。 */
 export type Layout = Record<string, ViewLayout>;
@@ -89,9 +96,19 @@ const isEndId = (v: unknown): v is string | null => v === null || typeof v === "
  * isEnds(["a1"])       // → false（要素が 1 つ）
  */
 const isEnds = (v: unknown): v is Ends => Array.isArray(v) && v.length === 2 && isEndId(v[0]) && isEndId(v[1]);
+/**
+ * 値が線の両端の縁の位置（縁の位置か null の 2 つの配列）か。
+ *
+ * @param v 調べる値
+ * @returns `[縁の位置か null, 縁の位置か null]` の形なら true
+ * @example
+ * isAnchors([["r", 0.5], null]) // → true
+ * isAnchors([null])             // → false（要素が 1 つ）
+ */
+const isAnchors = (v: unknown): v is Anchors => Array.isArray(v) && v.length === 2 && v.every((a) => a === null || isPinPos(a));
 
 /**
- * `@layout` の JSON（ビューのキー → 要素のキー → 座標、と `@pins`・`@ends`）を読み取る。形の合わない値は捨てる。
+ * `@layout` の JSON（ビューのキー → 要素のキー → 座標、と `@pins`・`@ends`・`@bends`・`@anchors`）を読み取る。形の合わない値は捨てる。
  *
  * @param raw JSON から読んだオブジェクト（ビューのキー → その中身）
  * @returns ビューごとの配置。オブジェクトでないビューは除く
@@ -116,6 +133,10 @@ export function layoutFromJson(raw: Record<string, unknown>): Layout {
         }
       } else if (k === "@ends" && isObj(x)) {
         for (const [ek, e] of Object.entries(x)) if (isEnds(e)) view.ends[ek] = e;
+      } else if (k === "@bends" && isObj(x)) {
+        for (const [ek, b] of Object.entries(x)) if (Array.isArray(b) && b.length && b.every(isPos)) (view.bends ||= {})[ek] = b;
+      } else if (k === "@anchors" && isObj(x)) {
+        for (const [ek, a] of Object.entries(x)) if (isAnchors(a)) (view.anchors ||= {})[ek] = a;
       } else if (isPos(x)) view.pos[k] = x;
     }
     out[vk] = view;
@@ -124,7 +145,7 @@ export function layoutFromJson(raw: Record<string, unknown>): Layout {
 }
 
 /**
- * 配置を `@layout` に書き出す JSON の形にする（layoutFromJson の逆）。空の接続点・線の端は書かない。
+ * 配置を `@layout` に書き出す JSON の形にする（layoutFromJson の逆）。空の接続点・線の端・曲がり角・端の位置は書かない。
  *
  * @param layout ビューごとの配置
  * @returns ビューのキー → 要素のキー → 座標（と `@pins`・`@ends`）のオブジェクト
@@ -138,6 +159,8 @@ export function layoutToJson(layout: Layout): Record<string, Record<string, unkn
     const pins = Object.fromEntries(Object.entries(v.pins).filter(([, pv]) => Object.keys(pv).length));
     if (Object.keys(pins).length) o["@pins"] = pins;
     if (Object.keys(v.ends).length) o["@ends"] = v.ends;
+    if (v.bends && Object.keys(v.bends).length) o["@bends"] = v.bends;
+    if (v.anchors && Object.keys(v.anchors).length) o["@anchors"] = v.anchors;
     out[vk] = o;
   }
   return out;
