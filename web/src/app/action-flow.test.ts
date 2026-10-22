@@ -13,6 +13,10 @@ const TEA =
   "action boil { in item w : Water; out item hot : Water; } action brew { in water : Water; out t : Water; } " +
   "flow cold to boil.w; flow of Water from boil.hot to brew.water; flow brew.t to tea; } }";
 
+const NESTED =
+  "package P { action def A { first start then boil; action boil { first start then heat; action heat; then wait; action wait; } " +
+  "first boil then c; action c; } }";
+
 const TEXT =
   "package P { action def A { first start; then action a : Heat; then decide d; if x > 0 then s; else c; " +
   "action s send S() to b; action c; first s then done; first c then done; } action def Heat; action def Idle; }";
@@ -92,6 +96,23 @@ describe("flowContentOf（アクションの流れの図の中身）", () => {
       ["flow|a:boil|a:brew|Water#1", "port:hot", "port:water"],
       ["flow|a:brew|b:tea|#1", "port:t", undefined],
     ]);
+  });
+
+  it("入れ子の本体の要素は、その本体を持つアクションを container に持ち、中の線もそのまま使う（8.2.3.17 の action-body）", () => {
+    // Arrange
+    const { M, c } = setup(NESTED, "A");
+    // Act
+    const { nodes, edges } = flowContentOf(M, c);
+    // Assert
+    expect(nodes.map((n) => [n.key, n.container ?? null])).toEqual([
+      ["a:start", null],
+      ["a:boil", null],
+      ["a:boil.start", "a:boil"],
+      ["a:boil.heat", "a:boil"],
+      ["a:boil.wait", "a:boil"],
+      ["a:c", null],
+    ]);
+    expect(edges.map((e) => e.id)).toContain("succession|a:boil.heat|a:boil.wait|#1");
   });
 
   it("対象にできるのはアクション定義で、既定の対象は線の最も多いもの", () => {
@@ -277,6 +298,21 @@ describe("アクションの流れの図の記法（svg）", () => {
     expect(es).toContain(">[x &gt; 0]</text>");
   });
 
+  it("中にアクションの流れを描くアクションは、中の要素を囲む大きさで描き、見出しの下を区切る（区画の行は書かない）", () => {
+    // Arrange
+    const { M, c } = setup(NESTED, "A");
+    const content = flowContentOf(M, c);
+    const L = emptyView();
+    content.nodes.forEach((n, i) => (L.pos[n.key] = [100, i * 100]));
+    // Act
+    const { es } = svgMarkup(CV, content, L, { view: "afv" });
+    // Assert（中に要素を描く要素は、線より下（es）に描く）
+    const boil = es.slice(es.indexOf('data-key="a:boil"'), es.indexOf("</g>", es.indexOf('data-key="a:boil"')));
+    expect(boil).toContain('fill-opacity=".55"');
+    expect(boil).toContain('y1="40" y2="40"');
+    expect(boil).toContain(">boil</text>");
+  });
+
   it("パラメータは要素の縁の接続点に、アクション定義そのもののパラメータは枠の上の四角に描く", () => {
     // Arrange
     const { M, c } = setup(TEA, "MakeTea");
@@ -327,6 +363,15 @@ describe("canSucceed・relOptions・flowName（図から順序の線を引く）
     const opts = relOptions(nodeOf(nodes, "a:a"), nodeOf(nodes, "a:b"));
     // Assert
     expect(opts).toEqual([{ rel: "succession", label: "この後に実行する（順序 succession）" }]);
+  });
+
+  it("入れ子の本体の中と外の要素の間には引けず、同じ本体の中どうしなら引ける", () => {
+    // Arrange
+    const { M, c } = setup(NESTED, "A");
+    const { nodes } = flowContentOf(M, c);
+    // Act / Assert
+    expect(canSucceed(nodeOf(nodes, "a:boil.heat"), nodeOf(nodes, "a:c"))).toBe(false);
+    expect(canSucceed(nodeOf(nodes, "a:boil.wait"), nodeOf(nodes, "a:boil.heat"))).toBe(true);
   });
 
   it.each([

@@ -444,6 +444,8 @@ export interface ModelFlowNode {
   entry: Entry | null;
   /** パラメータ（8.2.3.17 の parameter）。本体に無く型があれば、型の定義のパラメータ。無ければ空。 */
   ports: Port[];
+  /** 入れ子の本体の要素なら、その本体を持つアクションのキー（中に描く）。 */
+  container?: string;
 }
 
 /** アクション定義 1 つの、アクションの流れの図（8.2.3.17）。 */

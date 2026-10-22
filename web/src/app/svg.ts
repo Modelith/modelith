@@ -334,14 +334,17 @@ function flowPath(shape: "send" | "accept" | "diamond", w: number, h: number): s
   return `M${w / 2},0 L${w},${h / 2} L${w / 2},${h} L0,${h / 2} Z`;
 }
 
+/** 中にアクションの流れを描くアクションの、見出しの高さ（その下を中の要素を描く場所として区切る）。 */
+const FLOW_HEAD = 40;
+
 /**
  * アクションの流れの図の要素（8.2.3.17）を SVG の文字列にする。開始は塗った丸、終了は丸の中の塗った丸、fork・join は太い棒、
  * decide・merge はひし形（名前は右に書く）、send・accept は五角形、ほかは角の丸い四角に書く。
  * 四角と五角形には、アクション以外は «種類» を書き、名前（無ければ中身）を太字で、名前と中身の両方があれば中身を下に書き、
- * if・while などの本体のアクションを区画に書く。
+ * if・while などの本体のアクションを区画に書く。中にアクションの流れ（入れ子の本体）を描くアクションは、名前を上に書き、その下を区切る。
  *
  * @param C 色の関数
- * @param b 要素の矩形と、その要素
+ * @param b 要素の矩形と、その要素（`holds` なら中にアクションの流れを描く）
  * @param opts 描き方（選択・光らせる要素・接続の候補）
  * @param F 文字のフォント
  * @param MONO 中身と区画のフォント
@@ -366,7 +369,7 @@ function flowNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MON
   if (shape === "bar") return s + `<rect class="body" width="${w}" height="${h}" rx="2" fill="${C("ink")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${sw}"/>${side(n.name, -4)}</g>`;
   if (shape === "diamond") return s + `<path class="body" d="${flowPath("diamond", w, h)}" fill="${C("k-beh-bg")}" stroke="${stroke}" stroke-width="${sw}"/>${side(n.name, h / 2 + 4)}</g>`;
   const body = shape === "action" ? `<rect class="body" width="${w}" height="${h}" rx="10"` : `<path class="body" d="${flowPath(shape, w, h)}"`;
-  s += `${body} fill="${C("k-beh-bg")}" stroke="${stroke}" stroke-width="${sw}"/>`;
+  s += `${body} fill="${C("k-beh-bg")}"${b.holds ? ' fill-opacity=".55"' : ""} stroke="${stroke}" stroke-width="${sw}"/>`;
   const detail = flowDetail(n);
   const plain = ["action", "perform action", "state"].includes(n.kind);
   const cut = (t: string): string => (t.length > 24 ? t.slice(0, 23) + "…" : t);
@@ -379,6 +382,8 @@ function flowNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MON
     s += `<text x="${cx}" y="33" text-anchor="middle" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${n.name || plain ? F : MONO}">${esc(cut(main))}</text>`;
     if (!plain && n.name && detail) s += `<text x="${cx}" y="48" text-anchor="middle" font-size="10.5" fill="${C("ink")}" font-family="${MONO}">${esc(cut(detail))}</text>`;
   }
+  // 中にアクションの流れを描くアクションは、見出しの下を、中の要素を描く場所として区切る（区画の行は書かない）
+  if (b.holds) return s + `<line x1="0" x2="${w}" y1="${FLOW_HEAD}" y2="${FLOW_HEAD}" stroke="${C("k-beh")}" stroke-opacity=".45"/></g>`;
   const L = linesOf(n);
   if (L.length) {
     const top = h - L.length * LH - 12;
