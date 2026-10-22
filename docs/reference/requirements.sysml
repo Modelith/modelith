@@ -277,6 +277,11 @@ package ModelithRequirements {
                    ほかのファイルの問題も、そのファイルを中心にしたモデル（ほかのファイルとつないだもの）で数える。行を押すと、そのファイルを開いて該当の行へ移る。
                    ファイルの一覧で、エラーのあるファイルの名前を赤く、警告だけのファイルの名前を黄色くし、件数を添える。エラーのあるファイルを中に持つフォルダにも印を付ける */
         }
+        requirement def <'F-FILE-17'> PreviewOpenReq {
+            doc /* フォルダの一覧でファイルを 1 回クリックすると、仮に開く（開いているファイルの一覧で名前を斜体にする）。続けて別のファイルを 1 回クリックすると、
+                   仮に開いていたファイルと置き換え、開いているファイルの一覧が増え続けないようにする。仮に開いたファイルは、編集する・フォルダの一覧でダブルクリックする・
+                   開いているファイルの一覧でダブルクリックすると、開いたままにする（置き換えない）。未保存の変更のあるファイルは置き換えない */
+        }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
         }
@@ -481,6 +486,7 @@ package ModelithRequirements {
         #derivation dependency from NoOpenFileReq to FilesNeed;
         #derivation dependency from MultiFileModelReq to FilesNeed;
         #derivation dependency from ProjectProblemsReq to FilesNeed;
+        #derivation dependency from PreviewOpenReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -643,6 +649,8 @@ package ModelithRequirements {
         satisfy MultiFileModelReq by Workspace;
         satisfy ProjectProblemsReq by Core;
         satisfy ProjectProblemsReq by AppShell;
+        satisfy PreviewOpenReq by Workspace;
+        satisfy PreviewOpenReq by AppShell;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
