@@ -12,7 +12,7 @@ const KIND_LABEL: Record<string, string> = {
   "occurrence def": "シナリオ", occurrence: "出来事", "interface def": "インタフェース定義", "connection def": "接続定義",
   "allocation def": "割り当て定義", allocation: "割り当て", connection: "接続", binding: "結び付け",
   "flow def": "流れの定義", flow: "流れ",
-  "use case def": "ユースケース定義", "enum def": "列挙定義", "metadata def": "メタデータ定義", "view def": "図の定義", view: "保存された図",
+  "use case def": "ユースケース定義", "enum def": "列挙定義", "metadata def": "メタデータ定義", "view def": "図の定義", view: "作成した図",
   package: "パッケージ",
   // alpha.7 で読むようにした種類（ツリーとツールチップに出る）
   "case def": "ケース定義", case: "ケース", actor: "アクター", "include use case": "含めるユースケース", enum: "列挙",
@@ -35,7 +35,7 @@ const KIND_LABEL: Record<string, string> = {
  * @returns 画面に出す名前。表に無い種類なら kind そのもの
  * @example
  * kindLabel("part def")  // → "部品定義"
- * kindLabel("view")      // → "保存された図"
+ * kindLabel("view")      // → "作成した図"
  * kindLabel("flow def")  // → "流れの定義"
  * kindLabel("send")      // → "送信"
  * kindLabel("bogus")     // → "bogus"（表に無い種類）
@@ -82,7 +82,7 @@ export const v2ViewNote = (label: string, std: string): string =>
 export const viewHint = (label: string, std: string): string => `${label}（${v2ViewNote(label, std)}）`;
 
 /**
- * 保存された図（テキストの view）の種類のツールチップ。型の無い view は一般ビュー（GeneralView）として描くので、そう書く。
+ * 作成した図（テキストの view）の種類のツールチップ。型の無い view は一般ビュー（GeneralView）として描くので、そう書く。
  *
  * @param std view の標準ビュー定義の名前。型の無い view は null
  * @returns ツールチップの文
@@ -93,10 +93,10 @@ export const viewHint = (label: string, std: string): string => `${label}（${v2
 export const savedViewHint = (std: string | null): string => viewHint(stdViewLabel(std), std ?? "GeneralView");
 
 /**
- * タブのツールチップ。タブの名前が図の種類の名前と同じなら補足つきの文だけを、違えば（対象や工程が付く、保存された図）
+ * タブのツールチップ。タブの名前が図の種類の名前と同じなら補足つきの文だけを、違えば（対象や工程が付く、作成した図）
  * タブの名前の下の行に補足つきの文を出す。
  *
- * @param name タブの名前（「ibd Vehicle」・「保存された図「概要」」など）
+ * @param name タブの名前（「ibd Vehicle」・「作成した図「概要」」など）
  * @param hint 図の種類のツールチップ（viewHint・savedViewHint）
  * @returns タブのツールチップの文
  * @example

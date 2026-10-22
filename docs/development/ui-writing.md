@@ -33,7 +33,7 @@
 | 検証 | verification def |
 | シナリオ | occurrence def |
 | パッケージ | package |
-| 保存された図 | view |
+| 作成した図（作る操作は「新しい図を作成」。保存ではない） | view |
 | 図に出す要素 | expose |
 | 絞り込み | filter |
 | 満たす・検証する・扱う・導出・流れ | satisfy・verify・frame・derivation・flow |

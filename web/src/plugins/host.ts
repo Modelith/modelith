@@ -571,7 +571,7 @@ async function runImport(id: string, importer: string): Promise<void> {
 }
 
 /**
- * プラグインのエクスポートを実行する。表示中の保存された図があれば、その名前を添える（F-PLUG-4）。
+ * プラグインのエクスポートを実行する。表示中の作成した図があれば、その名前を添える（F-PLUG-4）。
  * 結果（exported）は、ダウンロードさせる（プロジェクトのフォルダには書かない）。開いているファイルが無ければ、送らずに知らせる（F-FILE-14）。
  *
  * @param id プラグインの ID

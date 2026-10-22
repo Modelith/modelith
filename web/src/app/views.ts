@@ -26,7 +26,7 @@ export interface ViewDef {
   /** 自動の配置で段を決める方法（あれば depth・種類の順位より優先する）。アクションの流れの図は継起の向きの最も長い道のりで決める。 */
   layer?: (list: readonly ModelNode[], edges: readonly ModelEdge[]) => Map<string, number>;
   /**
-   * 「図を開く」の一覧に出さない（ツリーの「開く」と保存された図からだけ開く）。組み込みのビューの数は要求 F-VIEW-1 で決まるので、
+   * 「図を開く」の一覧に出さない（ツリーの「開く」と作成した図からだけ開く）。組み込みのビューの数は要求 F-VIEW-1 で決まるので、
    * それを変えずに足した図に付ける。
    */
   hidden?: boolean;
@@ -358,7 +358,7 @@ export function syncModelViewKind(): void {
 }
 
 /**
- * 保存された図の package の枠を作る（F-VIEW-9）。枠の中の枠は、package の入れ子から決める。
+ * 作成した図の package の枠を作る（F-VIEW-9）。枠の中の枠は、package の入れ子から決める。
  *
  * @param mv テキストに書かれた view
  * @param shown 図に出す要素のキー（枠の中身はこれに絞る）
@@ -389,10 +389,10 @@ function packageFrames(mv: ModelView, shown: Set<string>): PackageFrame[] {
  * @example
  * // general の view Overview が A と B を expose し、A から B へ線 e がある
  * modelViewContent(M, mv) // → { nodes: [A, B], edges: [e], packages: [] }
- * modelViewContent(M, null) // → { nodes: [], edges: [], empty: "保存された図「…」は、モデルから消えています。" }
+ * modelViewContent(M, null) // → { nodes: [], edges: [], empty: "作成した図「…」は、モデルから消えています。" }
  */
 function modelViewContent(M: Model, mv: ModelView | null): ViewContent {
-  if (!mv) return { nodes: [], edges: [], empty: `保存された図「${S.modelView ?? ""}」は、モデルから消えています。` };
+  if (!mv) return { nodes: [], edges: [], empty: `作成した図「${S.modelView ?? ""}」は、モデルから消えています。` };
   if (mv.kind === "interconnection") {
     S.ibdCtx = exposedContext(mv, ibdContexts(M))?.key ?? null;
     return S.ibdCtx ? ibdContent(M) : { nodes: [], edges: [], empty: `図「${mv.name}」に、中に部品を持つ部品定義が含まれていません。` };

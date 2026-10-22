@@ -36,7 +36,7 @@ describe("importItems・exportItems・commandItems", () => {
     // Arrange・Act
     const got = exportItems([plugin("running")]);
     // Assert
-    expect(got).toEqual([{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「要求の表」で、モデル（表示中の保存された図）を .csv のファイルにエクスポートしてダウンロードします" }]);
+    expect(got).toEqual([{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「要求の表」で、モデル（作成した図を表示中なら、その図）を .csv のファイルにエクスポートしてダウンロードします" }]);
   });
 
   it.each<RunState>(["starting", "stopped", "denied", "failed"])("実行中でない（%s）プラグインの項目は出さない（異常系）", (state) => {

@@ -52,6 +52,7 @@ header h1 .logo{flex:none;border-radius:6px}
 .menu .pop button{border:0;text-align:left;border-radius:4px}
 .menu .pop button:hover{background:var(--panel2)}
 .menu .pop .phead{margin:6px 6px 2px;padding-top:6px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink2)}
+.tabadd .pop > .phead:first-child{margin-top:0;border-top:0}
 .menu .pop .pnote{padding:2px 6px 4px;font-size:11px;color:var(--ink2);max-width:220px;white-space:normal}
 .menu .pop .note{font-size:11px;color:var(--ink2);padding:4px 11px}
 /* メニューバー（Q-9）：見出しは枠を付けずに並べ、開いている見出しだけ色を付ける。切り替えの項目は、押されているときに印を付ける */

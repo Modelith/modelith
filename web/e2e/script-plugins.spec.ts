@@ -393,7 +393,7 @@ test.describe("インポートとエクスポート", () => {
     expect(await readFile(page, "モデル.txt")).toBeNull();
   });
 
-  test("F-PLUG-4: 保存された図を表示しているときは、その図の名前をエクスポートに渡す", async ({ page }) => {
+  test("F-PLUG-4: 作成した図を表示しているときは、その図の名前をエクスポートに渡す", async ({ page }) => {
     // Arrange
     await startWith(page, installed([]));
     const text = "package P {\n    requirement def R;\n    view reqs { expose P::R; }\n}\n";

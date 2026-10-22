@@ -370,7 +370,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-VIEW-9: package を枠として描いた保存された図",
+    title: "F-VIEW-9: package を枠として描いた作成した図",
     shot: "package-frame",
     act: async (page) => {
       await page.locator("#ed").fill(
@@ -493,7 +493,7 @@ const scenes: Scene[] = [
     },
   },
   {
-    title: "F-VIEW-7・Q-4: 開いた「＋」メニュー（保存された図つき）",
+    title: "F-VIEW-7・Q-4: 開いた「＋」メニュー（作成した図つき）",
     shot: "tab-menu-views",
     act: async (page) => {
       await page.locator("#ed").fill("package P {\n    part def A;\n    view overview : GeneralView { expose P::*; }\n    view inside : InterconnectionView { expose P::A; }\n}\n");

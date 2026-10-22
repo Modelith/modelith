@@ -104,13 +104,13 @@ export function importItems(plugins: readonly MenuPlugin[]): (CommandItem & { ac
  * @returns メニューの項目。実行中のプラグインのものだけ
  * @example
  * exportItems([{ id: "jp.x", name: "表のエクスポート", state: "running", importers: [], exporters: [{ id: "csv", label: "要求の表（CSV）", extension: ".csv" }] }])
- * // → [{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「表のエクスポート」で、モデル（表示中の保存された図）を .csv のファイルにエクスポートしてダウンロードします" }]
+ * // → [{ plugin: "jp.x", command: "csv", label: "要求の表（CSV）", tooltip: "プラグイン「表のエクスポート」で、モデル（作成した図を表示中なら、その図）を .csv のファイルにエクスポートしてダウンロードします" }]
  * exportItems([]) // → []
  */
 export function exportItems(plugins: readonly MenuPlugin[]): CommandItem[] {
   return plugins
     .filter((p) => p.state === "running")
     .flatMap((p) =>
-      p.exporters.map((x) => ({ plugin: p.id, command: x.id, label: x.label, tooltip: `プラグイン「${p.name}」で、モデル（表示中の保存された図）を ${x.extension} のファイルにエクスポートしてダウンロードします` })),
+      p.exporters.map((x) => ({ plugin: p.id, command: x.id, label: x.label, tooltip: `プラグイン「${p.name}」で、モデル（作成した図を表示中なら、その図）を ${x.extension} のファイルにエクスポートしてダウンロードします` })),
     );
 }

@@ -133,7 +133,7 @@ function check(model: ModelSnapshot) {
 | `didChange { version, text, model? }` | `ready` の後と、テキストを解析し直すたび。`model` は `model:read` のときだけ |
 | `runCommand { requestId, command }` | 利用者がメニューからコマンドを選んだとき |
 | `import { requestId, importer, fileName, base64 }` | 利用者がメニューからインポートを選び、ファイルを選んだとき（下の「インポート」） |
-| `export { requestId, exporter, view? }` | 利用者がメニューからエクスポートを選んだとき。`view` は表示中の保存された図の名前（自動の図なら省く） |
+| `export { requestId, exporter, view? }` | 利用者がメニューからエクスポートを選んだとき。`view` は表示中の作成した図（テキストの view）の名前（自動の図なら省く） |
 | `storageResult { requestId, value? }` | `storageGet`・`storageSet` への答え（下の「保存場所」） |
 
 | プラグイン → ホスト | ホストの扱い |

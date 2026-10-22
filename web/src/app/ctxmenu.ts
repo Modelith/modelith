@@ -88,7 +88,7 @@ const selectOnly = (k: string): void => {
 
 /**
  * 要素の上で開くメニューの項目を作る。複数選択の中の要素なら、整列・工程の一括設定・一括削除を並べる。
- * メモなら itemsForNote の項目にする。そうでなければ、テキストで見る・名前の変更・関係の追加・定義を開く・工程・削除（保存された図では
+ * メモなら itemsForNote の項目にする。そうでなければ、テキストで見る・名前の変更・関係の追加・定義を開く・工程・削除（作成した図では
  * 「この図から外す」と「モデルから削除」を分ける。F-VIEW-8）を並べる。
  *
  * @param n 要素
@@ -139,7 +139,7 @@ function itemsForNode(n: ModelNode): CtxItem[] {
     items.push({ sep: true }, { head: "フェーズ" });
     for (const p of phases) items.push({ label: phaseLabel(p) + (n.phase === p ? "（現在）" : ""), act: () => PHASEOPS.set(n, p) });
   }
-  // 保存された図では、図から外す操作とモデルから削除する操作を分けて並べる（取り違えてモデルを消さないため）
+  // 作成した図では、図から外す操作とモデルから削除する操作を分けて並べる（取り違えてモデルを消さないため）
   if (editableView()) items.push({ sep: true }, { label: "この図から外す", act: () => removeFromView(n) }, { label: "モデルから削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   else items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   return items;
