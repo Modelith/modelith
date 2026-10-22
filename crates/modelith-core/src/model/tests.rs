@@ -152,6 +152,52 @@ fn phases_come_from_the_phase_metadata_and_report_trace_gaps() {
     assert_eq!(gaps, 4);
 }
 
+/// フェーズを持つ要求定義 2 つ（最上位の Need と、その下の `decl` で書いた要求）のモデル。
+fn gap_model(decl: &str) -> String {
+    format!(
+        "package P {{ enum def Stage {{ enum concept; enum detail; }} \
+         metadata def Phase {{ attribute stage : Stage; }} \
+         requirement def Need {{ @Phase {{ stage = concept; }} }} \
+         {decl} {{ @Phase {{ stage = detail; }} }} \
+         #derivation dependency from Need to FlowReq; }}"
+    )
+}
+
+/// トレースの抜けの文（種類 `gap` の問題）のうち、`word` を含むもの。
+fn gap_msgs(m: &Model, word: &str) -> Vec<String> {
+    m.problems
+        .iter()
+        .filter(|p| p.kind == Some("gap") && p.msg.contains(word))
+        .map(|p| p.msg.clone())
+        .collect()
+}
+
+#[test]
+fn trace_gap_names_a_requirement_without_a_short_name_once() {
+    // Arrange（同値クラス：短い名前なし）
+    let text = gap_model("requirement def FlowReq");
+    // Act
+    let (_, m) = run(&text);
+    // Assert
+    assert_eq!(
+        gap_msgs(&m, "検証"),
+        ["FlowReq：この要求を確かめる検証がありません（verify）"]
+    );
+}
+
+#[test]
+fn trace_gap_names_a_requirement_with_a_short_name_by_both() {
+    // Arrange（同値クラス：短い名前あり）
+    let text = gap_model("requirement def <'K3'> FlowReq");
+    // Act
+    let (_, m) = run(&text);
+    // Assert
+    assert_eq!(
+        gap_msgs(&m, "検証"),
+        ["<'K3'> FlowReq：この要求を確かめる検証がありません（verify）"]
+    );
+}
+
 #[test]
 fn no_phase_metadata_means_no_phases() {
     // Arrange（異常系：Phase はあるが stage の型が列挙でない）

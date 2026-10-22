@@ -1,5 +1,5 @@
 // 図からの編集（F-EDIT-2・3・4・F-VIEW-3・6）。図の操作はテキストの編集として反映し、配置は配置ファイルに保存する（ADR-0005）。
-import { editorText, expect, nodeKeys, openApp, putFiles, readFile, test } from "./fixtures";
+import { editorText, expect, nodeKeys, openApp, putFiles, readFile, replaceText, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 test("F-EDIT-2・C-1: パレットで要求を置くとテキストに追加され、削除するとテキストから消える", async ({ page }) => {
@@ -16,6 +16,77 @@ test("F-EDIT-2・C-1: パレットで要求を置くとテキストに追加さ�
   // Assert
   expect(added).toContain("requirement def NewRequirement {");
   expect(await editorText(page)).not.toContain("NewRequirement");
+});
+
+test.describe("要求をつなぐ関係の追加（F-EDIT-2）", () => {
+  const REQS = `package Water {
+    requirement def SupplyNeed;
+    requirement def FlowReq;
+    part def Pump;
+    verification def FlowTest;
+}
+`;
+
+  /**
+   * 要素 from を選んで「関係を追加」を押し、要素 to を接続先に選ぶ。
+   *
+   * @param page ページ
+   * @param from 線を引き始める要素のキー
+   * @param to 接続先の要素のキー
+   */
+  async function connect(page: Page, from: string, to: string): Promise<void> {
+    await page.locator(`#gNodes [data-key="${from}"]`).click();
+    await page.locator('#insp [data-act="connect"]').click();
+    await page.locator(`#gNodes [data-key="${to}"]`).click();
+  }
+
+  test("F-EDIT-2: 要求から検証へ「関係を追加」すると、「この検証で確かめる」を選べ、検証の側に verify を書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await replaceText(page, REQS);
+    await connect(page, "FlowReq", "FlowTest");
+    // Act
+    await page.locator("#insp").getByRole("button", { name: "この検証で確かめる «verify»" }).click();
+    // Assert
+    await expect(page.locator("#ed")).toHaveValue(/verification def FlowTest \{\s*objective \{ verify FlowReq; \}\s*\}/);
+    await expect(page.locator("#toast")).toContainText("「FlowTest で FlowReq を検証する」を追加しました");
+  });
+
+  test("F-EDIT-2: 検証から要求へ「関係を追加」しても、これまでどおり verify を書ける", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await replaceText(page, REQS);
+    await connect(page, "FlowTest", "FlowReq");
+    // Act
+    await page.locator("#insp").getByRole("button", { name: "要求を検証する «verify»" }).click();
+    // Assert
+    await expect(page.locator("#ed")).toHaveValue(/verification def FlowTest \{\s*objective \{ verify FlowReq; \}\s*\}/);
+  });
+
+  test("F-EDIT-2: 要求から部品へ「関係を追加」すると、「この部品で満たす」を選べ、部品が要求を満たす satisfy を書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await replaceText(page, REQS);
+    await openAllView(page);
+    await connect(page, "FlowReq", "Pump");
+    await expect(page.locator("#insp").getByRole("button", { name: "部品として持つ" })).toBeVisible();
+    // Act
+    await page.locator("#insp").getByRole("button", { name: "この部品で満たす «satisfy»" }).click();
+    // Assert
+    await expect(page.locator("#ed")).toHaveValue(/satisfy FlowReq by Pump;/);
+  });
+
+  test("F-EDIT-2: 要求どうしは導出を両向きで選べ、「この要求へ展開する」は相手を導出した要求として書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await replaceText(page, REQS);
+    await connect(page, "SupplyNeed", "FlowReq");
+    await expect(page.locator("#insp").getByRole("button", { name: "この要求から導出する «derive»" })).toBeVisible();
+    // Act
+    await page.locator("#insp").getByRole("button", { name: "この要求へ展開する «derive»" }).click();
+    // Assert
+    await expect(page.locator("#ed")).toHaveValue(/#derivation dependency from FlowReq to SupplyNeed;/);
+  });
 });
 
 test("F-EDIT-3: 名前を変えると、参照もまとめて変わる", async ({ page }) => {

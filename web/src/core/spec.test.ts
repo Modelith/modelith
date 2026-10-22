@@ -621,7 +621,7 @@ describe("満たす関係の書き方（SatisfyRequirementUsage、8.2.2.21）", 
     const M = build(parse(text));
     // Assert
     expect(M.edges.filter((e) => e.kind === "satisfy")).toEqual([]);
-    expect(M.problems.filter((p) => p.kind === "gap").map((p) => p.msg)).toContain("R R：この要求を満たす要素がありません（satisfy）");
+    expect(M.problems.filter((p) => p.kind === "gap").map((p) => p.msg)).toContain("R：この要求を満たす要素がありません（satisfy）");
     expect(M.problems.filter((p) => p.kind === "unsupported")).toEqual([]);
   });
 });

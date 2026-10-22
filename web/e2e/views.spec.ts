@@ -320,6 +320,17 @@ test.describe("トレースの抜けの案内（F-TRACE-2）", () => {
     await expect(page.locator("#hl mark.selr")).toContainText("DryBoilCutoffReq");
   });
 
+  test("F-TRACE-2: 問題一覧の抜けの文は、短い名前の無い要求の名前を 1 回だけ書く", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    // Act
+    await page.locator("#ed").fill(GAPS);
+    // Assert
+    await expect(page.locator("#problems button.gap")).toHaveCount(4);
+    await expect(page.locator("#problems button.gap", { hasText: "検証" })).toContainText("FlowReq：この要求を確かめる検証がありません（verify）");
+    await expect(page.locator("#problems button.gap", { hasText: "FlowReq FlowReq" })).toHaveCount(0);
+  });
+
   test("F-TRACE-2・Q-8: キーボードで抜けの件数を押すと案内へ入力が移り、› と「関係を追加」を操作できる", async ({ page }) => {
     // Arrange
     await openApp(page);

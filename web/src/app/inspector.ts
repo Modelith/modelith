@@ -12,7 +12,7 @@ import { centerOn, render, scrollEditorTo } from "./render";
 import { OPS, MSGOPS, PHASEOPS, alignSel, deleteSel, selNodes, setPhaseSel, uniqueChild, type AlignMode } from "./ops";
 import { openTab, renderTree, setTab } from "./panels";
 import { DIR_LABEL, PINOPS, selPinInfo } from "./pins";
-import { relOptions, type RelKind } from "./relations";
+import { relOptions, type RelChoice, type RelKind } from "./relations";
 import { activeGapKind, gapGuideHtml, stepGapGuide } from "./gap-guide";
 import { gapGuide, gapRelOptions } from "./trace-gap";
 import { cancelConnect, clearSel, S } from "./state";
@@ -105,6 +105,7 @@ function inspectorHtml(): string | null {
 
 /**
  * 接続モードの案内の HTML を作る。接続先がまだなら接続先を選ぶよう案内し、決まっていれば追加できる関係（relOptions）のボタンを並べる。
+ * 線と逆向きの関係（要求 → 検証の線での «verify» など）のボタンには data-reverse を付ける。
  * トレースの抜けの案内から始めた接続（S.connectGap）では、抜けを解消する相手を案内し、その相手なら抜けを解消する関係（gapRelOptions）を並べる。
  *
  * @returns 案内の HTML。接続元が見つからなければ null
@@ -128,7 +129,7 @@ function connectHtml(): string | null {
     return `<div class="what"><small>${esc(a.name + fromTxt)} から線を引きます</small><b>${esc(target ?? "接続先の要素")}をタップしてください</b></div><div class="acts"><button data-act="cancel">やめる</button></div>`;
   }
   const fix = S.connectGap ? gapRelOptions(S.connectGap, a, b) : [];
-  const opts: { rel: RelKind; label: string; reverse?: boolean }[] = fix.length ? fix : relOptions(a, b);
+  const opts: RelChoice[] = fix.length ? fix : relOptions(a, b);
   const toTxt = portName(S.wire?.to?.pin);
   const nm = (n: ModelNode): string => (n.flow ? flowName(n) : n.state ? stateName(n) : n.name);
   const why =
@@ -577,7 +578,7 @@ export function initInspector(): void {
       const from = nodeByKey(S.connectFrom), to = nodeByKey(S.connectTo);
       if (!from || !to) return;
       if (b.dataset["reverse"]) {
-        // 抜けを解消する関係は、押した要素から抜けのある要素へ引く。線を描いた端は向きが合わないので使わない
+        // 線と逆向きの関係（抜けを解消する関係・要求から引いた «verify» など）は、線の先から元へ引く。線を描いた端は向きが合わないので使わない
         S.wire = null;
         void OPS.connect(to, from, rel as RelKind);
       } else void OPS.connect(from, to, rel as RelKind);
