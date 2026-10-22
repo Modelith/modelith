@@ -603,8 +603,8 @@ pub(super) fn make_port(
         let mut stmt = d.text[s..e].to_owned();
         let mut swap = |kws: &[&str], path: &str| {
             if let Some(i) = after_keyword(&stmt, kws, path) {
-                let head = path.split('.').next().unwrap_or("");
-                stmt.replace_range(i..i + path.len(), &format!("{head}.{name}"));
+                // 端は部品を指す道筋（入れ子の部品なら `a.b`）なので、その後ろにポートの名前を足す
+                stmt.replace_range(i..i + path.len(), &format!("{path}.{name}"));
             }
         };
         if fe.from {
