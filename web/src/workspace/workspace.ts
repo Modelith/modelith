@@ -17,6 +17,7 @@ import {
   type RecentFolders,
   type SaveAsTarget,
 } from "../files/types";
+import { modelFiles, projectTexts } from "./project-files";
 import { findFile, hasContent, restoreOrder, sessionFrom, type Session, type SessionStore } from "./session";
 
 /** 開いている文書。ref が null なら保存先の無い「無題」の文書。 */
@@ -114,6 +115,8 @@ export class Workspace {
   private readonly docs: Doc[] = [];
   private activeKey: string | null = null;
   private folderState: OpenFolder | null = null;
+  /** 開いているフォルダのモデルのファイルを、最後に読んだテキスト（パス → テキスト。ADR-0021）。 */
+  private disk = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
   private seq = 0;
   /** 前回の続きを書き換えずにおくか。起動して前回の続きを戻し終えるまでは書き換えない（F-FILE-13）。 */
@@ -513,6 +516,9 @@ export class Workspace {
       }
       doc.savedText = doc.text;
       doc.stale = false;
+      // 閉じた後も、保存した中身をモデルに入れる（ADR-0021）
+      const path = this.folderPath(key);
+      if (path) this.disk.set(path, doc.text);
     }
     try {
       await this.writeLayout(doc, { force: opts.force });
@@ -647,6 +653,8 @@ export class Workspace {
         reloaded.push(doc.key);
       }
     }
+    // 開いていないファイルも、他のアプリで変わっていればモデルに入れ直す（ADR-0021 §3）
+    if (await this.readModelFiles()) any = true;
     if (any) this.changed();
     return reloaded;
   }
@@ -663,6 +671,36 @@ export class Workspace {
    */
   folder(): OpenFolder | null {
     return this.folderState;
+  }
+
+  /**
+   * 開いているフォルダのモデルのファイルを、1 つのモデルとしてコアに渡すテキストにする（ADR-0021）。
+   * 開いている文書は、保存していない変更も含めた今のテキストを使う。
+   *
+   * @returns フォルダからのパス → テキスト。フォルダを開いていなければ空
+   * @example
+   * ws.projectTexts() // → Map { "parts.sysml" → "package Parts { … }", "app.sysml" → "package App { … }"（編集中のテキスト） }
+   * ws.projectTexts() // → Map {}（フォルダを開いていない）
+   */
+  projectTexts(): Map<string, string> {
+    const f = this.folderState;
+    return f ? projectTexts(modelFiles(f.entries), this.disk, this.docs) : new Map();
+  }
+
+  /**
+   * 文書が、開いているフォルダの中のファイルなら、そのパスを返す（コアに表示中のファイルを伝えるのに使う）。
+   *
+   * @param key 文書のキー
+   * @returns フォルダからのパス。無題・フォルダの外のファイル・文書が無ければ null
+   * @example
+   * ws.folderPath(doc.key) // → "models/app.sysml"
+   * ws.folderPath(untitled.key) // → null
+   */
+  folderPath(key: string): string | null {
+    const ref = this.get(key)?.ref;
+    const f = this.folderState;
+    if (!ref || !f) return null;
+    return modelFiles(f.entries).some((r) => r.provider === ref.provider && r.id === ref.id) ? ref.path : null;
   }
 
   /**
@@ -699,6 +737,7 @@ export class Workspace {
     if (!f) return;
     f.entries = await f.source.list(f.ref);
     f.projectText = await readProjectText(f.source, f.ref);
+    await this.readModelFiles();
     this.changed();
   }
 
@@ -739,6 +778,7 @@ export class Workspace {
     if (!f) throw new Error("フォルダが開かれていません");
     const ref = await f.source.createFile(f.ref, path, text);
     f.entries = await f.source.list(f.ref);
+    await this.readModelFiles();
     return this.openRef(ref);
   }
 
@@ -755,8 +795,36 @@ export class Workspace {
   private async setFolder(source: FolderSource, ref: FolderRef | null): Promise<boolean> {
     if (!ref) return false;
     this.folderState = { source, ref, entries: await source.list(ref), projectText: await readProjectText(source, ref) };
+    this.disk = new Map();
+    await this.readModelFiles();
     this.changed();
     return true;
+  }
+
+  /**
+   * 開いているフォルダのモデルのファイルをすべて読み直す（ADR-0021 §3）。読めないファイルは入れない（読めるようになれば次に入る）。
+   *
+   * @returns 読んだテキストが前と変わったら true
+   * @example
+   * await this.readModelFiles() // → true（parts.sysml が他のアプリで変わった）
+   * await this.readModelFiles() // → false（変わっていない・フォルダを開いていない）
+   */
+  private async readModelFiles(): Promise<boolean> {
+    const f = this.folderState;
+    const source = f?.source;
+    if (!f || !source || !isReadable(source)) return false;
+    const next = new Map<string, string>();
+    for (const ref of modelFiles(f.entries)) {
+      try {
+        next.set(ref.path, (await source.read(ref)).text);
+      } catch {
+        // 消えた・読めないファイルはモデルに入れない
+      }
+    }
+    if (this.folderState !== f) return false;
+    const changed = next.size !== this.disk.size || [...next].some(([path, text]) => this.disk.get(path) !== text);
+    this.disk = next;
+    return changed;
   }
 
   /* ---- 内部 ---- */

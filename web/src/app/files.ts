@@ -8,6 +8,7 @@ import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "..
 import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
+import { filesChange } from "../workspace/project-files";
 import { afterRestore, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
@@ -132,6 +133,7 @@ function showDoc(key: string): void {
   if (!doc) return;
   endResumeAsk();
   shownKey = key;
+  coreClient().focus(ws.folderPath(key));
   ws.activate(key);
   useHistory(key);
   clearSel();
@@ -175,6 +177,7 @@ async function offerLegacyMove(key: string): Promise<void> {
  */
 function showNoDoc(): void {
   shownKey = null;
+  coreClient().focus(null);
   useHistory(null);
   clearSel();
   S.prevSig = new Map();
@@ -395,6 +398,28 @@ async function closeDoc(key: string): Promise<void> {
   ws.close(key);
   dropHistory(key);
   if (wasActive) showCurrent();
+}
+
+/** コアに渡したプロジェクトのファイル（パス → テキスト。ADR-0021）と、そのフォルダの id（フォルダを開いていなければ null）。 */
+let sentFiles = new Map<string, string>();
+let filesFolder: string | null = null;
+
+/**
+ * 開いているフォルダのモデルのファイルを、1 つのモデルとしてコアに渡す（ADR-0021 §1・§3）。ワークスペースの変更のたびに呼び、
+ * 変わったファイルだけを送る。表示中のファイルは、テキストの送り（didChange）で渡すので、ここでは送らない。
+ * 別のフォルダを開いた・フォルダを閉じたときは、前のファイルをすべて忘れさせる。
+ */
+function syncProjectFiles(): void {
+  const folder = ws.folder()?.ref.id ?? null;
+  const next = ws.projectTexts();
+  const shown = shownKey ? ws.folderPath(shownKey) : null;
+  if (shown) next.delete(shown);
+  const clear = folder !== filesFolder;
+  const change = clear ? { set: [...next].map(([path, text]) => ({ path, text })), remove: [] } : filesChange(sentFiles, next);
+  filesFolder = folder;
+  sentFiles = next;
+  if (!clear && !change.set.length && !change.remove.length) return;
+  void coreClient().updateFiles({ clear, ...change });
 }
 
 /**
@@ -1018,6 +1043,7 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   });
   // 設定ファイルの読み取りの状態を先に変えてから描く
   ws.subscribe(syncProject);
+  ws.subscribe(syncProjectFiles);
   ws.subscribe(renderFiles);
   ws.subscribe(warnLostDrafts);
   initMenu();

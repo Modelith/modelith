@@ -6,7 +6,8 @@ import type { Intent, PluginChange, PluginFiles, ProjectProblem } from "./rust";
 /** 画面 → コア。 */
 export type CoreRequest =
   | { type: "init"; wasmUrl: string }
-  | { type: "didChange"; version: number; text: string }
+  | { type: "didChange"; version: number; text: string; path?: string | null }
+  | { type: "projectFiles"; id: number; clear: boolean; set: ProjectFileText[]; remove: string[] }
   | { type: "edit"; version: number; id: number; intent: Intent }
   | { type: "parseProject"; id: number; text: string }
   | { type: "createProject"; id: number; name: string }
@@ -35,7 +36,14 @@ export type CoreResponse =
   | ({ type: "pluginsSet"; id: number; json: string } & Failure)
   | ({ type: "pluginDescribed"; id: number; json: string } & Failure)
   | ({ type: "snapshotMade"; version: number; id: number; json: string } & Failure)
-  | ({ type: "pluginMessageChecked"; version: number; id: number; json: string } & Failure);
+  | ({ type: "pluginMessageChecked"; version: number; id: number; json: string } & Failure)
+  | ({ type: "projectFilesSet"; id: number; json: string } & Failure);
+
+/** プロジェクトのほかのファイル 1 つ（フォルダからのパスとテキスト。ADR-0021）。 */
+export interface ProjectFileText {
+  path: string;
+  text: string;
+}
 
 /** 依頼への返事（起動の `ready`・`failed` を除く）。 */
 export type CoreReply = Exclude<CoreResponse, { type: "ready" } | { type: "failed" }>;
@@ -73,6 +81,14 @@ export interface CoreFns {
   modelSnapshot: (text: string) => string;
   /** プラグインから届いたメッセージを確かめる（wasm の `checkPluginMessage`。権限は JSON の並び）。 */
   checkPluginMessage: (text: string, message: string, permissions: string) => string;
+  /** プロジェクトのファイルを覚える（wasm の `setProjectFile`。ADR-0021）。 */
+  setProjectFile: (path: string, text: string) => void;
+  /** プロジェクトのファイルを忘れる（wasm の `removeProjectFile`）。 */
+  removeProjectFile: (path: string) => void;
+  /** プロジェクトのファイルをすべて忘れる（wasm の `clearProjectFiles`）。 */
+  clearProjectFiles: () => void;
+  /** 表示中のファイルのパスを決める（wasm の `setFocusFile`。フォルダの外のファイルなら undefined）。 */
+  setFocusFile: (path?: string) => void;
 }
 
 /** コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）。 */
@@ -84,10 +100,11 @@ export interface CoreState {
 
 /**
  * 1 つの依頼を処理して返事を作る（`init` 以外。届いた順に処理するので、`edit` は直前に届いたテキストに対して計算する）。
- * Worker の中でも、テストで同じスレッドでも、同じこの関数を使う。`didChange` なら state.text を、`setPlugins` なら state.plugins を書き換える。
+ * Worker の中でも、テストで同じスレッドでも、同じこの関数を使う。`didChange` なら state.text と表示中のファイルのパスを、`setPlugins` なら state.plugins を、
+ * `projectFiles` ならコアが覚えるプロジェクトのファイル（ADR-0021）を書き換える。
  *
  * @param state コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）
- * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`）
+ * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`・`projectFiles`）
  * @param fns コアの中身（wasm の関数。テストでは差し替える）
  * @returns 依頼への返事（`analyzed`・`edited` は依頼と同じ版、ほかは同じ id）。fns が例外を投げればそのまま投げる
  * @example
@@ -101,11 +118,14 @@ export interface CoreState {
  * // → { type: "pluginsSet", id: 9, json: '{"plugins":[]}' }（state.plugins は null）
  * handle(state, { type: "checkPluginMessage", version: 1, id: 10, message: '{"type":"ready"}', permissions: [] }, fns)
  * // → { type: "pluginMessageChecked", version: 1, id: 10, json: fns.checkPluginMessage(state.text, '{"type":"ready"}', "[]") }
+ * handle(state, { type: "projectFiles", id: 11, clear: false, set: [{ path: "b.sysml", text: "package B;" }], remove: [] }, fns)
+ * // → { type: "projectFilesSet", id: 11, json: "{}" }（コアが b.sysml を覚える）
  */
 export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init" }>, fns: CoreFns): CoreResponse {
   switch (req.type) {
     case "didChange":
       state.text = req.text;
+      fns.setFocusFile(req.path ?? undefined);
       return { type: "analyzed", version: req.version, json: state.plugins ? state.plugins.analyze(req.text) : fns.analyze(req.text) };
     case "edit":
       return { type: "edited", version: req.version, id: req.id, json: fns.edit(state.text, JSON.stringify(req.intent)) };
@@ -123,6 +143,11 @@ export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init
       return { type: "snapshotMade", version: req.version, id: req.id, json: fns.modelSnapshot(state.text) };
     case "checkPluginMessage":
       return { type: "pluginMessageChecked", version: req.version, id: req.id, json: fns.checkPluginMessage(state.text, req.message, JSON.stringify(req.permissions)) };
+    case "projectFiles":
+      if (req.clear) fns.clearProjectFiles();
+      for (const path of req.remove) fns.removeProjectFile(path);
+      for (const f of req.set) fns.setProjectFile(f.path, f.text);
+      return { type: "projectFilesSet", id: req.id, json: "{}" };
   }
 }
 
@@ -196,6 +221,8 @@ function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: s
       return { type: "snapshotMade", version: req.version, id: req.id, json: JSON.stringify({ error: message }) };
     case "checkPluginMessage":
       return { type: "pluginMessageChecked", version: req.version, id: req.id, json: JSON.stringify({ refused: `メッセージを確かめられませんでした（${message}）` }) };
+    case "projectFiles":
+      return { type: "projectFilesSet", id: req.id, json: JSON.stringify({ error: message }) };
   }
 }
 
