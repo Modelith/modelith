@@ -245,6 +245,14 @@ package ModelithRequirements {
         requirement def <'F-FILE-13'> ResumeSessionReq {
             doc /* 起動すると、前回の続き（開いていたフォルダとファイル、表示していたファイル、図のタブ）から始める。フォルダを読み直すのにブラウザの許可が要るときは、サンプルの代わりに「前回の続きを開く」を示し、1 回の操作で戻れる。設定で、起動時にサンプルを開くようにもできる */
         }
+        requirement def <'F-FILE-15'> MultiFileModelReq {
+            doc /* フォルダを開いているときは、フォルダの中の .sysml・.kerml のすべてを 1 つのモデルとして扱う（ADR-0021）。
+                   ほかのファイルの一番上の要素はその名前で、パッケージの中の要素は import（P::A・P::*・P::**）か修飾名で使え、「見つかりません」と出さない。
+                   private の要素と private import で取り込んだ名前は、ほかのファイルへ見せない（SysML v2 8.2.2.5）。
+                   図には、表示中のファイルの要素と、それが参照するほかのファイルの要素だけを、どのファイルのものかが分かるように描く。
+                   ほかのファイルに書いた図・関係・問題は、表示中のファイルの図と問題に混ぜない。
+                   ほかのファイルの要素を図から書き換えようとしたら、書き換えずに、どのファイルにあるかを知らせ、そのファイルを開けるようにする */
+        }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
         }
@@ -432,6 +440,7 @@ package ModelithRequirements {
         #derivation dependency from CloudReq to FilesNeed;
         #derivation dependency from ResumeSessionReq to FilesNeed;
         #derivation dependency from NoOpenFileReq to FilesNeed;
+        #derivation dependency from MultiFileModelReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -582,6 +591,8 @@ package ModelithRequirements {
         satisfy CloudReq by CloudProvider;
         satisfy ResumeSessionReq by Workspace;
         satisfy NoOpenFileReq by Workspace;
+        satisfy MultiFileModelReq by Core;
+        satisfy MultiFileModelReq by Workspace;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
@@ -666,8 +677,9 @@ package ModelithRequirements {
             }
         }
         verification def RustModelTest {
-            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け（文の頭の要求の名前は短い名前の有無によらず 1 回）・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方・状態定義ごとの状態遷移の図の要素のキー（入れ子と開始・終了の記号）と線の ID とラベル・並行の状態・見つからない遷移の相手・シナリオごとのシーケンス図のライフライン・イベント（入れ子の部品と型の中のもの）・メッセージの段と順序に合わせた段の決め方・イベントの間の順序の線・見つからない順序の相手と循環する順序・filter の論理式の読み方と優先順位・render がたどる rendering・3 段以上の特徴量の連鎖と見つからない段・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・frame の参照の形・交差を書く部品の線の端・メタクラスのライブラリの型・from を省いたフロー・順序付きの流れ・メッセージと connect を省いた interface の線）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定と、alpha.9 で Rust だけが確かめる遷移の相手・特徴量の連鎖の段・シナリオの順序と、alpha.10 で Rust だけが見つかれば問題にしない接続・流れの端は比べない）。web/src/core/rust.test.ts：状態遷移の図とシーケンス図を宣言・関係の参照に戻す。ADR-0016・package の直下の action・item・state の使用を図の要素にする・アクションの流れの図のパラメータ（本体のものと型の定義のもの）・アクション定義そのもののパラメータ・パラメータの間の流れの線と見つからない流れの相手・入れ子の本体の要素のキーと開始・終了と線、入れ子の本体の要素のパラメータへ段をたどる流れ */
+            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け（文の頭の要求の名前は短い名前の有無によらず 1 回）・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方・状態定義ごとの状態遷移の図の要素のキー（入れ子と開始・終了の記号）と線の ID とラベル・並行の状態・見つからない遷移の相手・シナリオごとのシーケンス図のライフライン・イベント（入れ子の部品と型の中のもの）・メッセージの段と順序に合わせた段の決め方・イベントの間の順序の線・見つからない順序の相手と循環する順序・filter の論理式の読み方と優先順位・render がたどる rendering・3 段以上の特徴量の連鎖と見つからない段・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・frame の参照の形・交差を書く部品の線の端・メタクラスのライブラリの型・from を省いたフロー・順序付きの流れ・メッセージと connect を省いた interface の線）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定と、alpha.9 で Rust だけが確かめる遷移の相手・特徴量の連鎖の段・シナリオの順序と、alpha.10 で Rust だけが見つかれば問題にしない接続・流れの端は比べない）。web/src/core/rust.test.ts：状態遷移の図とシーケンス図を宣言・関係の参照に戻す。ADR-0016・package の直下の action・item・state の使用を図の要素にする・アクションの流れの図のパラメータ（本体のものと型の定義のもの）・アクション定義そのもののパラメータ・パラメータの間の流れの線と見つからない流れの相手・入れ子の本体の要素のキーと開始・終了と線、入れ子の本体の要素のパラメータへ段をたどる流れ。複数のファイルにまたがるモデル（ADR-0021）：import（P::A・P::*・P::**）と修飾名と一番上の要素でのほかのファイルの名前の解決、取り込んでいない名前・private の要素・private import の取り込み直しを見せないこと、同じファイルの割り切りと同じ名前の優先、表示中のファイルの要素と参照したほかのファイルの要素だけを残すこと（ファイルの番号・キーを変えないこと・ほかのファイルの図と問題を混ぜないこと・view が示すほかのファイルの要素）。crates/modelith-core/src/project：ファイルごとの解析結果をつなぐときの番号と位置のずらし方 */
             objective {
+                verify MultiFileModelReq;
                 verify ActivityDiagramReq;
                 verify BlockDiagramReq;
                 verify RequirementDiagramReq;
@@ -1124,9 +1136,10 @@ package ModelithRequirements {
             }
         }
         verification def CliCheckTest {
-            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json・シンボリックリンクのルールのファイルと modelith.json は誤りとして知らせる（シンボリックリンクを作れない環境では飛ばす）。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方、シンボリックリンクを読まないこと */
+            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json・シンボリックリンクのルールのファイルと modelith.json は誤りとして知らせる（シンボリックリンクを作れない環境では飛ばす）。フォルダのファイルを 1 つのモデルとして検査し、ほかのファイルに書いた関係も数えること（ADR-0021）。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方、シンボリックリンクを読まないこと */
             objective {
                 verify RuleParityReq;
+                verify MultiFileModelReq;
             }
         }
     }
