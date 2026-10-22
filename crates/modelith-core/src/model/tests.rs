@@ -1617,6 +1617,64 @@ fn action_flow_draws_actions_control_nodes_and_successions() {
 }
 
 #[test]
+fn action_flow_draws_parameters_and_flows_between_them() {
+    // Arrange（8.2.3.17：アクションのパラメータ（本体のもの・型の定義のもの）と、パラメータの間の流れ、アクション定義そのもののパラメータ）
+    let text = "package P { item def Water; action def Brew { in water : Water; out t : Water; } \
+                action def MakeTea { in item cold : Water; out item tea : Water; attribute n; \
+                action boil { in item w : Water; out item hot : Water; } action brew : Brew; \
+                flow cold to boil.w; flow of Water from boil.hot to brew.water; flow brew.t to tea; first boil then brew; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let f = flow(&m, "MakeTea");
+    let own: Vec<(&str, &str)> = f.params.iter().map(|p| (p.name.as_str(), p.dir)).collect();
+    assert_eq!(own, [("cold", "in"), ("tea", "out")]);
+    let ports = |k: &str| -> Vec<(String, &str)> {
+        let n = f.nodes.iter().find(|n| n.key == k).expect(k);
+        n.ports.iter().map(|p| (p.name.clone(), p.dir)).collect()
+    };
+    assert_eq!(
+        ports("a:boil"),
+        [("w".to_owned(), "in"), ("hot".to_owned(), "out")]
+    );
+    assert_eq!(
+        ports("a:brew"),
+        [("water".to_owned(), "in"), ("t".to_owned(), "out")]
+    );
+    let edges: Vec<(&str, Option<&str>, Option<&str>)> = f
+        .edges
+        .iter()
+        .map(|e| (e.id.as_str(), e.from_port.as_deref(), e.to_port.as_deref()))
+        .collect();
+    assert_eq!(
+        edges,
+        [
+            ("flow|b:cold|a:boil|#1", None, Some("port:w")),
+            (
+                "flow|a:boil|a:brew|Water#1",
+                Some("port:hot"),
+                Some("port:water")
+            ),
+            ("flow|a:brew|b:tea|#1", Some("port:t"), None),
+            ("succession|a:boil|a:brew|#1", None, None),
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn action_flow_reports_a_flow_end_that_is_not_found() {
+    // Arrange（異常系：流れの相手がアクション定義の中に無い。知らせは 1 回だけ）
+    let text = "package P { action def A { action a { out o; } flow a.o to nope; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(flow(&m, "A").edges.is_empty());
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["線の接続先「nope」が見つかりません（flow）"]);
+}
+
+#[test]
 fn unnamed_action_nodes_get_numbered_keys() {
     // Arrange（境界値：名前の無いアクションの節は、書いた順に番号を付ける）
     let text = "package P { action def A { send S() to b; then accept e : E; then terminate; } part def E; }";
