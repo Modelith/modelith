@@ -143,8 +143,8 @@ beta.5 では、図のサブバーの「トレースの抜け N 件」を押す�
 | `0.1.0-alpha.8` | 構造の関係を図に描く：特殊化・部分集合・再定義・参照の線、多重度、`:=` と `default` の区別、`dependency` の線、`comment … about`・`rep` の本文、単独の `connect`・n 項の `connect`・`bind`・`binding`、`allocation`・`allocate`、`flow def`・名前付きのフロー。GeneralView・InterconnectionView の不足を埋める |
 | `0.1.0-alpha.9` | 振る舞いの流れを描く：継起（`first … then`・`succession`・`succession flow`）、`fork`・`join`・`merge`・`decide`、`send`・`accept`・`assign`・`terminate`、`if`・`while`・`for`、ActionFlowView。状態の `entry`・`do`・`exit`・`parallel`、遷移の線と省略形、StateTransitionView・SequenceView の不足。`render` の合成形、`filter` の論理式、3 段以上の特徴量の連鎖 |
 | `0.1.0-alpha.10` | 誤った表示（⚠）をなくす：本体が `true`・`false`・`not` で始まる制約と計算、定義の中の型の無い部品を端にする線、`satisfy requirement r : R by x`・`verify requirement r : R` と `view def` の中の `satisfy`、`@M { :>> x = 1; }`、KerML の宣言の本体の漏れ、`crosses`（`=>`）、キーワードの無い特性（`x : Real;`）と型の無い `ref`、`flow of p : T` の運ぶもの、本体付きの式（`->collect{ … }`）、関係の本体の `doc`、`'~Pt'` の共役ポート。黙って捨てる短い書き方を読む：`from` の無い `flow`・`succession flow`、`message a to b`、`connect` の無い `interface`、参照の形の `perform x.y;`・`exhibit s;`・`frame c;` |
-| `0.2.0` | パッケージやファイルをまたぐ名前の解決：`import`（フィルタ付きを含む）・別のファイルの `alias`・修飾名・可視性、`expose` で import を通した名前。「複数のファイルにまたがるモデル」（ADR-0019）とあわせて行う |
-| `0.3.0` 以降 | 新しい仕組みが要るもの：式の文法と評価・単位（`filter` のメタデータの値の比較を含む）、KerML の文法、標準ライブラリの同梱、GeometryView・GridView・BrowserView、`asTextualNotation`・`asElementTable`、SequenceView の複合フラグメントと入れ子のシーケンス図、ActionFlowView のパラメータとその間のフロー・区画（swim lane）、StateTransitionView の状態の使用の中の遷移と複数の状態定義、`assert constraint`・`assert not`、モデル交換（`.kpar`） |
+| `0.2.0` | 要求図・ブロック定義図・内部ブロック図・アクティビティ図の不足（[0.2.0 の計画](release-plan-0.2.0.md#図の不足を埋める)）。パッケージやファイルをまたぐ名前の解決：`import`（フィルタ付きを含む）・別のファイルの `alias`・修飾名・可視性、`expose` で import を通した名前。「複数のファイルにまたがるモデル」（ADR-0019）とあわせて行う |
+| `0.3.0` 以降 | 新しい仕組みが要るもの：式の文法と評価・単位（`filter` のメタデータの値の比較を含む）、KerML の文法、標準ライブラリの同梱、GeometryView・GridView・BrowserView、`asTextualNotation`・`asElementTable`、SequenceView の複合フラグメントと入れ子のシーケンス図、StateTransitionView の状態の使用の中の遷移と複数の状態定義、モデル交換（`.kpar`） |
 必要になってから作る（YAGNI）。利用者の声（Issues）が無い機能は、ここに先回りして入れない。オフライン利用（PWA）も、声が出てから判断する。
 
 ## 0.1.0 より先の方向
