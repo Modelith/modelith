@@ -1,8 +1,11 @@
 //! ブラウザ向けの wasm バインディング。Web Worker 内で読み込まれ、
 //! UI とは LSP と同じ形のメッセージでやり取りする（ADR-0003）。
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use modelith_core::project::ParseResult;
+use modelith_core::project::merge::Files;
 use modelith_core::rules::{self, LoadedPlugin};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -218,6 +221,93 @@ pub fn model_snapshot(text: &str) -> String {
 #[wasm_bindgen(js_name = checkPluginMessage)]
 pub fn check_plugin_message(text: &str, message: &str, permissions: &str) -> String {
     check_plugin_message_json(text, message, permissions)
+}
+
+thread_local! {
+    /// プロジェクトのファイルごとの解析結果（ADR-0021 §3）。Worker が 1 つ持ち、解析と編集でつなぐ。
+    static FILES: RefCell<Files> = RefCell::new(Files::default());
+    /// 表示中のファイルのパス（プロジェクトのフォルダからの）。フォルダの外のファイルなら None。
+    static FOCUS: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// プロジェクトのファイルを覚える（同じパスなら解析し直して置き換える。ADR-0021 §3）。
+/// 表示中のファイルも覚えてよい（解析のときは、覚えたものではなく今のテキストを使う）。
+///
+/// # 引数
+///
+/// - `path`：プロジェクトのフォルダからのパス
+/// - `text`：ファイルのテキスト
+///
+/// # 例
+///
+/// ```text
+/// setProjectFile("parts.sysml", "package Parts { part def Car; }") → 以後の analyze で Parts::Car が見える
+/// ```
+#[wasm_bindgen(js_name = setProjectFile)]
+pub fn set_project_file(path: &str, text: &str) {
+    FILES.with(|f| f.borrow_mut().set(path, text));
+}
+
+/// プロジェクトのファイルを忘れる（消した・名前を変えたとき）。
+///
+/// # 引数
+///
+/// - `path`：プロジェクトのフォルダからのパス
+///
+/// # 例
+///
+/// ```text
+/// removeProjectFile("parts.sysml") → 以後の analyze で Parts::Car が見えない
+/// ```
+#[wasm_bindgen(js_name = removeProjectFile)]
+pub fn remove_project_file(path: &str) {
+    FILES.with(|f| f.borrow_mut().remove(path));
+}
+
+/// プロジェクトのファイルをすべて忘れる（フォルダを閉じた・別のフォルダを開いたとき）。
+///
+/// # 例
+///
+/// ```text
+/// clearProjectFiles() → 以後の analyze は表示中のファイルだけ
+/// ```
+#[wasm_bindgen(js_name = clearProjectFiles)]
+pub fn clear_project_files() {
+    FILES.with(|f| f.borrow_mut().clear());
+}
+
+/// 表示中のファイルのパスを決める（そのパスの覚えたファイルは、ほかのファイルとしてつながない）。
+///
+/// # 引数
+///
+/// - `path`：プロジェクトのフォルダからのパス。フォルダの外のファイル・無題のファイルなら undefined
+///
+/// # 例
+///
+/// ```text
+/// setFocusFile("app.sysml") → analyze は app.sysml 以外の覚えたファイルをつなぐ
+/// setFocusFile(undefined)   → analyze は覚えたファイルをすべてつなぐ
+/// ```
+#[wasm_bindgen(js_name = setFocusFile)]
+pub fn set_focus_file(path: Option<String>) {
+    FOCUS.with(|f| *f.borrow_mut() = path);
+}
+
+/// 表示中のファイルを除いた、覚えたほかのファイルのパスと解析結果（`Files::others`）。
+///
+/// # 戻り値
+///
+/// （パスの並び、解析結果の並び）。i 番目のパスのファイルは、モデルでファイルの番号 i + 1 になる。
+///
+/// # 例
+///
+/// ```text
+/// // parts.sysml・app.sysml を覚え、表示中が app.sysml のとき
+/// others() → (["parts.sysml"], [parts の解析結果])
+/// ```
+fn others() -> (Vec<String>, Vec<ParseResult>) {
+    let focus = FOCUS.with(|f| f.borrow().clone());
+    FILES.with(|f| f.borrow().others(focus.as_deref()))
 }
 
 /// 読み込んだチェックルールのプラグイン（ADR-0018 §2）。Worker が持ち続け、解析のたびにルールを当てる。
@@ -574,12 +664,44 @@ fn refused_json(reason: &str) -> String {
 /// edit_json(…, r#"{"op":"rename"}"#) → "{\"refused\":\"操作を読み込めませんでした（…）\"}"
 /// ```
 fn edit_json(text: &str, intent: &str) -> String {
-    let result = serde_json::from_str::<modelith_core::edit::Intent>(intent)
-        .map_err(|e| format!("操作を読み込めませんでした（{e}）"))
-        .and_then(|i| modelith_core::edit::edit(text, &i));
-    let json = match result {
+    let (paths, parsed) = others();
+    edit_json_in(text, &paths, parsed, intent)
+}
+
+/// `edit_json` の本体。ほかのファイルとつないだモデルで意図を当て、ほかのファイルの要素を書き換えようとしたら、
+/// そのファイルのパスを添えて断る（ADR-0021 §5）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト全体
+/// - `paths`：ほかのファイルのパス（`parsed` と同じ順）
+/// - `parsed`：ほかのファイルの解析結果
+/// - `intent`：図の操作の意図の JSON
+///
+/// # 戻り値
+///
+/// 編集の結果の JSON。断るときは `{"refused":"…"}`、ほかのファイルの要素なら `{"refused":"…","file":"parts.sysml"}`。
+///
+/// # 例
+///
+/// ```text
+/// edit_json_in("package App { part c : Parts::Car; }", ["parts.sysml"], [parts], r#"{"op":"rename","key":"Car","name":"Bus"}"#)
+///   → r#"{"refused":"この要素はほかのファイルにあります。…","file":"parts.sysml"}"#
+/// ```
+fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: &str) -> String {
+    let intent = match serde_json::from_str::<modelith_core::edit::Intent>(intent) {
+        Ok(i) => i,
+        Err(e) => return refused_json(&format!("操作を読み込めませんでした（{e}）")),
+    };
+    let json = match modelith_core::edit::edit_in(text, parsed, &intent) {
         Ok(out) => serde_json::to_string(&out),
-        Err(refused) => Ok(refused_json(&refused)),
+        Err(r) => {
+            let file = r.file.and_then(|f| paths.get(f - 1));
+            Ok(match file {
+                Some(path) => serde_json::json!({ "refused": r.reason, "file": path }).to_string(),
+                None => refused_json(&r.reason),
+            })
+        }
     };
     json.unwrap_or_else(|e| refused_json(&e.to_string()))
 }
@@ -589,6 +711,8 @@ struct Analysis {
     parse: modelith_core::project::ParseResult,
     model: modelith_core::model::Model,
     findings: Vec<rules::Finding>,
+    /// つないだほかのファイルのパス（`Node.file` が i なら i - 1 番目。ADR-0021）。
+    files: Vec<String>,
 }
 
 /// テキストを解析・投影してモデルを作り、`{ parse, model }` を JSON にする（`analyze` の中身）。
@@ -632,14 +756,45 @@ fn analyze_json(text: &str) -> String {
 /// analysis_json("", [])                                                              → "…\"findings\":[]}"
 /// ```
 fn analysis_json(text: &str, plugins: &[LoadedPlugin]) -> String {
-    let parse = modelith_core::project::project(text, &modelith_core::syntax::parse(text));
-    let model = modelith_core::model::build(&parse);
-    let findings = rules::check(plugins, &parse, &model);
+    let (paths, parsed) = others();
+    analysis_json_in(text, paths, parsed, plugins)
+}
+
+/// `analysis_json` の本体。ほかのファイルとつないだモデルを作り、ルールはファイルをまたぐ関係も数えて当てる（ADR-0021）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルのテキスト全体
+/// - `paths`：ほかのファイルのパス（`parsed` と同じ順）
+/// - `parsed`：ほかのファイルの解析結果
+/// - `plugins`：当てるプラグイン
+///
+/// # 戻り値
+///
+/// `{ parse, model, findings, files }` の JSON。`model` は表示中のファイルの要素と、それが参照するほかのファイルの要素だけ。
+///
+/// # 例
+///
+/// ```text
+/// analysis_json_in("package App { part c : Parts::Car; }", ["parts.sysml"], [parts], [])
+///   → "…"nodes":[{"key":"c",…},{"key":"Car",…,"file":1}]…"files":["parts.sysml"]}"
+/// ```
+fn analysis_json_in(
+    text: &str,
+    paths: Vec<String>,
+    parsed: Vec<ParseResult>,
+    plugins: &[LoadedPlugin],
+) -> String {
+    let parse = modelith_core::project::merge::join(text, parsed);
+    let whole = modelith_core::model::build_whole(&parse);
+    let findings = rules::check(plugins, &parse, &whole);
+    let model = modelith_core::model::narrow(whole, &parse);
     // 文字列のキーだけの構造なので、JSON への変換は失敗しない
     serde_json::to_string(&Analysis {
         parse,
         model,
         findings,
+        files: paths,
     })
     .unwrap_or_else(|e| format!(r#"{{"error":"{e}"}}"#))
 }
@@ -756,7 +911,7 @@ mod tests {
             r#"{"plugins":[{"enabled":true,"id":"jp.x","installed":true,"manifest":{"id":"jp.x","name":"トレーサビリティのチェック","runtime":"rules","version":"0.1.0"},"problems":[],"rules":1}]}"#
         );
         assert!(
-            json.ends_with(r#""findings":[{"plugin":"jp.x","rule":"req-sat","severity":"warning","message":"「R」を満たす要素がありません","element":"R","pos":19}]}"#),
+            json.ends_with(r#""findings":[{"plugin":"jp.x","rule":"req-sat","severity":"warning","message":"「R」を満たす要素がありません","element":"R","pos":19}],"files":[]}"#),
             "{json}"
         );
     }
@@ -773,7 +928,7 @@ mod tests {
             "{}",
             set.summary
         );
-        assert!(json.ends_with(r#""findings":[]}"#), "{json}");
+        assert!(json.ends_with(r#""findings":[],"files":[]}"#), "{json}");
     }
 
     #[test]
@@ -882,5 +1037,45 @@ mod tests {
             bad.starts_with(r#"{"refused":"modelith-plugin.json の 2 行目："#),
             "{bad}"
         );
+    }
+
+    /// ほかのファイル parts.sysml の解析結果。
+    fn parts() -> (Vec<String>, Vec<ParseResult>) {
+        let p = modelith_core::project::merge::parse_file("package Parts { part def Car; }")
+            .expect("短い");
+        (vec!["parts.sysml".to_owned()], vec![p])
+    }
+
+    #[test]
+    fn analysis_names_the_files_of_other_elements() {
+        // Arrange
+        let (paths, parsed) = parts();
+        // Act
+        let json = analysis_json_in("package App { part c : Parts::Car; }", paths, parsed, &[]);
+        // Assert（ほかのファイルの要素は、ファイルの番号と、その番号のパスを持つ）
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v["files"], serde_json::json!(["parts.sysml"]));
+        let car = v["model"]["nodes"]
+            .as_array()
+            .and_then(|ns| ns.iter().find(|n| n["key"] == "Car"))
+            .expect("Car");
+        assert_eq!(car["file"], 1);
+    }
+
+    #[test]
+    fn edit_of_another_file_is_refused_with_its_path() {
+        // Arrange（異常系：ほかのファイルの要素の名前を変える）
+        let (paths, parsed) = parts();
+        // Act
+        let json = edit_json_in(
+            "package App { part c : Parts::Car; }",
+            &paths,
+            parsed,
+            r#"{"op":"rename","key":"Car","name":"Bus"}"#,
+        );
+        // Assert
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v["file"], "parts.sysml");
+        assert_eq!(v["refused"], modelith_core::edit::IN_OTHER_FILE);
     }
 }
