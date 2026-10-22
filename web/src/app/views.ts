@@ -1,6 +1,6 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。
 
-import type { EdgeKind, Entry, Model, ModelEdge, ModelNode, ModelSequenceEvent, ModelView, ViewKind } from "../core";
+import type { EdgeKind, Entry, Model, ModelEdge, ModelLane, ModelNode, ModelSequenceEvent, ModelView, ViewKind } from "../core";
 import { defaultFlowContext, flowContentOf, flowContexts, flowLayers } from "./action-flow";
 import { ibdContentOf } from "./ibd";
 import { seqContentOf } from "./sequence";
@@ -44,8 +44,10 @@ export interface ViewContent {
   dim?: Set<string>;
   empty?: string;
   frame?: { kind: string; title: string };
-  /** 内部ブロック図の対象そのもののポート（枠の上に描く、8.2.3.13）。 */
+  /** 内部ブロック図の対象そのもののポート（枠の上に描く、8.2.3.13）と、アクション定義そのもののパラメータ（8.2.3.17）。 */
   boundary?: ModelNode[];
+  /** アクティビティ図の区画（8.2.3.17 の swimlane）。 */
+  lanes?: ModelLane[];
   /** 図に出した package の枠（F-VIEW-9）。`inner` は、この枠の中にある枠の番号。 */
   packages?: PackageFrame[];
   ctx?: ModelNode;

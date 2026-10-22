@@ -184,6 +184,7 @@ export interface RawModel {
     entry: number;
     nodes: { key: string; name: string; kind: string; entry?: number; ports?: RawPort[]; container?: string }[];
     params: RawPort[];
+    lanes?: { key: string; name: string; entry: number; nodes: string[] }[];
     edges: RawEdge[];
   }[];
   stateMachines?: {
@@ -272,6 +273,7 @@ function toModel(raw: RawModel, P: ParseResult): Model {
       ...(n.container ? { container: n.container } : {}),
     })),
     params: f.params.map(port),
+    lanes: (f.lanes ?? []).map((l) => ({ ...l, entry: entry(l.entry) })),
     edges: f.edges.map(({ rel: _rel, ...e }) => e),
   }));
   const stateMachines = (raw.stateMachines ?? []).map((f) => ({

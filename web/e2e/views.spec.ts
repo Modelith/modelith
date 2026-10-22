@@ -811,6 +811,51 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
     await expect(page.locator('[data-edge="succession|a:boil.heat|a:boil.wait|#1"]')).toHaveCount(1);
   });
 
+  test("F-VIEW-15: アクティビティ図に、要素を受け持つ部品ごとの区画（swimlane）を描き、要素をその区画の中に置く", async ({ page }) => {
+    // Arrange
+    const text = `package T {
+    action def MakeTea {
+        first start then boil;
+        action boil;
+        then pour;
+        action pour;
+        then done;
+    }
+    action makeTea : MakeTea;
+    part kettle {
+        perform makeTea;
+        part heater { perform makeTea.boil; }
+        part ctrl { perform makeTea.pour; }
+    }
+    view teaFlow : ActionFlowView { expose T::MakeTea; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="teaFlow"]').click();
+    // Assert（区画は «performer» と部品の道のりの見出しを持ち、受け持つ要素はその区画の中にある）
+    const heater = page.locator('.lane[data-lane="kettle.heater"]');
+    await expect(heater).toContainText("«performer»");
+    await expect(heater).toContainText("kettle.heater");
+    await expect(page.locator('.lane[data-lane="kettle.ctrl"]')).toHaveCount(1);
+    const box = async (sel: string) => (await page.locator(sel).first().boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
+    const [lane, boil] = [await box('.lane[data-lane="kettle.heater"] rect'), await box('[data-key="a:boil"] .body')];
+    expect(boil.x).toBeGreaterThan(lane.x);
+    expect(boil.x + boil.width).toBeLessThan(lane.x + lane.width);
+    // draw.io へのエクスポートにも、区画を破線の四角で入れる（F-EXP-2）
+    await page.locator("#fileMenu summary").click();
+    await page.locator("#btnExport").click();
+    await page.locator("#exportFormat").selectOption({ label: "draw.io（.drawio）" });
+    const download = page.waitForEvent("download");
+    await page.locator("#exportName").press("Enter");
+    const xml = Buffer.concat(await (await (await download).createReadStream()).toArray()).toString();
+    expect(xml).toContain("«performer»&lt;br&gt;&lt;b&gt;kettle.heater&lt;/b&gt;");
+    expect(xml).toContain("dashed=1;strokeColor=#5B4B8A;");
+  });
+
   test("F-VIEW-7: 順序の線を図から削除すると、テキストからその文だけが消える", async ({ page }) => {
     // Arrange
     await openFlow(page);

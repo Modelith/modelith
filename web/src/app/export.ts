@@ -3,7 +3,7 @@
 import { $, esc } from "./dom";
 import type { ModelNode, ModelSequenceEvent } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
-import { boundaryBoxes, boxesOf, computeRoutes, keywordOf, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
+import { boundaryBoxes, boxesOf, computeRoutes, keywordOf, laneRects, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
 import { isPseudoState } from "./state-machine";
 import { S } from "./state";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn } from "./svg";
@@ -184,11 +184,18 @@ export function drawioXml(): string {
   const rect = (n: ModelNode): Box => rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
   let frameRect: Box | undefined;
   const boundaryRects = new Map<string, NodeBox>();
+  // アクティビティ図の区画（8.2.3.17 の swimlane）は枠に含める
+  const lanes = laneRects(cc.lanes ?? [], rects);
   if (cc.frame && nodes.length) {
-    const x0 = Math.min(...nodes.map((n) => rect(n).x)) - 60, y0 = Math.min(...nodes.map((n) => rect(n).y)) - 80;
-    const x1 = Math.max(...nodes.map((n) => rect(n).x + rect(n).w)) + 60, y1 = Math.max(...nodes.map((n) => rect(n).y + rect(n).h)) + 50;
+    const all = [...nodes.map(rect), ...lanes.map((l) => l.r)];
+    const x0 = Math.min(...all.map((r) => r.x)) - 60, y0 = Math.min(...all.map((r) => r.y)) - 80;
+    const x1 = Math.max(...all.map((r) => r.x + r.w)) + 60, y1 = Math.max(...all.map((r) => r.y + r.h)) + 50;
     frameRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     cells += `<mxCell id="n${id++}" value="${q(`«${cc.frame.kind}»<br><b>${esc(cc.frame.title)}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;align=left;spacingLeft=10;rounded=0;fillColor=#F3F7FB;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" as="geometry"/></mxCell>`;
+    // 区画は、破線の四角に «performer» と部品の道のり
+    for (const l of lanes) {
+      cells += `<mxCell id="n${id++}" value="${q(`«performer»<br><b>${esc(l.lane.name)}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;rounded=0;fillColor=none;dashed=1;strokeColor=#5B4B8A;" vertex="1" parent="1"><mxGeometry x="${l.r.x}" y="${l.r.y}" width="${l.r.w}" height="${l.r.h}" as="geometry"/></mxCell>`;
+    }
     // 対象そのもののポート（8.2.3.13）は、枠の辺の上の小さな四角
     for (const [key, r] of boundaryBoxes(frameRect, cc.boundary ?? [])) {
       const n = (cc.boundary ?? []).find((x) => x.key === key);
@@ -306,7 +313,8 @@ export function svgExport(): string {
   const nodes = content.nodes;
   if (!nodes.length) return svg(0, 0, 100, 100, "");
   const byKey = boxesOf(nodes, L.pos);
-  const rects = [...byKey.values()];
+  // アクティビティ図の区画（8.2.3.17 の swimlane）も切れないように含める
+  const rects = [...byKey.values(), ...laneRects(content.lanes ?? [], byKey).map((l) => l.r)];
   const fpad = content.frame ? 60 : 0;
   // package の枠（F-VIEW-9）も切れないように含める
   const pk = packageBoxes(content, (k) => byKey.get(k)).map((p) => p.r);

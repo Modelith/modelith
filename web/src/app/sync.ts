@@ -3,7 +3,7 @@
 import { CORE_STOPPED, lineOf, type CoreClient, type CoreSupervisorHooks, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
 import { errorText } from "./error-text";
-import { autoPlace, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight, stackedWidth } from "./geometry";
+import { autoPlace, placeInLanes, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight, stackedWidth } from "./geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
@@ -203,7 +203,8 @@ function refresh(fromText: boolean): void {
 /**
  * 表示中のビューで座標の無い要素を自動で並べる（S.layout を書き換える。F-VIEW-3）。
  * 既に置かれた要素があれば、その一番下から 80 下に並べる。中の部品（内部ブロック図の入れ子）は外の部品の中に縦に積み、
- * n 項の接続の点は、つながる要素の重心に、メモは注釈する要素の近くに置く。幅の狭い要素（アクションの流れの図の記号）は列の中央に置く。
+ * n 項の接続の点は、つながる要素の重心に、メモは注釈する要素の近くに置く。幅の狭い要素（アクションの流れの図の記号）は列の中央に置き、
+ * アクティビティ図に区画があれば、要素を受け持つ部品の列に置く。
  * 状態遷移の図は、状態の入れ子と遷移の向きで並べる（placeStates）。シーケンス図では何もしない。
  */
 export function ensureLayout(): void {
@@ -214,7 +215,7 @@ export function ensureLayout(): void {
     placeStates(c.nodes, c.edges, c.regions ?? [], curLayout().pos);
     return;
   }
-  const { nodes, edges } = viewContent(S.M, v);
+  const { nodes, edges, lanes } = viewContent(S.M, v);
   const L = curLayout().pos;
   const heightOf = (n: (typeof nodes)[number]): number => stackedHeight(n, nodes);
   const missing = nodes.filter((n) => !L[n.key] && !n.junction && !n.container && !n.note);
@@ -225,6 +226,8 @@ export function ensureLayout(): void {
     });
     const oy = placed.length ? Math.max(...placed) + 80 : 0;
     autoPlace(missing, edges, L, v, S.M.phases?.[0] ?? null, oy, heightOf, (n) => stackedWidth(n, nodes));
+    // アクティビティ図の区画（swimlane）があれば、置いたばかりの要素を区画の列に置き直す
+    if (lanes?.length) placeInLanes(nodes, lanes, L, new Set(missing.map((n) => n.key)));
   }
   placeNested(nodes, L);
   placeJunctions(nodes, edges, L);
