@@ -246,7 +246,8 @@ package ModelithRequirements {
                    図の配置（要素の位置）を保存する隣の配置ファイルも同じ（読んだときの版と比べ、変わっていれば同じ選択を出す。まだ無ければ作る） */
         }
         requirement def <'F-FILE-8'> ExternalChangeReq {
-            doc /* 画面に戻ったとき、未保存の変更が無いファイルは、他のアプリでの変更を読み直す */
+            doc /* 画面に戻ったとき、開いているファイルを確かめ、他のアプリで変わっていれば、未保存の変更が無いファイルは読み直し、あるファイルは読み直さずに印を付ける。
+                   表示中のファイルに限らず、読み直したファイルと印を付けたファイルの名前を 1 回の知らせにまとめて示す（印を付けたファイルは、初めて印を付けたときだけ） */
         }
         requirement def <'F-FILE-9'> RecentFolderReq {
             doc /* 前回開いたフォルダを、ブラウザの許可を得て再び開ける */
@@ -281,6 +282,11 @@ package ModelithRequirements {
             doc /* フォルダの一覧でファイルを 1 回クリックすると、仮に開く（開いているファイルの一覧で名前を斜体にする）。続けて別のファイルを 1 回クリックすると、
                    仮に開いていたファイルと置き換え、開いているファイルの一覧が増え続けないようにする。仮に開いたファイルは、編集する・フォルダの一覧でダブルクリックする・
                    開いているファイルの一覧でダブルクリックすると、開いたままにする（置き換えない）。未保存の変更のあるファイルは置き換えない */
+        }
+        requirement def <'F-FILE-18'> EditStartCheckReq {
+            doc /* 保存先のあるファイルを、未保存の変更が無い状態から編集し始めたとき（テキストの入力・図の操作）、開いた後に他のアプリで変わっていないかを確かめる。
+                   変わっていれば、ファイル名を示して、読み直す（いま入力した変更は捨てる）か、このまま編集する（保存するときに F-FILE-7 で選ぶ）かを選ばせる。
+                   画面に戻ったときの確かめ（F-FILE-8）が働かない場合（Modelith を表示したまま、ほかのアプリでファイルが変わった）にも、古い中身に編集を重ねないため */
         }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
@@ -487,6 +493,7 @@ package ModelithRequirements {
         #derivation dependency from MultiFileModelReq to FilesNeed;
         #derivation dependency from ProjectProblemsReq to FilesNeed;
         #derivation dependency from PreviewOpenReq to FilesNeed;
+        #derivation dependency from EditStartCheckReq to SafetyNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -651,6 +658,8 @@ package ModelithRequirements {
         satisfy ProjectProblemsReq by AppShell;
         satisfy PreviewOpenReq by Workspace;
         satisfy PreviewOpenReq by AppShell;
+        satisfy EditStartCheckReq by Workspace;
+        satisfy EditStartCheckReq by AppShell;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
