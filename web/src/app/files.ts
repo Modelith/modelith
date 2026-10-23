@@ -30,6 +30,7 @@ import { switchDocTabs } from "./panels";
 import { docTabsId } from "./doc-tabs";
 import { fileProblems, fileStatus, folderStatus, statusBadge, statusClass, type FileStatus } from "./project-problems";
 import { scrollEditorTo } from "./render";
+import { editStartText, externalNotice } from "./external-change";
 import { opsIdle } from "./intent";
 import { onOpenProjectFile } from "./other-file";
 
@@ -297,7 +298,7 @@ async function newFileInFolder(): Promise<void> {
 async function save(key: string, as = false): Promise<void> {
   // 直前の図の操作（コアの返事待ち）と、反映待ちの入力を、保存する内容に入れる
   await opsIdle();
-  flushEdit();
+  flushQuiet();
   const doc = ws.get(key);
   if (!doc) return;
   try {
@@ -389,7 +390,7 @@ async function resolveConflict(key: string): Promise<void> {
  * @param key 文書のキー
  */
 async function closeDoc(key: string): Promise<void> {
-  flushEdit();
+  flushQuiet();
   const doc = ws.get(key);
   if (!doc) return;
   if (ws.isDirty(doc) || (!doc.ref && doc.text.trim())) {
@@ -1076,16 +1077,78 @@ function onEdited(key: string): void {
   auto.notify(key);
 }
 
-/** 画面に戻ったとき、他のアプリでの変更を確かめる（F-FILE-8）。 */
+/** 画面に戻ったとき、他のアプリでの変更を確かめ、表示中のファイルに限らず、変わったファイルをまとめて知らせる（F-FILE-8）。 */
 async function checkExternal(): Promise<void> {
-  const reloaded = await ws.checkExternal();
+  // 反映待ちの入力を先に書き込み、未保存の変更として数える（入力したばかりの文書を読み直して入力を失わないため）
+  flushQuiet();
+  const { reloaded, stale } = await ws.checkExternal();
   const active = shownKey ? ws.get(shownKey) : undefined;
-  if (!active) return;
-  if (reloaded.includes(active.key)) {
+  if (active && reloaded.includes(active.key)) setText(active.text, { fromText: true });
+  const names = (keys: string[]) => keys.map((k) => ws.get(k)?.name ?? "").filter((n) => n);
+  const notice = externalNotice(names(reloaded), names(stale));
+  if (notice) toast(notice);
+}
+
+/** 反映待ちの入力を、編集し始めたときの確かめ（F-FILE-18）をせずに書き込んでいる間 true。 */
+let quietFlush = false;
+
+/**
+ * 反映待ちの入力を、編集し始めたときの確かめ（F-FILE-18）をせずに書き込む。
+ * 保存・閉じる・画面に戻ったときの確かめは、他のアプリでの変更をそれぞれで扱う（F-FILE-7・F-FILE-8）ので、確かめのダイアログを重ねない。
+ */
+function flushQuiet(): void {
+  quietFlush = true;
+  try {
     flushEdit();
-    setText(active.text, { fromText: true });
-    toast(`「${active.name}」が他のアプリで変更されたため、読み直しました`);
-  } else if (active.stale) toast(`「${active.name}」が他のアプリで変更されています。保存するときに選べます`);
+  } finally {
+    quietFlush = false;
+  }
+}
+
+/** 他のアプリで変わっていたことを、編集し始めたときに尋ねている文書のキー（その間の自動保存の競合は知らせない）。 */
+const askingFresh = new Set<string>();
+
+/**
+ * 未保存の変更が無い状態から編集し始めた文書のファイルが、他のアプリで変わっていないかを確かめる。
+ * 変わっていれば、ファイル名を示して、読み込むか・このまま編集するかを尋ねる（F-FILE-18）。
+ *
+ * @param key 文書のキー
+ */
+async function checkOnEditStart(key: string): Promise<void> {
+  if (!(await ws.changedElsewhere(key))) return;
+  const doc = ws.get(key);
+  if (!doc) return;
+  askingFresh.add(key);
+  try {
+    const r = await ask("ファイルが他で変更されています", editStartText(doc.name), [
+      { id: "keep", label: "このまま編集する" },
+      { id: "reload", label: "ファイルの内容を読み込む（いま入力した変更を捨てる）", kind: "primary" },
+    ]);
+    if (r?.id !== "reload") return;
+    flushEdit();
+    await ws.reload(key);
+    if (shownKey === key) showDoc(key);
+  } catch (e) {
+    toastFailure("読み込めませんでした", e);
+  } finally {
+    askingFresh.delete(key);
+  }
+}
+
+/**
+ * 表示中の文書を編集で書き換え、未保存の変更が無い状態からの編集なら、他のアプリでの変更を確かめる（F-FILE-18）。
+ *
+ * @param change 文書を書き換える操作（テキストか配置）
+ */
+function editShown(change: (key: string) => void): void {
+  if (!shownKey) return;
+  const key = shownKey;
+  const before = ws.get(key);
+  const fresh = !quietFlush && !!before?.ref && !before.stale && !ws.isDirty(before);
+  change(key);
+  onEdited(key);
+  const after = ws.get(key);
+  if (fresh && after && ws.isDirty(after)) void checkOnEditStart(key);
 }
 
 /** サンプルの文書（名前・テキスト・配置ファイルの文字列）。 */
@@ -1136,20 +1199,13 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   ws = new Workspace(new ProviderRegistry(providers), kvDraftStore(store), kvSessionStore(store));
   autoSave = store.get(AUTOSAVE_KEY) === "1";
   auto = new AutoSaver(ws, browserTimer, () => autoSave, (key, outcome) => {
+    if (outcome === "conflict" && askingFresh.has(key)) return; // 編集し始めたときのダイアログで尋ねている（F-FILE-18）
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
     // 失敗しても文書は未保存のまま（●）なので、知らせるだけにして、保存（Ctrl+S）で試し直してもらう（F-FILE-6）
     else if (typeof outcome === "object") toastFailure(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした`, outcome.failed);
   });
-  onTextChange((text) => {
-    if (!shownKey) return;
-    ws.setText(shownKey, text);
-    onEdited(shownKey);
-  });
-  onLayoutChange((layout) => {
-    if (!shownKey) return;
-    ws.setLayout(shownKey, layout);
-    onEdited(shownKey);
-  });
+  onTextChange((text) => editShown((key) => ws.setText(key, text)));
+  onLayoutChange((layout) => editShown((key) => ws.setLayout(key, layout)));
   // 設定ファイルの読み取りの状態を先に変えてから描く
   onOpenProjectFile((path) => openInFolder(path));
   onAnalyzedProject(scheduleProjectProblems);

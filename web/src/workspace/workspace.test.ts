@@ -270,12 +270,26 @@ describe("Workspace: 未保存の変更と競合（F-FILE-5・7・8）", () => {
     fa.externalWrite("A theirs");
     fb.externalWrite("B theirs");
     // Act
-    const reloaded = await s.ws.checkExternal();
+    const found = await s.ws.checkExternal();
     // Assert
-    expect(reloaded).toEqual([a.key]);
+    expect(found).toEqual({ reloaded: [a.key], stale: [b.key] });
     expect(a.text).toBe("A theirs");
     expect(b.text).toBe("B edited");
     expect(b.stale).toBe(true);
+  });
+
+  it("前から印の付いた文書は、もう一度確かめても今回の印の一覧に入れない（F-FILE-8）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    s.ws.setText(doc.key, "A edited");
+    file.externalWrite("A theirs");
+    await s.ws.checkExternal();
+    // Act
+    const found = await s.ws.checkExternal();
+    // Assert
+    expect(found).toEqual({ reloaded: [], stale: [] });
+    expect(doc.stale).toBe(true);
   });
 
   it("他で変更されていなければ何もしない（境界値: 変更なし）", async () => {
@@ -285,10 +299,41 @@ describe("Workspace: 未保存の変更と競合（F-FILE-5・7・8）", () => {
     let notified = 0;
     s.ws.subscribe(() => notified++);
     // Act
-    const reloaded = await s.ws.checkExternal();
+    const found = await s.ws.checkExternal();
     // Assert
-    expect(reloaded).toEqual([]);
+    expect(found).toEqual({ reloaded: [], stale: [] });
     expect(notified).toBe(0);
+  });
+
+  it("編集し始めたときに確かめ、他のアプリで変わっていれば印を付けて知らせる（F-FILE-18、正常系）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    s.ws.setText(doc.key, "A edited");
+    file.externalWrite("A theirs");
+    let notified = 0;
+    s.ws.subscribe(() => notified++);
+    // Act
+    const changed = await s.ws.changedElsewhere(doc.key);
+    // Assert（中身は読み直さない）
+    expect(changed).toBe(true);
+    expect(doc.stale).toBe(true);
+    expect(doc.text).toBe("A edited");
+    expect(notified).toBe(1);
+  });
+
+  it("他のアプリで変わっていない・前から印がある・無題の文書・無い文書は false（F-FILE-18、境界値・異常系）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    const untitled = s.ws.newUntitled("u", "x");
+    // Act・Assert
+    expect(await s.ws.changedElsewhere(doc.key)).toBe(false);
+    file.externalWrite("A theirs");
+    expect(await s.ws.changedElsewhere(doc.key)).toBe(true);
+    expect(await s.ws.changedElsewhere(doc.key)).toBe(false);
+    expect(await s.ws.changedElsewhere(untitled.key)).toBe(false);
+    expect(await s.ws.changedElsewhere("doc:999")).toBe(false);
   });
 
   it("表示中の文書を閉じると隣の文書に切り替わり、最後の 1 つを閉じると表示中は無くなる", () => {
