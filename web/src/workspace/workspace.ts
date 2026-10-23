@@ -681,16 +681,17 @@ export class Workspace {
   }
 
   /**
-   * 他のアプリでの変更を確かめる（画面に戻ったときに呼ぶ）。未保存の変更が無ければ読み直し、
+   * 他のアプリでの変更を確かめる（画面に戻ったときに呼ぶ。F-FILE-8）。未保存の変更が無ければ読み直し、
    * あれば読み直さずに stale にする。上書きできない保存先と、読めないファイルは確かめない。
    *
-   * @returns 読み直した文書の key の一覧。変更が無ければ空
+   * @returns 読み直した文書の key の一覧（reloaded）と、今回初めて stale にした文書の key の一覧（stale。前から stale のものは入れない）
    * @example
-   * await ws.checkExternal() // → [a.key]（a は変更なし、b は未保存の変更ありで stale になった）
-   * await ws.checkExternal() // → []（他で変更されていない）
+   * await ws.checkExternal() // → { reloaded: [a.key], stale: [b.key] }（a は未保存の変更なしで読み直し、b は未保存の変更ありで stale になった）
+   * await ws.checkExternal() // → { reloaded: [], stale: [] }（他で変更されていない。b は前から stale）
    */
-  async checkExternal(): Promise<string[]> {
+  async checkExternal(): Promise<{ reloaded: string[]; stale: string[] }> {
     const reloaded: string[] = [];
+    const stale: string[] = [];
     let any = false;
     for (const doc of this.docs) {
       const p = doc.ref && this.providers.get(doc.ref.provider);
@@ -703,8 +704,10 @@ export class Workspace {
       }
       if (cur.version === doc.version) continue;
       any = true;
-      if (this.isDirty(doc)) doc.stale = true;
-      else {
+      if (this.isDirty(doc)) {
+        if (!doc.stale) stale.push(doc.key);
+        doc.stale = true;
+      } else {
         Object.assign(doc, { text: cur.text, savedText: cur.text, version: cur.version, stale: false, layoutStale: false, ...(await this.readLayout(doc.ref)) });
         reloaded.push(doc.key);
       }
@@ -712,7 +715,34 @@ export class Workspace {
     // 開いていないファイルも、他のアプリで変わっていればモデルに入れ直す（ADR-0021 §3）
     if (await this.readModelFiles()) any = true;
     if (any) this.changed();
-    return reloaded;
+    return { reloaded, stale };
+  }
+
+  /**
+   * 文書のファイルが、開いた（最後に読んだ・保存した）後に他のアプリで変わったかを確かめる（編集し始めたときに呼ぶ。F-FILE-18）。
+   * 変わっていれば stale にして変更を知らせる。中身は読み直さない（読み直すかは呼び手が尋ねて reload する）。
+   * 無題の文書・上書きできない保存先・読めないファイル・すでに stale の文書は確かめず false を返す。
+   *
+   * @param key 文書のキー
+   * @returns 他のアプリで変わっていて、今回 stale にしたら true
+   * @example
+   * await ws.changedElsewhere(a.key) // → true（a.sysml が他のアプリで書き換えられていた。a は stale になる）
+   * await ws.changedElsewhere(a.key) // → false（変わっていない、または前から stale）
+   */
+  async changedElsewhere(key: string): Promise<boolean> {
+    const doc = this.get(key);
+    const p = doc?.ref && this.providers.get(doc.ref.provider);
+    if (!doc?.ref || doc.stale || !p || !isWritable(p) || !isReadable(p)) return false;
+    let cur;
+    try {
+      cur = await p.read(doc.ref);
+    } catch {
+      return false; // 消えた・読めないファイルは、保存するときに知らせる
+    }
+    if (cur.version === doc.version || doc.stale) return false;
+    doc.stale = true;
+    this.changed();
+    return true;
   }
 
   /* ---- フォルダ ---- */

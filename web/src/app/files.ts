@@ -1078,7 +1078,7 @@ function onEdited(key: string): void {
 
 /** 画面に戻ったとき、他のアプリでの変更を確かめる（F-FILE-8）。 */
 async function checkExternal(): Promise<void> {
-  const reloaded = await ws.checkExternal();
+  const { reloaded } = await ws.checkExternal();
   const active = shownKey ? ws.get(shownKey) : undefined;
   if (!active) return;
   if (reloaded.includes(active.key)) {
