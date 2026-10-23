@@ -1259,6 +1259,17 @@ package ModelithRequirements {
                 verify PreviewOpenReq;
             }
         }
+        verification def ExternalChangeNoticeTest {
+            doc /* web/src/workspace/workspace.test.ts：画面に戻ったときに読み直した文書と今回初めて印を付けた文書を返すこと（前から印のある文書は入れない）、
+                   編集し始めたときに 1 つの文書のファイルが他で変わったかを確かめ、変わっていれば中身は読み直さずに印を付けること（変わっていない・前から印がある・無題・無い文書は false）。
+                   web/src/app/external-change.test.ts：ファイル名の並べ方（上限と「ほか N 件」）、画面に戻ったときの知らせの文（読み直した・印を付けた・両方・無し）、編集し始めたときに尋ねる文。
+                   web/e2e/external-change.spec.ts：他で変わったファイルを編集し始めるとファイル名を示して尋ね、読み込むとファイルの内容になること、このまま編集すると入力を残して保存のときに選べること、
+                   変わっていなければ尋ねないこと、画面に戻ったときに表示中でないファイルも名前を示してまとめて知らせること */
+            objective {
+                verify ExternalChangeReq;
+                verify EditStartCheckReq;
+            }
+        }
         verification def ProjectProblemsTest {
             doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
                    crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印。
