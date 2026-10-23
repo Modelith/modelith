@@ -23,7 +23,7 @@ import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
 import { createDiagram } from "./app/view-ops";
-import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
+import { applyPanes, DOC_TABS_KEY, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
 import { loadingView, watchLoading } from "./app/loading";
 import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
 import { highlight, render, renderMinimap } from "./app/render";
@@ -179,7 +179,7 @@ try {
  * 保存した設定（パネルの配置・図のタブ）を消して、ページを読み直す（Q-7）。下書き・前回の続き・プラグインの許可は消さない。
  */
 function resetSettingsAndReload(): void {
-  for (const key of [UI_KEY, TABS_KEY]) store.remove(key);
+  for (const key of [UI_KEY, TABS_KEY, DOC_TABS_KEY]) store.remove(key);
   location.reload();
 }
 

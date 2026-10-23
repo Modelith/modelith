@@ -197,6 +197,11 @@ package ModelithRequirements {
                    線の端のつまみを、同じ要素の別の縁や接続点へ動かすと、端をそこへ付け替える。調整した線の形は配置ファイルに残し（ADR-0005）、要素を動かしても曲がり角は動かさない。
                    エクスポートした SVG と draw.io にも、調整した形で書く。テキストは変えない */
         }
+        requirement def <'F-VIEW-17'> TabsPerFileReq {
+            doc /* 図のタブは、ファイルごとに持つ。ファイルを切り替えると、そのファイルで最後に開いていたタブと表示中の図に戻り、初めて開くファイルは「すべて」の図から始める。
+                   ファイルごとのタブはブラウザに記憶する。表示中の図にそのファイルの要素が無いときも、別の図に切り替えずに開いたままにし、
+                   要素が無いことと、ほかの図をタブの「＋」から開けることを示し、「すべて」の図を開くボタンを添える */
+        }
         requirement def <'F-VIEW-4'> CanvasReq {
             doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える */
         }
@@ -456,6 +461,7 @@ package ModelithRequirements {
         #derivation dependency from SequenceReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
         #derivation dependency from EdgeShapeReq to ViewsNeed;
+        #derivation dependency from TabsPerFileReq to ViewsNeed;
         #derivation dependency from TreeReq to ViewsNeed;
         #derivation dependency from PhaseReq to TraceNeed;
         #derivation dependency from TraceGapReq to TraceNeed;
@@ -614,6 +620,7 @@ package ModelithRequirements {
         satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
         satisfy EdgeShapeReq by DiagramUI;
+        satisfy TabsPerFileReq by DiagramUI;
         satisfy TreeReq by DiagramUI;
         satisfy PhaseReq by Core;
         satisfy TraceGapReq by Core;
@@ -1219,6 +1226,13 @@ package ModelithRequirements {
                    web/e2e/notice-levels.spec.ts：プロジェクトで選んだ重さで問題一覧の印と色を変え、出さないにした種類を出さないこと、「知らせの重さ…」で選んだ重さを modelith.json に書くこと、プロジェクトでなければ選べないことを示すこと */
             objective {
                 verify ProblemLevelReq;
+            }
+        }
+        verification def TabsPerFileTest {
+            doc /* web/src/app/doc-tabs.test.ts：記憶の名前（保存先のパス・無題の文書のキー）、初めて開くファイルのタブ、記憶の読み込み（戻せない記憶だけを捨てる・壊れていれば空）、記憶に入れる順と上限、このファイルの要素が無い図の案内を出すとき。
+                   web/e2e/tabs-per-file.spec.ts：初めて開くファイルは「すべて」から始め、ファイルを切り替えると最後に開いていたタブに戻ること、要素の無い図でも切り替えずに案内し「すべて」の図も開けること、読み込み直してもファイルごとのタブが戻ること */
+            objective {
+                verify TabsPerFileReq;
             }
         }
         verification def ProjectProblemsTest {
