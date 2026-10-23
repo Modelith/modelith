@@ -1272,7 +1272,7 @@ package ModelithRequirements {
         }
         verification def ProjectProblemsTest {
             doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
-                   crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印。
+                   crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印・数えた結果に表示中のファイルが入っていても、ほかのファイルとしては出さないこと。
                    web/src/core/client.test.ts：表示中のファイルの今のテキストをつないで数えること、数える間にテキストが変わったら捨てること。
                    web/e2e/project-problems.spec.ts：ほかのファイルの問題をファイルごとに出し、ファイルの一覧でそのファイルとフォルダを赤くして件数を添えること、行を押すとそのファイルのその行へ移ること、
                    表示中のファイルで直すとほかのファイルの問題も消えること（ADR-0021 §6） */

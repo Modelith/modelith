@@ -1,7 +1,7 @@
 // フォルダのすべてのファイルの問題（ADR-0021 §6、F-FILE-16）。
 import { describe, expect, it } from "vitest";
 import type { RuleFinding } from "../core";
-import { fileProblems, fileStatus, folderStatus, statusBadge, statusClass } from "./project-problems";
+import { fileProblems, fileStatus, folderStatus, otherFiles, statusBadge, statusClass } from "./project-problems";
 
 const finding = (severity: RuleFinding["severity"], pos = 0): RuleFinding => ({ plugin: "jp.x", rule: "r1", severity, message: "m", element: "A", pos });
 
@@ -79,5 +79,27 @@ describe("folderStatus・statusBadge・statusClass（F-FILE-16）", () => {
     expect(statusClass(undefined)).toBe("");
     expect(statusBadge({ errors: 2, warnings: 1 })).toBe('<span class="cnt err" title="エラー 2 件・警告 1 件">3</span>');
     expect(statusBadge({ errors: 0, warnings: 0 })).toBe("");
+  });
+});
+
+describe("otherFiles（F-FILE-16）", () => {
+  const a = { path: "a.sysml", status: { errors: 1, warnings: 0 }, rows: [] };
+  const b = { path: "models/b.sysml", status: { errors: 0, warnings: 1 }, rows: [] };
+
+  it("表示中のファイルは、数えた結果に入っていても除く（正常系）", () => {
+    // Act
+    const out = otherFiles([a, b], "a.sysml");
+    // Assert
+    expect(out).toEqual([b]);
+  });
+
+  it("表示中のファイルがフォルダの外・無題なら、何も除かない（境界値: null）", () => {
+    // Assert
+    expect(otherFiles([a, b], null)).toEqual([a, b]);
+  });
+
+  it("名前だけ同じで、パスの違うファイルは除かない", () => {
+    // Assert
+    expect(otherFiles([a, b], "b.sysml")).toEqual([a, b]);
   });
 });

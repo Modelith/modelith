@@ -71,6 +71,21 @@ export function fileProblems(report: FileReport, text: string | undefined, names
 }
 
 /**
+ * 問題一覧に「ほかのファイル」として出すまとまりを選ぶ。表示中のファイルは、今の解析結果を一覧の上に出すので除く。
+ * コアが数える間に表示中のファイルが切り替わると、数えた結果に表示中のファイルが入っていることがあるため（F-FILE-16）。
+ *
+ * @param files コアが数えたファイルごとの問題
+ * @param shownPath 表示中のファイルのフォルダからのパス（フォルダの外の文書・無題の文書なら null）
+ * @returns 表示中のファイルを除いたまとまり（元の順）
+ * @example
+ * otherFiles([{ path: "a.sysml", … }, { path: "b.sysml", … }], "a.sysml") // → [{ path: "b.sysml", … }]
+ * otherFiles([{ path: "a.sysml", … }], null)                             // → [{ path: "a.sysml", … }]
+ */
+export function otherFiles(files: readonly FileProblems[], shownPath: string | null): FileProblems[] {
+  return files.filter((f) => f.path !== shownPath);
+}
+
+/**
  * フォルダの中の（入れ子も含む）ファイルの件数を足す。エラーのあるファイルを中に持つフォルダに印を付けるのに使う。
  *
  * @param statuses ファイルのパス → 件数
