@@ -42,6 +42,8 @@ export interface Doc {
   layoutVersion: string | null;
   /** 配置ファイルが開いた後に他のアプリで変更された（保存で競合した）。 */
   layoutStale: boolean;
+  /** 仮に開いている（次に仮に開くファイルと置き換える。編集・ダブルクリックで開いたままにする。F-FILE-17）。 */
+  preview?: boolean;
 }
 
 /** 無題の文書の下書き。 */
@@ -111,6 +113,16 @@ async function readProjectText(source: FolderSource, ref: FolderRef): Promise<st
  */
 const sameRef = (a: FileRef | null, b: FileRef): boolean => !!a && a.provider === b.provider && a.id === b.id;
 
+/**
+ * ファイルの参照を見分ける文字列（読み込み中のファイルを覚えるのに使う）。
+ *
+ * @param ref ファイルの参照
+ * @returns プロバイダと id をつないだ文字列
+ * @example
+ * refKey({ provider: "local", id: "dir:1/a.sysml", … }) // → "local\u0000dir:1/a.sysml"
+ */
+const refKey = (ref: FileRef): string => `${ref.provider}\u0000${ref.id}`;
+
 export class Workspace {
   private readonly docs: Doc[] = [];
   private activeKey: string | null = null;
@@ -118,6 +130,8 @@ export class Workspace {
   /** 開いているフォルダのモデルのファイルを、最後に読んだテキスト（パス → テキスト。ADR-0021）。 */
   private disk = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
+  /** 読み込み中のファイル（プロバイダと id → 読み終わる Promise）。同じファイルを二重に開かない。 */
+  private readonly loading = new Map<string, Promise<void>>();
   private seq = 0;
   /** 前回の続きを書き換えずにおくか。起動して前回の続きを戻し終えるまでは書き換えない（F-FILE-13）。 */
   private sessionHeld = true;
@@ -401,25 +415,67 @@ export class Workspace {
 
   /**
    * ファイルを開いて表示中にする（開いていれば、読み直さずにそれに切り替える）。隣の配置ファイルがあれば一緒に読む。
+   * 仮に開くなら（F-FILE-17）、仮に開いていた変更の無いファイルを閉じ、その場所に置く。仮にでなく開くなら、仮に開いていたそのファイルも開いたままにする。
    *
    * @param ref 開くファイルの参照
+   * @param opts preview：仮に開く（フォルダの一覧の 1 回クリック）
    * @returns 開いた（切り替えた）文書。読めるプロバイダが無い・読めないときは例外を投げる
    * @example
    * await ws.openRef(ref)  // → { ref, name: "a.sysml", text: "package A;", … }
    * await ws.openRef(ref)  // → 同じ文書（2 回目。未保存の変更も残る）
+   * await ws.openRef(b, { preview: true }) // → b を仮に開く（仮に開いていた a は閉じ、b がその場所に入る）
    */
-  async openRef(ref: FileRef): Promise<Doc> {
+  async openRef(ref: FileRef, opts: { preview?: boolean } = {}): Promise<Doc> {
+    // 読み込み中の同じファイル（続けて押した・ダブルクリック）は、読み込み終わるのを待って同じ文書にする
+    const waiting = this.loading.get(refKey(ref));
+    if (waiting) await waiting;
     const open = this.docs.find((d) => sameRef(d.ref, ref));
     if (open) {
+      if (!opts.preview) delete open.preview;
       this.activate(open.key);
       return open;
     }
-    const doc = await this.load(ref);
+    const pending = this.load(ref);
+    this.loading.set(refKey(ref), pending.then(() => undefined, () => undefined));
+    let doc: Doc;
+    try {
+      doc = await pending;
+    } finally {
+      this.loading.delete(refKey(ref));
+    }
+    if (opts.preview) this.replacePreview(doc);
     this.activeKey = doc.key;
     // すべて閉じた後に開いたら、「すべて閉じて終えた」の記録を消す
     if (this.docs.length === 1) this.persistDrafts();
     this.changed();
     return doc;
+  }
+
+  /**
+   * 仮に開いた文書を、開いたままにする（F-FILE-17。ダブルクリック）。key の文書が無い・仮に開いていなければ何もしない。
+   *
+   * @param key 文書のキー
+   * @example
+   * ws.pin(doc.key) // → doc.preview が消え、次に仮に開くファイルと置き換わらない
+   */
+  pin(key: string): void {
+    const doc = this.get(key);
+    if (!doc?.preview) return;
+    delete doc.preview;
+    this.changed();
+  }
+
+  /**
+   * 開いた文書を仮に開いた文書にし、仮に開いていた変更の無い文書があれば閉じて、その場所に置く（F-FILE-17）。
+   *
+   * @param doc 開いたばかりの文書（一覧の最後にある）
+   */
+  private replacePreview(doc: Doc): void {
+    doc.preview = true;
+    const i = this.docs.findIndex((d) => d.preview && d !== doc && !this.isDirty(d));
+    if (i < 0) return;
+    this.docs.splice(this.docs.indexOf(doc), 1);
+    this.docs.splice(i, 1, doc);
   }
 
   /**
@@ -842,6 +898,11 @@ export class Workspace {
     const before = { text: doc.text, layout: doc.layout, dirty: this.isDirty(doc), unsaved: this.layoutUnsaved(doc) };
     fn(doc);
     if (doc.text === before.text && doc.layout === before.layout) return;
+    // 編集した仮のファイルは、開いたままにする（F-FILE-17）
+    if (doc.preview && this.isDirty(doc)) {
+      delete doc.preview;
+      this.changed();
+    }
     if (!doc.ref) this.persistDrafts();
     if (before.dirty !== this.isDirty(doc) || before.unsaved !== this.layoutUnsaved(doc)) this.changed();
   }

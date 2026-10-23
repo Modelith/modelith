@@ -35,6 +35,9 @@ import { onOpenProjectFile } from "./other-file";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
+
+/** 仮に開いたファイルの案内（F-FILE-17）。 */
+const PREVIEW_HINT = "仮に開いています。編集するか、ダブルクリックすると開いたままになります";
 /** 横のパネルの種類。 */
 type Side = "files" | "model" | "views";
 /** 設定「起動時にサンプルを開く」を有効にしたら "1" を置くキー（F-FILE-13）。 */
@@ -418,7 +421,8 @@ function openInFolder(path: string, at?: number): void {
   const f = ws.folder();
   const ref = f ? findFile(f.entries, path) : null;
   if (!ref) return toast(`「${path}」が見つかりません。フォルダの一覧を更新してください`);
-  void ws.openRef(ref).then(
+  flushEdit();
+  void ws.openRef(ref, { preview: true }).then(
     (d) => {
       showDoc(d.key);
       if (at !== undefined) moveCaret(at);
@@ -618,8 +622,10 @@ function renderFiles(): void {
   const active = ws.active();
   const docs = ws.list()
     .map((d) => {
-      const where = d.ref ? (ws.canWriteInPlace(d) ? d.ref.path : `${d.ref.name}（ダウンロードで保存）`) : "保存先なし（ブラウザに下書き保存）";
-      return `<div class="fi${d.key === active?.key ? " sel" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0"><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
+      const base = d.ref ? (ws.canWriteInPlace(d) ? d.ref.path : `${d.ref.name}（ダウンロードで保存）`) : "保存先なし（ブラウザに下書き保存）";
+      // 仮に開いたファイルは名前を斜体にし、開いたままにする方法を添える（F-FILE-17）
+      const where = d.preview ? `${base}\n${PREVIEW_HINT}` : base;
+      return `<div class="fi${d.key === active?.key ? " sel" : ""}${d.preview ? " pv" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0"><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
     })
     .join("");
   let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs || `<div class="msg">開いているファイルはありません。</div>`}`;
@@ -639,6 +645,8 @@ function renderFiles(): void {
   S.docPath = active ? (ws.folderPath(active.key) ?? active.name) : "";
   if (active) {
     $("#docName").innerHTML = esc(active.name) + staleMark(active) + (ws.isDirty(active) ? " ●" : "") + layoutMark(active);
+    $("#docName").classList.toggle("pv", !!active.preview);
+    $("#docName").title = active.preview ? PREVIEW_HINT : "";
     document.title = `${ws.isDirty(active) ? "● " : ""}${active.name} — Modelith`;
   } else {
     $("#docName").textContent = "";
@@ -1031,8 +1039,14 @@ function initExplorer(): void {
     if (c === "addPlugin") return void addPlugin();
     if (c === "openFolder") return void openFolder();
     if (c === "reopen") return void openFolder(true);
+    // ダブルクリック（2 回目のクリック）は、仮に開いたファイルを開いたままにする（F-FILE-17）。
+    // 1 回目のクリックで一覧を描き直すため dblclick は届かないことがあり、クリックの回数で見分ける
+    const twice = ev.detail >= 2;
     const doc = closest(ev, "[data-doc]")?.dataset["doc"];
-    if (doc) return showDoc(doc);
+    if (doc) {
+      if (twice) ws.pin(doc);
+      return showDoc(doc);
+    }
     const dir = closest(ev, "[data-dir]")?.dataset["dir"];
     if (dir !== undefined) {
       if (collapsed.has(dir)) collapsed.delete(dir);
@@ -1043,7 +1057,9 @@ function initExplorer(): void {
     const f = ws.folder();
     const e = id && f ? findEntry(f.entries, id) : undefined;
     if (e?.kind === "file") {
-      void ws.openRef(e.ref).then(
+      // 1 回クリックは仮に開く（F-FILE-17）。反映待ちの入力を先に書き込み、編集中の仮のファイルを置き換えないようにする
+      flushEdit();
+      void ws.openRef(e.ref, { preview: !twice }).then(
         (d) => showDoc(d.key),
         (err: unknown) => toastFailure("開けませんでした", err),
       );
