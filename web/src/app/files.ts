@@ -643,7 +643,8 @@ function renderFiles(): void {
   }
   $("#explorer").innerHTML = h;
   // テキスト欄の見出しとタブの題名、問題をコピーするときのファイル名（F-EDIT-13）
-  S.docPath = active ? (ws.folderPath(active.key) ?? active.name) : "";
+  S.shownPath = active ? ws.folderPath(active.key) : null;
+  S.docPath = S.shownPath ?? active?.name ?? "";
   if (active) {
     $("#docName").innerHTML = esc(active.name) + staleMark(active) + (ws.isDirty(active) ? " ●" : "") + layoutMark(active);
     $("#docName").classList.toggle("pv", !!active.preview);

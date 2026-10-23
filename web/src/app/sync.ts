@@ -14,7 +14,7 @@ import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
 import { LEVEL_MARK, problemLevel } from "./notice-levels";
 import type { CopyRow } from "./problem-copy";
-import { problemClass, type FileProblems } from "./project-problems";
+import { otherFiles, problemClass, type FileProblems } from "./project-problems";
 import { highlight, render } from "./render";
 import { S } from "./state";
 import { curLayout, curView, syncModelViewKind, VK, viewContent } from "./views";
@@ -445,7 +445,8 @@ export function renderProblems(): void {
     ...notes,
     ...sorted.filter((p) => order(p) > 0).map(model),
   ];
-  const others = S.fileProblems.map((f) => f.rows.map((r): ProblemRow => ({
+  const fileProblems = otherFiles(S.fileProblems, S.shownPath);
+  const others = fileProblems.map((f) => f.rows.map((r): ProblemRow => ({
     html: (c) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" data-copy="${c}" class="${r.cls}">${r.mark} ${r.line} 行目：${esc(r.text)}</button>`,
     own: false,
     path: f.path,
@@ -459,7 +460,7 @@ export function renderProblems(): void {
   }
   const head = `<div class="phead"><span>問題 ${rows.length} 件</span><button type="button" class="pcopy" data-levels title="知らせの種類ごとに、エラー・警告・情報・出さないのどれで知らせるかを選ぶ">知らせの重さ…</button><button type="button" class="pcopy" data-copy-all title="一覧のすべての問題を「ファイル名:行: メッセージ」の形でコピーする">すべてコピー</button></div>`;
   let at = mine.length;
-  const files = S.fileProblems.map((f, i) => {
+  const files = fileProblems.map((f, i) => {
     const html = otherFileHtml(f, (others[i] ?? []).map((r, j) => r.html(at + j)));
     at += f.rows.length;
     return html;

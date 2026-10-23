@@ -124,6 +124,8 @@ export interface AppState {
   fileProblems: FileProblems[];
   /** 表示中のファイルの名前（フォルダの中ならフォルダからのパス。問題をコピーするときに使う。F-EDIT-13）。 */
   docPath: string;
+  /** 表示中のファイルのフォルダからのパス（フォルダの外の文書・無題の文書なら null。ほかのファイルの問題から除く。F-FILE-16）。 */
+  shownPath: string | null;
 }
 
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
@@ -184,6 +186,7 @@ export const S: AppState = {
   pluginDiagnostics: [],
   fileProblems: [],
   docPath: "",
+  shownPath: null,
 };
 
 /** 選択と一時的な操作状態をすべて外す。 */
