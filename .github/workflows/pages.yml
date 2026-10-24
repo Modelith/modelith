@@ -55,6 +55,14 @@ jobs:
       # ブラウザは Playwright の公式イメージ（Docker）の中で動かす（scripts/e2e.sh）
       - name: Test and build both channels
         run: scripts/pages-build.sh "${{ steps.pick.outputs.stable }}" "${{ steps.pick.outputs.preview }}" site "/${{ github.event.repository.name }}/"
+      # テストが落ちて公開しなかったときは、失敗時の画面・差分画像・トレースを残し、原因を追えるようにする
+      - name: Upload test results of the failed channel
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pages-test-results
+          path: pages-test-results/
+          if-no-files-found: ignore
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
