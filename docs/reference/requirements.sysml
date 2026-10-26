@@ -368,6 +368,13 @@ package ModelithRequirements {
         requirement def <'F-PROJ-2'> SettingsLevelReq {
             doc /* 設定は「このプロジェクトの設定」（チームで共有。結果に効くもの）と「自分の設定」（このブラウザ。見た目と操作の好み）の 2 段だけにし、1 つの項目はどちらか一方にだけ属する */
         }
+        requirement def <'F-PROJ-4'> DeleteFolderReq {
+            doc /* 開いているフォルダを、中身ごとパソコンから削除できる。取り返しがつかないので 2 回確かめる。
+                   1 回目は、フォルダの名前・中のすべて（モデルのファイル以外も）が消えること・元に戻せないこと・失われる未保存の変更を示す。
+                   2 回目は、フォルダの名前を入力してもらい、合っていたときだけ削除する。
+                   削除したら、そのフォルダのファイルを閉じ、フォルダを閉じて、プロジェクトの一覧から外す。
+                   ブラウザがフォルダそのものの削除に対応していなければ、何も消さずにそのことを知らせる */
+        }
         requirement def <'F-PROJ-3'> ProjectListReq {
             doc /* 開いたフォルダを、最後に開いた順に 10 件まで覚え、プロジェクトの一覧として示す（プロジェクトならプロジェクト名も）。
                    一覧から選んで開き（ブラウザの許可が要れば求める）、開いているフォルダを別のフォルダに切り替えられる。
@@ -529,6 +536,8 @@ package ModelithRequirements {
         #derivation dependency from ProjectReq to ExtendNeed;
         #derivation dependency from SettingsLevelReq to ExtendNeed;
         #derivation dependency from ProjectListReq to FilesNeed;
+        #derivation dependency from DeleteFolderReq to FilesNeed;
+        #derivation dependency from DeleteFolderReq to SafetyNeed;
         #derivation dependency from DocumentLinkReq to TraceNeed;
         #derivation dependency from LinkCheckReq to TraceNeed;
         #derivation dependency from DrawioExportReq to ExportNeed;
@@ -699,6 +708,9 @@ package ModelithRequirements {
         satisfy SettingsLevelReq by Project;
         satisfy ProjectListReq by LocalFolderProvider;
         satisfy ProjectListReq by AppShell;
+        satisfy DeleteFolderReq by LocalFolderProvider;
+        satisfy DeleteFolderReq by Workspace;
+        satisfy DeleteFolderReq by AppShell;
         satisfy DocumentLinkReq by DiagramUI;
         satisfy LinkCheckReq by RuleEngine;
         satisfy DrawioExportReq by Exporter;
