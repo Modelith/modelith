@@ -405,3 +405,6 @@ main[data-nodoc] .toast{z-index:30}
 .modal .lvrow span{flex:1;min-width:0}
 .modal .lvrow select{font-size:13px;color:var(--ink);background:var(--panel2);border:1px solid var(--rule);border-radius:6px;padding:4px 6px}
 .fi.pv .nm,#docName.pv{font-style:italic}
+.fi .rn{flex:1;min-width:0;font:inherit;padding:0 4px;border:1px solid var(--sel);border-radius:3px;background:var(--panel);color:var(--ink)}
+.fi .rn.bad{border-color:var(--err)}
+.rnmsg{margin:0 8px 4px 24px;padding:3px 6px;font-size:12px;color:var(--err);border:1px solid var(--err);border-radius:3px;background:var(--panel);white-space:normal}

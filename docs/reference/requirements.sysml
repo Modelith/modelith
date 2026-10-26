@@ -1266,6 +1266,17 @@ package ModelithRequirements {
                 verify TabsPerFileReq;
             }
         }
+        verification def FileListMenuTest {
+            doc /* web/src/files/entry-names.test.ts：使える名前（空・使えない文字・終わりの「.」・同じ場所の同じ名前・モデルのファイルの拡張子）、親と子のパス、動かした後のパス、パスのコピー、書き換え始めに選ぶ範囲。
+                   web/src/files/local-folder.test.ts：空のフォルダも一覧すること、フォルダを作ること、ファイルとフォルダを中身ごと動かすこと、動かせないとき。
+                   web/src/workspace/workspace.test.ts：名前の変更で配置ファイルも動かし、開いている文書を未保存の変更を残して付け替えること、削除で配置ファイルも消して文書を閉じること、フォルダを作ること。
+                   web/src/app/doc-tabs.test.ts：名前を変えた・消したファイルの図のタブの記憶を移す・消すこと。web/src/app/file-menu.test.ts：メニューの項目と削除を確かめる文。
+                   web/e2e/file-list-menu.spec.ts：右クリックの「名前の変更」・F2・もう一度クリックで名前を書き換えること、使えない名前は理由を示して決めさせず Esc でやめること、
+                   フォルダの名前の変更で開いているファイルが未保存の変更を残して移ること、削除を確かめてから配置ファイルも消して閉じること、新しいフォルダーと新しいファイル、パスのコピー */
+            objective {
+                verify FileListMenuReq;
+            }
+        }
         verification def PreviewOpenTest {
             doc /* web/src/workspace/workspace.test.ts：仮に開いたファイルが次に仮に開くファイルと同じ場所で置き換わること、編集・開き直し・pin で開いたままになること、開いたままのものは仮に開き直しても仮にならないこと、読み込み中に同じファイルをもう一度開いても 1 つだけ開くこと。
                    web/e2e/preview-open.spec.ts：フォルダの一覧で 1 回クリックしたファイルは仮に開き（名前は斜体）、次のファイルと置き換わること、ダブルクリック・編集したファイルは置き換わらないこと、開いているファイルの一覧でダブルクリックすると開いたままになること */

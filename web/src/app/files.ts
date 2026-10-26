@@ -5,7 +5,8 @@ import { readLayout, removeLayoutComment, type ProjectFileResult } from "../core
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "../files/local-folder";
-import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
+import { childPath, movedPath, nameProblem, parentPath, pathFromFolder, renameSelectionEnd } from "../files/entry-names";
+import { hasFolderEdits, hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider, type FileRef } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
 import { filesChange } from "../workspace/project-files";
@@ -25,8 +26,10 @@ import { pluginFolderPath } from "./plugins";
 import { idbBrowserPlugins, idbPluginData } from "../plugins/browser-store";
 import { importedDocName } from "../plugins/transfer";
 import { projectNotice, projectTitle } from "./project";
-import { coreClient, loadLayout, onAnalyzedProject, onLayoutChange, onTextChange, renderProblems, setText, settled, toast, toastFailure } from "./sync";
-import { switchDocTabs } from "./panels";
+import { coreClient, loadLayout, onAnalyzedProject, onLayoutChange, onTextChange, renderProblems, reparse, setText, settled, toast, toastFailure } from "./sync";
+import { moveDocTabsMemory, switchDocTabs } from "./panels";
+import { closeCtx, openCtx, type CtxItem } from "./ctxmenu";
+import { deleteText, FILE_MENU_LABEL, fileMenuItems, type FileMenuAction, type FileMenuTarget } from "./file-menu";
 import { docTabsId } from "./doc-tabs";
 import { fileProblems, fileStatus, folderStatus, statusBadge, statusClass, type FileStatus } from "./project-problems";
 import { scrollEditorTo } from "./render";
@@ -620,6 +623,9 @@ const staleMark = (d: Doc): string => (d.stale || d.layoutStale ? `<span class="
  * 表示中の文書の名前と印をテキスト欄の見出しに、未保存の印をページの題名に出す。
  */
 function renderFiles(): void {
+  // 名前を書き換えている間は描き直さない（入力を消さないため）。書き換え終えたときに描き直す
+  if (renaming !== null) return;
+  const focused = focusedListPath();
   const active = ws.active();
   const docs = ws.list()
     .map((d) => {
@@ -642,6 +648,7 @@ function renderFiles(): void {
     h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">このブラウザではフォルダを開けません（Chrome・Edge で使えます）。「ファイルを開く」で読み込み、保存はダウンロードになります。図の配置ファイル（.layout.json）は、モデルと一緒に選ぶと読み込みます。</div>`;
   }
   $("#explorer").innerHTML = h;
+  if (focused !== null) listRow(focused)?.focus();
   // テキスト欄の見出しとタブの題名、問題をコピーするときのファイル名（F-EDIT-13）
   S.shownPath = active ? ws.folderPath(active.key) : null;
   S.docPath = S.shownPath ?? active?.name ?? "";
@@ -824,12 +831,12 @@ function folderRows(entries: DirEntry[], depth: number, statuses: ReadonlyMap<st
       if (e.kind === "dir") {
         const open = !collapsed.has(e.path);
         const mark = folderStatus(statuses, e.path).errors ? " err" : "";
-        return `<div class="fi${mark}" data-dir="${esc(e.path)}" style="--d:${depth}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1, statuses) : "");
+        return `<div class="fi${mark}" data-dir="${esc(e.path)}" data-path="${esc(e.path)}" tabindex="-1" style="--d:${depth}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1, statuses) : "");
       }
       const doc = ws.list().find((d) => d.ref?.provider === e.ref.provider && d.ref.id === e.ref.id);
       const sel = !!doc && doc.key === active?.key;
       const st = statuses.get(e.ref.path);
-      return `<div class="fi${sel ? " sel" : ""}${statusClass(st)}" data-file="${esc(e.ref.id)}" style="--d:${depth}" title="${esc(e.ref.path)}"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${st ? statusBadge(st) : ""}${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
+      return `<div class="fi${sel ? " sel" : ""}${statusClass(st)}" data-file="${esc(e.ref.id)}" data-path="${esc(e.ref.path)}" tabindex="-1" style="--d:${depth}" title="${esc(e.ref.path)}"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${st ? statusBadge(st) : ""}${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
     })
     .join("");
 }
@@ -868,6 +875,351 @@ function findEntry(entries: DirEntry[], id: string): DirEntry | undefined {
     }
   }
   return undefined;
+}
+
+/* ---- ファイルの一覧のメニューと名前の変更（F-FILE-19） ---- */
+
+/** 右クリック・キーで操作する、ファイルの一覧の行（ファイル・フォルダ・開いたフォルダそのもの）。 */
+type ListTarget = { kind: FileMenuTarget; path: string };
+
+/** 一覧の中で名前を書き換えている行のパス。書き換えていなければ null。その間は一覧を描き直さない（入力を消さないため）。 */
+let renaming: string | null = null;
+/** 選んでいるファイルをもう一度クリックしてから、名前の書き換えを始めるまでの待ち。 */
+let renameTimer: ReturnType<typeof setTimeout> | undefined;
+/** もう一度クリックしてから書き換えを始めるまで（ミリ秒）。この間にもう一度押せばダブルクリックとみなす。 */
+const RENAME_DELAY = 500;
+
+/**
+ * パスの最後の名前を返す。
+ *
+ * @param path フォルダからの相対パス
+ * @returns 最後の名前
+ * @example
+ * baseName("models/a.sysml") // → "a.sysml"
+ * baseName("a.sysml")        // → "a.sysml"
+ */
+const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
+
+/**
+ * 開いているフォルダの、あるフォルダの直下に並んでいるファイルとフォルダの名前（同じ名前を付けないために確かめる）。
+ *
+ * @param dir フォルダのパス（一番上なら ""）
+ * @returns 名前の一覧。フォルダが開かれていない・見つからなければ空
+ * @example
+ * // 一番上に a.sysml と models がある
+ * namesIn("") // → ["a.sysml", "models"]
+ */
+function namesIn(dir: string): string[] {
+  let list = ws.folder()?.entries ?? [];
+  for (const part of dir ? dir.split("/") : []) {
+    const d = list.find((e) => e.kind === "dir" && e.name === part);
+    list = d?.kind === "dir" ? d.children : [];
+  }
+  return list.map((e) => (e.kind === "dir" ? e.name : e.ref.name));
+}
+
+/**
+ * 画面の要素から、ファイルの一覧の行を読み取る。
+ *
+ * @param el 押した・右クリックした要素
+ * @returns 行の種類とパス（開いたフォルダそのものはパス ""）。一覧の行でなければ null
+ * @example
+ * listTarget(models/a.sysml の行の名前) // → { kind: "file", path: "models/a.sysml" }
+ * listTarget(フォルダの見出しの名前)     // → { kind: "root", path: "" }
+ */
+function listTarget(el: EventTarget | null): ListTarget | null {
+  if (!(el instanceof Element)) return null;
+  const row = el.closest<HTMLElement>("[data-path]");
+  const path = row?.dataset["path"];
+  if (row && path !== undefined) return { kind: row.dataset["dir"] !== undefined ? "dir" : "file", path };
+  return el.closest("[data-folder]") ? { kind: "root", path: "" } : null;
+}
+
+/**
+ * ファイルの一覧の行を探す。
+ *
+ * @param path フォルダからの相対パス
+ * @returns 行の要素。描かれていなければ null
+ * @example
+ * listRow("models/a.sysml") // → models/a.sysml の行（data-path="models/a.sysml"）
+ * listRow("none.sysml")     // → null
+ */
+function listRow(path: string): HTMLElement | null {
+  return $("#explorer").querySelector<HTMLElement>(`[data-path="${CSS.escape(path)}"]`);
+}
+
+/**
+ * ファイルの一覧で、キーで操作していた行を描き直した後も選んだままにするために、今フォーカスのある行のパスを返す。
+ *
+ * @returns 行のパス。一覧の行にフォーカスが無ければ null
+ * @example
+ * // models/a.sysml の行を押した後
+ * focusedListPath() // → "models/a.sysml"
+ * // テキスト欄にフォーカスがある
+ * focusedListPath() // → null
+ */
+function focusedListPath(): string | null {
+  const el = document.activeElement;
+  return el instanceof HTMLElement && el.closest("#explorer") ? (el.closest<HTMLElement>("[data-path]")?.dataset["path"] ?? null) : null;
+}
+
+/**
+ * 閉じているフォルダの覚えを、名前を変えた・消したフォルダに合わせる。
+ *
+ * @param from 名前を変えた・消したもののパス
+ * @param to 新しいパス。消したなら null
+ */
+function moveCollapsed(from: string, to: string | null): void {
+  for (const p of [...collapsed]) {
+    const moved = movedPath(p, from, to ?? from);
+    if (moved === null) continue;
+    collapsed.delete(p);
+    if (to !== null) collapsed.add(moved);
+  }
+}
+
+/**
+ * フォルダのファイルを開いて表示する。開けなければ理由をトーストで知らせる。
+ *
+ * @param ref ファイルの参照
+ * @param preview 仮に開くなら true（F-FILE-17）
+ */
+function openListFile(ref: FileRef, preview: boolean): void {
+  // 反映待ちの入力を先に書き込み、編集中の仮のファイルを置き換えないようにする
+  flushEdit();
+  void ws.openRef(ref, { preview }).then(
+    (d) => showDoc(d.key),
+    (err: unknown) => toastFailure("開けませんでした", err),
+  );
+}
+
+/**
+ * ファイルの一覧の右クリックのメニューを出す（F-FILE-19）。フォルダの中を書き換えられないときは出さない。
+ *
+ * @param ev 右クリックのイベント
+ */
+function openListMenu(ev: MouseEvent): void {
+  const f = ws.folder();
+  const t = listTarget(ev.target);
+  if (!f || !t || !hasFolderEdits(f.source) || renaming !== null) return;
+  ev.preventDefault();
+  closeCtx();
+  const items: CtxItem[] = [{ head: t.path ? baseName(t.path) : f.ref.name }];
+  for (const a of fileMenuItems(t.kind)) items.push(a === null ? { sep: true } : { label: FILE_MENU_LABEL[a], act: () => void runListAction(a, t) });
+  openCtx(ev.clientX, ev.clientY, items);
+}
+
+/**
+ * ファイルの一覧のメニューの項目を行う（F-FILE-19）。
+ *
+ * @param a 項目の操作
+ * @param t 右クリックした行
+ */
+async function runListAction(a: FileMenuAction, t: ListTarget): Promise<void> {
+  const f = ws.folder();
+  if (!f) return;
+  if (a === "open") {
+    const ref = findFile(f.entries, t.path);
+    if (ref) openListFile(ref, false);
+  } else if (a === "newFile") await newFileIn(t.path);
+  else if (a === "newFolder") await newFolderIn(t.path);
+  else if (a === "rename") startRename(t);
+  else if (a === "delete") await deleteListEntry(t);
+  else await copyPath(a === "copyPath" ? pathFromFolder(f.ref.name, t.path) : t.path);
+}
+
+/**
+ * フォルダの中に新しいファイルを作って表示する（F-FILE-19）。名前を尋ね、使えない名前なら理由をトーストで知らせる。
+ *
+ * @param dir 作る場所のフォルダのパス（一番上なら ""）
+ */
+async function newFileIn(dir: string): Promise<void> {
+  const r = await ask("新しいファイル", dir ? `フォルダ「${dir}」に作るファイルの名前を入力してください。` : "ファイルの名前を入力してください。", [
+    { id: "cancel", label: "やめる" },
+    { id: "ok", label: "作成", kind: "primary" },
+  ], { value: "untitled.sysml", label: "ファイル名" });
+  if (r?.id !== "ok") return;
+  const problem = nameProblem(r.value, namesIn(dir), { model: true });
+  if (problem) return toast(problem);
+  try {
+    collapsed.delete(dir);
+    showDoc((await ws.createFile(childPath(dir, r.value.trim()), "")).key);
+  } catch (e) {
+    toastFailure("作成できませんでした", e);
+  }
+}
+
+/**
+ * フォルダの中に新しいフォルダーを作る（F-FILE-19）。名前を尋ね、使えない名前なら理由をトーストで知らせる。
+ *
+ * @param dir 作る場所のフォルダのパス（一番上なら ""）
+ */
+async function newFolderIn(dir: string): Promise<void> {
+  const r = await ask("新しいフォルダー", dir ? `フォルダ「${dir}」に作るフォルダーの名前を入力してください。` : "フォルダーの名前を入力してください。", [
+    { id: "cancel", label: "やめる" },
+    { id: "ok", label: "作成", kind: "primary" },
+  ], { value: "", label: "フォルダー名" });
+  if (r?.id !== "ok") return;
+  const problem = nameProblem(r.value, namesIn(dir));
+  if (problem) return toast(problem);
+  try {
+    collapsed.delete(dir);
+    await ws.createFolder(childPath(dir, r.value.trim()));
+  } catch (e) {
+    toastFailure("作成できませんでした", e);
+  }
+}
+
+/**
+ * 一覧の行の名前を、その場で書き換え始める（F-FILE-19）。Enter で決め、Esc でやめる。ほかを押して離れたら、使える名前なら決める。
+ * 使えない名前は、理由を行の下に示して決めさせない。
+ *
+ * @param t 名前を変える行（開いたフォルダそのものは変えない）
+ */
+function startRename(t: ListTarget): void {
+  clearTimeout(renameTimer);
+  const row = t.kind === "root" ? null : listRow(t.path);
+  const nm = row?.querySelector(".nm");
+  if (!row || !nm || renaming !== null) return;
+  const old = baseName(t.path);
+  const siblings = namesIn(parentPath(t.path)).filter((n) => n !== old);
+  const input = document.createElement("input");
+  input.className = "rn";
+  input.value = old;
+  input.spellcheck = false;
+  input.setAttribute("aria-label", "新しい名前");
+  const problem = (): string | null => (input.value.trim() === old ? null : nameProblem(input.value, siblings, { model: t.kind === "file" }));
+  const msg = document.createElement("div");
+  msg.className = "rnmsg";
+  msg.setAttribute("role", "alert");
+  msg.hidden = true;
+  renaming = t.path;
+  nm.replaceWith(input);
+  row.after(msg);
+  const show = (): string | null => {
+    const p = problem();
+    input.classList.toggle("bad", !!p);
+    msg.hidden = !p;
+    msg.textContent = p ?? "";
+    return p;
+  };
+  let done = false;
+  const finish = (commit: boolean): void => {
+    if (done) return;
+    done = true;
+    renaming = null;
+    const name = input.value.trim();
+    renderFiles();
+    if (commit && name !== old && !problem()) void renameListEntry(t.path, childPath(parentPath(t.path), name));
+    else listRow(t.path)?.focus();
+  };
+  input.oninput = show;
+  input.onkeydown = (ev) => {
+    ev.stopPropagation();
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      if (!show()) finish(true);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      finish(false);
+    }
+  };
+  input.onblur = () => finish(!problem());
+  input.onclick = (ev) => ev.stopPropagation();
+  input.focus();
+  input.setSelectionRange(0, renameSelectionEnd(old, t.kind === "file"));
+}
+
+/**
+ * ファイルかフォルダの名前を変える（F-FILE-19）。開いているファイル・配置ファイル・図のタブの記憶・閉じているフォルダの覚えも合わせて移す。
+ * 表示中のファイルが動いたら、コアに新しいパスを伝える。できなければ理由をトーストで知らせる。
+ *
+ * @param from 今のパス
+ * @param to 新しいパス
+ */
+async function renameListEntry(from: string, to: string): Promise<void> {
+  const f = ws.folder();
+  if (!f) return;
+  flushQuiet();
+  try {
+    await ws.renameEntry(from, to);
+  } catch (e) {
+    toastFailure("名前を変更できませんでした", e);
+    return;
+  }
+  moveCollapsed(from, to);
+  moveDocTabsMemory(f.ref.provider, from, to);
+  if (shownKey && ws.docsIn(to).some((d) => d.key === shownKey)) {
+    // 表示中のファイルのパスが変わった（コアは、このパスのファイルをほかのファイルとしてつながない。ADR-0021）
+    coreClient().focus(ws.folderPath(shownKey));
+    reparse(false);
+  }
+  renderFiles();
+  listRow(to)?.focus();
+}
+
+/**
+ * 消すモデルのファイルの隣にある配置ファイルの名前（削除を確かめる文に出す）。
+ *
+ * @param path モデルのファイルのパス
+ * @returns 配置ファイルの名前。無い・読めなければ null
+ * @example
+ * // a.sysml の隣に a.layout.json がある
+ * await layoutBeside("a.sysml") // → "a.layout.json"
+ * // b.sysml の隣に配置ファイルが無い
+ * await layoutBeside("b.sysml") // → null
+ */
+async function layoutBeside(path: string): Promise<string | null> {
+  const f = ws.folder();
+  if (!f || !hasFolderFiles(f.source)) return null;
+  const name = layoutNameFor(baseName(path));
+  return (await f.source.readInFolder(f.ref, childPath(parentPath(path), name))) !== null ? name : null;
+}
+
+/**
+ * ファイルかフォルダを、確かめてから消す（F-FILE-19）。隣の配置ファイルも消し、開いていたファイルを閉じる。できなければ理由をトーストで知らせる。
+ *
+ * @param t 消す行（開いたフォルダそのものは消さない）
+ */
+async function deleteListEntry(t: ListTarget): Promise<void> {
+  const f = ws.folder();
+  if (!f || t.kind === "root") return;
+  flushQuiet();
+  const docs = ws.docsIn(t.path);
+  const unsaved = docs.filter((d) => ws.isDirty(d)).map((d) => d.name);
+  const layout = t.kind === "file" ? await layoutBeside(t.path) : null;
+  const r = await ask("削除", deleteText(baseName(t.path), t.kind === "dir", unsaved, layout), [
+    { id: "cancel", label: "やめる" },
+    { id: "delete", label: "削除", kind: "danger" },
+  ]);
+  if (r?.id !== "delete") return;
+  const wasShown = docs.some((d) => d.key === shownKey);
+  try {
+    await ws.removeEntry(t.path);
+  } catch (e) {
+    toastFailure("削除できませんでした", e);
+    return;
+  }
+  for (const d of docs) dropHistory(d.key);
+  moveCollapsed(t.path, null);
+  moveDocTabsMemory(f.ref.provider, t.path, null);
+  if (wasShown) showCurrent();
+}
+
+/**
+ * パスをクリップボードに入れて知らせる（F-FILE-19）。ブラウザが許さなければ、そのことを知らせる。
+ *
+ * @param text 入れるパス
+ */
+async function copyPath(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    console.error(e);
+    toast("コピーできませんでした。ブラウザがクリップボードへの書き込みを許していません");
+    return;
+  }
+  toast(`「${text}」をコピーしました`);
 }
 
 /**
@@ -1055,17 +1407,32 @@ function initExplorer(): void {
       else collapsed.add(dir);
       return renderFiles();
     }
-    const id = closest(ev, "[data-file]")?.dataset["file"];
+    const row = closest(ev, "[data-file]");
+    const id = row?.dataset["file"];
     const f = ws.folder();
     const e = id && f ? findEntry(f.entries, id) : undefined;
-    if (e?.kind === "file") {
-      // 1 回クリックは仮に開く（F-FILE-17）。反映待ちの入力を先に書き込み、編集中の仮のファイルを置き換えないようにする
-      flushEdit();
-      void ws.openRef(e.ref, { preview: !twice }).then(
-        (d) => showDoc(d.key),
-        (err: unknown) => toastFailure("開けませんでした", err),
-      );
+    if (e?.kind !== "file") return;
+    // 表示中のファイルの名前をもう一度クリックしたら、少し待ってから名前を書き換え始める（F-FILE-19）。待つ間にもう一度押せばダブルクリック
+    if (!twice && row?.classList.contains("sel") && f && hasFolderEdits(f.source)) {
+      renameTimer = setTimeout(() => startRename({ kind: "file", path: e.ref.path }), RENAME_DELAY);
+      return;
     }
+    // 1 回クリックは仮に開く（F-FILE-17）
+    openListFile(e.ref, !twice);
+  });
+  // ほかを押したら、もう一度クリックしたことによる名前の書き換えを始めない
+  document.addEventListener("pointerdown", () => clearTimeout(renameTimer), true);
+  $("#explorer").addEventListener("contextmenu", openListMenu);
+  // 行を選んで F2 で名前の変更、Delete で削除（F-FILE-19）
+  $("#explorer").addEventListener("keydown", (ev) => {
+    const t = listTarget(ev.target);
+    const f = ws.folder();
+    if (!t || t.kind === "root" || !f || !hasFolderEdits(f.source) || renaming !== null || !(ev.target instanceof HTMLElement) || ev.target.dataset["path"] === undefined) return;
+    if (ev.key === "F2") startRename(t);
+    else if (ev.key === "Delete") void deleteListEntry(t);
+    else return;
+    ev.preventDefault();
+    ev.stopPropagation();
   });
 }
 
