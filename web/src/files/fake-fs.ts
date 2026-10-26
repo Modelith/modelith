@@ -72,6 +72,16 @@ export class FakeDir implements DirHandleLike {
   grantOnRequest: PermissionState = "granted";
   /** 他のアプリで消されたことにする（true なら中身を読むと NotFoundError）。 */
   removed = false;
+  /**
+   * このフォルダそのものを消したことにする（中身を空にし、removed にする）。フォルダそのものの削除に対応していないブラウザは、undefined にして試す。
+   *
+   * @example
+   * await dir.remove?.({ recursive: true }) // → dir.removed が true、dir.entries が空
+   */
+  remove?: (opts?: { recursive?: boolean }) => Promise<void> = async () => {
+    this.entries.clear();
+    this.removed = true;
+  };
 
   /**
    * メモリ上の空のフォルダを作る（許可は "granted"）。

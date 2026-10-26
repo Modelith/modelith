@@ -720,3 +720,32 @@ describe("LocalFolderProvider: プロジェクトの一覧（F-PROJ-3）", () =>
     expect(list).toEqual([{ id: "1", name: "project", project: null }]);
   });
 });
+
+describe("LocalFolderProvider: フォルダごとの削除（F-PROJ-4）", () => {
+  it("開いたフォルダを中身ごと消し、プロジェクトの一覧から外す", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "package A;");
+    const folder = await p.pickFolder();
+    // Act
+    if (folder) await p.removeFolder(folder);
+    // Assert
+    expect(root.removed).toBe(true);
+    expect(root.entries.size).toBe(0);
+    expect(await p.recentFolders()).toEqual([]);
+  });
+
+  it("ブラウザがフォルダそのものの削除に対応していなければ、何も消さない（異常系）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "package A;");
+    root.remove = undefined;
+    const folder = await p.pickFolder();
+    // Act
+    const act = folder ? p.removeFolder(folder) : Promise.resolve();
+    // Assert
+    await expect(act).rejects.toThrow("このブラウザでは、フォルダそのものを削除できません");
+    expect(root.entries.has("a.sysml")).toBe(true);
+    expect(await p.recentFolders()).toHaveLength(1);
+  });
+});

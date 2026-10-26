@@ -238,6 +238,15 @@ export interface FolderEdits extends ProviderInfo {
    * await p.moveInFolder(folder, "a.sysml", "b.sysml") // → Error「「b.sysml」は既にあります」（あるとき）
    */
   moveInFolder(folder: FolderRef, from: string, to: string): Promise<void>;
+  /**
+   * 開いたフォルダそのものを、中身ごと消す（F-PROJ-4）。消したら、プロジェクトの一覧からも外す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @returns 消し終えたら解決する Promise。ブラウザがフォルダそのものの削除に対応していなければ、何も消さずに例外（Error）で拒否する
+   * @example
+   * await p.removeFolder(folder) // → フォルダが無くなり、p.recentFolders() からも消える
+   */
+  removeFolder(folder: FolderRef): Promise<void>;
 }
 
 export type FileProvider = ProviderInfo &
