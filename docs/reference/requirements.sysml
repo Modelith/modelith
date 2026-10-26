@@ -1287,6 +1287,15 @@ package ModelithRequirements {
                 verify FileListMenuReq;
             }
         }
+        verification def ProjectListTest {
+            doc /* web/src/files/recent-folders.test.ts：保存しておいた一覧の読み込み（形の合わない項目を捨てる）、開いたフォルダを先頭に置くこと、上限 10 件の境界値、一覧から外す・プロジェクト名の書き換え。
+                   web/src/files/local-folder.test.ts：同じフォルダを 2 度入れないこと、一覧のフォルダを許可を得て開き先頭に移すこと、許可されない・一覧に無いときは開かないこと、外しても中身を消さないこと、以前の版が覚えた前回のフォルダを読むこと。
+                   web/src/workspace/workspace.test.ts：切り替えても閉じても、開いている文書を未保存の変更ごと残すこと。
+                   web/e2e/project-list.spec.ts：見出しのメニューからほかのフォルダに切り替えること、フォルダを閉じると最後に開いた順の一覧を出して開き直せること、一覧から外しても中身を消さないこと、削除されたフォルダは一覧から外すかを尋ねること */
+            objective {
+                verify ProjectListReq;
+            }
+        }
         verification def PreviewOpenTest {
             doc /* web/src/workspace/workspace.test.ts：仮に開いたファイルが次に仮に開くファイルと同じ場所で置き換わること、編集・開き直し・pin で開いたままになること、開いたままのものは仮に開き直しても仮にならないこと、読み込み中に同じファイルをもう一度開いても 1 つだけ開くこと。
                    web/e2e/preview-open.spec.ts：フォルダの一覧で 1 回クリックしたファイルは仮に開き（名前は斜体）、次のファイルと置き換わること、ダブルクリック・編集したファイルは置き換わらないこと、開いているファイルの一覧でダブルクリックすると開いたままになること */

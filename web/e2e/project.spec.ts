@@ -23,7 +23,7 @@ test("F-PROJ-1: modelith.json のあるフォルダを開くと、プロジェ�
   await page.locator('[data-cmd="openFolder"]').click();
   // Assert
   await expect(folderTitle(page)).toHaveText("給水システム");
-  await expect(folderTitle(page)).toHaveAttribute("title", "プロジェクト「給水システム」（フォルダ「project」）");
+  await expect(folderTitle(page)).toHaveAttribute("title", "プロジェクト「給水システム」（フォルダ「project」）\nクリックすると、プロジェクトの一覧（切り替え・フォルダを閉じる）を出します");
   await expect(page.locator('[data-cmd="makeProject"]')).toHaveCount(0);
   await expect(page.locator("#explorer")).not.toContainText("modelith.json"); // ツリーはモデルのファイルだけ
 });
@@ -68,7 +68,7 @@ test("F-PROJ-1: 前回のフォルダを開き直しても、プロジェクト�
   await needPermission(page); // 許可が残っていなければ、フォルダは自動では開き直さない
   await page.reload();
   // Act
-  await page.locator('[data-cmd="reopen"]').click();
+  await page.locator("#explorer [data-recent]").first().click();
   // Assert
   await expect(folderTitle(page)).toHaveText("給水システム");
 });
