@@ -1301,6 +1301,14 @@ package ModelithRequirements {
                 verify FileListMenuReq;
             }
         }
+        verification def DeleteFolderTest {
+            doc /* web/src/files/local-folder.test.ts：開いたフォルダを中身ごと消してプロジェクトの一覧から外すこと、ブラウザが対応していなければ何も消さないこと。
+                   web/src/workspace/workspace.test.ts：中のファイルの文書を閉じてフォルダの外の文書は残すこと、消せなければ何も変えないこと。web/src/app/file-menu.test.ts：1 回目の確かめの文。
+                   web/e2e/delete-folder.spec.ts：2 回確かめて名前が合えば削除し中のファイルを閉じること、名前が合わない・やめるでは何も消さないこと */
+            objective {
+                verify DeleteFolderReq;
+            }
+        }
         verification def ProjectListTest {
             doc /* web/src/files/recent-folders.test.ts：保存しておいた一覧の読み込み（形の合わない項目を捨てる）、開いたフォルダを先頭に置くこと、上限 10 件の境界値、一覧から外す・プロジェクト名の書き換え。
                    web/src/files/local-folder.test.ts：同じフォルダを 2 度入れないこと、一覧のフォルダを許可を得て開き先頭に移すこと、許可されない・一覧に無いときは開かないこと、外しても中身を消さないこと、以前の版が覚えた前回のフォルダを読むこと。

@@ -1,6 +1,6 @@
 // ファイルの一覧の右クリックのメニュー（F-FILE-19）の単体テスト。
 import { describe, expect, it } from "vitest";
-import { FILE_MENU_LABEL, deleteText, fileMenuItems } from "./file-menu";
+import { FILE_MENU_LABEL, deleteFolderText, deleteText, fileMenuItems } from "./file-menu";
 
 describe("fileMenuItems（メニューの項目）", () => {
   it("ファイルは開く・名前の変更・削除・2 つのパスのコピー", () => {
@@ -37,5 +37,19 @@ describe("deleteText（削除を確かめる文）", () => {
   it("配置ファイルも未保存の変更も無ければ、名前と元に戻せないことだけ（境界値）", () => {
     // Assert
     expect(deleteText("a.sysml", false, [], null)).toBe("「a.sysml」を削除しますか？ 削除したものは元に戻せません。");
+  });
+});
+
+describe("deleteFolderText（フォルダごとの削除の確かめ、F-PROJ-4）", () => {
+  it("中のすべてが消えることと、元に戻せないことを示す", () => {
+    // Assert
+    expect(deleteFolderText("project", [])).toBe(
+      "フォルダ「project」を、中のすべてのファイルごとパソコンから削除しますか？ モデルのファイル以外（画像・文書など）も消えます。削除したものは元に戻せません。",
+    );
+  });
+
+  it("失われる未保存の変更を示す", () => {
+    // Assert
+    expect(deleteFolderText("project", ["a.sysml"])).toContain("未保存の変更のある「a.sysml」も閉じ、変更は失われます。");
   });
 });
