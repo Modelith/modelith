@@ -1,6 +1,6 @@
 // ファイルごとの図のタブ（F-VIEW-17）の単体テスト。
 import { describe, expect, it } from "vitest";
-import { docTabsId, firstTabs, nothingInFile, parseDocTabs, rememberDocTabs } from "./doc-tabs";
+import { docTabsId, firstTabs, moveDocTabs, movedDocId, nothingInFile, parseDocTabs, rememberDocTabs } from "./doc-tabs";
 import type { SavedTabs } from "./saved-tabs";
 
 /** id のタブ 1 つの記憶。 */
@@ -61,6 +61,37 @@ describe("rememberDocTabs（記憶に入れる）", () => {
     rememberDocTabs(m, "c", one(3), 2);
     // Assert
     expect([...m.keys()]).toEqual(["b", "c"]);
+  });
+});
+
+describe("moveDocTabs（名前を変えた・消したときの記憶、F-FILE-19）", () => {
+  it("名前を変えたファイルと、名前を変えたフォルダの中のファイルの記憶を移す（順は保つ）", () => {
+    // Arrange
+    const m = new Map([["local:models/a.sysml", one(1)], ["local:b.sysml", one(2)], ["local:models/sub/c.sysml", one(3)]]);
+    // Act
+    moveDocTabs(m, "local", "models", "parts");
+    // Assert
+    expect([...m.keys()]).toEqual(["local:parts/a.sysml", "local:b.sysml", "local:parts/sub/c.sysml"]);
+    expect(m.get("local:parts/a.sysml")).toEqual(one(1));
+  });
+
+  it("消したものの記憶を消し、ほかのプロバイダ・名前の始まりが同じだけのものは残す（境界値）", () => {
+    // Arrange
+    const m = new Map([["local:models/a.sysml", one(1)], ["local:models2/b.sysml", one(2)], ["draft:models", one(3)]]);
+    // Act
+    moveDocTabs(m, "local", "models", null);
+    // Assert
+    expect([...m.keys()]).toEqual(["local:models2/b.sysml", "draft:models"]);
+  });
+});
+
+describe("movedDocId（名前を変えた・消した後の記憶の名前）", () => {
+  it("動かしたものは新しい名前、影響の無いものはそのまま、消したものは null", () => {
+    // Assert
+    expect(movedDocId("local:models/a.sysml", "local", "models", "parts")).toBe("local:parts/a.sysml");
+    expect(movedDocId("local:b.sysml", "local", "models", "parts")).toBe("local:b.sysml");
+    expect(movedDocId("draft:d3", "local", "d3", "x")).toBe("draft:d3");
+    expect(movedDocId("local:a.sysml", "local", "a.sysml", null)).toBeNull();
   });
 });
 

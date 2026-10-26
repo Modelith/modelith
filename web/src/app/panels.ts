@@ -14,7 +14,7 @@ import { PINOPS, selPinInfo } from "./pins";
 import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type Tab, type Tool, type UiPrefs } from "./state";
 import { parseSavedTabs, type SavedTabs } from "./saved-tabs";
-import { firstTabs, parseDocTabs, rememberDocTabs } from "./doc-tabs";
+import { firstTabs, moveDocTabs, movedDocId, parseDocTabs, rememberDocTabs } from "./doc-tabs";
 import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "./svg";
 import { ensureLayout, toast } from "./sync";
 import { defaultFlowContext, flowContexts } from "./action-flow";
@@ -279,7 +279,27 @@ export function saveTabs(): void {
   // 用意する前（記憶をまだ読んでいない）に書くと、ほかのファイルの記憶を消してしまう
   if (shownDocId === null || !tabsReady) return;
   rememberDocTabs(docTabs, shownDocId, { tabs: S.tabs.map((t) => ({ ...t })), active: S.tabId });
+  storeDocTabs();
+}
+
+/** ファイルごとの図のタブの記憶を localStorage に書く（F-VIEW-17）。 */
+function storeDocTabs(): void {
   store.set(DOC_TABS_KEY, JSON.stringify(Object.fromEntries([...docTabs].map(([id, t]) => [id, { tabs: storedTabs(t.tabs), active: t.active }]))));
+}
+
+/**
+ * ファイルかフォルダの名前を変えた・消したときに、その中のファイルの図のタブの記憶を移す・消す（F-FILE-19）。
+ * 表示中のファイルを消したなら、表示中のファイルの記憶の名前を忘れる（消したファイルの記憶を書き戻さないため）。
+ *
+ * @param provider ファイルのプロバイダ
+ * @param from 名前を変えた・消したもののパス
+ * @param to 新しいパス。消したなら null
+ */
+export function moveDocTabsMemory(provider: string, from: string, to: string | null): void {
+  if (!tabsReady) return;
+  if (shownDocId !== null) shownDocId = movedDocId(shownDocId, provider, from, to);
+  moveDocTabs(docTabs, provider, from, to);
+  storeDocTabs();
 }
 
 /**
