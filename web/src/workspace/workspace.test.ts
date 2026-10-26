@@ -1452,3 +1452,62 @@ describe("Workspace: ファイルの一覧の名前の変更・削除・新し�
 function paths(es: DirEntry[]): string[] {
   return es.flatMap((e) => (e.kind === "dir" ? [e.path + "/", ...paths(e.children)] : [e.ref.path]));
 }
+
+describe("Workspace: プロジェクトの一覧（F-PROJ-3）", () => {
+  it("一覧のフォルダに切り替えても、開いている文書は未保存の変更ごと残る", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    s.ws.setText(doc.key, "package A2;");
+    const other = new FakeDir("other");
+    other.put("o.sysml", "package O;");
+    s.api.folder = other;
+    await s.ws.openFolder(s.local);
+    // Act
+    const opened = await s.ws.openRecentFolder(s.local, "1");
+    // Assert
+    expect(opened).toBe(true);
+    expect(s.ws.folder()?.ref.name).toBe("project");
+    expect(s.ws.get(doc.key)?.text).toBe("package A2;");
+  });
+
+  it("一覧に無いフォルダは開かない（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    // Act
+    const opened = await s.ws.openRecentFolder(s.local, "9");
+    // Assert
+    expect(opened).toBe(false);
+    expect(s.ws.folder()).toBeNull();
+  });
+
+  it("フォルダを閉じても、開いている文書は閉じない", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    let changes = 0;
+    s.ws.subscribe(() => changes++);
+    // Act
+    s.ws.closeFolder();
+    // Assert
+    expect(s.ws.folder()).toBeNull();
+    expect(s.ws.get(doc.key)).toBeDefined();
+    expect(s.ws.projectTexts().size).toBe(0);
+    expect(changes).toBe(1);
+  });
+
+  it("フォルダを開いていなければ、閉じても何も知らせない（境界値）", () => {
+    // Arrange
+    const s = setup();
+    let changes = 0;
+    s.ws.subscribe(() => changes++);
+    // Act
+    s.ws.closeFolder();
+    // Assert
+    expect(changes).toBe(0);
+  });
+});
