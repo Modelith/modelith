@@ -1511,3 +1511,43 @@ describe("Workspace: プロジェクトの一覧（F-PROJ-3）", () => {
     expect(changes).toBe(0);
   });
 });
+
+describe("Workspace: フォルダごとの削除（F-PROJ-4）", () => {
+  it("フォルダを消し、中のファイルの文書を閉じ、フォルダの外の文書は残す", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const inFolder = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    const untitled = s.ws.newUntitled("untitled-1.sysml", "package U;");
+    // Act
+    await s.ws.deleteFolder();
+    // Assert
+    expect(s.root.removed).toBe(true);
+    expect(s.ws.folder()).toBeNull();
+    expect(s.ws.get(inFolder.key)).toBeUndefined();
+    expect(s.ws.get(untitled.key)).toBeDefined();
+  });
+
+  it("消せなければ、文書もフォルダもそのまま（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    s.root.remove = undefined;
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    // Act
+    const act = s.ws.deleteFolder();
+    // Assert
+    await expect(act).rejects.toThrow("フォルダそのものを削除できません");
+    expect(s.ws.folder()?.ref.name).toBe("project");
+    expect(s.ws.get(doc.key)).toBeDefined();
+  });
+
+  it("フォルダを開いていなければ拒否する（境界値）", async () => {
+    // Arrange
+    const s = setup();
+    // Act・Assert
+    await expect(s.ws.deleteFolder()).rejects.toThrow("フォルダが開かれていません");
+  });
+});

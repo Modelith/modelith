@@ -56,6 +56,8 @@ export interface DirHandleLike extends HandleBase {
   removeEntry(name: string, opts?: { recursive?: boolean }): Promise<void>;
   /** h がこのフォルダの中にあれば、フォルダからのパスの各部分（無ければ null）。 */
   resolve(h: FileHandleLike): Promise<string[] | null>;
+  /** このフォルダそのものを消す（recursive なら中身ごと）。対応していないブラウザには無い。 */
+  remove?(opts?: { recursive?: boolean }): Promise<void>;
 }
 const PICKER_TYPES = [{ description: "SysML v2 / KerML", accept: { "text/plain": [".sysml", ".kerml"] } }];
 export interface FsApi {
@@ -598,6 +600,24 @@ export class LocalFolderProvider
     if (!dir || !((await exists(dir, name)) || (await childDir(dir, name)))) return false;
     await dir.removeEntry(name, { recursive: true });
     return true;
+  }
+
+  /**
+   * 開いたフォルダそのものを、中身ごと消し、プロジェクトの一覧からも外す（F-PROJ-4）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @returns 消し終えたら解決する Promise。ブラウザがフォルダそのものの削除に対応していなければ、何も消さずに例外（Error）で拒否する
+   * @example
+   * await p.removeFolder(folder) // → フォルダが無くなり、p.recentFolders() からも消える
+   * await p.removeFolder(folder) // → Error「このブラウザでは、フォルダそのものを削除できません」（対応していないとき）
+   */
+  async removeFolder(folder: FolderRef): Promise<void> {
+    const dir = this.folderHandle(folder);
+    if (!dir.remove) throw new Error("このブラウザでは、フォルダそのものを削除できません");
+    await dir.remove({ recursive: true });
+    this.folders.delete(folder.id);
+    const id = this.recentIds.get(folder.id);
+    if (id !== undefined) await this.forgetRecent(id);
   }
 
   /**

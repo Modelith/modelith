@@ -60,3 +60,18 @@ export function deleteText(name: string, isDir: boolean, unsaved: readonly strin
   notes.push("削除したものは元に戻せません。");
   return `${ask} ${notes.join("")}`;
 }
+
+/**
+ * 開いているフォルダを中身ごと削除するときの、1 回目の確かめの文（F-PROJ-4）。消えるものと、元に戻せないこと、失われる未保存の変更を示す。
+ *
+ * @param name フォルダの名前
+ * @param unsaved 未保存の変更のある、開いているファイルの名前（フォルダの中のもの）
+ * @returns ダイアログの本文
+ * @example
+ * deleteFolderText("project", [])
+ * // → "フォルダ「project」を、中のすべてのファイルごとパソコンから削除しますか？ モデルのファイル以外（画像・文書など）も消えます。削除したものは元に戻せません。"
+ */
+export function deleteFolderText(name: string, unsaved: readonly string[]): string {
+  const lost = unsaved.length ? `未保存の変更のある${unsaved.map((n) => `「${n}」`).join("")}も閉じ、変更は失われます。` : "";
+  return `フォルダ「${name}」を、中のすべてのファイルごとパソコンから削除しますか？ モデルのファイル以外（画像・文書など）も消えます。${lost}削除したものは元に戻せません。`;
+}

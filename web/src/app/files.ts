@@ -29,7 +29,7 @@ import { projectNotice, projectTitle } from "./project";
 import { coreClient, loadLayout, onAnalyzedProject, onLayoutChange, onTextChange, renderProblems, reparse, setText, settled, toast, toastFailure } from "./sync";
 import { moveDocTabsMemory, switchDocTabs } from "./panels";
 import { closeCtx, openCtx, type CtxItem } from "./ctxmenu";
-import { deleteText, FILE_MENU_LABEL, fileMenuItems, type FileMenuAction, type FileMenuTarget } from "./file-menu";
+import { deleteFolderText, deleteText, FILE_MENU_LABEL, fileMenuItems, type FileMenuAction, type FileMenuTarget } from "./file-menu";
 import { docTabsId } from "./doc-tabs";
 import { fileProblems, fileStatus, folderStatus, statusBadge, statusClass, type FileStatus } from "./project-problems";
 import { scrollEditorTo } from "./render";
@@ -329,9 +329,48 @@ async function openProjectMenu(anchor: Element): Promise<void> {
   for (const r of others) items.push({ label: recentLabel(r), act: () => void openRecent(r.id) });
   if (others.length) items.push({ sep: true });
   items.push({ label: "ほかのフォルダを開く…", act: () => void openFolder() }, { label: "フォルダを閉じる", act: () => void closeFolder() });
+  // 取り返しがつかないので、ほかの項目から離して最後に置く（F-PROJ-4）
+  if (hasFolderEdits(f.source)) items.push({ sep: true }, { label: "このフォルダを削除…", act: () => void deleteOpenFolder() });
   closeCtx();
   const r = anchor.getBoundingClientRect();
   openCtx(r.left, r.bottom + 2, items);
+}
+
+/**
+ * 開いているフォルダを中身ごと削除する（F-PROJ-4）。取り返しがつかないので 2 回確かめる。
+ * 1 回目は消えるものと元に戻せないことを示し、2 回目はフォルダの名前を入力してもらい、合っていたときだけ削除する。
+ * 削除したら、そのフォルダのファイルを閉じてフォルダを閉じる。できなければ理由をトーストで知らせる。
+ */
+async function deleteOpenFolder(): Promise<void> {
+  const f = ws.folder();
+  if (!f) return;
+  flushQuiet();
+  const name = f.ref.name;
+  const docs = ws.list().filter((d) => ws.folderPath(d.key) !== null);
+  const unsaved = docs.filter((d) => ws.isDirty(d)).map((d) => d.name);
+  const first = await ask("フォルダを削除", deleteFolderText(name, unsaved), [
+    { id: "cancel", label: "やめる" },
+    { id: "next", label: "削除に進む", kind: "danger" },
+  ]);
+  if (first?.id !== "next") return;
+  const second = await ask("本当に削除しますか", `確かめのため、削除するフォルダの名前「${name}」を入力してください。`, [
+    { id: "cancel", label: "やめる" },
+    { id: "delete", label: "削除する", kind: "danger" },
+  ], { value: "", label: "フォルダの名前" });
+  if (second?.id !== "delete") return;
+  if (second.value.trim() !== name) return toast("フォルダの名前が合わないので、削除しませんでした");
+  const wasShown = docs.some((d) => d.key === shownKey);
+  try {
+    await ws.deleteFolder();
+  } catch (e) {
+    toastFailure("フォルダを削除できませんでした", e);
+    return;
+  }
+  for (const d of docs) dropHistory(d.key);
+  folderChanged();
+  if (wasShown) showCurrent();
+  toast(`フォルダ「${name}」を削除しました`);
+  await refreshRecents();
 }
 
 /**
