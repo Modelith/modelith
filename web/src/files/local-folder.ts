@@ -9,6 +9,7 @@ import {
   type FileLocator,
   type FilePicker,
   type FileRef,
+  type FolderEdits,
   type FolderFiles,
   type FolderRef,
   type FolderSource,
@@ -23,11 +24,12 @@ import {
 /* ---- 使う API の範囲だけを型にする（lib.dom に無い部分を含むため） ---- */
 export interface FileLike {
   text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
   readonly lastModified: number;
   readonly size: number;
 }
 export interface WritableStreamLike {
-  write(data: string): Promise<void>;
+  write(data: string | ArrayBuffer): Promise<void>;
   close(): Promise<void>;
 }
 export type PermissionState = "granted" | "denied" | "prompt";
@@ -116,7 +118,9 @@ export function segmentsOf(path: string): string[] {
   return segs;
 }
 
-export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles, FolderTrees {
+export class LocalFolderProvider
+  implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles, FolderTrees, FolderEdits
+{
   readonly id = "local";
   readonly label = "このコンピュータ";
   private readonly files = new Map<string, FileHandleLike>();
@@ -462,6 +466,59 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
   }
 
   /**
+   * フォルダの中に空のフォルダを作る（途中のフォルダも作る。F-FILE-19）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path 作るフォルダの、フォルダからの相対パス（`/` 区切り）
+   * @returns 作り終えたら解決する Promise。名前が空・フォルダの外を指す・同じ名前のファイルかフォルダが既にあるときは例外（Error）で拒否する
+   * @example
+   * await p.createFolder(folder, "models/parts") // → models/parts ができる
+   * await p.createFolder(folder, "models")       // → Error「「models」は既にあります」（あるとき）
+   */
+  async createFolder(folder: FolderRef, path: string): Promise<void> {
+    const segs = segmentsOf(path);
+    const name = segs.pop();
+    if (!name) throw new Error("フォルダ名がありません");
+    let dir = this.folderHandle(folder);
+    for (const s of segs) dir = await dir.getDirectoryHandle(s, { create: true });
+    if ((await exists(dir, name)) || (await childDir(dir, name))) throw new Error(`「${path}」は既にあります`);
+    await dir.getDirectoryHandle(name, { create: true });
+  }
+
+  /**
+   * フォルダの中のファイルかフォルダを、別のパスへ動かす（名前の変更。F-FILE-19）。
+   * ブラウザには、ローカルのフォルダの中で動かす方法がそろっていないので、中身をバイトのまま写してから元を消す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param from 動かすもののパス
+   * @param to 動かした先のパス（途中のフォルダは作る）
+   * @returns 動かし終えたら解決する Promise。from が無い・to に既に何かある・to が from の中を指す・フォルダの外を指すときは例外（Error）で拒否する
+   * @example
+   * await p.moveInFolder(folder, "a.sysml", "b.sysml") // → a.sysml が b.sysml になる
+   * await p.moveInFolder(folder, "models", "parts")    // → models の中身ごと parts になる
+   * await p.moveInFolder(folder, "models", "models/x") // → Error「「models」を、その中へは動かせません」
+   */
+  async moveInFolder(folder: FolderRef, from: string, to: string): Promise<void> {
+    const src = segmentsOf(from);
+    const dst = segmentsOf(to);
+    const srcName = src.pop();
+    const dstName = dst.pop();
+    if (!srcName || !dstName) throw new Error("動かす場所がありません");
+    if (to.startsWith(`${from}/`)) throw new Error(`「${from}」を、その中へは動かせません`);
+    const root = this.folderHandle(folder);
+    const srcDir = await descend(root, src);
+    const file = srcDir && (await exists(srcDir, srcName)) ? await srcDir.getFileHandle(srcName) : null;
+    const dir = srcDir && !file ? await childDir(srcDir, srcName) : null;
+    if (!srcDir || (!file && !dir)) throw new Error(`「${from}」が見つかりません`);
+    let dstDir = root;
+    for (const s of dst) dstDir = await dstDir.getDirectoryHandle(s, { create: true });
+    if ((await exists(dstDir, dstName)) || (await childDir(dstDir, dstName))) throw new Error(`「${to}」は既にあります`);
+    if (file) await copyFile(file, await dstDir.getFileHandle(dstName, { create: true }));
+    else if (dir) await copyDir(dir, await dstDir.getDirectoryHandle(dstName, { create: true }));
+    await srcDir.removeEntry(srcName, { recursive: true });
+  }
+
+  /**
    * フォルダから開いたファイルなら、そのフォルダと、ファイルのある階層までのパスを返す。
    *
    * @param ref ファイルの参照
@@ -556,13 +613,13 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
   }
 
   /**
-   * フォルダの中を再帰でたどり、モデルのファイルを含むフォルダだけを、フォルダ → ファイルの順・名前順で返す。
+   * フォルダの中を再帰でたどり、モデルのファイルを含むフォルダと中が空のフォルダ（作ったばかりのフォルダ。F-FILE-1）を、フォルダ → ファイルの順・名前順で返す。
    * 見つけたファイルは `rootId/パス` の id で覚える（一覧し直しても同じ id になる）。
    *
    * @param dir たどるフォルダ
    * @param rootId 開いたフォルダの id
    * @param prefix dir までのパス（開いたフォルダの直下なら空文字列）
-   * @returns ツリー。隠しフォルダ・node_modules・モデルのファイルを含まないフォルダは除く
+   * @returns ツリー。隠しフォルダ・node_modules・モデルのファイルを含まない（空ではない）フォルダは除く
    * @example
    * paths(await this.walk(root, "dir:1", "")) // → ["sub/", "sub/c.sysml", "a.kerml", "b.sysml"]
    * await this.walk(empty, "dir:1", "")       // → []
@@ -575,7 +632,7 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
       if (h.kind === "directory") {
         if (SKIP_DIR.test(h.name)) continue;
         const children = await this.walk(h, rootId, path);
-        if (children.length) dirs.push({ kind: "dir", name: h.name, path, children });
+        if (children.length || (await isEmptyDir(h))) dirs.push({ kind: "dir", name: h.name, path, children });
       } else if (isModelFile(h.name)) {
         files.push({ kind: "file", ref: this.addFile(h, `${rootId}/${path}`, path) });
       }
@@ -628,6 +685,20 @@ async function exists(dir: DirHandleLike, name: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * フォルダの中が空か（ファイルもフォルダも無いか）。
+ *
+ * @param dir フォルダ
+ * @returns 何も無ければ true
+ * @example
+ * await isEmptyDir(created) // → true（作ったばかりのフォルダ）
+ * await isEmptyDir(docs)    // → false（README.md だけがある）
+ */
+async function isEmptyDir(dir: DirHandleLike): Promise<boolean> {
+  for await (const _ of dir.values()) return false;
+  return true;
 }
 
 /**
@@ -689,6 +760,32 @@ async function readAll(dir: DirHandleLike, prefix: string, out: Record<string, s
     }
     if (Object.keys(out).length >= MAX_TREE_FILES) throw new Error(`ファイルが多すぎます（${MAX_TREE_FILES} 件まで）。プラグインのフォルダを選んでください`);
     out[path] = await (await h.getFile()).text();
+  }
+}
+
+/**
+ * ファイルの中身を、バイトのまま別のファイルへ写す。
+ *
+ * @param from 写すファイル
+ * @param to 写し先のファイル（中身を置き換える）
+ */
+async function copyFile(from: FileHandleLike, to: FileHandleLike): Promise<void> {
+  const data = await (await from.getFile()).arrayBuffer();
+  const w = await to.createWritable();
+  await w.write(data);
+  await w.close();
+}
+
+/**
+ * フォルダの中身を、下のフォルダまですべて別のフォルダへ写す（隠しファイルも含め、何も除かない）。
+ *
+ * @param from 写すフォルダ
+ * @param to 写し先のフォルダ（空のフォルダを渡す）
+ */
+async function copyDir(from: DirHandleLike, to: DirHandleLike): Promise<void> {
+  for await (const h of from.values()) {
+    if (h.kind === "directory") await copyDir(h, await to.getDirectoryHandle(h.name, { create: true }));
+    else await copyFile(h, await to.getFileHandle(h.name, { create: true }));
   }
 }
 

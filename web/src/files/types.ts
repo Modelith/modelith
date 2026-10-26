@@ -192,9 +192,40 @@ export interface FolderTrees extends ProviderInfo {
   removeInFolder(folder: FolderRef, path: string): Promise<boolean>;
 }
 
+/** 開いたフォルダの中に空のフォルダを作り、ファイルやフォルダを動かせる（ファイルの一覧の名前の変更と新しいフォルダー。F-FILE-19）。 */
+export interface FolderEdits extends ProviderInfo {
+  /**
+   * フォルダの中に空のフォルダを作る（途中のフォルダも作る）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path 作るフォルダの、フォルダからの相対パス（`/` 区切り）
+   * @returns 作り終えたら解決する Promise。同じ名前のファイルかフォルダが既にあるときは例外（Error）で拒否する
+   * @example
+   * await p.createFolder(folder, "models/parts") // → models/parts が空のフォルダとしてできる
+   * await p.createFolder(folder, "models")       // → Error「「models」は既にあります」（あるとき）
+   */
+  createFolder(folder: FolderRef, path: string): Promise<void>;
+  /**
+   * フォルダの中のファイルかフォルダを、別のパスへ動かす（名前の変更）。フォルダは中身ごと動かす。中身はバイトのまま写す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param from 動かすもののパス
+   * @param to 動かした先のパス（途中のフォルダは作る）
+   * @returns 動かし終えたら解決する Promise。from が無い・to に既に何かある・to が from の中を指すときは例外（Error）で拒否する
+   * @example
+   * await p.moveInFolder(folder, "a.sysml", "b.sysml") // → a.sysml が b.sysml になる
+   * await p.moveInFolder(folder, "models", "parts")    // → models の中身ごと parts になる
+   * await p.moveInFolder(folder, "a.sysml", "b.sysml") // → Error「「b.sysml」は既にあります」（あるとき）
+   */
+  moveInFolder(folder: FolderRef, from: string, to: string): Promise<void>;
+}
+
 export type FileProvider = ProviderInfo &
   Partial<
-    Omit<Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator & FolderFiles & FolderTrees, keyof ProviderInfo>
+    Omit<
+      Readable & Writable & FolderSource & FilePicker & SaveAsTarget & RecentFolders & SiblingFiles & FileLocator & FolderFiles & FolderTrees & FolderEdits,
+      keyof ProviderInfo
+    >
   >;
 
 /**
@@ -303,6 +334,17 @@ export const hasFolderFiles = (p: FileProvider): p is FolderFiles =>
  */
 export const hasFolderTrees = (p: FileProvider): p is FolderTrees =>
   typeof p.pickOtherFolder === "function" && typeof p.readTree === "function" && typeof p.removeInFolder === "function";
+/**
+ * フォルダの中にフォルダを作り、ファイルやフォルダを動かせるプロバイダか（`createFolder`・`moveInFolder` がそろっているか）。
+ *
+ * @param p プロバイダ
+ * @returns 両方あれば true（型を FolderEdits に絞る）
+ * @example
+ * hasFolderEdits(new LocalFolderProvider(…)) // → true
+ * hasFolderEdits(new BrowserFileProvider(io)) // → false
+ */
+export const hasFolderEdits = (p: FileProvider): p is FolderEdits =>
+  typeof p.createFolder === "function" && typeof p.moveInFolder === "function";
 /**
  * モデルとして扱うファイルか（拡張子が .sysml か .kerml。大文字・小文字は区別しない）。
  *

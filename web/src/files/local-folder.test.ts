@@ -49,6 +49,18 @@ describe("LocalFolderProvider: フォルダ（F-FILE-1）", () => {
     expect(list).toEqual([]);
   });
 
+  it("中が空のフォルダ（作ったばかりのフォルダ）は出す（F-FILE-19）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "");
+    await root.getDirectoryHandle("new", { create: true });
+    const folder = await p.pickFolder();
+    // Act
+    const list = await p.list(folder!);
+    // Assert
+    expect(paths(list)).toEqual(["new/", "a.sysml"]);
+  });
+
   it("フォルダの選択をやめたら null（異常系: キャンセル）", async () => {
     // Arrange
     const { api, p } = setup();
@@ -534,6 +546,74 @@ describe("LocalFolderProvider: プラグインのフォルダを写す・消す�
     await expect(p.removeInFolder(folder, "x/..")).rejects.toThrow("フォルダの外を指しています");
     await expect(p.removeInFolder(folder, "")).rejects.toThrow("消す場所がありません");
     expect((root.entries.get("a.sysml") as FakeFile).content).toBe("keep");
+  });
+});
+
+describe("LocalFolderProvider: フォルダを作る・動かす（F-FILE-19）", () => {
+  it("空のフォルダを作る（途中のフォルダも作る）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    const folder = await p.pickFolder();
+    // Act
+    await p.createFolder(folder!, "models/parts");
+    // Assert
+    expect(paths(await p.list(folder!))).toEqual(["models/", "models/parts/"]);
+    expect(root.entries.get("models")).toBeInstanceOf(FakeDir);
+  });
+
+  it("同じ名前のファイルかフォルダがあれば作らない（異常系）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("models/a.sysml", "");
+    root.put("x.sysml", "");
+    const folder = await p.pickFolder();
+    // Act・Assert
+    await expect(p.createFolder(folder!, "models")).rejects.toThrow("「models」は既にあります");
+    await expect(p.createFolder(folder!, "x.sysml")).rejects.toThrow("「x.sysml」は既にあります");
+    await expect(p.createFolder(folder!, "")).rejects.toThrow("フォルダ名がありません");
+  });
+
+  it("ファイルの名前を変える（中身はそのまま、元のファイルは無くなる）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "package A;");
+    const folder = await p.pickFolder();
+    // Act
+    await p.moveInFolder(folder!, "a.sysml", "b.sysml");
+    // Assert
+    expect(paths(await p.list(folder!))).toEqual(["b.sysml"]);
+    expect((root.entries.get("b.sysml") as FakeFile).content).toBe("package A;");
+  });
+
+  it("フォルダの名前を変えると、モデルのファイル以外も含めて中身ごと動かす", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("models/a.sysml", "package A;");
+    root.put("models/sub/b.sysml", "package B;");
+    root.put("models/notes.md", "メモ");
+    const folder = await p.pickFolder();
+    // Act
+    await p.moveInFolder(folder!, "models", "parts");
+    // Assert
+    expect(paths(await p.list(folder!))).toEqual(["parts/", "parts/sub/", "parts/sub/b.sysml", "parts/a.sysml"]);
+    expect(root.entries.has("models")).toBe(false);
+    expect(await p.readInFolder(folder!, "parts/notes.md")).toBe("メモ");
+    expect(await p.readInFolder(folder!, "parts/sub/b.sysml")).toBe("package B;");
+  });
+
+  it("動かす先に何かある・元が無い・自分の中へ動かすときは動かさない（異常系）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "A");
+    root.put("b.sysml", "B");
+    root.put("models/c.sysml", "");
+    const folder = await p.pickFolder();
+    // Act・Assert
+    await expect(p.moveInFolder(folder!, "a.sysml", "b.sysml")).rejects.toThrow("「b.sysml」は既にあります");
+    await expect(p.moveInFolder(folder!, "none.sysml", "x.sysml")).rejects.toThrow("「none.sysml」が見つかりません");
+    await expect(p.moveInFolder(folder!, "models", "models/inner")).rejects.toThrow("「models」を、その中へは動かせません");
+    expect((root.entries.get("a.sysml") as FakeFile).content).toBe("A");
+    expect((root.entries.get("b.sysml") as FakeFile).content).toBe("B");
   });
 });
 

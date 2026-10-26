@@ -1,6 +1,7 @@
 // ファイルごとの図のタブ（F-VIEW-17）。どのファイルにどのタブを持たせるかと、記憶の読み書きの形を決める。判断だけの純粋関数。
 // localStorage への読み書きと、タブの切り替えは panels.ts が行う。
 
+import { movedPath } from "../files/entry-names";
 import { parseSavedTabs, type SavedTabs } from "./saved-tabs";
 import type { ViewContent } from "./views";
 
@@ -80,6 +81,47 @@ export function rememberDocTabs(all: Map<string, SavedTabs>, id: string, tabs: S
     if (all.size <= max) break;
     all.delete(old);
   }
+}
+
+/**
+ * ファイルかフォルダの名前を変えた・消したときに、その中のファイルの記憶を移す・消す（F-FILE-19）。記憶の順は保つ。
+ *
+ * @param all 記憶したファイルごとのタブ（書き換える）
+ * @param provider ファイルのプロバイダ（記憶の名前の前半）
+ * @param from 名前を変えた・消したもののパス
+ * @param to 新しいパス。消したなら null
+ * @example
+ * moveDocTabs(m, "local", "models", "parts") // m の "local:models/a.sysml" → "local:parts/a.sysml"
+ * moveDocTabs(m, "local", "a.sysml", null)   // m から "local:a.sysml" を消す
+ */
+export function moveDocTabs(all: Map<string, SavedTabs>, provider: string, from: string, to: string | null): void {
+  const next: [string, SavedTabs][] = [];
+  for (const [id, tabs] of all) {
+    const moved = movedDocId(id, provider, from, to);
+    if (moved !== null) next.push([moved, tabs]);
+  }
+  all.clear();
+  for (const [id, tabs] of next) all.set(id, tabs);
+}
+
+/**
+ * ファイルかフォルダの名前を変えた・消した後の、記憶の名前（F-FILE-19）。
+ *
+ * @param id 記憶の名前（docTabsId）
+ * @param provider 名前を変えた・消したもののプロバイダ
+ * @param from 名前を変えた・消したもののパス
+ * @param to 新しいパス。消したなら null
+ * @returns 新しい記憶の名前。影響が無ければ id のまま、消したものなら null
+ * @example
+ * movedDocId("local:models/a.sysml", "local", "models", "parts") // → "local:parts/a.sysml"
+ * movedDocId("local:b.sysml", "local", "models", "parts")        // → "local:b.sysml"（影響なし）
+ * movedDocId("local:a.sysml", "local", "a.sysml", null)          // → null（消した）
+ */
+export function movedDocId(id: string, provider: string, from: string, to: string | null): string | null {
+  const prefix = `${provider}:`;
+  const moved = id.startsWith(prefix) ? movedPath(id.slice(prefix.length), from, to ?? from) : null;
+  if (moved === null) return id;
+  return to === null ? null : prefix + moved;
 }
 
 /**

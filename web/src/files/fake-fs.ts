@@ -38,7 +38,8 @@ export class FakeFile implements FileHandleLike {
    */
   async getFile(): Promise<FileLike> {
     const { content, lastModified } = this;
-    return { text: async () => content, lastModified, size: new TextEncoder().encode(content).length };
+    const bytes = new TextEncoder().encode(content);
+    return { text: async () => content, arrayBuffer: async () => bytes.slice().buffer, lastModified, size: bytes.length };
   }
 
   /**
@@ -52,8 +53,8 @@ export class FakeFile implements FileHandleLike {
   async createWritable(): Promise<WritableStreamLike> {
     let buf = "";
     return {
-      write: async (d: string) => {
-        buf += d;
+      write: async (d: string | ArrayBuffer) => {
+        buf += typeof d === "string" ? d : new TextDecoder().decode(d);
       },
       close: async () => {
         this.content = buf;

@@ -3,7 +3,9 @@
 
 import {
   ConflictError,
+  hasFolderEdits,
   hasFolderFiles,
+  hasFolderTrees,
   hasSiblingFiles,
   isReadable,
   isWritable,
@@ -17,6 +19,7 @@ import {
   type RecentFolders,
   type SaveAsTarget,
 } from "../files/types";
+import { childPath, movedPath, parentPath } from "../files/entry-names";
 import { modelFiles, projectTexts } from "./project-files";
 import { findFile, hasContent, restoreOrder, sessionFrom, type Session, type SessionStore } from "./session";
 
@@ -866,6 +869,112 @@ export class Workspace {
     f.entries = await f.source.list(f.ref);
     await this.readModelFiles();
     return this.openRef(ref);
+  }
+
+  /**
+   * 開いているフォルダの中に空のフォルダを作り、一覧し直す（ファイルの一覧の「新しいフォルダー」。F-FILE-19）。
+   *
+   * @param path 作るフォルダの、フォルダからの相対パス
+   * @returns 作り終えたら解決する Promise。フォルダが開かれていない・作れない・同じ名前があるときは例外（Error）で拒否する
+   * @example
+   * await ws.createFolder("models/parts") // → ws.folder() の一覧に models/parts が出る
+   * await ws.createFolder("models")       // → Error「「models」は既にあります」（あるとき）
+   */
+  async createFolder(path: string): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    if (!hasFolderEdits(f.source)) throw new Error("このフォルダにはフォルダを作れません");
+    await f.source.createFolder(f.ref, path);
+    await this.refreshFolder();
+  }
+
+  /**
+   * 開いているフォルダの文書のうち、path のファイルか、path のフォルダの中のファイルのもの（名前の変更・削除の前に、影響を確かめる。F-FILE-19）。
+   *
+   * @param path フォルダからの相対パス（ファイルかフォルダ）
+   * @returns 該当する文書（開いた順）。フォルダが開かれていなければ空
+   * @example
+   * ws.docsIn("models")         // → [models/a.sysml の文書, models/sub/b.sysml の文書]
+   * ws.docsIn("models/a.sysml") // → [models/a.sysml の文書]
+   */
+  docsIn(path: string): Doc[] {
+    return this.docs.filter((d) => {
+      const at = this.folderPath(d.key);
+      return at !== null && movedPath(at, path, path) !== null;
+    });
+  }
+
+  /**
+   * 開いているフォルダの中のファイルかフォルダの名前を変える（動かす。F-FILE-19）。
+   * モデルのファイルなら隣の配置ファイル（名前.layout.json）も合わせて動かす（フォルダなら中身ごと動く）。
+   * 動かしたファイルを開いていれば、文書を新しいファイルに付け替える（未保存の変更はそのまま残す）。
+   *
+   * @param from 名前を変えるもののパス
+   * @param to 新しいパス
+   * @returns 動かし終えたら解決する Promise。フォルダが開かれていない・動かせない・動かす先に何かあるときは例外（Error）で拒否する
+   * @example
+   * await ws.renameEntry("a.sysml", "b.sysml") // → b.sysml と b.layout.json になり、a.sysml の文書は b.sysml の文書になる
+   * await ws.renameEntry("models", "parts")    // → parts/… になり、中の文書も付け替わる
+   */
+  async renameEntry(from: string, to: string): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    const source = f.source;
+    if (!hasFolderEdits(source)) throw new Error("このフォルダでは名前を変えられません");
+    const docs = this.docsIn(from);
+    const isFile = modelFiles(f.entries).some((r) => r.path === from);
+    await source.moveInFolder(f.ref, from, to);
+    if (isFile && hasFolderFiles(source)) {
+      const layoutFrom = childPath(parentPath(from), layoutNameFor(from.slice(from.lastIndexOf("/") + 1)));
+      const layoutTo = childPath(parentPath(to), layoutNameFor(to.slice(to.lastIndexOf("/") + 1)));
+      if (layoutFrom !== layoutTo && (await source.readInFolder(f.ref, layoutFrom)) !== null) await source.moveInFolder(f.ref, layoutFrom, layoutTo);
+    }
+    f.entries = await source.list(f.ref);
+    await this.readModelFiles();
+    const moved = modelFiles(f.entries);
+    for (const doc of docs) {
+      const path = doc.ref && movedPath(doc.ref.path, from, to);
+      const ref = path === null || path === undefined ? undefined : moved.find((r) => r.path === path);
+      if (ref) await this.relink(doc, ref);
+    }
+    this.changed();
+  }
+
+  /**
+   * 開いているフォルダの中のファイルかフォルダを消す（F-FILE-19）。モデルのファイルなら隣の配置ファイルも消す。
+   * 消したファイルを開いていれば、その文書を閉じる（未保存の変更は失われるので、呼ぶ前に利用者に確かめる）。
+   *
+   * @param path 消すもののパス
+   * @returns 消し終えたら解決する Promise。フォルダが開かれていない・消せないときは例外（Error）で拒否する
+   * @example
+   * await ws.removeEntry("a.sysml") // → a.sysml と a.layout.json が無くなり、a.sysml の文書が閉じる
+   * await ws.removeEntry("models")  // → models が中身ごと無くなる
+   */
+  async removeEntry(path: string): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    const source = f.source;
+    if (!hasFolderTrees(source)) throw new Error("このフォルダでは削除できません");
+    const docs = this.docsIn(path);
+    const isFile = modelFiles(f.entries).some((r) => r.path === path);
+    if (!(await source.removeInFolder(f.ref, path))) throw new Error(`「${path}」が見つかりません`);
+    if (isFile) await source.removeInFolder(f.ref, childPath(parentPath(path), layoutNameFor(path.slice(path.lastIndexOf("/") + 1))));
+    for (const doc of docs) this.close(doc.key);
+    await this.refreshFolder();
+  }
+
+  /**
+   * 動かしたファイルの新しい参照に、文書を付け替える。中身と版を読み直し、未保存の変更が無ければ中身も合わせる（配置も同じ）。
+   *
+   * @param doc 付け替える文書
+   * @param ref 動かした先のファイルの参照
+   */
+  private async relink(doc: Doc, ref: FileRef): Promise<void> {
+    const dirty = this.isDirty(doc);
+    const cur = await this.readable(ref).read(ref);
+    const layout = await this.readLayout(ref);
+    Object.assign(doc, { ref, name: ref.name, version: cur.version, stale: false, layoutStale: false, layoutVersion: layout.layoutVersion, layoutHome: layout.layoutHome });
+    if (!dirty) Object.assign(doc, { text: cur.text, savedText: cur.text, layout: layout.layout, savedLayout: layout.savedLayout });
   }
 
   /**

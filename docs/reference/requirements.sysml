@@ -224,7 +224,8 @@ package ModelithRequirements {
 
         // ---- ファイル ----------------------------------------------
         requirement def <'F-FILE-1'> OpenFolderReq {
-            doc /* ローカルのフォルダを開き、中の .sysml / .kerml ファイルをエクスプローラーにツリーで表示する */
+            doc /* ローカルのフォルダを開き、中の .sysml / .kerml ファイルをエクスプローラーにツリーで表示する。
+                   モデルのファイルを含むフォルダと、中が空のフォルダ（作ったばかりのフォルダ）を並べ、モデルのファイルの無いフォルダは並べない */
         }
         requirement def <'F-FILE-2'> OpenSaveReq {
             doc /* ファイルを開いて編集し、元のファイルに上書き保存できる（Ctrl+S） */
@@ -287,6 +288,16 @@ package ModelithRequirements {
             doc /* 保存先のあるファイルを、未保存の変更が無い状態から編集し始めたとき（テキストの入力・図の操作）、開いた後に他のアプリで変わっていないかを確かめる。
                    変わっていれば、ファイル名を示して、読み直す（いま入力した変更は捨てる）か、このまま編集する（保存するときに F-FILE-7 で選ぶ）かを選ばせる。
                    画面に戻ったときの確かめ（F-FILE-8）が働かない場合（Modelith を表示したまま、ほかのアプリでファイルが変わった）にも、古い中身に編集を重ねないため */
+        }
+        requirement def <'F-FILE-19'> FileListMenuReq {
+            doc /* フォルダを開いているとき、ファイルの一覧のファイルとフォルダを右クリックすると、メニューを出す。
+                   ファイル：開く・名前の変更・削除・パスのコピー・相対パスのコピー。フォルダ：新しいファイル・新しいフォルダー・名前の変更・削除・パスのコピー・相対パスのコピー。
+                   名前は、選んでいるファイル（表示中のファイル）の名前をもう一度クリック・F2・メニューの「名前の変更」で、一覧の中で書き換える（Enter で決め、Esc でやめる）。
+                   使えない名前（空・「/」などを含む・同じ場所に同じ名前がある）は、理由を示して決めさせない。
+                   名前の変更では、開いているファイル（未保存の変更もそのまま）と、隣の配置ファイル（名前.layout.json）・ファイルごとの図のタブの記憶も合わせて移す。
+                   フォルダの名前の変更では、中のファイルをすべて新しい名前のフォルダへ写してから、古いフォルダを消す。
+                   削除は、消すものの名前と、元に戻せないことを示して確かめてから行い、隣の配置ファイルも消し、開いていたファイルを閉じる。未保存の変更があればそのことも示す。
+                   パスのコピーは開いたフォルダの名前から始まるパス（ブラウザはパソコンの中のフォルダの場所を教えないため）、相対パスのコピーはフォルダの中からのパスをクリップボードに入れる */
         }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
@@ -494,6 +505,7 @@ package ModelithRequirements {
         #derivation dependency from ProjectProblemsReq to FilesNeed;
         #derivation dependency from PreviewOpenReq to FilesNeed;
         #derivation dependency from EditStartCheckReq to SafetyNeed;
+        #derivation dependency from FileListMenuReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -660,6 +672,8 @@ package ModelithRequirements {
         satisfy PreviewOpenReq by AppShell;
         satisfy EditStartCheckReq by Workspace;
         satisfy EditStartCheckReq by AppShell;
+        satisfy FileListMenuReq by Workspace;
+        satisfy FileListMenuReq by AppShell;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
@@ -1250,6 +1264,17 @@ package ModelithRequirements {
                    web/e2e/tabs-per-file.spec.ts：初めて開くファイルは「すべて」から始め、ファイルを切り替えると最後に開いていたタブに戻ること、要素の無い図でも切り替えずに案内し「すべて」の図も開けること、読み込み直してもファイルごとのタブが戻ること */
             objective {
                 verify TabsPerFileReq;
+            }
+        }
+        verification def FileListMenuTest {
+            doc /* web/src/files/entry-names.test.ts：使える名前（空・使えない文字・終わりの「.」・同じ場所の同じ名前・モデルのファイルの拡張子）、親と子のパス、動かした後のパス、パスのコピー、書き換え始めに選ぶ範囲。
+                   web/src/files/local-folder.test.ts：空のフォルダも一覧すること、フォルダを作ること、ファイルとフォルダを中身ごと動かすこと、動かせないとき。
+                   web/src/workspace/workspace.test.ts：名前の変更で配置ファイルも動かし、開いている文書を未保存の変更を残して付け替えること、削除で配置ファイルも消して文書を閉じること、フォルダを作ること。
+                   web/src/app/doc-tabs.test.ts：名前を変えた・消したファイルの図のタブの記憶を移す・消すこと。web/src/app/file-menu.test.ts：メニューの項目と削除を確かめる文。
+                   web/e2e/file-list-menu.spec.ts：右クリックの「名前の変更」・F2・もう一度クリックで名前を書き換えること、使えない名前は理由を示して決めさせず Esc でやめること、
+                   フォルダの名前の変更で開いているファイルが未保存の変更を残して移ること、削除を確かめてから配置ファイルも消して閉じること、新しいフォルダーと新しいファイル、パスのコピー */
+            objective {
+                verify FileListMenuReq;
             }
         }
         verification def PreviewOpenTest {
