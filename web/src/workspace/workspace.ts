@@ -836,6 +836,24 @@ export class Workspace {
   }
 
   /**
+   * 開いているフォルダを中身ごと消す（F-PROJ-4）。消したら、そのフォルダのファイルの文書を閉じ、フォルダを閉じて、変更を知らせる。
+   * 未保存の変更は失われるので、呼ぶ前に利用者に確かめる。
+   *
+   * @returns 消し終えたら解決する Promise。フォルダが開かれていない・消せないときは、何も変えずに例外（Error）で拒否する
+   * @example
+   * await ws.deleteFolder() // → フォルダが無くなり、ws.folder() が null、中のファイルの文書も閉じる
+   */
+  async deleteFolder(): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    if (!hasFolderEdits(f.source)) throw new Error("このフォルダは削除できません");
+    const docs = this.docs.filter((d) => this.folderPath(d.key) !== null);
+    await f.source.removeFolder(f.ref);
+    for (const d of docs) this.close(d.key);
+    this.closeFolder();
+  }
+
+  /**
    * 開いているフォルダを閉じ、変更を知らせる（F-PROJ-3）。開いている文書は閉じない（未保存の変更を失わないため）。
    * フォルダが開かれていなければ何もしない。
    *
