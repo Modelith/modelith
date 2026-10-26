@@ -368,6 +368,13 @@ package ModelithRequirements {
         requirement def <'F-PROJ-2'> SettingsLevelReq {
             doc /* 設定は「このプロジェクトの設定」（チームで共有。結果に効くもの）と「自分の設定」（このブラウザ。見た目と操作の好み）の 2 段だけにし、1 つの項目はどちらか一方にだけ属する */
         }
+        requirement def <'F-PROJ-3'> ProjectListReq {
+            doc /* 開いたフォルダを、最後に開いた順に 10 件まで覚え、プロジェクトの一覧として示す（プロジェクトならプロジェクト名も）。
+                   一覧から選んで開き（ブラウザの許可が要れば求める）、開いているフォルダを別のフォルダに切り替えられる。
+                   一覧から外せる（フォルダとその中身は消さない）。開いているフォルダを閉じられる。
+                   切り替えても閉じても、開いているファイルは開いたまま残す（未保存の変更を失わないため）。
+                   開けなかった（移動・削除された）フォルダは、そのことを知らせる */
+        }
 
         // ---- 文書へのリンク（ADR-0019） --------------------------------
         requirement def <'F-LINK-1'> DocumentLinkReq {
@@ -519,6 +526,7 @@ package ModelithRequirements {
         #derivation dependency from ProjectReq to FilesNeed;
         #derivation dependency from ProjectReq to ExtendNeed;
         #derivation dependency from SettingsLevelReq to ExtendNeed;
+        #derivation dependency from ProjectListReq to FilesNeed;
         #derivation dependency from DocumentLinkReq to TraceNeed;
         #derivation dependency from LinkCheckReq to TraceNeed;
         #derivation dependency from DrawioExportReq to ExportNeed;
@@ -687,6 +695,8 @@ package ModelithRequirements {
         satisfy MissingPluginReq by PluginHost;
         satisfy ProjectReq by Project;
         satisfy SettingsLevelReq by Project;
+        satisfy ProjectListReq by LocalFolderProvider;
+        satisfy ProjectListReq by AppShell;
         satisfy DocumentLinkReq by DiagramUI;
         satisfy LinkCheckReq by RuleEngine;
         satisfy DrawioExportReq by Exporter;
@@ -1275,6 +1285,15 @@ package ModelithRequirements {
                    フォルダの名前の変更で開いているファイルが未保存の変更を残して移ること、削除を確かめてから配置ファイルも消して閉じること、新しいフォルダーと新しいファイル、パスのコピー */
             objective {
                 verify FileListMenuReq;
+            }
+        }
+        verification def ProjectListTest {
+            doc /* web/src/files/recent-folders.test.ts：保存しておいた一覧の読み込み（形の合わない項目を捨てる）、開いたフォルダを先頭に置くこと、上限 10 件の境界値、一覧から外す・プロジェクト名の書き換え。
+                   web/src/files/local-folder.test.ts：同じフォルダを 2 度入れないこと、一覧のフォルダを許可を得て開き先頭に移すこと、許可されない・一覧に無いときは開かないこと、外しても中身を消さないこと、以前の版が覚えた前回のフォルダを読むこと。
+                   web/src/workspace/workspace.test.ts：切り替えても閉じても、開いている文書を未保存の変更ごと残すこと。
+                   web/e2e/project-list.spec.ts：見出しのメニューからほかのフォルダに切り替えること、フォルダを閉じると最後に開いた順の一覧を出して開き直せること、一覧から外しても中身を消さないこと、削除されたフォルダは一覧から外すかを尋ねること */
+            objective {
+                verify ProjectListReq;
             }
         }
         verification def PreviewOpenTest {

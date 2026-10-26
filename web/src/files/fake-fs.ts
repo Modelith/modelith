@@ -272,28 +272,28 @@ export class FakeFsApi implements FsApi {
 }
 
 export class MemoryHandleStore implements HandleStore {
-  readonly map = new Map<string, DirHandleLike>();
+  readonly map = new Map<string, unknown>();
 
   /**
-   * 覚えたフォルダを引く。
+   * 覚えた値を引く。
    *
    * @param key 覚えたときのキー
-   * @returns フォルダのハンドル。無ければ undefined
+   * @returns 覚えた値。無ければ undefined
    * @example
-   * await store.get("recent") // → FakeDir（set("recent", dir) の後）
-   * await store.get("nope")   // → undefined
+   * await store.get("recent-folder") // → FakeDir（set("recent-folder", dir) の後）
+   * await store.get("nope")          // → undefined
    */
-  async get(key: string): Promise<DirHandleLike | undefined> {
+  async get(key: string): Promise<unknown> {
     return this.map.get(key);
   }
 
   /**
-   * フォルダを覚える（同じキーがあれば置き換える）。
+   * 値を覚える（同じキーがあれば置き換える）。
    *
    * @param key キー
-   * @param value 覚えるフォルダのハンドル
+   * @param value 覚える値
    */
-  async set(key: string, value: DirHandleLike): Promise<void> {
+  async set(key: string, value: unknown): Promise<void> {
     this.map.set(key, value);
   }
 }

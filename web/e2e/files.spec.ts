@@ -177,7 +177,7 @@ test("F-FILE-9: 再読み込みの後、前回のフォルダを開き直せる"
   await needPermission(page);
   await page.reload();
   // Act
-  await page.locator('[data-cmd="reopen"]').click();
+  await page.locator("#explorer [data-recent]").first().click();
   // Assert
   await expect(page.locator('#explorer [data-file][title="a.sysml"]')).toBeVisible();
 });
@@ -412,7 +412,7 @@ test("F-FILE-13: 設定「起動時にサンプルを開く」を有効にする
   // Assert
   await expect(page.locator("#docName")).toHaveText("electric-kettle.sysml");
   expect(await openDocs(page)).toEqual(["electric-kettle.sysml"]);
-  await expect(page.locator('[data-cmd="reopen"]')).toBeVisible();
+  await expect(page.locator("#explorer [data-recent]").first()).toBeVisible();
   await page.locator("#fileMenu summary").click();
   await expect(page.locator("#startSample")).toBeChecked();
 });

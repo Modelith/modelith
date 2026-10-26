@@ -6,7 +6,7 @@ import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "../files/local-folder";
 import { childPath, movedPath, nameProblem, parentPath, pathFromFolder, renameSelectionEnd } from "../files/entry-names";
-import { hasFolderEdits, hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider, type FileRef } from "../files/types";
+import { hasFolderEdits, hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider, type FileRef, type RecentFolder } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
 import { filesChange } from "../workspace/project-files";
@@ -52,7 +52,8 @@ let local: LocalFolderProvider | null = null;
 let browser: BrowserFileProvider;
 let auto: AutoSaver;
 let autoSave = false;
-let recentName: string | null = null;
+/** プロジェクトの一覧（開いたフォルダ。最後に開いた順。F-PROJ-3）。フォルダを開いていないときのエクスプローラーに出す。 */
+let recents: RecentFolder[] = [];
 /**
  * テキスト欄に表示している文書。編集はこの文書に書き込む。
  * ワークスペースの「表示中」は開く操作の途中で先に切り替わるため、それに頼ると入力の反映待ちが別の文書に入る。
@@ -223,22 +224,114 @@ async function openFile(): Promise<void> {
 }
 
 /**
- * フォルダを開き、エクスプローラーを表示する（F-FILE-1・F-FILE-9）。フォルダを扱えないブラウザでは何もしない。
- *
- * @param reopen 前回のフォルダを開き直すなら true（既定 false：新しく選ばせる）
+ * フォルダを選ばせて開き、エクスプローラーを表示する（F-FILE-1）。開いたフォルダはプロジェクトの一覧の先頭に入る（F-PROJ-3）。
+ * フォルダを扱えないブラウザでは何もしない。
  */
-async function openFolder(reopen = false): Promise<void> {
+async function openFolder(): Promise<void> {
   if (!local) return;
   try {
-    const ok = reopen ? await ws.reopenFolder(local) : await ws.openFolder(local);
-    if (ok) {
-      endResumeAsk();
-      showSide("files");
-    }
-    else if (reopen) toast("フォルダを開く許可が得られませんでした");
+    if (await ws.openFolder(local)) folderChanged();
   } catch (e) {
     toastFailure("フォルダを開けませんでした", e);
   }
+  await refreshRecents();
+}
+
+/**
+ * プロジェクトの一覧のフォルダを開く（今のフォルダと切り替える。F-PROJ-3）。許可が得られなければトーストで知らせる。
+ * 開けなかった（移動・削除された）ときは、そのことを示して、一覧から外すかを尋ねる。
+ *
+ * @param id 一覧の項目の名前
+ */
+async function openRecent(id: string): Promise<void> {
+  if (!local) return;
+  flushQuiet();
+  const name = recents.find((r) => r.id === id)?.name ?? "";
+  try {
+    if (await ws.openRecentFolder(local, id)) folderChanged();
+    else toast("フォルダを開く許可が得られませんでした");
+  } catch (e) {
+    console.error(e);
+    const r = await ask("フォルダを開けません", `フォルダ「${name}」を開けませんでした。移動したか、削除された可能性があります。プロジェクトの一覧から外しますか？ フォルダの中身には触れません。`, [
+      { id: "keep", label: "そのままにする" },
+      { id: "forget", label: "一覧から外す", kind: "primary" },
+    ]);
+    if (r?.id === "forget") await local.forgetRecent(id);
+  }
+  await refreshRecents();
+}
+
+/**
+ * 開いているフォルダを閉じる（F-PROJ-3）。開いているファイルは開いたまま残す。
+ */
+async function closeFolder(): Promise<void> {
+  flushQuiet();
+  ws.closeFolder();
+  folderChanged();
+  await refreshRecents();
+}
+
+/**
+ * プロジェクトの一覧からフォルダを外す（F-PROJ-3）。フォルダとその中身には触れない。
+ *
+ * @param id 一覧の項目の名前
+ */
+async function forgetRecent(id: string): Promise<void> {
+  await local?.forgetRecent(id);
+  await refreshRecents();
+}
+
+/**
+ * 開いているフォルダが変わった（開いた・切り替えた・閉じた）後に、前のフォルダの表示の覚えを捨て、ファイルの一覧を出す。
+ * 表示中のファイルが、新しいフォルダの中のファイルかどうかをコアに伝え直す。
+ */
+function folderChanged(): void {
+  endResumeAsk();
+  collapsed.clear();
+  showSide("files");
+  if (shownKey) {
+    coreClient().focus(ws.folderPath(shownKey));
+    reparse(false);
+  }
+}
+
+/** プロジェクトの一覧を読み直し、エクスプローラーを描き直す（F-PROJ-3）。 */
+async function refreshRecents(): Promise<void> {
+  recents = (await local?.recentFolders()) ?? [];
+  renderFiles();
+}
+
+/**
+ * プロジェクトの一覧に出す名前。プロジェクト名がフォルダ名と違えば、フォルダ名を添える。
+ *
+ * @param r 一覧の項目
+ * @returns 出す名前
+ * @example
+ * recentLabel({ id: "1", name: "water", project: "給水" })  // → "給水（フォルダ water）"
+ * recentLabel({ id: "2", name: "water", project: null })    // → "water"
+ * recentLabel({ id: "3", name: "water", project: "water" }) // → "water"
+ */
+const recentLabel = (r: RecentFolder): string => (r.project && r.project !== r.name ? `${r.project}（フォルダ ${r.name}）` : r.name);
+
+/**
+ * 開いているフォルダの見出しを押したときの、プロジェクトの一覧のメニューを出す（F-PROJ-3）。
+ * ほかのフォルダに切り替える・ほかのフォルダを開く・フォルダを閉じる。
+ *
+ * @param x メニューを出す位置の x（画面の座標、px）
+ * @param y メニューを出す位置の y（画面の座標、px）
+ */
+async function openProjectMenu(x: number, y: number): Promise<void> {
+  const f = ws.folder();
+  if (!local || !f) return;
+  recents = await local.recentFolders();
+  const current = local.recentIdOf(f.ref);
+  const others = recents.filter((r) => r.id !== current);
+  const items: CtxItem[] = [{ head: "プロジェクトの一覧" }];
+  for (const r of others) items.push({ label: recentLabel(r), act: () => void openRecent(r.id) });
+  if (others.length) items.push({ sep: true });
+  items.push({ label: "ほかのフォルダを開く…", act: () => void openFolder() }, { label: "フォルダを閉じる", act: () => void closeFolder() });
+  closeCtx();
+  openCtx(x, y, items);
 }
 
 /**
@@ -512,6 +605,8 @@ function syncProject(): void {
   projectKey = key;
   project = null;
   if (key === null || text === null) {
+    // プロジェクトでなくなった（設定ファイルを消した）ら、プロジェクトの一覧の名前もフォルダ名に戻す（F-PROJ-3）
+    if (f && f.source === local) void local.setRecentProject(f.ref, null);
     // プロジェクトでなければ、知らせは既定の重さ（F-EDIT-11）
     void coreClient().setLevels({});
     void reloadPlugins();
@@ -523,6 +618,8 @@ function syncProject(): void {
       // 読み取る間に、別のフォルダを開いた・設定ファイルが変わった
       if (projectKey !== key) return;
       project = result;
+      // プロジェクトの一覧に、プロジェクト名を出せるように覚える（F-PROJ-3）
+      if (f && f.source === local) void local.setRecentProject(f.ref, result.project ? projectTitle(f.ref.name, result.project) : null);
       // プロジェクトで選んだ知らせの重さで解析し直す（F-EDIT-11）
       void coreClient().setLevels(result.project?.levels ?? {});
       const notice = projectNotice(result.problems);
@@ -642,8 +739,13 @@ function renderFiles(): void {
     h += f.entries.length ? folderRows(f.entries, 0, fileStatuses()) : `<div class="msg">モデルのファイル（.sysml）がありません。</div>`;
   } else if (local) {
     h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">フォルダを開くと、中の .sysml ファイルを一覧して編集・上書き保存できます。<br><button data-cmd="openFolder" class="primary">フォルダを開く</button>`;
-    if (recentName) h += `<br><button data-cmd="reopen">前回のフォルダ「${esc(recentName)}」を開く</button>`;
     h += `</div>`;
+    if (recents.length) {
+      h += `<div class="sec"><span class="grow">プロジェクトの一覧</span></div>`;
+      h += recents
+        .map((r) => `<div class="fi" data-recent="${esc(r.id)}" title="${esc(`フォルダ「${r.name}」を開きます`)}" style="--d:0"><span class="ic">▣</span><span class="nm">${esc(recentLabel(r))}</span><button class="x" data-forget="${esc(r.id)}" aria-label="一覧から外す" title="一覧から外す（フォルダの中身には触れません）">×</button></div>`)
+        .join("");
+    }
   } else {
     h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">このブラウザではフォルダを開けません（Chrome・Edge で使えます）。「ファイルを開く」で読み込み、保存はダウンロードになります。図の配置ファイル（.layout.json）は、モデルと一緒に選ぶと読み込みます。</div>`;
   }
@@ -805,7 +907,7 @@ function folderHeader(): string {
   const make = f.projectText === null && hasFolderFiles(f.source)
     ? `<div class="mkproj"><button data-cmd="makeProject" title="プロジェクト名やプラグインなどの設定を、チームで共有できるようにします（設定ファイル ${PROJECT_FILE} を作成します）">プロジェクトにする</button></div>`
     : "";
-  return `<div class="sec"><span class="grow" data-folder title="${esc(title)}">${esc((named ?? f.ref.name).toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}${pluginExplorerHtml()}`;
+  return `<div class="sec"><span class="grow" data-folder title="${esc(`${title}\nクリックすると、プロジェクトの一覧（切り替え・フォルダを閉じる）を出します`)}">${esc((named ?? f.ref.name).toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}${pluginExplorerHtml()}`;
 }
 
 /**
@@ -1392,7 +1494,12 @@ function initExplorer(): void {
     if (c === "plugins") return openPlugins();
     if (c === "addPlugin") return void addPlugin();
     if (c === "openFolder") return void openFolder();
-    if (c === "reopen") return void openFolder(true);
+    // プロジェクトの一覧（F-PROJ-3）：行を押せば開き、「×」で一覧から外す。開いているフォルダの見出しを押せば、切り替えのメニュー
+    const forget = closest(ev, "[data-forget]")?.dataset["forget"];
+    if (forget !== undefined) return void forgetRecent(forget);
+    const recent = closest(ev, "[data-recent]")?.dataset["recent"];
+    if (recent !== undefined) return void openRecent(recent);
+    if (closest(ev, "[data-folder]")) return void openProjectMenu(ev.clientX, ev.clientY);
     // ダブルクリック（2 回目のクリック）は、仮に開いたファイルを開いたままにする（F-FILE-17）。
     // 1 回目のクリックで一覧を描き直すため dblclick は届かないことがあり、クリックの回数で見分ける
     const twice = ev.detail >= 2;
@@ -1613,8 +1720,5 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   window.addEventListener("focus", () => void checkExternal());
   await start();
   renderFiles();
-  void local?.recentFolder().then((name) => {
-    recentName = name;
-    renderFiles();
-  });
+  void refreshRecents();
 }

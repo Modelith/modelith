@@ -16,10 +16,12 @@ import {
   type FolderTrees,
   type Readable,
   type RecentAccess,
+  type RecentFolder,
   type RecentFolders,
   type SiblingFiles,
   type Writable,
 } from "./types";
+import { forgetRecent, parseRecent, pushRecent, withProject, type RecentEntry } from "./recent-folders";
 
 /* ---- 使う API の範囲だけを型にする（lib.dom に無い部分を含むため） ---- */
 export interface FileLike {
@@ -37,6 +39,8 @@ interface HandleBase {
   readonly name: string;
   queryPermission?(opts: { mode: "readwrite" }): Promise<PermissionState>;
   requestPermission?(opts: { mode: "readwrite" }): Promise<PermissionState>;
+  /** other と同じファイルかフォルダか（同じフォルダを一覧に 2 度入れないため）。 */
+  isSameEntry?(other: HandleBase): Promise<boolean>;
 }
 export interface FileHandleLike extends HandleBase {
   readonly kind: "file";
@@ -59,10 +63,10 @@ export interface FsApi {
   showOpenFilePicker(opts: { types: typeof PICKER_TYPES; multiple: false }): Promise<FileHandleLike[]>;
 }
 
-/** ハンドルを保存する場所（前回のフォルダを覚えるため。ブラウザでは IndexedDB）。 */
+/** ハンドルを保存する場所（開いたフォルダの一覧を覚えるため。ブラウザでは IndexedDB）。値は構造化複製できるもの。 */
 export interface HandleStore {
-  get(key: string): Promise<DirHandleLike | undefined>;
-  set(key: string, value: DirHandleLike): Promise<void>;
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
 }
 
 /**
@@ -98,7 +102,22 @@ const isAbort = (e: unknown): boolean => e instanceof Error && e.name === "Abort
 const versionOf = (f: FileLike): string => `${f.lastModified}:${f.size}`;
 /** 一覧に出さないフォルダ。 */
 const SKIP_DIR = /^(\.|node_modules$)/;
+/** 以前の版が、前回のフォルダを 1 つだけ覚えていたキー（一覧が無いときに、一覧の最初の 1 件として読む）。 */
 const RECENT_KEY = "recent-folder";
+/** 開いたフォルダの一覧（プロジェクトの一覧。F-PROJ-3）を覚えるキー。 */
+const RECENT_LIST_KEY = "recent-folders";
+
+/**
+ * フォルダのハンドルらしい値か（保存しておいた一覧を読むときに確かめる）。
+ *
+ * @param v 調べる値
+ * @returns kind が "directory" で名前のあるオブジェクトなら true
+ * @example
+ * isDirHandle(new FakeDir("project")) // → true
+ * isDirHandle({ name: "x" })          // → false
+ */
+const isDirHandle = (v: unknown): v is DirHandleLike =>
+  typeof v === "object" && v !== null && (v as DirHandleLike).kind === "directory" && typeof (v as DirHandleLike).name === "string";
 /** readTree で読むファイルの数の上限（プラグインではない大きなフォルダを選んだときに、読み続けないため）。 */
 export const MAX_TREE_FILES = 200;
 
@@ -125,6 +144,8 @@ export class LocalFolderProvider
   readonly label = "このコンピュータ";
   private readonly files = new Map<string, FileHandleLike>();
   private readonly folders = new Map<string, DirHandleLike>();
+  /** 開いたフォルダの参照の id → プロジェクトの一覧の項目の名前。 */
+  private readonly recentIds = new Map<string, string>();
   private seq = 0;
 
   /**
@@ -156,8 +177,7 @@ export class LocalFolderProvider
       if (isAbort(e)) return null;
       throw e;
     }
-    await this.store.set(RECENT_KEY, dir);
-    return this.addFolder(dir);
+    return this.remember(dir);
   }
 
   /**
@@ -169,7 +189,7 @@ export class LocalFolderProvider
    * await p.recentFolder() // → null（初回）
    */
   async recentFolder(): Promise<string | null> {
-    return (await this.store.get(RECENT_KEY))?.name ?? null;
+    return (await this.recentList())[0]?.handle.name ?? null;
   }
 
   /**
@@ -182,7 +202,7 @@ export class LocalFolderProvider
    * await p.recentAccess() // → "none"（初回）
    */
   async recentAccess(): Promise<RecentAccess> {
-    const dir = await this.store.get(RECENT_KEY);
+    const dir = (await this.recentList())[0]?.handle;
     if (!dir) return "none";
     return (await dir.queryPermission?.({ mode: "readwrite" })) ?? "denied";
   }
@@ -198,11 +218,126 @@ export class LocalFolderProvider
    * await p.reopenRecent({ ask: false })   // → null（許可を求めないと開けない）
    */
   async reopenRecent(opts: { ask?: boolean } = {}): Promise<FolderRef | null> {
-    const dir = await this.store.get(RECENT_KEY);
-    if (!dir) return null;
+    const first = (await this.recentList())[0];
+    return first ? this.openEntry(first.handle, opts) : null;
+  }
+
+  /**
+   * 開いたフォルダの一覧（プロジェクトの一覧。F-PROJ-3）を返す。
+   *
+   * @returns 最後に開いた順の一覧。覚えていなければ空
+   * @example
+   * await p.recentFolders() // → [{ id: "2", name: "project", project: "給水" }, { id: "1", name: "old", project: null }]
+   * await p.recentFolders() // → []（初回）
+   */
+  async recentFolders(): Promise<RecentFolder[]> {
+    return (await this.recentList()).map((e) => ({ id: e.id, name: e.handle.name, project: e.project }));
+  }
+
+  /**
+   * 一覧のフォルダを開き、一覧の先頭に移す（F-PROJ-3）。許可が無ければ求める（利用者の操作から呼ぶ）。
+   *
+   * @param id 一覧の項目の名前
+   * @returns 開いたフォルダの参照。一覧に無い・許可されなければ null
+   * @example
+   * await p.openRecent("1") // → { provider: "local", id: "dir:3", name: "old" }
+   * await p.openRecent("9") // → null（一覧に無い）
+   */
+  async openRecent(id: string): Promise<FolderRef | null> {
+    const entry = (await this.recentList()).find((e) => e.id === id);
+    return entry ? this.openEntry(entry.handle, {}) : null;
+  }
+
+  /**
+   * フォルダを一覧から外す（F-PROJ-3）。フォルダそのものには触れない。
+   *
+   * @param id 一覧の項目の名前
+   * @example
+   * await p.forgetRecent("1") // → 一覧から id "1" が無くなる
+   */
+  async forgetRecent(id: string): Promise<void> {
+    await this.store.set(RECENT_LIST_KEY, forgetRecent(await this.recentList(), id));
+    for (const [folder, rid] of this.recentIds) if (rid === id) this.recentIds.delete(folder);
+  }
+
+  /**
+   * 開いているフォルダが、一覧のどの項目かを返す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @returns 一覧の項目の名前。一覧から開いていない・外したなら null
+   * @example
+   * p.recentIdOf(folder) // → "2"
+   * p.recentIdOf(plugin) // → null（プラグインのフォルダは一覧に入れない）
+   */
+  recentIdOf(folder: FolderRef): string | null {
+    return this.recentIds.get(folder.id) ?? null;
+  }
+
+  /**
+   * 開いているフォルダのプロジェクト名を、一覧に覚える（一覧に名前を出すため。F-PROJ-3）。変わらなければ書かない。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param project プロジェクトの名前。プロジェクトでなければ null
+   * @example
+   * await p.setRecentProject(folder, "給水") // → p.recentFolders() のその項目の project が "給水"
+   */
+  async setRecentProject(folder: FolderRef, project: string | null): Promise<void> {
+    const id = this.recentIds.get(folder.id);
+    if (id === undefined) return;
+    const r = withProject(await this.recentList(), id, project);
+    if (r.changed) await this.store.set(RECENT_LIST_KEY, r.list);
+  }
+
+  /**
+   * 覚えているフォルダの一覧を読む。一覧が無ければ、以前の版が覚えた前回のフォルダを 1 件目として読む。
+   *
+   * @returns 最後に開いた順の一覧
+   * @example
+   * await this.recentList() // → [{ id: "1", handle: project のハンドル, project: null }]
+   */
+  private async recentList(): Promise<RecentEntry<DirHandleLike>[]> {
+    const raw = await this.store.get(RECENT_LIST_KEY);
+    if (raw !== undefined) return parseRecent(raw, isDirHandle);
+    const old = await this.store.get(RECENT_KEY);
+    return isDirHandle(old) ? [{ id: "1", handle: old, project: null }] : [];
+  }
+
+  /**
+   * 開いたフォルダを一覧の先頭に置き（同じフォルダが既にあれば移す）、参照を作る。
+   *
+   * @param dir 開いたフォルダのハンドル
+   * @returns 新しい参照
+   * @example
+   * await this.remember(project) // → { provider: "local", id: "dir:1", name: "project" }（一覧の先頭が project）
+   */
+  private async remember(dir: DirHandleLike): Promise<FolderRef> {
+    const list = await this.recentList();
+    let at = -1;
+    for (let i = 0; i < list.length && at < 0; i++) {
+      const h = list[i]?.handle;
+      if (h && (h === dir || (await h.isSameEntry?.(dir)))) at = i;
+    }
+    const next = pushRecent(list, at, dir);
+    await this.store.set(RECENT_LIST_KEY, next);
+    const ref = this.addFolder(dir);
+    if (next[0]) this.recentIds.set(ref.id, next[0].id);
+    return ref;
+  }
+
+  /**
+   * 覚えているフォルダを、許可を確かめて開く。
+   *
+   * @param dir フォルダのハンドル
+   * @param opts `ask: false` なら許可を求めず、既に許可されているときだけ開く
+   * @returns 開いたフォルダの参照。許可されなければ null
+   * @example
+   * await this.openEntry(project, {})              // → { provider: "local", id: "dir:2", name: "project" }
+   * await this.openEntry(project, { ask: false })  // → null（許可を求めないと開けない）
+   */
+  private async openEntry(dir: DirHandleLike, opts: { ask?: boolean }): Promise<FolderRef | null> {
     const granted = (await dir.queryPermission?.({ mode: "readwrite" })) === "granted";
     const ok = granted || (opts.ask !== false && (await dir.requestPermission?.({ mode: "readwrite" })) === "granted");
-    return ok ? this.addFolder(dir) : null;
+    return ok ? this.remember(dir) : null;
   }
 
   /**

@@ -104,6 +104,26 @@ export interface RecentFolders extends ProviderInfo {
    * `ask: false` なら許可を求めず、既に許可されているときだけ開く（起動したとき。F-FILE-13）。
    */
   reopenRecent(opts?: { ask?: boolean }): Promise<FolderRef | null>;
+  /** 覚えているフォルダの一覧（プロジェクトの一覧。最後に開いた順。F-PROJ-3）。 */
+  recentFolders(): Promise<RecentFolder[]>;
+  /** 一覧のフォルダを開く。許可が無ければ求める（利用者の操作から呼ぶ）。一覧に無い・許可されなければ null。 */
+  openRecent(id: string): Promise<FolderRef | null>;
+  /** 一覧からフォルダを外す（フォルダそのものには触れない）。 */
+  forgetRecent(id: string): Promise<void>;
+  /** 開いているフォルダが一覧のどれか（一覧に無ければ null）。 */
+  recentIdOf(folder: FolderRef): string | null;
+  /** 開いているフォルダのプロジェクト名を一覧に覚える（プロジェクトでなければ null）。 */
+  setRecentProject(folder: FolderRef, project: string | null): Promise<void>;
+}
+
+/** プロジェクトの一覧の 1 件（F-PROJ-3）。 */
+export interface RecentFolder {
+  /** 一覧の中で変わらない名前（開く・外すときに使う）。 */
+  id: string;
+  /** フォルダの名前。 */
+  name: string;
+  /** プロジェクトの名前。プロジェクトでない・まだ読んでいなければ null。 */
+  project: string | null;
 }
 
 /** 前回のフォルダを開く許可の状態。granted は許可済み、prompt は利用者の操作で求められる、denied は拒否、none は覚えていない。 */

@@ -820,6 +820,35 @@ export class Workspace {
     return this.setFolder(source, await source.reopenRecent(opts));
   }
 
+  /**
+   * プロジェクトの一覧のフォルダを開き、中身を一覧する（F-PROJ-3）。今開いているフォルダと切り替わる。開いている文書は開いたまま残す。
+   * 許可を求めることがあるので、利用者の操作から呼ぶ。
+   *
+   * @param source プロジェクトの一覧を覚えているプロバイダ
+   * @param id 一覧の項目の名前
+   * @returns 開いたら true。一覧に無い・許可されなければ false。フォルダが消された・読めないときは例外を投げる
+   * @example
+   * await ws.openRecentFolder(local, "2") // → true（ws.folder() が一覧の 2 のフォルダになる）
+   * await ws.openRecentFolder(local, "9") // → false（一覧に無い）
+   */
+  async openRecentFolder(source: FolderSource & RecentFolders, id: string): Promise<boolean> {
+    return this.setFolder(source, await source.openRecent(id));
+  }
+
+  /**
+   * 開いているフォルダを閉じ、変更を知らせる（F-PROJ-3）。開いている文書は閉じない（未保存の変更を失わないため）。
+   * フォルダが開かれていなければ何もしない。
+   *
+   * @example
+   * ws.closeFolder() // → ws.folder() が null になり、ws.list() は変わらない
+   */
+  closeFolder(): void {
+    if (!this.folderState) return;
+    this.folderState = null;
+    this.disk = new Map();
+    this.changed();
+  }
+
   /** 開いているフォルダの中身とプロジェクトの設定ファイルを読み直し、変更を知らせる。フォルダが開かれていなければ何もしない。 */
   async refreshFolder(): Promise<void> {
     const f = this.folderState;
