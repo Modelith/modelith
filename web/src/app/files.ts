@@ -314,13 +314,12 @@ async function refreshRecents(): Promise<void> {
 const recentLabel = (r: RecentFolder): string => (r.project && r.project !== r.name ? `${r.project}（フォルダ ${r.name}）` : r.name);
 
 /**
- * 開いているフォルダの見出しを押したときの、プロジェクトの一覧のメニューを出す（F-PROJ-3）。
+ * 開いているフォルダの見出し（名前 ▾）を押したときの、プロジェクトの一覧のメニューを、見出しのすぐ下に出す（F-PROJ-3）。
  * ほかのフォルダに切り替える・ほかのフォルダを開く・フォルダを閉じる。
  *
- * @param x メニューを出す位置の x（画面の座標、px）
- * @param y メニューを出す位置の y（画面の座標、px）
+ * @param anchor 押した見出しの名前の要素
  */
-async function openProjectMenu(x: number, y: number): Promise<void> {
+async function openProjectMenu(anchor: Element): Promise<void> {
   const f = ws.folder();
   if (!local || !f) return;
   recents = await local.recentFolders();
@@ -331,7 +330,24 @@ async function openProjectMenu(x: number, y: number): Promise<void> {
   if (others.length) items.push({ sep: true });
   items.push({ label: "ほかのフォルダを開く…", act: () => void openFolder() }, { label: "フォルダを閉じる", act: () => void closeFolder() });
   closeCtx();
-  openCtx(x, y, items);
+  const r = anchor.getBoundingClientRect();
+  openCtx(r.left, r.bottom + 2, items);
+}
+
+/**
+ * ファイルメニューの「最近開いたフォルダ」と「フォルダを閉じる」を、今の状態に合わせて描く（F-PROJ-3）。ファイルメニューを開くたびに呼ぶ。
+ * 開いているフォルダは「最近開いたフォルダ」に出さない。フォルダを扱えないブラウザ・一覧が空なら、見出しごと出さない。
+ */
+async function renderRecentMenu(): Promise<void> {
+  const f = ws.folder();
+  $("#btnCloseFolder").hidden = !f;
+  recents = (await local?.recentFolders()) ?? [];
+  const current = f && local ? local.recentIdOf(f.ref) : null;
+  const items = recents.filter((r) => r.id !== current);
+  $("#recentMenu").innerHTML = items.length
+    ? `<div class="phead">最近開いたフォルダ</div>` +
+      items.map((r) => `<button data-recent-menu="${esc(r.id)}" title="${esc(`フォルダ「${r.name}」を開きます`)}">${esc(recentLabel(r))}</button>`).join("")
+    : "";
 }
 
 /**
@@ -907,7 +923,7 @@ function folderHeader(): string {
   const make = f.projectText === null && hasFolderFiles(f.source)
     ? `<div class="mkproj"><button data-cmd="makeProject" title="プロジェクト名やプラグインなどの設定を、チームで共有できるようにします（設定ファイル ${PROJECT_FILE} を作成します）">プロジェクトにする</button></div>`
     : "";
-  return `<div class="sec"><span class="grow" data-folder title="${esc(`${title}\nクリックすると、プロジェクトの一覧（切り替え・フォルダを閉じる）を出します`)}">${esc((named ?? f.ref.name).toUpperCase())}</span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}${pluginExplorerHtml()}`;
+  return `<div class="sec"><span class="grow"><span class="fold" data-folder role="button" tabindex="0" aria-haspopup="menu" title="${esc(`${title}\nクリックすると、プロジェクトの一覧（切り替え・フォルダを閉じる）を出します`)}"><span class="fn">${esc((named ?? f.ref.name).toUpperCase())}</span></span></span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}${pluginExplorerHtml()}`;
 }
 
 /**
@@ -1441,6 +1457,17 @@ function initMenu(): void {
   cmd("#btnNew", newUntitled);
   cmd("#btnOpen", () => void openFile());
   cmd("#btnOpenFolder", () => void openFolder());
+  cmd("#btnCloseFolder", () => void closeFolder());
+  // 最近開いたフォルダ（F-PROJ-3）は、ファイルメニューを開くたびに描き直す
+  $("#fileMenu").addEventListener("toggle", () => {
+    if ($<HTMLDetailsElement>("#fileMenu").open) void renderRecentMenu();
+  });
+  $("#recentMenu").addEventListener("click", (ev) => {
+    const id = closest(ev, "[data-recent-menu]")?.dataset["recentMenu"];
+    if (id === undefined) return;
+    closeMenus();
+    void openRecent(id);
+  });
   cmd("#btnSave", () => void save(shownKey ?? ""));
   cmd("#btnSaveAs", () => void save(shownKey ?? "", true));
   $<HTMLButtonElement>("#btnOpenFolder").disabled = !local;
@@ -1499,7 +1526,8 @@ function initExplorer(): void {
     if (forget !== undefined) return void forgetRecent(forget);
     const recent = closest(ev, "[data-recent]")?.dataset["recent"];
     if (recent !== undefined) return void openRecent(recent);
-    if (closest(ev, "[data-folder]")) return void openProjectMenu(ev.clientX, ev.clientY);
+    const fold = closest(ev, "[data-folder]");
+    if (fold) return void openProjectMenu(fold);
     // ダブルクリック（2 回目のクリック）は、仮に開いたファイルを開いたままにする（F-FILE-17）。
     // 1 回目のクリックで一覧を描き直すため dblclick は届かないことがあり、クリックの回数で見分ける
     const twice = ev.detail >= 2;
@@ -1532,6 +1560,11 @@ function initExplorer(): void {
   $("#explorer").addEventListener("contextmenu", openListMenu);
   // 行を選んで F2 で名前の変更、Delete で削除（F-FILE-19）
   $("#explorer").addEventListener("keydown", (ev) => {
+    // 見出しの名前 ▾ は、Enter・Space でもプロジェクトの一覧を出す（F-PROJ-3）
+    if (ev.target instanceof HTMLElement && ev.target.dataset["folder"] !== undefined && (ev.key === "Enter" || ev.key === " ")) {
+      ev.preventDefault();
+      return void openProjectMenu(ev.target);
+    }
     const t = listTarget(ev.target);
     const f = ws.folder();
     if (!t || t.kind === "root" || !f || !hasFolderEdits(f.source) || renaming !== null || !(ev.target instanceof HTMLElement) || ev.target.dataset["path"] === undefined) return;

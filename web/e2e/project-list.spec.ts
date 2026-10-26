@@ -78,3 +78,34 @@ test("F-PROJ-3: 開けなかった（削除された）フォルダは、その�
   await expect.poll(() => recentNames(page)).toEqual(["給水（フォルダ project）"]);
   expect(await readFile(page, "a.sysml")).toBe("package A;\n");
 });
+
+test("F-PROJ-3: ファイルメニューの「最近開いたフォルダ」から切り替え、「フォルダを閉じる」で閉じられる", async ({ page }) => {
+  // Arrange
+  await openTwoFolders(page);
+  // Act
+  await page.locator("#fileMenu summary").click();
+  // Assert（開いているフォルダは出さない）
+  await expect(page.locator("#recentMenu button")).toHaveText(["給水（フォルダ project）"]);
+  // Act
+  await page.locator("#recentMenu button").click();
+  // Assert
+  await expect(fileRow(page, "a.sysml")).toBeVisible();
+  // Act
+  await page.locator("#fileMenu summary").click();
+  await page.locator("#btnCloseFolder").click();
+  // Assert
+  await expect(page.locator("#explorer [data-folder]")).toHaveCount(0);
+  await page.locator("#fileMenu summary").click();
+  await expect(page.locator("#btnCloseFolder")).toBeHidden();
+});
+
+test("F-PROJ-3: 見出しの名前 ▾ は、キーボード（Enter）でもプロジェクトの一覧を出す", async ({ page }) => {
+  // Arrange
+  await openTwoFolders(page);
+  // Act
+  await page.locator("#explorer [data-folder]").focus();
+  await page.keyboard.press("Enter");
+  // Assert
+  await expect(page.locator("#ctx")).toContainText("プロジェクトの一覧");
+  await expect(page.locator("#ctx").getByRole("button", { name: "フォルダを閉じる", exact: true })).toBeVisible();
+});

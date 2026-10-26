@@ -408,5 +408,10 @@ main[data-nodoc] .toast{z-index:30}
 .fi .rn{flex:1;min-width:0;font:inherit;padding:0 4px;border:1px solid var(--sel);border-radius:3px;background:var(--panel);color:var(--ink)}
 .fi .rn.bad{border-color:var(--err)}
 .rnmsg{margin:0 8px 4px 24px;padding:3px 6px;font-size:12px;color:var(--err);border:1px solid var(--err);border-radius:3px;background:var(--panel);white-space:normal}
-#explorer [data-folder]{cursor:pointer}
 .fi[data-recent] .x{visibility:visible}
+.explorer .sec .fold{display:inline-flex;align-items:center;gap:3px;max-width:100%;margin-left:-4px;padding:1px 4px;border-radius:4px;cursor:pointer;vertical-align:middle}
+.explorer .sec .fold .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.explorer .sec .fold::after{content:"▾";flex:none;font-size:10px;color:var(--ink2)}
+.explorer .sec .fold:hover,.explorer .sec .fold:focus-visible{background:var(--panel2)}
+.menu .pop .recent{display:contents}
+.menu .pop button[hidden]{display:none}
