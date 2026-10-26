@@ -635,3 +635,88 @@ describe("segmentsOf（フォルダからの相対パス）", () => {
     expect(() => segmentsOf(path)).toThrow("フォルダの外を指しています");
   });
 });
+
+describe("LocalFolderProvider: プロジェクトの一覧（F-PROJ-3）", () => {
+  it("開いたフォルダを最後に開いた順に覚え、同じフォルダは 2 度入れない", async () => {
+    // Arrange
+    const { api, p, root } = setup();
+    const other = new FakeDir("other");
+    // Act
+    await p.pickFolder();
+    api.folder = other;
+    await p.pickFolder();
+    api.folder = root;
+    await p.pickFolder();
+    // Assert
+    expect(await p.recentFolders()).toEqual([
+      { id: "1", name: "project", project: null },
+      { id: "2", name: "other", project: null },
+    ]);
+    expect(await p.recentFolder()).toBe("project");
+  });
+
+  it("一覧のフォルダを許可を得て開き、先頭に移す", async () => {
+    // Arrange
+    const { api, p } = setup();
+    await p.pickFolder();
+    const other = new FakeDir("other");
+    other.put("o.sysml", "package O;");
+    api.folder = other;
+    await p.pickFolder();
+    const [, first] = await p.recentFolders();
+    // Act
+    const folder = await p.openRecent(first?.id ?? "");
+    // Assert
+    expect(folder?.name).toBe("project");
+    expect((await p.recentFolders()).map((f) => f.name)).toEqual(["project", "other"]);
+    expect(folder && p.recentIdOf(folder)).toBe(first?.id);
+  });
+
+  it("許可されない・一覧に無いフォルダは開かない（異常系）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    await p.pickFolder();
+    root.permission = "prompt";
+    root.grantOnRequest = "denied";
+    // Act
+    const denied = await p.openRecent("1");
+    const missing = await p.openRecent("9");
+    // Assert
+    expect(denied).toBeNull();
+    expect(missing).toBeNull();
+  });
+
+  it("一覧から外しても、フォルダの中身は消さない", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "package A;");
+    const folder = await p.pickFolder();
+    // Act
+    await p.forgetRecent("1");
+    // Assert
+    expect(await p.recentFolders()).toEqual([]);
+    expect(await p.recentFolder()).toBeNull();
+    expect(folder && p.recentIdOf(folder)).toBeNull();
+    expect(root.entries.has("a.sysml")).toBe(true);
+  });
+
+  it("開いているフォルダのプロジェクト名を覚える", async () => {
+    // Arrange
+    const { p } = setup();
+    const folder = await p.pickFolder();
+    // Act
+    if (folder) await p.setRecentProject(folder, "給水");
+    // Assert
+    expect(await p.recentFolders()).toEqual([{ id: "1", name: "project", project: "給水" }]);
+  });
+
+  it("以前の版が覚えた前回のフォルダを、一覧の 1 件目として読む（境界値: 一覧が無い）", async () => {
+    // Arrange
+    const { p, store, root } = setup();
+    await store.set("recent-folder", root);
+    // Act
+    const list = await p.recentFolders();
+    // Assert
+    expect(list).toEqual([{ id: "1", name: "project", project: null }]);
+  });
+});
