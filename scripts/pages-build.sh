@@ -15,15 +15,17 @@ out=${3:?出力先を渡してください}
 base=${4:?base（/modelith/ など）を渡してください}
 failed_results="$PWD/pages-test-results"
 
-# 1 つの版を、そのタグの作業ツリーでテストしてビルドし、出力先の dest に写す
+# 1 つの版を、そのタグの作業ツリーでテストしてビルドし、出力先の dest に写す。
+# 5 番目からの引数は、そのままテスト（Playwright）に渡す
 build_one() {
   local tag=$1 dest=$2 path=$3 channel=$4 dir
+  shift 4
   dir=$(mktemp -d)
   git worktree add --detach "$dir" "$tag"
   (
     cd "$dir"
     npm ci --prefix web --ignore-scripts --no-audit --no-fund
-    if ! scripts/e2e.sh; then
+    if ! scripts/e2e.sh "$@"; then
       mkdir -p "$failed_results/$channel"
       cp -r web/test-results web/reports "$failed_results/$channel/" 2>/dev/null || true
       echo "$channel（$tag）のテストが落ちたため公開しません。結果は pages-test-results/$channel/ にあります" >&2
@@ -41,7 +43,10 @@ build_one() {
 
 rm -rf "$out" "$failed_results"
 mkdir -p "$out"
-if [[ -n $stable ]]; then build_one "$stable" "$out" "$base" stable; fi
+# 安定版は、公開したときにテストを通った、もう直せない版（タグ）。その版のテストの揺らぎで配信全体が止まらないよう、
+# 落ちたテストを 1 回だけやり直す（やり直して通ったものは、レポートに不安定（flaky）として残る）。
+# プレビュー版は今の dev から出した版なので、やり直さない（不安定なテストは dev で直す）
+if [[ -n $stable ]]; then build_one "$stable" "$out" "$base" stable --retries=1; fi
 if [[ -n $preview ]]; then build_one "$preview" "$out/preview" "${base}preview/" preview; fi
 if [[ -z $stable && -z $preview ]]; then
   echo "公開できる版がありません" >&2
