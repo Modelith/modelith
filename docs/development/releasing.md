@@ -40,7 +40,7 @@
 | 安定版 | `https://modelith.github.io/modelith/` | 最新の正式版。正式版が無ければ最新の rc |
 | プレリリース版 | `https://modelith.github.io/modelith/preview/` | 最も新しい版（alpha・beta・rc・正式版） |
 
-- 版の選び方は `web/tools/channels.ts`、ビルドは `scripts/pages-build.sh`。版ごとに、そのタグの中身で e2e・UI テストを流す。
+- 版の選び方は `web/tools/channels.ts`、ビルドは `scripts/pages-build.sh`。版ごとに、そのタグの中身で e2e・UI テストを流す。安定版だけは、落ちたテストを 1 回だけやり直す（ADR-0020）。
 - プレリリース版は、ブラウザの保存領域（前回の続き・下書き・設定・プラグインの許可）を安定版と分ける（`@preview` を付けた名前）。
 - 公開で動くワークフローは、タグのコミットにある `pages.yml`。この仕組みより前のコミットに付けた下書きは公開せず、作り直す。
 - 公開し直すときは、Actions の「Pages」を既定のブランチから手動で起動する。
