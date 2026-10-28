@@ -67,6 +67,10 @@ export const test = base.extend<{ fsAccess: boolean }>({
   page: async ({ page, fsAccess }, use) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    // ファイルの選択の画面（filechooser）の横取りを、最初の読み込みより前に有効にしておく。
+    // Playwright は横取りの設定を返事を待たずにブラウザへ送るため、テストの途中で waitForEvent("filechooser") を呼んですぐに
+    // Ctrl+O などを押すと、負荷の高いときに設定より先に画面が開き、filechooser が届かずに時間切れになる
+    page.on("filechooser", () => {});
     await page.addInitScript(fsAccess ? installPickers : removeFsAccess);
     await page.addInitScript(exposeWorkers);
     await use(page);
